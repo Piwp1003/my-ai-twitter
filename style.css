@@ -1387,3 +1387,48 @@ input, textarea, .btn-primary, .btn-secondary, .btn-edit-small {
 .wb-content {
     max-height: none !important;       /* 解除原本卡片对文字高度的死限制 */
 }
+/* ===================================================
+   UI 升级：世界书、日记、信件、故事统一竖向列表 + 两行省略
+   =================================================== */
+
+/* 1. 世界书内容仅显示两行并用省略号 */
+.wb-content {
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important; /* 核心：限制最多显示2行 */
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: normal !important;
+    max-height: none !important; /* 解除原有写死的高度限制 */
+}
+
+/* 2. 日记、信件、故事的卡片容器改为竖向排列，支持上下滑动 */
+.diary-row-container {
+    display: flex !important;
+    flex-direction: column !important; /* 竖向堆叠排列 */
+    gap: 12px !important;
+    overflow-y: auto !important;       /* 允许上下滑动 */
+    overflow-x: hidden !important;     /* 禁止左右滑动 */
+    padding: 10px 5px !important;
+    flex-wrap: nowrap !important;      /* 禁用多列折行 */
+}
+
+/* 3. 卡片宽度自动撑满整行，适配竖向列表布局 */
+.diary-card, .diary-card.novel-card {
+    min-width: 100% !important;        /* 宽度占满整行容器 */
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    height: auto !important;           /* 高度自适应 */
+    flex-shrink: 0 !important;
+}
+
+/* 4. 信件、日记、故事摘要内容限制显示两行，多余部分用...替代 */
+.diary-card-excerpt {
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important; /* 核心：限制最多显示2行 */
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: normal !important;
+    line-height: 1.5 !important;
+}

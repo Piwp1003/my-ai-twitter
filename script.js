@@ -2222,7 +2222,7 @@ ${previousContext || '这是第一章，故事的起点。'}
     } catch(e) {
         alert("生成失败：" + e.message);
     } finally {
-        btn.innerText = "🪄 生成下一章"; btn.disabled = false;
+        btn.innerText = " 接下来你想怎么发展剧情呢"; btn.disabled = false;
     }
 }
 
