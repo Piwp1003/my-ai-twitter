@@ -306,7 +306,7 @@ svg.blue-line-icon { fill: none !important; stroke: #1d9bf0 !important; stroke-w
     /* ---------- 侧滑抽屉 ---------- */
     .mobile-drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000; }
     .mobile-drawer-overlay.open { display: block; }
-    .mobile-drawer { display: block; position: fixed; top: 0; left: -85%; width: 85%; max-width: 320px; height: 100%; background: #ffffff; z-index: 2001; overflow-y: auto; transition: left 0.25s ease; box-shadow: 2px 0 16px rgba(0,0,0,0.15); box-sizing: border-box; padding: 20px 16px; }
+    .mobile-drawer { display: block; position: fixed; top: 0; left: -85%; width: 85%; max-width: 320px; height: 100%; background: #ffffff; z-index: 2001; overflow-y: auto; transition: left 0.25s ease; box-shadow: 2px 0 16px rgba(0,0,0,0.15); box-sizing: border-box; padding: calc(20px + env(safe-area-inset-top, 20px)) 16px 20px; }
     .mobile-drawer.open { left: 0; }
     .mdrawer-profile { cursor: pointer; padding-bottom: 12px; margin-bottom: 8px; border-bottom: 1px solid #eff3f4; }
     .mdrawer-name { font-weight: bold; font-size: 17px; margin-top: 10px; }
@@ -664,10 +664,6 @@ svg.blue-line-icon { fill: none !important; stroke: #1d9bf0 !important; stroke-w
     display: flex;
     align-items: center;
     gap: 4px;
-}
-.post-detail-stats-row b { 
-    color: #0f1419; 
-    font-weight: bold; 
 }
 .detail-time-row {
     font-size: 15px;
@@ -1423,12 +1419,5 @@ input, textarea, .btn-primary, .btn-secondary, .btn-edit-small {
         display: flex !important; 
         width: 100% !important;
         margin-bottom: 12px !important; /* 用 bottom margin 替代 gap 效果 */
-    }
-}
-/* 强制手机端侧滑抽屉的内容整体下移，防遮挡 */
-@media (max-width: 900px) {
-    .mdrawer-profile {
-        margin-top: 52px !important;  /* 核心：直接给第一块内容加顶部外边距 */
-        padding-top: 10px !important;
     }
 }

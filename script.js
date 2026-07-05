@@ -1860,17 +1860,6 @@ function deletePost(postId, event) {
     if(confirm('确定要删除这条帖子吗？该操作不可逆！')) { globalPosts = globalPosts.filter(p => p.id != postId); saveAllData(); if(typeof renderPosts === "function" && document.getElementById('view-home').style.display !== 'none') renderPosts(); if(typeof renderProfileFeed === "function" && document.getElementById('view-profile').style.display !== 'none') renderProfileFeed(); }
 }
 
-function deleteTabloid(postId, event) {
-    if (event) event.stopPropagation();
-    if (confirm('确定要删除这条爆料吗？该操作不可逆！')) {
-        tabloidPosts = tabloidPosts.filter(p => p.id != postId);
-        saveAllData();
-        if (document.getElementById('view-tabloid').style.display !== 'none') renderTabloidPosts();
-        if (document.getElementById('view-post-detail').style.display !== 'none') switchMainView('tabloid');
-        if (currentProfileId === 'tabloid_admin' && document.getElementById('view-profile').style.display !== 'none' && typeof renderProfileFeed === 'function') renderProfileFeed();
-    }
-}
-
 function hideAllViews() {
     ['home','profile','tag','search','notifications','post-detail','following-list','chat','anon-forum','diary','novel','tabloid','mobile-trends'].forEach(v => { const el = document.getElementById(`view-${v}`); if(el) el.style.display = 'none'; });
     ['nav-home','nav-following','nav-notif','nav-myprofile','nav-chat','nav-anon','nav-diary','nav-novel','nav-tabloid'].forEach(id => { const el = document.getElementById(id); if(el) el.className = 'nav-item'; });
@@ -3005,11 +2994,6 @@ function deleteAnonPost(postId) {
     renderAnonPosts();
 }
 
-function toggleAnonReply(postId) {
-    const el = document.getElementById(`anon-reply-input-${postId}`);
-    if(el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
-}
-
 function likeAnonPost(postId) {
     let post = anonPosts.find(p => p.id === postId);
     if(!post) return;
@@ -3079,63 +3063,6 @@ async function userAnonPost() {
     document.getElementById('anonLoadingStatus').style.display = 'none';
     saveAllData();
 }
-
-async function postUserAnonComment(postId) {
-    const input = document.getElementById(`anon-input-text-${postId}`);
-    if (!input) return; const text = input.value.trim(); if (!text) return;
-    if (!myApiKey) return alert("请先在设置中配置密钥！");
-
-    let post = anonPosts.find(p => p.id === postId); if(!post) return;
-
-    post.replies.push({ charId: 'me', anonName: currentUser.anonName || '匿名用户', anonId: currentUser.anonId || 'User', text: text, timestamp: Date.now() });
-    post.stats.comments++; input.value = ''; renderAnonPosts();
-    
-    let targetCharId = post.charId; 
-    let targetMatch = text.match(/回复 @([^：:]+)[：:]/); 
-    if(targetMatch) {
-        let targetName = targetMatch[1];
-        let r = post.replies.find(x => x.anonName === targetName);
-        if(r && r.charId) targetCharId = r.charId;
-    }
-
-    if (targetCharId !== 'me') {
-        document.getElementById('anonLoadingStatus').style.display = 'block';
-        
-        // 如果回复的是 NPC，让 NPC 继续反击
-        if (targetCharId === 'npc') {
-            let p = `你是匿名路人网友"${targetMatch ? targetMatch[1] : 'NPC'}"。刚才用户"${currentUser.anonName || '匿名用户'}"在匿名论坛针对你的评论回复道："${text}"。请你以暴躁、抽象路人网友的身份简短回击，不超过30字。`;
-            try {
-                let res = await fetch(`${myApiUrl}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${myApiKey}` }, body: JSON.stringify({ model: myModel, messages: [{ role: "user", content: p }] }) });
-                let rep = (await res.json()).choices?.[0]?.message?.content?.trim();
-                if (rep && !rep.toUpperCase().startsWith("NO")) {
-                    post.replies.push({ charId: 'npc', anonName: targetMatch ? targetMatch[1] : '路人网友', anonId: 'NPC', replyTo: currentUser.anonId || 'User', text: rep, timestamp: Date.now() });
-                    post.stats.comments++;
-                    renderAnonPosts();
-                }
-            } catch(e) {}
-        } else {
-            // 如果回复的是具体的 AI 角色
-            let opChar = myCharacters.find(c => c.id === targetCharId);
-            if (opChar) {
-                let p = `你在匿名与抽象论坛参与了讨论，或者是你的帖子。有人回复了你："${text}"。你的人设：${opChar.persona}。${getUserContextPrompt()}
-                你现在必须回复这个人，不能不理。直接输出你的回复内容（不超过${chatWordLimit}字，展现你极度发癫、抽象、色情、阴暗或神经质的一面，符合匿名环境）。`;
-                try {
-                    let res = await fetch(`${myApiUrl}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${myApiKey}` }, body: JSON.stringify({ model: myModel, messages: [{ role: "user", content: p }] }) });
-                    let repText = (await res.json()).choices?.[0]?.message?.content?.trim() || "知道了。";
-                    
-                    post.replies.push({ charId: opChar.id, anonName: opChar.anonName || '匿名者', anonId: opChar.anonId || 'OP', replyTo: currentUser.anonId || 'User', text: repText, timestamp: Date.now() });
-                    post.stats.comments++;
-                    showToast(`<div class="avatar" style="background:#555; border:1px solid #777; color:#fff;">?</div>`, `匿名用户 回复了你`, repText, post.id, null, true);
-                    renderAnonPosts();
-                } catch(e) {}
-            }
-        }
-        document.getElementById('anonLoadingStatus').style.display = 'none';
-    }
-    saveAllData();
-}
-
-
 
 async function generateAnonPostForSelected() {
     if (!myApiKey) return alert("请先在设置中配置密钥！");
@@ -3783,50 +3710,6 @@ function renderTabloidPosts() {
                 <div class="post-footer"><div class="post-stats-group" style="gap:40px;"><div>${commentSVG} ${post.stats.comments}</div><div>${likeSVG} ${post.stats.likes}</div></div></div>
             </div>
         </div>`).join('');
-}
-
-async function userReplyTabloid(postId) {
-    const input = document.getElementById(`tabloid-reply-${postId}`); 
-    const text = input.value.trim(); 
-    // 💡 修复：允许纯表情包发送
-    if(!text && !pendingReplyAttachment) return;
-    
-    const post = tabloidPosts.find(p => p.id === postId); if(!post) return;
-    
-    // 💡 写入用户暂存的表情数据
-    const userReplyId = 'r_' + Date.now() + Math.floor(Math.random()*100);
-    post.replies.push({ id: userReplyId, parentId: null, charId: 'me', name: currentUser.name, text: text, timestamp: Date.now(), mediaUrl: pendingReplyAttachment });
-    post.stats.comments++; input.value = ''; 
-    
-    clearAttachment('reply'); // 💡 发送完毕后清除预览区
-    saveAllData();
-    
-    if (document.getElementById('view-post-detail').style.display !== 'none') renderSinglePostDetail(postId);
-    
-    const api = getApiConfig(true); if(!api.key) return;
-    rollTabloidAIParticipation(postId, text, currentUser.name);
-    // 修复：NPC 跟评挂载到用户刚发的评论下面，实现楼中楼嵌套
-    spawnNpcComments(postId, true, { triggerName: currentUser.name, triggerText: text, triggerId: userReplyId });
-    let mentioned = myCharacters.filter(c => text.includes('@' + c.name) && c.replyToUser !== false);
-    
-    if (mentioned.length > 0) {
-        for(let char of mentioned) {
-            let p = `用户"${currentUser.name}"艾特了你："${text}"。人设：${char.persona}。直接回复，不超过50字。`;
-            try {
-                let res = await fetch(`${api.url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${api.key}` }, body: JSON.stringify({ model: api.model, messages: [{ role: "user", content: p }] }) });
-                let rep = (await res.json()).choices?.[0]?.message?.content?.trim();
-                if(rep && !rep.toUpperCase().startsWith("NO")) {
-                    const charReplyId = 'r_' + Date.now() + Math.floor(Math.random()*100);
-                    post.replies.push({ id: charReplyId, parentId: userReplyId, charId: char.id, name: char.name, text: `回复 @${currentUser.name}：${rep}`, timestamp: Date.now() }); post.stats.comments++;
-                    showToast(getAvatarHTML(char,40), `${char.name} 回复了你`, rep, post.id, null);
-                    if (document.getElementById('view-post-detail').style.display !== 'none') renderSinglePostDetail(postId);
-                    generateAutoNpcReaction(postId, char.name, rep, charReplyId);
-                    rollTabloidAIParticipation(postId, rep, char.name);
-                }
-            } catch(e){}
-        }
-    }
-    saveAllData();
 }
 
 function openTabloidProfileModal() {
@@ -5076,22 +4959,3 @@ window.triggerGroupWelcomeSequence = async function(groupId, newCharId) {
     if (indicator) indicator.style.display = 'none';
 };
 
-// 2. 核心：NPC 回复插入逻辑 (解决插入不到父评论下方的问题)
-function appendNpcReply(parentReplyId, replyContent) {
-    // 关键：通过 parentReplyId 寻找 DOM 中的目标容器
-    // 请确保你的渲染函数生成的评论都有 id="reply-container-xxxx"
-    const targetContainer = document.getElementById(`reply-container-${parentReplyId}`);
-    
-    const replyDiv = document.createElement('div');
-    replyDiv.className = 'npc-reply-bubble';
-    replyDiv.style.marginTop = "10px";
-    replyDiv.innerHTML = `<div style="padding:10px; background:#f0f0f0; border-radius:8px;">${replyContent}</div>`;
-    
-    if (targetContainer) {
-        targetContainer.appendChild(replyDiv);
-    } else {
-        // 如果找不到特定的父容器，就插到推文主内容下方
-        document.getElementById('postDetailSection').appendChild(replyDiv);
-    }
-}
-// ==========================================

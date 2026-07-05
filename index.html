@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>谷雨</title>
     <link rel="stylesheet" href="./style.css?v=2">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
@@ -958,28 +958,6 @@
         <button class="btn-cancel" onclick="closeModal('postCreateModal')">关闭窗口</button>
     </div>
 </div>
-<div class="modal-overlay" id="customCharReplyModal" style="z-index: 3000;">
-    <div class="modal-box" style="width: 450px;">
-        <h3 style="margin-top:0; color:#1d9bf0;">滴滴代打</h3>
-        <div id="ccrTargetInfo" style="font-size:13px; color:#536471; margin-bottom:15px; padding:12px; background:rgba(29, 155, 240, 0.05); border-left:4px solid #1d9bf0; border-radius:4px; line-height: 1.5;"></div>
-        
-        <div class="input-group full-width">
-            <label>请选择你的英雄</label>
-            <select id="ccrCharSelect" style="font-size: 15px; padding: 10px;"></select>
-        </div>
-        
-        <div class="input-group full-width">
-            <label>回复内容</label>
-            <textarea id="ccrInput" rows="3" style="font-size: 15px; padding: 10px; font-family: inherit;"></textarea>
-        </div>
-        
-        <div style="display:flex; gap:10px; margin-top:15px;">
-            <button class="btn-primary" style="margin-top:0; flex: 2;" id="ccrSubmitBtn" onclick="submitCustomCharReply()">你等着吧我现在就找人弄你</button>
-            <button class="btn-cancel" style="margin-top:0; flex: 1;" onclick="closeModal('customCharReplyModal')">取消</button>
-        </div>
-    </div>
-</div>
-
 <div id="fabPost" class="fab-btn" title="发帖/生成">+</div>
 
 <style>
@@ -1004,7 +982,6 @@
             }
         }
     </style>
-</head>
 <div class="modal-overlay" id="inviteGroupModal" style="z-index: 3000;">
     <div class="modal-box" style="width: 400px;">
         <h3 style="margin-top:0; color:#1d9bf0;">➕ 邀请角色进群</h3>
