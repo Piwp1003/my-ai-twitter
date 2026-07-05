@@ -1309,7 +1309,7 @@ input, textarea, .btn-primary, .btn-secondary, .btn-edit-small {
 @media (max-width: 900px) {
     /* 1. 背景图高度自适应，防止手机端显得太宽太巨大 */
     .profile-banner {
-        height: 135px !important; 
+        height: 160px !important; 
         width: 100% !important;
         background-size: cover !important;
         background-position: center !important;
@@ -1320,8 +1320,8 @@ input, textarea, .btn-primary, .btn-secondary, .btn-edit-small {
         width: 85px !important;
         height: 85px !important;
         font-size: 32px !important; /* 如果是文字或Emoji头像，缩放字体 */
-        margin-top: 40px !important; 
-        margin-left: 16px !important;
+        margin-top: 50px !important; 
+        margin-left: 10px !important;
     }
 
     /* 3. 彻底解决最底部漏出一块白、或者被底部导航栏挡住的问题 */
