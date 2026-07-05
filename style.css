@@ -1425,3 +1425,8 @@ input, textarea, .btn-primary, .btn-secondary, .btn-edit-small {
         margin-bottom: 12px !important; /* 用 bottom margin 替代 gap 效果 */
     }
 }
+@media (max-width: 900px) {
+    .mobile-drawer {
+        padding-top: 60px !important;  /* 原来是 20px，数值越大，内容越靠下 */
+    }
+}
