@@ -182,6 +182,13 @@ let dataBank = []; // 角色专属资料库(RAG)：[{id, charId, title, chunks:[
 let plugins = []; // 插件系统：[{id, name, description, type:'prompt'|'action'|'macro'|'script', scope:'global'|charId, enabled, promptText, actionLabel, actionPrompt, macroName, macroValue, code}]
 let enableBrowserNotifications = false; // 浏览器系统级推送通知
 let darkTheme = false; // 深色模式
+// ====== 云端主动消息唤醒（网页锁屏/关闭后，靠Cloudflare Worker代为检测+推送ntfy通知）======
+let cloudSyncEnabled = false; // 总开关
+let cloudWorkerUrl = ''; // 你部署的 Cloudflare Worker 地址，例如 https://xxx.workers.dev
+let cloudAuthToken = ''; // 与Worker约定的共享密钥（同一个字符串要填在Worker的Secret里）
+let ntfyTopic = ''; // ntfy.sh 的推送topic名（建议用一长串随机字符，越难猜越安全）
+let lastCloudSyncTime = 0; // 节流：避免同步请求发得太频繁
+const CLOUD_SYNC_MIN_INTERVAL = 3 * 60000; // 两次同步之间至少间隔3分钟
 // ⚡ 上下文预算管理：功能越加越多，prompt容易越滚越大，这几个数字用来控制每次请求塞给AI的字数上限，省token省钱
 let worldbookCharBudget = 2000;   // 世界书正文最多占用的字数（超过预算的低优先级条目会被自动跳过，不影响关键设定）
 let semanticCharBudget = 1200;    // 向量记忆 + 资料库检索结果最多占用的字数
@@ -1334,6 +1341,8 @@ window.onload = async function() {
     updateUserMiniProfile();
     startAutoPostTimer();
     startProactiveChatTimer();
+    if (typeof fetchPendingFromCloud === 'function') fetchPendingFromCloud(); // 打开网页时先把云端攒的内容拉回来
+    if (typeof syncStateToCloud === 'function') { syncStateToCloud(true); setInterval(() => syncStateToCloud(false), CLOUD_SYNC_MIN_INTERVAL); }
     setInterval(updateAllRelativeTimes, 60000);
     initMobileUI();
     initFAB(); // 初始化悬浮按钮拖拽逻辑
@@ -1689,6 +1698,18 @@ function toggleBrowserNotifications() {
     saveAllData();
 }
 
+// 云端主动消息唤醒设置：勾选/填写后立即保存，并强制触发一次同步（方便你马上测试Worker是否配对成功）
+function saveCloudSyncSettings() {
+    cloudSyncEnabled = document.getElementById('cloudSyncEnabledToggle')?.checked || false;
+    cloudWorkerUrl = (document.getElementById('cloudWorkerUrlInput')?.value || '').trim().replace(/\/$/, '');
+    cloudAuthToken = (document.getElementById('cloudAuthTokenInput')?.value || '').trim();
+    ntfyTopic = (document.getElementById('ntfyTopicInput')?.value || '').trim();
+    saveAllData();
+    if (cloudSyncEnabled && cloudWorkerUrl && cloudAuthToken && typeof syncStateToCloud === 'function') {
+        syncStateToCloud(true);
+    }
+}
+
 function sendBrowserNotification(title, body) {
     if (!enableBrowserNotifications) return;
     if (document.visibilityState === 'visible' && document.hasFocus()) return; // 用户正盯着看呢，不用再弹系统通知
@@ -1819,6 +1840,7 @@ function getFullDataSnapshot() {
         regexScripts, enableVectorMemory, enableChatScriptExecution, embeddingModel, dataBank, darkTheme, enableBrowserNotifications,
         worldbookCharBudget, semanticCharBudget, chatHistoryTurns,
         plugins,
+        cloudSyncEnabled, cloudWorkerUrl, cloudAuthToken, ntfyTopic,
     };
 }
 
@@ -1909,6 +1931,10 @@ async function loadAllData() {
                 if (parsed.semanticCharBudget) semanticCharBudget = parsed.semanticCharBudget;
                 if (parsed.chatHistoryTurns) chatHistoryTurns = parsed.chatHistoryTurns;
                 if (parsed.plugins) plugins = parsed.plugins;
+                if (parsed.cloudSyncEnabled !== undefined) cloudSyncEnabled = parsed.cloudSyncEnabled;
+                if (parsed.cloudWorkerUrl !== undefined) cloudWorkerUrl = parsed.cloudWorkerUrl;
+                if (parsed.cloudAuthToken !== undefined) cloudAuthToken = parsed.cloudAuthToken;
+                if (parsed.ntfyTopic !== undefined) ntfyTopic = parsed.ntfyTopic;
                 applyDarkTheme();
                 if (parsed.globalBgImage !== undefined) globalBgImage = parsed.globalBgImage;
                 if (parsed.globalBgOpacity !== undefined) globalBgOpacity = parsed.globalBgOpacity;
@@ -1942,6 +1968,10 @@ async function loadAllData() {
                 }
                 if (document.getElementById('darkThemeToggle')) document.getElementById('darkThemeToggle').checked = darkTheme;
                 if (document.getElementById('enableBrowserNotifications')) document.getElementById('enableBrowserNotifications').checked = enableBrowserNotifications;
+                if (document.getElementById('cloudSyncEnabledToggle')) document.getElementById('cloudSyncEnabledToggle').checked = cloudSyncEnabled;
+                if (document.getElementById('cloudWorkerUrlInput')) document.getElementById('cloudWorkerUrlInput').value = cloudWorkerUrl || '';
+                if (document.getElementById('cloudAuthTokenInput')) document.getElementById('cloudAuthTokenInput').value = cloudAuthToken || '';
+                if (document.getElementById('ntfyTopicInput')) document.getElementById('ntfyTopicInput').value = ntfyTopic || '';
                 if (document.getElementById('worldbookCharBudgetInput')) document.getElementById('worldbookCharBudgetInput').value = worldbookCharBudget;
                 if (document.getElementById('semanticCharBudgetInput')) document.getElementById('semanticCharBudgetInput').value = semanticCharBudget;
                 if (document.getElementById('chatHistoryTurnsInput')) document.getElementById('chatHistoryTurnsInput').value = chatHistoryTurns;
@@ -4195,6 +4225,9 @@ function startProactiveChatTimer() {
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === 'visible') {
         onAppForeground();
+    } else {
+        // 切到后台前，尽量把当前状态同步给云端Worker，让它在网页彻底不运行时也能接手判断
+        if (typeof syncStateToCloud === 'function') syncStateToCloud(true);
     }
 });
 
@@ -4215,6 +4248,185 @@ function onAppForeground() {
     // 如果正在看着某个聊天，回到前台时重新渲染一下，避免停留在挂起前的旧画面
     if (currentChatSessionId && document.getElementById('view-chat') && document.getElementById('view-chat').style.display !== 'none') {
         renderChatMessages();
+    }
+    // 回到前台时，把云端Worker在网页关闭期间生成的消息/推文拉回来合并进本地记录
+    if (typeof fetchPendingFromCloud === 'function') fetchPendingFromCloud();
+}
+
+// ====== 云端主动消息唤醒：与Cloudflare Worker同步 ======
+// 把角色状态（人设/发消息与发推频率/最近聊天与推文记录）和API配置推送到云端，
+// 让Worker能在网页彻底关闭/锁屏时，靠自己的定时器判断"到点该聊天/发推的角色"并生成+推送通知。
+async function syncStateToCloud(force = false) {
+    if (!cloudSyncEnabled || !cloudWorkerUrl || !cloudAuthToken) return;
+    const now = Date.now();
+    if (!force && now - lastCloudSyncTime < CLOUD_SYNC_MIN_INTERVAL) return;
+    lastCloudSyncTime = now;
+
+    try {
+        const api = getApiConfig(true); // 优先用副API（和本地"主动发消息"用的是同一个配置）
+        // 同步全部角色（不只是设了聊天/发推频率的）：围观反应和私下互动这两个功能需要能从任意角色里挑人
+        const characters = (myCharacters || []).map(char => {
+            const hasChat = char.chatFreq && char.chatFreq.interval > 0;
+            const hasPost = char.postFreq && char.postFreq.interval > 0;
+            const sessionId = String(char.id);
+            const history = hasChat ? (globalChats[sessionId] || []).slice(-8).map(m => ({
+                sender: m.sender === char.id ? 'char' : 'user',
+                text: (m.text || '').slice(0, 300),
+                timestamp: m.timestamp,
+            })) : [];
+            const recentPosts = hasPost ? (globalPosts || [])
+                .filter(p => p.char && p.char.id === char.id)
+                .slice(-6)
+                .map(p => ({ text: (p.text || '').slice(0, 300), timestamp: p.timestamp })) : [];
+            return {
+                id: char.id,
+                name: char.name,
+                persona: (char.persona || '').slice(0, 1200),
+                chatFreq: char.chatFreq,
+                lastChatProactiveTime: char.lastChatProactiveTime || 0,
+                recentHistory: history,
+                postFreq: char.postFreq,
+                lastPostTime: char.lastPostTime || 0,
+                recentPosts: recentPosts,
+            };
+        });
+
+        if (characters.length === 0) return;
+
+        // 私下互动需要的关系数据（全局 charRelationships：fromId/toId/label）
+        const relationships = (charRelationships || []).map(r => ({ fromId: r.fromId, toId: r.toId, label: r.label }));
+        const charInteractionEnabled = typeof isGlobalCharInteractionEnabled === 'function' ? isGlobalCharInteractionEnabled() : false;
+        const charInteractionNotify = document.getElementById('settingNotifyCharInteraction')?.checked ?? (localStorage.getItem('settingNotifyCharInteraction') !== 'false');
+
+        await fetch(`${cloudWorkerUrl}/sync`, {
+            method: 'POST',
+            keepalive: true, // 允许在页面切后台/关闭的瞬间也能把请求发出去
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cloudAuthToken}` },
+            body: JSON.stringify({ apiUrl: api.url, apiKey: api.key, model: api.model, ntfyTopic, characters, relationships, charInteractionEnabled, charInteractionNotify }),
+        });
+    } catch (e) {
+        console.error('同步到云端失败：', e);
+    }
+}
+
+// 从云端拉取"网页关闭期间，Worker已经生成好的消息/推文"，合并进本地记录，避免重复触发
+async function fetchPendingFromCloud() {
+    if (!cloudSyncEnabled || !cloudWorkerUrl || !cloudAuthToken) return;
+    try {
+        const res = await fetch(`${cloudWorkerUrl}/pending`, {
+            headers: { 'Authorization': `Bearer ${cloudAuthToken}` },
+        });
+        const data = await res.json();
+        const pending = data.pending || [];
+        if (pending.length === 0) return;
+
+        const consumedIds = [];
+        let postsAdded = false;
+        const pendingIdToPostId = {}; // Worker给"post"这条消息分配的临时id -> 本地生成的post.id，供同一批次里的post_reaction找到目标帖子
+
+        for (const item of pending) {
+            if (item.type === 'interaction') {
+                // 私下互动：更新两个角色的状态气泡，不涉及聊天记录/推文
+                const charA = myCharacters.find(c => c.id === item.charAId || String(c.id) === String(item.charAId));
+                const charB = myCharacters.find(c => c.id === item.charBId || String(c.id) === String(item.charBId));
+                if (charA && charB) {
+                    if (typeof saveCharLifeState === 'function') {
+                        saveCharLifeState(charA, item.charAStatus, '私下互动');
+                        saveCharLifeState(charB, item.charBStatus, '私下互动');
+                    }
+                    const notifyEnabled = document.getElementById('settingNotifyCharInteraction')?.checked ?? (localStorage.getItem('settingNotifyCharInteraction') !== 'false');
+                    if (notifyEnabled) {
+                        const msg = `👀 发现私下互动：${charA.name} 和 ${charB.name} ${item.eventSummary || '正在互动'}！`;
+                        if (typeof showToast === 'function') showToast(msg); else alert(msg);
+                    }
+                }
+                consumedIds.push(item.id);
+                continue;
+            }
+
+            if (item.type === 'post_reaction') {
+                // 围观反应：给某条云端生成的推文补一个点赞或评论
+                const localPostId = pendingIdToPostId[item.targetPendingId];
+                const post = localPostId ? globalPosts.find(p => p.id === localPostId) : null;
+                const reactor = myCharacters.find(c => c.id === item.reactorId || String(c.id) === String(item.reactorId));
+                if (post && reactor) {
+                    if (item.kind === 'like') {
+                        post.stats.likes = (parseInt(post.stats.likes) || 0) + 1;
+                        if (!post.likedBy) post.likedBy = [];
+                        if (!post.likedBy.includes(reactor.id)) post.likedBy.push(reactor.id);
+                    } else if (item.kind === 'comment' && item.text) {
+                        post.replies.push({ id: 'r_' + item.timestamp + Math.floor(Math.random() * 100), parentId: null, char: reactor, text: item.text, timestamp: item.timestamp, likes: 0, liked: false, likedBy: [] });
+                        post.stats.comments = (post.stats.comments || 0) + 1;
+                    }
+                    postsAdded = true;
+                }
+                consumedIds.push(item.id);
+                continue;
+            }
+
+            const char = myCharacters.find(c => c.id === item.charId || String(c.id) === String(item.charId));
+            if (!char) { consumedIds.push(item.id); continue; }
+
+            if (item.type === 'post') {
+                // 云端生成的推文：拼成本地帖子结构塞进feed里
+                const post = {
+                    id: 'p_' + item.timestamp + Math.floor(Math.random() * 1000),
+                    char: char,
+                    text: item.text,
+                    timestamp: item.timestamp,
+                    replies: [],
+                    mediaUrl: null,
+                    stats: { retweets: getRandomStat ? getRandomStat(1000) : 0, likes: getRandomStat ? getRandomStat(5000) : 0, views: getRandomStat ? getRandomStat(50000) : 0, comments: 0 },
+                    isStory: false, location: '',
+                };
+                globalPosts.unshift(post);
+                char.lastPostTime = Math.max(char.lastPostTime || 0, item.timestamp);
+                postsAdded = true;
+                pendingIdToPostId[item.id] = post.id;
+
+                if (typeof showToast === 'function') {
+                    const avatarHtml = typeof getAvatarHTML === 'function' ? getAvatarHTML(char, 80) : '';
+                    showToast(avatarHtml, `${char.name} 发布了新推文`, item.text, post.id, null);
+                }
+                globalNotifications.unshift({ text: `<b>${char.name}</b> 发布了新推文`, postId: post.id, chatCharId: null, timestamp: item.timestamp });
+                unreadNotifs++;
+                if (typeof updateNotifBadge === 'function') updateNotifBadge();
+            } else {
+                // 默认当聊天消息处理（老数据没有type字段的兜底）
+                const sessionId = String(char.id);
+                if (!globalChats[sessionId]) globalChats[sessionId] = [];
+                globalChats[sessionId].push({ sender: char.id, text: item.text, timestamp: item.timestamp, readBy: [] });
+
+                // 推进本地的"上次主动发消息时间"，避免网页打开后本地定时器把同一轮再触发一次
+                char.lastChatProactiveTime = Math.max(char.lastChatProactiveTime || 0, item.timestamp);
+
+                if (currentChatSessionId === sessionId && document.getElementById('view-chat') && document.getElementById('view-chat').style.display !== 'none') {
+                    if (typeof renderChatMessages === 'function') renderChatMessages();
+                } else {
+                    if (typeof showToast === 'function') {
+                        const avatarHtml = typeof getAvatarHTML === 'function' ? getAvatarHTML(char, 80) : '';
+                        showToast(avatarHtml, `${char.name} 发来消息`, item.text, null, sessionId);
+                    }
+                    globalNotifications.unshift({ text: `<b>${char.name}</b> 给您发来消息`, postId: null, chatCharId: sessionId, timestamp: item.timestamp });
+                    unreadNotifs++;
+                    if (typeof updateNotifBadge === 'function') updateNotifBadge();
+                    if (typeof renderChatCharList === 'function') renderChatCharList();
+                }
+            }
+            consumedIds.push(item.id);
+        }
+
+        if (postsAdded && typeof renderPosts === 'function') renderPosts();
+        saveAllData();
+
+        // 告诉Worker这些消息已经拿到手了，清掉云端队列
+        await fetch(`${cloudWorkerUrl}/ack`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cloudAuthToken}` },
+            body: JSON.stringify({ ids: consumedIds }),
+        });
+    } catch (e) {
+        console.error('拉取云端消息失败：', e);
     }
 }
 
@@ -8849,16 +9061,14 @@ setInterval(async () => {
     if (!api.key) return;
 
     // 寻找存在人物关系的角色对
+    // ⚠️ 修复：关系数据实际存在全局 charRelationships 数组里（fromId/toId/label），
+    // 之前这里错读了一个从没被赋值过的 char.relations 字段，导致这个功能条件永远为空、从没真正触发过。
     let relatedPairs = [];
-    for (let char of myCharacters) {
-        if (char.relations && char.relations.length > 0) {
-            for (let rel of char.relations) {
-                // 找到关系网里的目标角色
-                let targetChar = myCharacters.find(c => c.id == rel.targetId || c.name === rel.targetName);
-                if (targetChar && targetChar.id !== char.id) {
-                    relatedPairs.push({ charA: char, charB: targetChar, relation: rel.relationText || '认识' });
-                }
-            }
+    for (let rel of charRelationships) {
+        let charA = myCharacters.find(c => c.id == rel.fromId);
+        let charB = myCharacters.find(c => c.id == rel.toId);
+        if (charA && charB && charA.id !== charB.id) {
+            relatedPairs.push({ charA, charB, relation: rel.label || '认识' });
         }
     }
 

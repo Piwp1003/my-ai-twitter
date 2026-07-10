@@ -1,0 +1,11 @@
+name = "char-proactive-notify"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# 每 10 分钟检查一次是否有角色该发消息/发推了。
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[kv_namespaces]]
+binding = "PROACTIVE_KV"
+id = "658dd391595f47fe872ca5c1c0497cf7"

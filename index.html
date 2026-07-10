@@ -625,6 +625,25 @@
                 <span id="notifPermStatus" style="font-size:12px; color:#536471;"></span>
             </div>
         </div>
+        <div style="margin-bottom:15px; padding:10px; background:rgba(29,155,240,0.05); border-radius:8px; border:1px solid #1d9bf0;">
+            <div class="input-group checkbox-group" style="margin-bottom:6px;">
+                <input type="checkbox" id="cloudSyncEnabledToggle" onchange="saveCloudSyncSettings()">
+                <label style="margin:0; font-size:15px;">☁️ 云端主动消息唤醒（网页彻底关闭/锁屏时，也能靠云端Worker生成并推送角色消息/推文）</label>
+            </div>
+            <div class="form-hint" style="margin-bottom:8px;">需要你自己部署一个免费的 Cloudflare Worker + 手机装 ntfy app，具体步骤见部署教程。这里只填部署好之后拿到的地址/密钥/topic。</div>
+            <div class="input-group">
+                <label>Worker 地址</label>
+                <input type="text" id="cloudWorkerUrlInput" placeholder="例如: https://char-proactive-notify.xxx.workers.dev" oninput="saveCloudSyncSettings()">
+            </div>
+            <div class="input-group">
+                <label>共享密钥（要和Worker里设置的 AUTH_TOKEN 完全一致）</label>
+                <input type="text" id="cloudAuthTokenInput" placeholder="自己随便设一串复杂字符串" oninput="saveCloudSyncSettings()">
+            </div>
+            <div class="input-group">
+                <label>ntfy topic（手机ntfy app里订阅的名字，建议用一长串随机字符）</label>
+                <input type="text" id="ntfyTopicInput" placeholder="例如: lin-char-notify-9f8x2q" oninput="saveCloudSyncSettings()">
+            </div>
+        </div>
     <div class="header-title"><div class="back-btn" onclick="goBackToPreviousView()">←</div> 系统设置</div>
     <div style="padding:15px 20px 30px; max-width:700px; margin:0 auto;">
         <div class="form-hint">支持任何兼容 OpenAI 格式的 API。</div>
