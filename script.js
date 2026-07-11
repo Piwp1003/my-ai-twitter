@@ -4133,8 +4133,8 @@ function saveCharLifeState(char, stateUpdate, statusTypeLabel) {
 function getCharacterWorldbookText(char, chatHistoryStr = "") {
     if (!worldbooks || worldbooks.length === 0) return '';
     
-    let globalWbs = worldbooks.filter(w => w.isGlobal);
-    let localWbs = char && char.worldbooks ? worldbooks.filter(w => char.worldbooks.includes(w.id) && !w.isGlobal) : [];
+    let globalWbs = worldbooks.filter(w => w.isGlobal && w.enabled !== false);
+    let localWbs = char && char.worldbooks ? worldbooks.filter(w => char.worldbooks.includes(w.id) && !w.isGlobal && w.enabled !== false) : [];
     let combined = [...globalWbs, ...localWbs];
     if (combined.length === 0) return '';
 
@@ -9467,7 +9467,10 @@ ${fullPersona.substring(0, 1500)}
         const totalEntries = data.character_book.entries.length;
         if (await appConfirm(`🎉 角色读取成功！\n系统检测到该角色卡内嵌了 ${totalEntries} 条世界观设定(Lorebook)。\n是否自动将其逐条导入到谷雨的世界书中并为其绑定？`)) {
             data.character_book.entries.forEach(entry => {
-                if (entry.enabled === false || !entry.content) return; // 跳过被禁用或空内容的词条
+                if (!entry.content) return; // 空内容的词条没有导入的意义，跳过
+                // 注意：enabled:false 的词条不再跳过，而是照样导入并标记 enabled:false ——
+                // 常见于"仅供插件按标题精确查询(getwi)"的高级卡片写法（比如按好感度分档的文案，
+                // 关掉自动触发、只留标题给脚本按条件取用），完全跳过会导致这类卡片的核心玩法哑火。
                 const keys = Array.isArray(entry.keys) ? entry.keys.filter(Boolean) : [];
                 const wbId = Date.now() + Math.floor(Math.random() * 1000000);
                 worldbooks.push({
@@ -9479,7 +9482,8 @@ ${fullPersona.substring(0, 1500)}
                     keywords: entry.constant ? '' : keys.join(','), // constant=true 代表原卡里就是"无条件生效"
                     priority: entry.insertion_order || 0,
                     group: entry.extensions?.group || '',
-                    recursive: entry.extensions ? !entry.extensions.exclude_recursion : false
+                    recursive: entry.extensions ? !entry.extensions.exclude_recursion : false,
+                    enabled: entry.enabled !== false // false=卡片作者主动关掉了自动触发，但仍可被按标题精确查询到
                 });
                 importedWbIds.push(wbId);
                 importedWbCount++;
