@@ -4369,6 +4369,9 @@ async function fetchPendingFromCloud() {
 
             if (item.type === 'post') {
                 // 云端生成的推文：拼成本地帖子结构塞进feed里
+                // 防重复：如果ack请求之前失败过，Worker那边队列没清掉，同一条会被再次拉到，这里做个去重
+                const dupPost = globalPosts.find(p => p.char && p.char.id === char.id && p.timestamp === item.timestamp && p.text === item.text);
+                if (dupPost) { consumedIds.push(item.id); continue; }
                 const post = {
                     id: 'p_' + item.timestamp + Math.floor(Math.random() * 1000),
                     char: char,
@@ -4395,6 +4398,9 @@ async function fetchPendingFromCloud() {
                 // 默认当聊天消息处理（老数据没有type字段的兜底）
                 const sessionId = String(char.id);
                 if (!globalChats[sessionId]) globalChats[sessionId] = [];
+                // 防重复：如果ack请求之前失败过，Worker那边队列没清掉，同一条会被再次拉到，这里做个去重
+                const dupChat = globalChats[sessionId].some(m => m.timestamp === item.timestamp && m.text === item.text);
+                if (dupChat) { consumedIds.push(item.id); continue; }
                 globalChats[sessionId].push({ sender: char.id, text: item.text, timestamp: item.timestamp, readBy: [] });
 
                 // 推进本地的"上次主动发消息时间"，避免网页打开后本地定时器把同一轮再触发一次
