@@ -218,6 +218,19 @@ svg.blue-line-icon { fill: none !important; stroke: #1d9bf0 !important; stroke-w
 #view-chat { display: flex; flex-direction: column; height: 100vh; height: calc(var(--app-vh, 1vh) * 100); background: rgba(237,237,237,0.8); }
 .chat-char-row { display: flex; gap: 15px; overflow-x: auto; padding: 10px 15px; border-bottom: 1px solid #e0e0e0; flex-shrink: 0; background: rgba(255,255,255,0.7); }
 .chat-char-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; opacity: 0.6; transition: 0.2s; min-width: 60px; flex-shrink: 0; position: relative; }
+.chat-list-vertical { display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; max-height: 260px; border-bottom: 1px solid #e0e0e0; background: rgba(255,255,255,0.7); }
+.chat-list-row { display: flex; align-items: center; gap: 10px; padding: 8px 15px; cursor: pointer; border-bottom: 1px solid rgba(0,0,0,0.04); opacity: 0.75; transition: 0.15s; }
+.chat-list-row:hover { background: rgba(29,155,240,0.06); }
+.chat-list-row.active { opacity: 1; background: rgba(29,155,240,0.1); }
+.chat-list-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.chat-list-top-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.chat-list-name { font-weight: bold; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-list-time { font-size: 11px; color: #8b98a5; flex-shrink: 0; }
+.chat-list-preview { font-size: 12px; color: #536471; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-list-unread-dot { position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; background: #f91880; border-radius: 50%; border: 2px solid white; }
+.chat-list-pin-btn { flex-shrink: 0; cursor: pointer; font-size: 14px; opacity: 0.6; }
+.chat-list-pin-btn:hover { opacity: 1; }
+
 .chat-char-item.active { opacity: 1; color: #1d9bf0; font-weight: bold; }
 .chat-char-item .avatar { margin-bottom: 4px; }
 .chat-messages { display: flex; flex-direction: column; gap: 15px; padding: 15px; flex-grow: 1; overflow-y: auto; }

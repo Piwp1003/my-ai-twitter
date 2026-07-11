@@ -351,8 +351,14 @@
         </div>
 
         <div id="view-chat" style="display: none;">
-            
+
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 15px 0;">
+                <div id="chatGroupFilterBar" style="display:flex; flex-wrap:wrap; gap:4px; flex:1;"></div>
+                <button id="chatListViewToggleBtn" class="btn-edit-small" style="flex-shrink:0; margin-left:8px;" onclick="toggleChatListViewMode()">☰ 列表视图</button>
+            </div>
+
             <div id="chatCharRow" class="chat-char-row"></div>
+            <div id="chatListVertical" class="chat-list-vertical" style="display:none;"></div>
             
             <div id="chatTypingIndicator" style="display:none; text-align:center; padding:8px; background:rgba(255,255,255,0.85); backdrop-filter:blur(12px); border-bottom:1px solid #eff3f4; flex-shrink:0; font-size:13px; color:#1d9bf0; font-weight:bold; z-index:10;">
                 <span id="typingCharName"></span> 正在输入中 <span class="typing-blink">●</span><span class="typing-blink" style="animation-delay:0.2s">●</span><span class="typing-blink" style="animation-delay:0.4s">●</span>

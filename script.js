@@ -197,6 +197,9 @@ let enableScheduleAutoCheck = true; // 日程每日自动检测过期并提醒�
 let enableAffinitySystem = false; // 好感度数值系统（现在由"好感度系统"插件驱动，这个变量仍会被插件读写）
 let enableTypingIndicator = true; // 正在输入提示/已读状态
 let enableMiniGameCharSpeech = true; // 小游戏中角色是否发言的总开关（关闭后玩游戏时全程只有系统状态消息，角色不再评论/吐槽）
+let chatListViewMode = 'row'; // 聊天联系人展示模式：'row'=横向头像条（原样式），'list'=竖排列表（头像+名字+最后消息预览+时间）
+let pinnedSessionIds = []; // 置顶的角色/群聊会话id列表（可置顶多个）
+let chatListGroupFilter = null; // 聊天联系人分组筛选：null=全部，'__ungrouped__'=未分组（含所有群聊），否则是具体分组名
 let enableAnniversary = true; // 纪念日系统
 let chatWordLimit = 50, postWordLimit = 50, diaryWordLimit = 400, letterWordLimit = 400;
 let npcReplyProb = 0.4, npcReplyMaxCount = 3;
@@ -2115,7 +2118,7 @@ function getFullDataSnapshot() {
     return {
         myApiUrl, myApiKey, myModel, subApiUrl, subApiKey, subModel,
         myCharacters, globalPosts, anonPosts, characterGroups, factionColors, charRelationships, relationshipTypePresets, statusTypes, globalEmoticons, worldbooks, worldbookCategories, globalChats, groupChats, currentUser, tabloidAccount, trendingTags,
-        globalBgImage, globalBgOpacity, allowActionTags, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit,
+        globalBgImage, globalBgOpacity, allowActionTags, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, chatListViewMode, pinnedSessionIds, chatListGroupFilter,
         globalNovels, novelCustomCSS, globalCustomCSS, tabloidPosts, siteLogoImg,
         forumThreads,
         npcReplyProb, npcReplyMaxCount,
@@ -2195,6 +2198,9 @@ async function loadAllData() {
                 // 兼容旧版单开关
                 if (parsed.enableTypingIndicator !== undefined) enableTypingIndicator = parsed.enableTypingIndicator;
                 if (parsed.enableMiniGameCharSpeech !== undefined) enableMiniGameCharSpeech = parsed.enableMiniGameCharSpeech;
+                if (parsed.chatListViewMode !== undefined) chatListViewMode = parsed.chatListViewMode;
+                if (parsed.pinnedSessionIds !== undefined) pinnedSessionIds = parsed.pinnedSessionIds;
+                if (parsed.chatListGroupFilter !== undefined) chatListGroupFilter = parsed.chatListGroupFilter;
                 if (parsed.enableAnniversary !== undefined) enableAnniversary = parsed.enableAnniversary;
                 if (parsed.memoryAlbum) memoryAlbum = parsed.memoryAlbum;
                 if (parsed.chatWordLimit !== undefined) chatWordLimit = parsed.chatWordLimit;
@@ -2893,18 +2899,137 @@ ${memories || '（暂时还没有被收藏的回忆）'}
     btn.disabled = false; btn.innerText = '✨ 生成一段纪念寄语';
 }
 
+// ---------- 聊天联系人：排序/筛选/置顶 通用工具 ----------
+function getLastMsgTime(sessionId) {
+    const msgs = globalChats[sessionId];
+    if (!msgs || msgs.length === 0) return 0;
+    return msgs[msgs.length - 1].timestamp || 0;
+}
+function chatHasUnread(sessionId) {
+    const msgs = globalChats[sessionId];
+    return !!(msgs && msgs.some(m => m.sender !== 'me' && m.sender !== 'system' && (!m.readBy || !m.readBy.includes('me'))));
+}
+function getChatListItems() {
+    return [...groupChats, ...myCharacters].map(x => ({
+        id: x.id, name: x.name, raw: x, isGroup: !!x.members,
+        group: x.members ? null : (x.group || null), // 群聊没有分组概念，统一按"未分组"处理
+    }));
+}
+function applyChatListGroupFilter(items) {
+    if (!chatListGroupFilter) return items;
+    if (chatListGroupFilter === '__ungrouped__') return items.filter(it => !it.group);
+    return items.filter(it => it.group === chatListGroupFilter);
+}
+function sortChatListItems(items) {
+    const pinnedSet = new Set(pinnedSessionIds);
+    const pinned = items.filter(it => pinnedSet.has(it.id));
+    const unpinned = items.filter(it => !pinnedSet.has(it.id));
+    function cmp(a, b) {
+        const aU = chatHasUnread(a.id), bU = chatHasUnread(b.id);
+        if (aU !== bU) return aU ? -1 : 1;
+        return getLastMsgTime(b.id) - getLastMsgTime(a.id);
+    }
+    pinned.sort(cmp); unpinned.sort(cmp);
+    return [...pinned, ...unpinned];
+}
+function toggleChatPin(id) {
+    const idx = pinnedSessionIds.indexOf(id);
+    if (idx >= 0) pinnedSessionIds.splice(idx, 1); else pinnedSessionIds.push(id);
+    saveAllData();
+    renderChatCharList();
+}
+function toggleChatListViewMode() {
+    chatListViewMode = chatListViewMode === 'row' ? 'list' : 'row';
+    saveAllData();
+    renderChatCharList();
+}
+function setChatListGroupFilter(val) {
+    chatListGroupFilter = val;
+    renderChatCharList();
+}
+function renderChatGroupFilterBar() {
+    const bar = document.getElementById('chatGroupFilterBar');
+    if (!bar) return;
+    const tags = [{ label: '全部', val: null }, ...characterGroups.map(g => ({ label: g, val: g })), { label: '未分组', val: '__ungrouped__' }];
+    bar.innerHTML = tags.map(t => `<span class="group-tag" style="background:${chatListGroupFilter === t.val ? '#1d9bf0' : 'white'}; color:${chatListGroupFilter === t.val ? 'white' : '#1d9bf0'}; border:1px solid #1d9bf0;" onclick="setChatListGroupFilter(${t.val === null ? 'null' : `'${t.val}'`})">${t.label}</span>`).join('');
+}
+
+// ---------- 主入口：根据当前视图模式分派渲染 ----------
 function renderChatCharList() {
+    renderChatGroupFilterBar();
+    const toggleBtn = document.getElementById('chatListViewToggleBtn');
+    if (toggleBtn) toggleBtn.textContent = chatListViewMode === 'row' ? '☰ 列表视图' : '▦ 头像条视图';
+
+    const rowContainer = document.getElementById('chatCharRow');
+    const listContainer = document.getElementById('chatListVertical');
+    if (chatListViewMode === 'row') {
+        if (rowContainer) rowContainer.style.display = 'flex';
+        if (listContainer) listContainer.style.display = 'none';
+        renderChatCharRow();
+    } else {
+        if (rowContainer) rowContainer.style.display = 'none';
+        if (listContainer) listContainer.style.display = 'flex';
+        renderChatCharListVertical();
+    }
+}
+
+// ---------- 视图一：横向头像条（原有样式，加了排序/筛选/置顶）----------
+function renderChatCharRow() {
     const container = document.getElementById('chatCharRow');
+    if (!container) return;
     let html = `<div class="chat-char-item" onclick="openCreateGroupModal()"><div class="avatar" style="background:white; color:#1d9bf0; border:2px dashed #1d9bf0; font-size:24px; display:flex; justify-content:center; align-items:center; width:50px; height:50px;">+</div><div class="chat-char-name" style="font-size:12px; margin-top:5px;">建群</div></div>`;
-    [...groupChats, ...myCharacters].forEach(x => {
-        let hasUnread = globalChats[x.id] && globalChats[x.id].some(m => m.sender !== 'me' && m.sender !== 'system' && (!m.readBy || !m.readBy.includes('me')));
+    const items = sortChatListItems(applyChatListGroupFilter(getChatListItems()));
+    items.forEach(it => {
+        const x = it.raw;
+        const isPinned = pinnedSessionIds.includes(x.id);
+        let hasUnread = chatHasUnread(x.id);
         let unreadHtml = hasUnread ? `<div style="position:absolute; top:-2px; right:-2px; width:14px; height:14px; background:#f91880; border-radius:50%; border:2px solid white; z-index:2;"></div>` : '';
         let branchHtml = x.branchedFrom ? `<div style="position:absolute; bottom:-2px; left:-2px; font-size:12px; z-index:2;" title="分支自：${x.branchedFromName || '未知'}">🌳</div>` : '';
+        let pinHtml = isPinned ? `<div style="position:absolute; top:-4px; left:-4px; font-size:12px; z-index:3; cursor:pointer;" onclick="event.stopPropagation(); toggleChatPin('${x.id}')" title="取消置顶">📌</div>` : '';
         const isGroupItem = !!x.members;
         // 👇这里加入了手机长按的支持
         html += `<div class="chat-char-item ${currentChatSessionId == x.id ? 'active' : ''}" onclick="switchChatSession('${x.id}')">
-            <div style="position:relative; display:inline-block;" ${isGroupItem ? `oncontextmenu="openChatOptions('${x.id}', event)" ontouchstart="groupAvatarTouchStart(event, '${x.id}')" ontouchend="groupAvatarTouchEnd(event)" ontouchmove="groupAvatarTouchEnd(event)"` : `oncontextmenu="showAvatarContextMenu(event, '${x.id}')" ontouchstart="avatarTouchStart(event, '${x.id}')" ontouchend="avatarTouchEnd(event)" ontouchmove="avatarTouchEnd(event)"`}>${x.members ? getGroupAvatarHTML(x, 50) : getAvatarHTML(x, 50)}${unreadHtml}${branchHtml}</div>
+            <div style="position:relative; display:inline-block;" ${isGroupItem ? `oncontextmenu="openChatOptions('${x.id}', event)" ontouchstart="groupAvatarTouchStart(event, '${x.id}')" ontouchend="groupAvatarTouchEnd(event)" ontouchmove="groupAvatarTouchEnd(event)"` : `oncontextmenu="showAvatarContextMenu(event, '${x.id}')" ontouchstart="avatarTouchStart(event, '${x.id}')" ontouchend="avatarTouchEnd(event)" ontouchmove="avatarTouchEnd(event)"`}>${x.members ? getGroupAvatarHTML(x, 50) : getAvatarHTML(x, 50)}${unreadHtml}${branchHtml}${pinHtml}</div>
             <div class="chat-char-name" style="font-size:12px; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%; text-align:center;">${x.name}</div>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+// ---------- 视图二：竖排列表（头像+名字+最后消息预览+时间+未读点+置顶按钮）----------
+function renderChatCharListVertical() {
+    const container = document.getElementById('chatListVertical');
+    if (!container) return;
+    let html = `<div class="chat-list-row" onclick="openCreateGroupModal()">
+        <div class="avatar" style="background:white; color:#1d9bf0; border:2px dashed #1d9bf0; font-size:20px; display:flex; justify-content:center; align-items:center; width:44px; height:44px; border-radius:50%; flex-shrink:0;">+</div>
+        <div class="chat-list-info"><div class="chat-list-name">建群</div></div>
+    </div>`;
+    const items = sortChatListItems(applyChatListGroupFilter(getChatListItems()));
+    items.forEach(it => {
+        const x = it.raw;
+        const isPinned = pinnedSessionIds.includes(x.id);
+        const hasUnread = chatHasUnread(x.id);
+        const msgs = globalChats[x.id] || [];
+        const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+        let previewText = '暂无消息';
+        if (lastMsg) {
+            if (lastMsg.sender === 'system') previewText = lastMsg.text;
+            else if (lastMsg.sender === 'me') previewText = `我：${lastMsg.text}`;
+            else {
+                const senderChar = myCharacters.find(c => c.id == lastMsg.sender);
+                previewText = x.members ? `${senderChar ? senderChar.name : '未知'}：${lastMsg.text}` : lastMsg.text;
+            }
+            previewText = String(previewText).replace(/\n/g, ' ').slice(0, 30);
+        }
+        const timeText = lastMsg ? timeAgo(lastMsg.timestamp) : '';
+        const isGroupItem = !!x.members;
+        html += `<div class="chat-list-row ${currentChatSessionId == x.id ? 'active' : ''}" onclick="switchChatSession('${x.id}')" ${isGroupItem ? `oncontextmenu="openChatOptions('${x.id}', event)"` : `oncontextmenu="showAvatarContextMenu(event, '${x.id}')"`}>
+            <div style="position:relative; flex-shrink:0;">${x.members ? getGroupAvatarHTML(x, 44) : getAvatarHTML(x, 44)}${hasUnread ? '<div class="chat-list-unread-dot"></div>' : ''}</div>
+            <div class="chat-list-info">
+                <div class="chat-list-top-row"><span class="chat-list-name">${isPinned ? '📌 ' : ''}${escapeHtml(x.name)}</span><span class="chat-list-time">${timeText}</span></div>
+                <div class="chat-list-preview">${escapeHtml(previewText)}</div>
+            </div>
+            <div class="chat-list-pin-btn" onclick="event.stopPropagation(); toggleChatPin('${x.id}')" title="${isPinned ? '取消置顶' : '置顶'}">${isPinned ? '📌' : '📍'}</div>
         </div>`;
     });
     container.innerHTML = html;
