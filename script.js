@@ -2614,7 +2614,7 @@ function showAvatarContextMenu(e, charId) {
         extraBtns += `<button class="context-btn" style="color:#1d9bf0;" onclick="document.getElementById('chatContextMenu').style.display='none'; openArchivedChatsListModal('${charId}')">📜 查看历史聊天 (${char.archivedChats.length})</button>`;
     }
 
-    const isPinned = pinnedSessionIds.includes(charId);
+    const isPinned = pinnedSessionIds.some(pid => pid == charId);
     const pinBtn = `<button class="context-btn" onclick="document.getElementById('chatContextMenu').style.display='none'; toggleChatPin('${charId}')">📌 ${isPinned ? '取消置顶' : '置顶'}</button>`;
     menu.innerHTML = `<button class="context-btn" onclick="generateCharSchedule('${charId}')">🗓️ 生成/更新今日日程</button><button class="context-btn" onclick="document.getElementById('chatContextMenu').style.display='none'; openChatOptions('${charId}', event)">💬 聊天选项</button>${pinBtn}<button class="context-btn" onclick="document.getElementById('chatContextMenu').style.display='none'; restartChatWithGreeting('${charId}')">🔄 重新开始聊天</button>${extraBtns}`;
     
@@ -2632,7 +2632,7 @@ function showAvatarContextMenu(e, charId) {
 function showGroupAvatarContextMenu(e, groupId) {
     e.preventDefault(); e.stopPropagation();
     const menu = document.getElementById('chatContextMenu');
-    const isPinned = pinnedSessionIds.includes(groupId);
+    const isPinned = pinnedSessionIds.some(pid => pid == groupId);
     menu.innerHTML = `<button class="context-btn" onclick="document.getElementById('chatContextMenu').style.display='none'; openChatOptions('${groupId}', event)">💬 聊天选项</button><button class="context-btn" onclick="document.getElementById('chatContextMenu').style.display='none'; toggleChatPin('${groupId}')">📌 ${isPinned ? '取消置顶' : '置顶'}</button>`;
     menu.style.display = 'flex';
     let x = e.pageX, y = e.pageY;
@@ -2939,9 +2939,9 @@ function applyChatListGroupFilter(items) {
     return items.filter(it => it.group === chatListGroupFilter);
 }
 function sortChatListItems(items) {
-    const pinnedSet = new Set(pinnedSessionIds);
-    const pinned = items.filter(it => pinnedSet.has(it.id));
-    const unpinned = items.filter(it => !pinnedSet.has(it.id));
+    const isPinnedId = (id) => pinnedSessionIds.some(pid => pid == id);
+    const pinned = items.filter(it => isPinnedId(it.id));
+    const unpinned = items.filter(it => !isPinnedId(it.id));
     function cmp(a, b) {
         const aU = chatHasUnread(a.id), bU = chatHasUnread(b.id);
         if (aU !== bU) return aU ? -1 : 1;
@@ -2951,7 +2951,7 @@ function sortChatListItems(items) {
     return [...pinned, ...unpinned];
 }
 function toggleChatPin(id) {
-    const idx = pinnedSessionIds.indexOf(id);
+    const idx = pinnedSessionIds.findIndex(pid => pid == id);
     if (idx >= 0) pinnedSessionIds.splice(idx, 1); else pinnedSessionIds.push(id);
     saveAllData();
     renderChatCharList();
@@ -3043,7 +3043,7 @@ function renderChatCharListVertical() {
     const items = sortChatListItems(applyChatListGroupFilter(getChatListItems()));
     items.forEach(it => {
         const x = it.raw;
-        const isPinned = pinnedSessionIds.includes(x.id);
+        const isPinned = pinnedSessionIds.some(pid => pid == x.id);
         const hasUnread = chatHasUnread(x.id);
         const msgs = globalChats[x.id] || [];
         const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
