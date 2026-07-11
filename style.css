@@ -137,6 +137,11 @@ svg.blue-line-icon { fill: none !important; stroke: #1d9bf0 !important; stroke-w
 .mini-game-icon-badge::after { content:''; position:absolute; top:2px; right:2px; width:8px; height:8px; border-radius:50%; background:#f91880; display:none; }
 .mini-game-icon-badge.active::after { display:block; }
 .mini-game-member-pick-row { display:flex; align-items:center; gap:8px; padding:8px 4px; border-bottom:1px solid #eff3f4; }
+.mini-game-float-panel { position:fixed; right:16px; bottom:90px; z-index:2600; background:white; border:2px solid #1d9bf0; border-radius:16px; box-shadow:0 10px 30px rgba(29,155,240,0.25); max-width:94vw; max-height:80vh; overflow:auto; }
+.mini-game-float-header { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; cursor:move; background:rgba(29,155,240,0.08); border-radius:14px 14px 0 0; user-select:none; touch-action:none; position:sticky; top:0; }
+.mini-game-float-title { font-weight:bold; color:#1d9bf0; font-size:14px; }
+.mini-game-float-close { cursor:pointer; color:#536471; font-size:18px; padding:0 6px; line-height:1; }
+.mini-game-float-body { padding:12px; }
 .center-char-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #eff3f4; gap: 12px; }
 .char-info-wrapper { display: flex; align-items: center; gap: 12px; overflow: hidden; }
 .empty-state { text-align: center; color: #1d9bf0; padding: 40px 20px; line-height: 1.6; }

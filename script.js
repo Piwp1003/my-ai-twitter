@@ -1045,6 +1045,82 @@ function beginMiniGame(gameDef, sessionId, opponentCharId) {
     if (typeof gameDef.onStart === 'function') gameDef.onStart(sessionId, opponentCharId);
 }
 
+// 通用：游戏结束时问角色要一句感言（不管输赢/平局/认输，都要有反应），写进聊天记录。
+// resultText 用自然语言描述这局结果就行，比如"你赢了，对方输了" / "平局" / "你中途认输，对方获胜"。
+async function askCharGameEndComment(char, sessionId, gameName, resultText) {
+    const api = getApiConfig(true);
+    const recentHistory = buildTimeAwareHistoryText(globalChats[sessionId].slice(-chatHistoryTurns));
+    const prompt = `${buildBasePrompt(char, true, recentHistory)}
+你刚和用户玩完${gameName}，结果是：${resultText}
+请结合你的人设、性格，对这个结果说一句感言或反应（不管输赢都要说点什么，可以是得意、不服气、安慰、恭喜、自嘲、约下次再战等），不超过40字。
+只输出这句话本身，不要引号、不要任何多余文字、不要markdown。`;
+    let data;
+    try { data = await callChatCompletionAPI(api, prompt); } catch (e) { return ''; }
+    if (data.error) return '';
+    const raw = (data.choices?.[0]?.message?.content || '').trim();
+    const text = raw.replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').replace(/^["「]|["」]$/g, '').trim().slice(0, 150);
+    if (text) {
+        if (!globalChats[sessionId]) globalChats[sessionId] = [];
+        globalChats[sessionId].push({ sender: char.id, text, timestamp: Date.now(), readBy: [] });
+        if (typeof renderChatMessages === 'function') renderChatMessages();
+        saveAllData();
+    }
+    return text;
+}
+
+// 通用：给游戏用的悬浮可拖动窗口（不是modal，不会挡住/锁住聊天，用户可以边玩边正常打字聊天）。
+// 游戏插件调用一次拿到面板，把自己的棋盘/内容渲染进 .mini-game-float-body 就行，拖动逻辑核心已经处理好了。
+function createMiniGameFloatingPanel(panelId, titleText) {
+    let panel = document.getElementById(panelId);
+    if (panel) return panel;
+    panel = document.createElement('div');
+    panel.id = panelId;
+    panel.className = 'mini-game-float-panel';
+    panel.innerHTML = `
+        <div class="mini-game-float-header">
+            <span class="mini-game-float-title">${escapeHtml(titleText || '游戏')}</span>
+            <span class="mini-game-float-close" onclick="document.getElementById('${panelId}').style.display='none'">×</span>
+        </div>
+        <div class="mini-game-float-body"></div>`;
+    document.body.appendChild(panel);
+    makeMiniGamePanelDraggable(panel, panel.querySelector('.mini-game-float-header'));
+    return panel;
+}
+
+function makeMiniGamePanelDraggable(panel, handle) {
+    let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    function getPoint(e) { return e.touches ? e.touches[0] : e; }
+    function pointerDown(e) {
+        dragging = true;
+        const rect = panel.getBoundingClientRect();
+        panel.style.left = rect.left + 'px';
+        panel.style.top = rect.top + 'px';
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        startLeft = rect.left; startTop = rect.top;
+        const p = getPoint(e);
+        startX = p.clientX; startY = p.clientY;
+        e.preventDefault();
+    }
+    function pointerMove(e) {
+        if (!dragging) return;
+        const p = getPoint(e);
+        let newLeft = startLeft + (p.clientX - startX);
+        let newTop = startTop + (p.clientY - startY);
+        newLeft = Math.max(-panel.offsetWidth + 60, Math.min(window.innerWidth - 60, newLeft));
+        newTop = Math.max(0, Math.min(window.innerHeight - 60, newTop));
+        panel.style.left = newLeft + 'px';
+        panel.style.top = newTop + 'px';
+    }
+    function pointerUp() { dragging = false; }
+    handle.addEventListener('mousedown', pointerDown);
+    document.addEventListener('mousemove', pointerMove);
+    document.addEventListener('mouseup', pointerUp);
+    handle.addEventListener('touchstart', pointerDown, { passive: false });
+    document.addEventListener('touchmove', pointerMove, { passive: false });
+    document.addEventListener('touchend', pointerUp);
+}
+
 function renderPluginsList() {
     const container = document.getElementById('pluginsList');
     if (!container) return;
