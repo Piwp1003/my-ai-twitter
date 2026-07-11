@@ -415,14 +415,23 @@ function smartFetch(url, options) {
     }
     return fetch(url, options);
 }
+function isStructuredMessages(content) {
+    return Array.isArray(content) && content.length > 0 && content.every(m => m && typeof m === 'object' && typeof m.role === 'string');
+}
 async function sendChatRequest(api, content, extraBody) {
     extraBody = extraBody || {};
+    const messages = isStructuredMessages(content) ? content : [{ role: "user", content: content }];
     if (isAnthropicApiUrl(api.url)) {
         try {
+            const systemText = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
+            let restMsgs = messages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: convertContentForAnthropic(m.content) }));
+            if (restMsgs.length === 0) restMsgs = [{ role: 'user', content: '（请继续。）' }];
+            const anthropicBody = Object.assign({ model: api.model, max_tokens: 4096, messages: restMsgs }, extraBody);
+            if (systemText) anthropicBody.system = systemText;
             const res = await smartFetch(`${api.url}/v1/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': api.key, 'anthropic-version': '2023-06-01' },
-                body: JSON.stringify(Object.assign({ model: api.model, max_tokens: 4096, messages: [{ role: "user", content: convertContentForAnthropic(content) }] }, extraBody))
+                body: JSON.stringify(anthropicBody)
             });
             const data = await res.json();
             if (data.error) return { error: { message: (data.error && data.error.message) || (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) } };
@@ -436,7 +445,7 @@ async function sendChatRequest(api, content, extraBody) {
         const res = await smartFetch(`${api.url}/chat/completions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${api.key}` },
-            body: JSON.stringify(Object.assign({ model: api.model, messages: [{ role: "user", content: content }] }, extraBody))
+            body: JSON.stringify(Object.assign({ model: api.model, messages: messages }, extraBody))
         });
         return await res.json();
     } catch (e) {
@@ -454,8 +463,20 @@ async function sendChatRequest(api, content, extraBody) {
 async function callChatCompletionAPI(api, promptContent, maxRetries = 2, images = null) {
     let content = promptContent;
     if (images && images.length > 0) {
-        content = [{ type: "text", text: promptContent }];
-        images.forEach(imgUrl => { if (imgUrl) content.push({ type: "image_url", image_url: { url: imgUrl } }); });
+        if (isStructuredMessages(promptContent)) {
+            content = promptContent.map(m => ({ role: m.role, content: m.content }));
+            for (let i = content.length - 1; i >= 0; i--) {
+                if (content[i].role === 'user') {
+                    const parts = [{ type: "text", text: content[i].content }];
+                    images.forEach(imgUrl => { if (imgUrl) parts.push({ type: "image_url", image_url: { url: imgUrl } }); });
+                    content[i].content = parts;
+                    break;
+                }
+            }
+        } else {
+            content = [{ type: "text", text: promptContent }];
+            images.forEach(imgUrl => { if (imgUrl) content.push({ type: "image_url", image_url: { url: imgUrl } }); });
+        }
     }
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
@@ -951,9 +972,9 @@ async function askCharGameInvite(char, sessionId, gameName, spectatorMode, oppon
     const api = getApiConfig(true);
     const recentHistory = buildTimeAwareHistoryText(globalChats[sessionId].slice(-chatHistoryTurns));
     if (spectatorMode) {
-        const prompt = `${buildBasePrompt(char, true, recentHistory)}
-用户邀请了群里好几个人一起玩${gameName}，"${opponentName}"已经先答应上场了，你没有上场。
-请以你的人设身份，说一句围观/吐槽/起哄/看戏的话，不超过30字，只输出这句话本身，不要引号、不要任何多余文字。`;
+        const prompt = buildStructuredMessages(buildBasePrompt(char, true, recentHistory), [],
+            `用户邀请了群里好几个人一起玩${gameName}，"${opponentName}"已经先答应上场了，你没有上场。
+请以你的人设身份，说一句围观/吐槽/起哄/看戏的话，不超过30字，只输出这句话本身，不要引号、不要任何多余文字。`);
         let data; try { data = await callChatCompletionAPI(api, prompt); } catch (e) { return false; }
         if (data.error) return false;
         const raw = (data.choices?.[0]?.message?.content || '').trim();
@@ -961,10 +982,10 @@ async function askCharGameInvite(char, sessionId, gameName, spectatorMode, oppon
         if (text) { globalChats[sessionId].push({ sender: char.id, text, timestamp: Date.now(), readBy: [] }); renderChatMessages(); saveAllData(); }
         return false;
     }
-    const prompt = `${buildBasePrompt(char, true, recentHistory)}
-用户邀请你一起玩${gameName}。请结合你的人设、性格、当前和用户的关系，决定要不要答应这次游戏邀请。
+    const prompt = buildStructuredMessages(buildBasePrompt(char, true, recentHistory), [],
+        `用户邀请你一起玩${gameName}。请结合你的人设、性格、当前和用户的关系，决定要不要答应这次游戏邀请。
 只输出严格JSON，不要markdown代码块包裹，不要任何多余文字：
-{"accept": true或false, "reply": "你对这个邀请的回应，符合你的说话风格，一两句话就好"}`;
+{"accept": true或false, "reply": "你对这个邀请的回应，符合你的说话风格，一两句话就好"}`);
     let data;
     try { data = await callChatCompletionAPI(api, prompt); } catch (e) { alert('请求失败：' + e.message); return false; }
     if (data.error) { alert('请求失败：' + (data.error.message || JSON.stringify(data.error))); return false; }
@@ -1078,10 +1099,10 @@ async function askCharGameEndComment(char, sessionId, gameName, resultText) {
     if (!enableMiniGameCharSpeech) return '';
     const api = getApiConfig(true);
     const recentHistory = buildTimeAwareHistoryText(globalChats[sessionId].slice(-chatHistoryTurns));
-    const prompt = `${buildBasePrompt(char, true, recentHistory)}
-你刚和用户玩完${gameName}，结果是：${resultText}
+    const prompt = buildStructuredMessages(buildBasePrompt(char, true, recentHistory), [],
+        `你刚和用户玩完${gameName}，结果是：${resultText}
 请结合你的人设、性格，对这个结果说一句感言或反应（不管输赢都要说点什么，可以是得意、不服气、安慰、恭喜、自嘲、约下次再战等），不超过40字。
-只输出这句话本身，不要引号、不要任何多余文字、不要markdown。`;
+只输出这句话本身，不要引号、不要任何多余文字、不要markdown。`);
     let data;
     try { data = await callChatCompletionAPI(api, prompt); } catch (e) { return ''; }
     if (data.error) return '';
@@ -2702,8 +2723,8 @@ async function runScheduleGeneration(charId) {
     const nowStr = new Date().toLocaleString('zh-CN', { hour12: false, weekday: 'long' });
     const typeAsk = statusTypes.length > 0 ? `，并从这些状态类型里选一个最贴近的填入 "statusTypeLabel" 字段：[${statusTypes.map(t => t.label).join('、')}]，都不贴切就留空字符串` : '';
 
-    const prompt = `${buildBasePrompt(char, true, recentChat + '\n' + recentPosts)}
-现在的真实时间：${nowStr}。
+    const prompt = buildStructuredMessages(buildBasePrompt(char, true, recentChat + '\n' + recentPosts), [],
+        `现在的真实时间：${nowStr}。
 
 请结合你的人设、世界书设定，以及下面提供的参考信息，为自己规划一份"今天的日程"——从早到晚分成若干时间段，写出你这一天大概会做什么、在哪、状态如何，要符合你的身份、生活习惯和当前的关系/剧情状态，具体到有画面感，不要写"上午：工作，下午：休息"这种空洞流水账。
 
@@ -2714,7 +2735,7 @@ ${recentPosts || '（暂无）'}
 ${recentChat || '（暂无）'}
 
 请严格按以下 JSON 格式输出，不要包含任何 Markdown 语法或多余说明：
-{"schedule": "从早到晚的完整日程，按时间段分行，用\\n分隔", "currentStatus": "结合日程和现在的真实时间，你此刻正在做的事，20字以内，不含引号"${typeAsk ? ', "statusTypeLabel": "从给定列表里选的状态类型"' : ''}}`;
+{"schedule": "从早到晚的完整日程，按时间段分行，用\\n分隔", "currentStatus": "结合日程和现在的真实时间，你此刻正在做的事，20字以内，不含引号"${typeAsk ? ', "statusTypeLabel": "从给定列表里选的状态类型"' : ''}}`);
 
     try {
         const data = await callChatCompletionAPI(api, prompt);
@@ -2963,7 +2984,7 @@ function backToContactList() {
 // ---------- 主入口：根据当前视图模式分派渲染 ----------
 function renderChatCharList() {
     const toggleBtn = document.getElementById('chatListViewToggleBtn');
-    if (toggleBtn) toggleBtn.textContent = chatListViewMode === 'row' ? '☰ 列表视图' : '▦ 头像条视图';
+    if (toggleBtn) toggleBtn.textContent = chatListViewMode === 'row' ? '☰ 列表' : '▦ 头像条';
 
     const rowContainer = document.getElementById('chatCharRow');
     const listContainer = document.getElementById('chatListVertical');
@@ -3264,7 +3285,8 @@ async function triggerNudge(sessionId, targetId) {
     const api = getApiConfig(true);
     if (targetId !== 'me' && api.key) {
         let targetChar = myCharacters.find(c => c.id == targetId);
-        let prompt = `${buildBasePrompt(targetChar, false, sysText)}刚刚用户在聊天中双击头像"拍了拍"你。\n系统提示：${sysText}\n你可以选择回复或者输出 [NUDGE] 来反击。字数${chatWordLimit}字以内。`;
+        let prompt = buildStructuredMessages(buildBasePrompt(targetChar, false, sysText), [],
+            `刚刚用户在聊天中双击头像"拍了拍"你。\n系统提示：${sysText}\n你可以选择回复或者输出 [NUDGE] 来反击。字数${chatWordLimit}字以内。`);
         try {
             if (currentChatSessionId === sessionId && document.getElementById('view-chat').style.display !== 'none') { currentlyTypingChars.add(targetChar.name); updateTypingIndicator(); }
             let data = await callChatCompletionAPI(api, prompt);
@@ -3550,6 +3572,7 @@ window.contextActionRegenerateChat = async function() {
 
     const historyForPrompt = globalChats[sessionId].slice(0, idx);
     const recentHistory = buildTimeAwareHistoryText(historyForPrompt.slice(-chatHistoryTurns));
+    const historyTurns = buildTimeAwareHistoryTurns(historyForPrompt.slice(-chatHistoryTurns), char.name);
 
     const api = getApiConfig(true);
     if (!api.key) return alert("请先配置 API Key！");
@@ -3566,14 +3589,13 @@ window.contextActionRegenerateChat = async function() {
     // 💡 修复：让重新生成的提示词也严格遵守 JSON 格式
     let multiReplyBlock = `\n【回复指令】\n输出格式【必须严格遵守JSON】，不要包含任何 Markdown 语法。格式示例：\n{\n  "replies": [\n    {"text": "你想回复的对话或动作"}\n  ],\n  "stateUpdate": "你的内部状态", "statusTypeLabel": "闲"\n}`;
 
-    let prompt = `${buildBasePrompt(char, true, recentHistory)}${getRecentPostsAwarenessText(char)}${getTimeAwarenessPrompt(sessionId, char)}${getChatNaturalnessPrompt()}
-以下是我们最近的聊天记录（每条前面的[时间标记]是真实发出时间，不是现在；时间是持续流动的，不要把很久以前的事当成刚发生的）：
-${recentHistory}
-
-请尝试一条全新的思路重新生成你的最新回复。
+    // 结构化消息改造：历史记录改成独立的user/assistant轮次，不再拼进正文文本里
+    let systemText = `${buildBasePrompt(char, true, recentHistory)}${getRecentPostsAwarenessText(char)}${getTimeAwarenessPrompt(sessionId, char)}${getChatNaturalnessPrompt()}`;
+    let finalUserText = `请尝试一条全新的思路重新生成你的最新回复。
 ${emoPrompt}
 ${actionTagReminder}
 ${multiReplyBlock}`;
+    let prompt = buildStructuredMessages(systemText, historyTurns, finalUserText);
 
     try {
         let data = await callChatCompletionAPI(api, prompt);
@@ -3676,7 +3698,13 @@ async function triggerAIBatchReply(sessionId, triggerText) {
         let isMentioned = isGroup ? (currentBatchText.includes('@所有人') || currentBatchText.includes('@' + char.name) || ((char.handle||'').replace('@','').toLowerCase() && currentBatchText.toLowerCase().includes('@' + (char.handle||'').replace('@','').toLowerCase()))) : true;
         if (isGroup && speakOrder === 'mentioned' && !isMentioned) continue; // 仅@到的人回复模式：没被@就完全跳过，不给AI判断机会
         
+        // 结构化消息改造：以前是把人设/世界书/聊天记录/各种指令全部拼成一整段文本塞进一条user消息；
+        // 现在拆成 system（人设+世界书+语义上下文+时间感知等"背景设定"部分）+ 按发言人分开的历史轮次
+        // （user/assistant交替，不再是一整段夹在中间的文本）+ 最后一条user消息（"这一轮到底要AI做什么"
+        // 的任务指令）。recentHistory这个文本版本仍然保留：buildBasePrompt内部要靠它做世界书关键词
+        // 触发判断，这个用途和"要不要把历史拼进prompt正文"是两回事，不能删。
         let recentHistory = buildTimeAwareHistoryText(globalChats[sessionId].slice(-chatHistoryTurns));
+        let historyTurns = buildTimeAwareHistoryTurns(globalChats[sessionId].slice(-chatHistoryTurns), char.name);
         let replyRule = (isMentioned || (isGroup && speakOrder === 'sequential')) ? `你被艾特了（或这是私聊，或本群设置了轮流发言），你【必须】回复，不能输出"NO"。` : (isGroup ? `如果觉得群里没人理你且无需回复，直接输出"NO"。` : `如果不知道怎么回可以输出"NO"。`);
         if (semanticContextCache[char.id] === undefined) semanticContextCache[char.id] = await getSemanticContext(sessionId, char, triggerText);
         let semanticContext = semanticContextCache[char.id];
@@ -3689,6 +3717,7 @@ async function triggerAIBatchReply(sessionId, triggerText) {
         // ⚠️ 修复"角色不看用户发了什么、一直重复旧话题"的bug：
         // 之前最新消息只是被埋在很长的历史记录文本中间，容易被模型忽略。这里把它单独提出来，
         // 放在prompt末尾（模型注意力通常更集中在结尾），并明确要求必须针对这条最新内容来回复。
+        // 结构化消息里历史记录本身已经是独立的轮次了，这条提醒依然有价值（防止模型只盯着更早的话题），继续保留。
         let latestMsgObj = globalChats[sessionId][globalChats[sessionId].length - 1];
         let latestMsgText = latestMsgObj ? (latestMsgObj.sender === 'system' ? latestMsgObj.text : `${latestMsgObj.sender === 'me' ? currentUser.name : (myCharacters.find(c=>c.id==latestMsgObj.sender)?.name || '未知')}: ${latestMsgObj.text}`) : triggerText;
         let latestEmphasis = `\n\n【⚠️最新消息 - 请务必围绕这一条来回复，不要无视它、也不要延续更早之前已经聊完的旧话题】：\n${latestMsgText}\n`;
@@ -3702,17 +3731,15 @@ async function triggerAIBatchReply(sessionId, triggerText) {
         
         let multiReplyBlock = `【多段回复指令】\n回复条数随机不固定，单条字数少。模仿真实的微信聊天，通过多条简短消息（随机发送1到5条）和随机的时间间隔发送。\n输出格式【必须严格遵守JSON】，不要包含任何 Markdown 语法、不要带有 \`\`\`json 前缀，不要有任何其他的说明文字。如果决定不回复，请直接返回 {"replies": []}。\n格式示例：\n{\n  "replies": [\n    {"delay": 2, "text": "你要这么说的话..."},\n    {"delay": 3, "text": "我可就不困了啊[EMO:emo_123]"}\n  ],\n  "stateUpdate": "打算回去继续睡回笼觉", "statusTypeLabel": "睡觉"\n}`;
 
-        let historyBlock = recentHistory ? `\n【聊天记录 — 每条前面的[时间标记]是这条消息实际发出的真实时间，不是现在。时间是持续流动的：如果标记显示是几小时前、昨天甚至更早，说明那件事已经过去了，不要把过去的事当成刚发生的事来回应（比如对方昨晚说吃了面条，今天问吃什么不能说"我才给你做的面条"，而应该像"昨天做的面条怎么样""你今天吃了什么"这样自然地体现时间已经过去）】：\n${recentHistory}\n` : '';
-
-        let prompt = `${buildBasePrompt(char, true, recentHistory)}${historyBlock}${semanticContext}${getRecentPostsAwarenessText(char)}${getTimeAwarenessPrompt(sessionId, char)}${getChatNaturalnessPrompt()}
-
-${replyRule}
+        let systemText = `${buildBasePrompt(char, true, recentHistory)}${semanticContext}${getRecentPostsAwarenessText(char)}${getTimeAwarenessPrompt(sessionId, char)}${getChatNaturalnessPrompt()}`;
+        let finalUserText = `${replyRule}
 你可以通过输出 [NUDGE] 主动拍一拍用户。也可艾特别人。
 ${emoPrompt}
 ${anPrompt}
 ${latestEmphasis}
 ${actionTagReminder}
 ${multiReplyBlock}`;
+        let prompt = buildStructuredMessages(systemText, historyTurns, finalUserText);
 
         try {
             if (currentChatSessionId === sessionId && document.getElementById('view-chat').style.display !== 'none') { currentlyTypingChars.add(char.name); updateTypingIndicator(); }
@@ -3996,6 +4023,44 @@ function buildTimeAwareHistoryText(msgs, fallbackCharName) {
         lastTs = ts;
     });
     return lines.join('\n');
+}
+
+function buildTimeAwareHistoryTurns(msgs, fallbackCharName) {
+    if (!msgs || msgs.length === 0) return [];
+    let turns = [];
+    let lastTs = null;
+    msgs.forEach(m => {
+        const ts = m.timestamp || Date.now();
+        let gapPrefix = '';
+        if (lastTs !== null && (ts - lastTs) > 4 * 3600000) {
+            gapPrefix = `——（中间过去了约 ${formatDurationZh(ts - lastTs)}）——\n`;
+        }
+        const tag = `[${formatRelativeTimeTag(ts)}]`;
+        if (m.sender === 'system') {
+            turns.push({ role: 'assistant', content: `${gapPrefix}${tag} 【系统】${m.text}` });
+        } else if (m.sender === 'me') {
+            turns.push({ role: 'user', content: `${gapPrefix}${tag} ${m.text}` });
+        } else {
+            const speaker = myCharacters.find(c => c.id == m.sender)?.name || fallbackCharName || '未知';
+            const quotePart = m.quote ? `[回复 ${m.quote.name}: ${m.quote.text}] ` : '';
+            turns.push({ role: 'assistant', content: `${gapPrefix}${tag} ${quotePart}${m.text}` });
+        }
+        lastTs = ts;
+    });
+    let merged = [];
+    turns.forEach(t => {
+        const last = merged[merged.length - 1];
+        if (last && last.role === t.role) last.content += '\n' + t.content;
+        else merged.push({ role: t.role, content: t.content });
+    });
+    return merged;
+}
+
+function buildStructuredMessages(systemText, historyTurns, finalUserText) {
+    const messages = [{ role: 'system', content: systemText }];
+    (historyTurns || []).forEach(t => messages.push(t));
+    messages.push({ role: 'user', content: finalUserText });
+    return messages;
 }
 
 function formatDurationZh(ms) {
@@ -4481,7 +4546,8 @@ async function checkAndAutoSummarizeChat(sessionId) {
     const api = getApiConfig(true); if (!char || !api.key) return;
 
     let recent20 = validMsgs.slice(-20).map(m => (m.sender === 'me' ? "用户: " : char.name + ": ") + m.text).join('\n');
-    let prompt = `请简要总结以下用户与"${char.name}"的最近20条对话内容，提取出关键信息、当前话题和双方的情感状态（100字以内）。\n\n对话记录：\n${recent20}`;
+    let prompt = buildStructuredMessages('你是一个擅长提炼对话要点的助手，只输出总结本身，不要任何多余说明。',
+        [], `请简要总结以下用户与"${char.name}"的最近20条对话内容，提取出关键信息、当前话题和双方的情感状态（100字以内）。\n\n对话记录：\n${recent20}`);
 
     try {
         let data = await callChatCompletionAPI(api, prompt);
@@ -4516,7 +4582,8 @@ async function checkAndAutoSummarizeGroupChat(sessionId) {
         let c = myCharacters.find(c => c.id == m.sender);
         return (c ? c.name : m.sender) + ': ' + m.text;
     }).join('\n');
-    let prompt = `请简要总结以下群聊"${group.name}"最近50条对话内容，提取出当前热门话题、群里的氛围、以及各人的主要观点或立场（150字以内）。\n\n对话记录：\n${recent50}`;
+    let prompt = buildStructuredMessages('你是一个擅长提炼对话要点的助手，只输出总结本身，不要任何多余说明。',
+        [], `请简要总结以下群聊"${group.name}"最近50条对话内容，提取出当前热门话题、群里的氛围、以及各人的主要观点或立场（150字以内）。\n\n对话记录：\n${recent50}`);
 
     try {
         let data = await callChatCompletionAPI(api, prompt);
@@ -5175,11 +5242,12 @@ async function generateDiaryContent() {
     let txtContext = diaryUploadedTxtContent ? `\n【用户上传的特殊参考素材，请仔细阅读并将其中的信息融入正文中】：\n${diaryUploadedTxtContent.slice(0, 6000)}` : '';
 
     // 💡 核心升级：调用 buildBasePrompt(char, true) 自动带入 [人设、全局世界书、局部世界书、20条推文记忆、20条聊天总结]
-    let prompt = `${buildBasePrompt(char, true, recentChat + '\n' + recentPosts)}请你结合上述你的核心人设、世界观背景、推文记忆总结、历史聊天总结，以及以下近期的动态、聊天记录${diaryUploadedTxtContent ? '和用户上传的参考素材' : ''}，写一封${targetType}。字数${limit}字左右。要深刻体现你的性格情感。
+    let prompt = buildStructuredMessages(buildBasePrompt(char, true, recentChat + '\n' + recentPosts), [],
+        `请你结合上述你的核心人设、世界观背景、推文记忆总结、历史聊天总结，以及以下近期的动态、聊天记录${diaryUploadedTxtContent ? '和用户上传的参考素材' : ''}，写一封${targetType}。字数${limit}字左右。要深刻体现你的性格情感。
 最近推文：\n${recentPosts || '暂无'}\n近期聊天记录：\n${recentChat || '暂无'}${txtContext}
 
 【极为严格的格式要求】：请仅返回合法 JSON 格式，决不要使用 \`\`\`json 包裹，也不要返回除 JSON 之外的任何说明废话！
-{"title":"这里写吸引人的标题","content":"这里写正文内容，段落之间用\\n分隔"}`;
+{"title":"这里写吸引人的标题","content":"这里写正文内容，段落之间用\\n分隔"}`);
     
     try {
         let data = await callChatCompletionAPI(api, prompt);
@@ -7198,11 +7266,12 @@ async function generateTabloidPost() {
     let charPersonas = selectedChars.map(c => `${c.name}(人设：${c.persona})`).join('；');
     
     // 修复: 优化提示词，防止大模型胡言乱语
-    let prompt = `你是一个唯恐天下不乱的娱乐营销号。请根据以下角色生成一条爆料推文：${charPersonas}。
+    let prompt = buildStructuredMessages('你是一个唯恐天下不乱的娱乐营销号。', [],
+        `请根据以下角色生成一条爆料推文：${charPersonas}。
 ${customTopic ? `要求一定要包含这个主题或情节：${customTopic}。` : ''}
 ${isShura ? "强制开启修罗场模式：狠狠制造多角恋、矛盾与抓马冲突。" : "语气必须极其夸张、震惊体，充满吃瓜感。"}
 目标字数：${customWordCount}字左右。
-【重要要求】：请直接输出爆料的推文正文，千万不要加上前缀说明、不要使用任何引号包裹，不要输出任何与爆料无关的内容。`;
+【重要要求】：请直接输出爆料的推文正文，千万不要加上前缀说明、不要使用任何引号包裹，不要输出任何与爆料无关的内容。`);
 
     try {
         let data = await callChatCompletionAPI(api, prompt);
@@ -7793,12 +7862,12 @@ async function triggerForumCharReply(thread, char, userText) {
     if (!api.key) { alert("⚠️ 请先在设置中配置 API Key！"); return null; }
     
     let recentReplies = thread.replies.slice(-5).map(r => `${r.floor}楼 [${r.author}]: ${r.content}`).join('\n');
-    let prompt = `你是"${char.name}"，人设：${char.persona}。你正在逛中文论坛。
-    【主帖标题】：《${thread.title}》
+    let prompt = buildStructuredMessages(`你是"${char.name}"，人设：${char.persona}。你正在逛中文论坛。`, [],
+        `【主帖标题】：《${thread.title}》
     【最近讨论】：\n${recentReplies}
     
     刚刚楼主(用户)艾特了你："${userText}"。
-    请结合你的人设，直接输出你要回复的话（不超过100字，不要带引号，符合论坛互动语气）。警告：既然用户主动@了你，你【必须】立刻进行回复，绝对不能忽略或输出"NO"。`;
+    请结合你的人设，直接输出你要回复的话（不超过100字，不要带引号，符合论坛互动语气）。警告：既然用户主动@了你，你【必须】立刻进行回复，绝对不能忽略或输出"NO"。`);
 
     try {
         let data = await callChatCompletionAPI(api, prompt);
