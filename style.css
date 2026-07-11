@@ -133,6 +133,10 @@ svg.blue-line-icon { fill: none !important; stroke: #1d9bf0 !important; stroke-w
 .btn-cancel { background-color: transparent; color: #1d9bf0; border: none; padding: 12px 20px; border-radius: 9999px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; text-decoration: underline; }
 .btn-edit-small { background-color: rgba(255,255,255,0.8); color: #1d9bf0; border: 1px solid #1d9bf0; padding: 6px 12px; border-radius: 9999px; font-weight: bold; font-size: 13px; cursor: pointer; flex-shrink: 0; transition: 0.2s;}
 .btn-edit-small:hover { background: #1d9bf0; color: white; }
+.mini-game-icon-badge { position:relative; }
+.mini-game-icon-badge::after { content:''; position:absolute; top:2px; right:2px; width:8px; height:8px; border-radius:50%; background:#f91880; display:none; }
+.mini-game-icon-badge.active::after { display:block; }
+.mini-game-member-pick-row { display:flex; align-items:center; gap:8px; padding:8px 4px; border-bottom:1px solid #eff3f4; }
 .center-char-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #eff3f4; gap: 12px; }
 .char-info-wrapper { display: flex; align-items: center; gap: 12px; overflow: hidden; }
 .empty-state { text-align: center; color: #1d9bf0; padding: 40px 20px; line-height: 1.6; }

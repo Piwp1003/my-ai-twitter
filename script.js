@@ -864,6 +864,187 @@ function renderChatPluginActionsBar() {
     bar.innerHTML = actions.map(p => `<button type="button" class="btn-edit-small" style="margin:0; white-space:nowrap;" onclick="runPluginAction('${p.id}')">${p.actionLabel || p.name}</button>`).join('');
 }
 
+// ===================== 小游戏框架 (Mini Games) =====================
+// 核心提供：输入框上方的🎮图标、"选择游戏"弹窗、私聊直接邀请/群聊多选或随机选人逐个邀请、
+// 角色是否接受邀请的通用AI判断逻辑、邀请对话写入聊天记录。
+// 具体某个游戏怎么玩（棋盘/规则/落子逻辑等）由对应的"游戏类插件"通过 registerMiniGame() 注册进来，
+// 插件只需要实现 { id, name, icon, getStatus(sessionId), onStart(sessionId, opponentCharId), onResume(sessionId) }。
+let registeredMiniGames = [];
+
+function registerMiniGame(gameDef) {
+    if (!gameDef || !gameDef.id || !gameDef.name) return;
+    registeredMiniGames = registeredMiniGames.filter(g => g.id !== gameDef.id); // 避免重复注册（比如插件被重新导入）
+    registeredMiniGames.push(gameDef);
+    refreshMiniGameIconBadge();
+}
+
+function refreshMiniGameIconBadge() {
+    const btn = document.getElementById('miniGameIconBtn');
+    if (!btn) return;
+    let active = false;
+    if (currentChatSessionId) {
+        for (const g of registeredMiniGames) {
+            if (typeof g.getStatus === 'function' && g.getStatus(currentChatSessionId) === 'playing') { active = true; break; }
+        }
+    }
+    btn.classList.toggle('active', active);
+}
+
+function onMiniGameIconClick() {
+    if (!currentChatSessionId) return;
+    if (registeredMiniGames.length === 0) { alert('还没有安装任何游戏插件～'); return; }
+    for (const g of registeredMiniGames) {
+        const st = typeof g.getStatus === 'function' ? g.getStatus(currentChatSessionId) : null;
+        if (st === 'playing' || st === 'finished') { if (typeof g.onResume === 'function') g.onResume(currentChatSessionId); return; }
+    }
+    openMiniGameSelectModal();
+}
+
+function openMiniGameSelectModal() {
+    let modal = document.getElementById('miniGameSelectModal');
+    if (!modal) { modal = document.createElement('div'); modal.id = 'miniGameSelectModal'; modal.className = 'modal-overlay'; document.body.appendChild(modal); }
+    const listHtml = registeredMiniGames.map(g => `<button type="button" class="btn-edit-small" style="padding:12px; width:100%;" onclick="startMiniGameFlow('${g.id}')">${g.icon || '🎮'} ${escapeHtml(g.name)}</button>`).join('');
+    modal.innerHTML = `
+        <div class="modal-box" style="width:320px; text-align:center;">
+            <h2>🎮 选择游戏</h2>
+            <div class="form-hint">邀请对方一起玩，Ta会结合人设决定要不要答应～</div>
+            <div style="display:flex; flex-direction:column; gap:10px; margin:16px 0;">${listHtml}</div>
+            <button type="button" class="btn-edit-small" onclick="document.getElementById('miniGameSelectModal').style.display='none'">取消</button>
+        </div>`;
+    modal.style.display = 'flex';
+}
+
+function startMiniGameFlow(gameId) {
+    const modal = document.getElementById('miniGameSelectModal');
+    if (modal) modal.style.display = 'none';
+    const isGroup = currentChatSessionId.startsWith('g_');
+    if (isGroup) openMiniGameGroupPickModal(gameId); else runMiniGame1v1Invite(gameId);
+}
+
+async function runMiniGame1v1Invite(gameId) {
+    const gameDef = registeredMiniGames.find(g => g.id === gameId);
+    const sessionId = currentChatSessionId;
+    const char = myCharacters.find(c => c.id == sessionId);
+    if (!gameDef || !char) return;
+    const api = getApiConfig(true);
+    if (!api.key) return alert('请先配置 API Key！');
+
+    if (!globalChats[sessionId]) globalChats[sessionId] = [];
+    globalChats[sessionId].push({ sender: 'me', text: `[邀请对方玩${gameDef.name}]`, timestamp: Date.now(), readBy: [] });
+    renderChatMessages(); saveAllData();
+
+    const accepted = await askCharGameInvite(char, sessionId, gameDef.name);
+    refreshMiniGameIconBadge();
+    if (accepted) beginMiniGame(gameDef, sessionId, char.id);
+}
+
+// 通用：问某个角色要不要接受游戏邀请（把角色的回应写进聊天记录），返回是否接受。
+// spectatorMode为true时表示名额已经被别人占了，只让这个角色围观吐槽一句，不再真的问要不要上场。
+async function askCharGameInvite(char, sessionId, gameName, spectatorMode, opponentName) {
+    const api = getApiConfig(true);
+    const recentHistory = buildTimeAwareHistoryText(globalChats[sessionId].slice(-chatHistoryTurns));
+    if (spectatorMode) {
+        const prompt = `${buildBasePrompt(char, true, recentHistory)}
+用户邀请了群里好几个人一起玩${gameName}，"${opponentName}"已经先答应上场了，你没有上场。
+请以你的人设身份，说一句围观/吐槽/起哄/看戏的话，不超过30字，只输出这句话本身，不要引号、不要任何多余文字。`;
+        let data; try { data = await callChatCompletionAPI(api, prompt); } catch (e) { return false; }
+        if (data.error) return false;
+        const raw = (data.choices?.[0]?.message?.content || '').trim();
+        const text = raw.replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').replace(/^["「]|["」]$/g, '').trim().slice(0, 100);
+        if (text) { globalChats[sessionId].push({ sender: char.id, text, timestamp: Date.now(), readBy: [] }); renderChatMessages(); saveAllData(); }
+        return false;
+    }
+    const prompt = `${buildBasePrompt(char, true, recentHistory)}
+用户邀请你一起玩${gameName}。请结合你的人设、性格、当前和用户的关系，决定要不要答应这次游戏邀请。
+只输出严格JSON，不要markdown代码块包裹，不要任何多余文字：
+{"accept": true或false, "reply": "你对这个邀请的回应，符合你的说话风格，一两句话就好"}`;
+    let data;
+    try { data = await callChatCompletionAPI(api, prompt); } catch (e) { alert('请求失败：' + e.message); return false; }
+    if (data.error) { alert('请求失败：' + (data.error.message || JSON.stringify(data.error))); return false; }
+    const raw = (data.choices?.[0]?.message?.content || '').trim();
+    let parsed = null; try { parsed = extractJsonObject(raw); } catch (e) {}
+    const accept = parsed ? !!parsed.accept : (/答应|好啊|可以|同意|没问题|来吧/.test(raw) && !/不想|拒绝|不了/.test(raw));
+    const replyText = (parsed && parsed.reply) ? parsed.reply : (raw ? raw.slice(0, 80) : (accept ? '来吧！' : '这次不太想玩呢。'));
+    globalChats[sessionId].push({ sender: char.id, text: replyText, timestamp: Date.now(), readBy: [] });
+    renderChatMessages(); saveAllData();
+    return accept;
+}
+
+function openMiniGameGroupPickModal(gameId) {
+    const sessionId = currentChatSessionId;
+    const groupObj = groupChats.find(g => g.id === sessionId);
+    if (!groupObj) return;
+    const members = (groupObj.members || []).map(id => myCharacters.find(c => c.id == id)).filter(Boolean);
+    if (members.length === 0) return alert('这个群里还没有角色成员');
+
+    let modal = document.getElementById('miniGameGroupPickModal');
+    if (!modal) { modal = document.createElement('div'); modal.id = 'miniGameGroupPickModal'; modal.className = 'modal-overlay'; document.body.appendChild(modal); }
+    const rowsHtml = members.map(c => `<div class="mini-game-member-pick-row"><input type="checkbox" class="mini-game-member-pick" id="mgpick_${c.id}" value="${c.id}"><label for="mgpick_${c.id}" style="display:flex; align-items:center; gap:8px; cursor:pointer;">${getAvatarHTML(c, 28)} ${escapeHtml(c.name)}</label></div>`).join('');
+    modal.innerHTML = `
+        <div class="modal-box" style="width:340px;">
+            <h2 style="text-align:center;">🎮 选择邀请对象</h2>
+            <div class="form-hint">可以手动勾选，也可以随机抽人；逐个发邀请，谁先答应谁上场，其他人在旁边围观吐槽～</div>
+            <div style="display:flex; gap:8px; margin:10px 0; flex-wrap:wrap; justify-content:center;">
+                <button type="button" class="btn-edit-small" onclick="miniGameRandomPick(1)">🎲随机1人</button>
+                <button type="button" class="btn-edit-small" onclick="miniGameRandomPick(${Math.min(3, members.length)})">🎲随机${Math.min(3, members.length)}人</button>
+                <button type="button" class="btn-edit-small" onclick="miniGameRandomPick(${members.length})">🎲全选</button>
+            </div>
+            <div style="max-height:240px; overflow-y:auto; text-align:left; margin-bottom:10px; border:1px solid #eff3f4; border-radius:8px;">${rowsHtml}</div>
+            <div style="display:flex; gap:10px; justify-content:center;">
+                <button type="button" class="btn-post" onclick="runMiniGameGroupInvite('${gameId}')">发出邀请</button>
+                <button type="button" class="btn-edit-small" onclick="document.getElementById('miniGameGroupPickModal').style.display='none'">取消</button>
+            </div>
+        </div>`;
+    modal.style.display = 'flex';
+}
+
+function miniGameRandomPick(n) {
+    const modal = document.getElementById('miniGameGroupPickModal');
+    if (!modal) return;
+    const boxes = [...modal.querySelectorAll('.mini-game-member-pick')];
+    boxes.forEach(b => { b.checked = false; });
+    boxes.slice().sort(() => Math.random() - 0.5).slice(0, n).forEach(b => { b.checked = true; });
+}
+
+async function runMiniGameGroupInvite(gameId) {
+    const modal = document.getElementById('miniGameGroupPickModal');
+    const sessionId = currentChatSessionId;
+    const gameDef = registeredMiniGames.find(g => g.id === gameId);
+    if (!gameDef) return;
+    const pickedIds = modal ? [...modal.querySelectorAll('.mini-game-member-pick:checked')].map(b => b.value) : [];
+    if (modal) modal.style.display = 'none';
+    if (pickedIds.length === 0) return alert('至少选一个角色吧');
+
+    const api = getApiConfig(true);
+    if (!api.key) return alert('请先配置 API Key！');
+
+    if (!globalChats[sessionId]) globalChats[sessionId] = [];
+    globalChats[sessionId].push({ sender: 'me', text: `[邀请大家一起玩${gameDef.name}]`, timestamp: Date.now(), readBy: [] });
+    renderChatMessages(); saveAllData();
+
+    let opponent = null;
+    for (const idStr of pickedIds) {
+        const char = myCharacters.find(c => c.id == idStr);
+        if (!char) continue;
+        if (opponent) { await askCharGameInvite(char, sessionId, gameDef.name, true, opponent.name); continue; }
+        const accepted = await askCharGameInvite(char, sessionId, gameDef.name);
+        if (accepted) opponent = char;
+    }
+
+    if (!opponent) {
+        globalChats[sessionId].push({ sender: 'system', text: `看起来大家都不太想玩，这次没能凑成一局。`, timestamp: Date.now() });
+        renderChatMessages(); saveAllData();
+        refreshMiniGameIconBadge();
+        return;
+    }
+    beginMiniGame(gameDef, sessionId, opponent.id);
+}
+
+function beginMiniGame(gameDef, sessionId, opponentCharId) {
+    refreshMiniGameIconBadge();
+    if (typeof gameDef.onStart === 'function') gameDef.onStart(sessionId, opponentCharId);
+}
+
 function renderPluginsList() {
     const container = document.getElementById('pluginsList');
     if (!container) return;
@@ -2670,6 +2851,7 @@ function switchChatSession(id) {
     checkAndAnnounceAnniversary(id.toString());
     refreshLifeStateOnChatEnter(id.toString());
     renderChatPluginActionsBar();
+    refreshMiniGameIconBadge();
 
     // 修复：取消了原先的强制自动生成日程，现在完全由用户通过长按头像来手动生成
 }

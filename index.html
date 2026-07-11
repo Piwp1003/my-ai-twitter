@@ -370,10 +370,13 @@
                     <button onclick="clearChatQuote()" style="background:none; border:none; cursor:pointer; font-size:16px; color:#536471; margin-left:8px;">×</button>
                 </div>
                 <div id="chatAttachmentPreview" class="emo-preview-box" style="display:none; padding-left:0; margin-bottom:10px;"></div>
-                <div class="chat-input-row">
-                    <!-- 新增：导演耳语按钮 -->
+                <!-- 输入框上方的工具图标一排：导演耳语/表情图片/小游戏（小游戏图标点了以后由 registerMiniGame() 注册进来的具体游戏插件接管） -->
+                <div id="chatToolIconsRow" style="display:flex; gap:6px; margin-bottom:8px; align-items:center;">
                     <button class="btn-edit-small" title="导演耳语 (Author's Note)" onclick="const an = document.getElementById('chatAuthorsNote'); an.style.display = an.style.display === 'none' ? 'block' : 'none';">📝</button>
                     <button class="btn-edit-small" title="添加表情/图片" onclick="openEmoticonPicker('chat')">🖼️</button>
+                    <button class="btn-edit-small mini-game-icon-badge" id="miniGameIconBtn" title="小游戏" onclick="onMiniGameIconClick()">🎮</button>
+                </div>
+                <div class="chat-input-row">
                     <input type="text" id="chatInput" placeholder="输入消息..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
                     <button class="btn-post" onclick="sendChatMessage()">发送</button>
                 </div>
