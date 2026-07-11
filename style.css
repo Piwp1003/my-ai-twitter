@@ -230,8 +230,6 @@ svg.blue-line-icon { fill: none !important; stroke: #1d9bf0 !important; stroke-w
 .chat-list-time { font-size: 11px; color: #8b98a5; flex-shrink: 0; }
 .chat-list-preview { font-size: 12px; color: #536471; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-list-unread-dot { position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; background: #f91880; border-radius: 50%; border: 2px solid white; }
-.chat-list-pin-btn { flex-shrink: 0; cursor: pointer; font-size: 14px; opacity: 0.6; }
-.chat-list-pin-btn:hover { opacity: 1; }
 
 .chat-char-item.active { opacity: 1; color: #1d9bf0; font-weight: bold; }
 .chat-char-item .avatar { margin-bottom: 4px; }

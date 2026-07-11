@@ -199,7 +199,6 @@ let enableTypingIndicator = true; // 正在输入提示/已读状态
 let enableMiniGameCharSpeech = true; // 小游戏中角色是否发言的总开关（关闭后玩游戏时全程只有系统状态消息，角色不再评论/吐槽）
 let chatListViewMode = 'row'; // 聊天联系人展示模式：'row'=横向头像条（原样式），'list'=竖排列表（头像+名字+最后消息预览+时间）
 let pinnedSessionIds = []; // 置顶的角色/群聊会话id列表（可置顶多个）
-let chatListGroupFilter = null; // 聊天联系人分组筛选：null=全部，'__ungrouped__'=未分组（含所有群聊），否则是具体分组名
 let chatListShowingList = true; // 仅在 list 视图模式下有意义：true=正在浏览联系人列表，false=正在查看某个聊天内容
 let enableAnniversary = true; // 纪念日系统
 let chatWordLimit = 50, postWordLimit = 50, diaryWordLimit = 400, letterWordLimit = 400;
@@ -2119,7 +2118,7 @@ function getFullDataSnapshot() {
     return {
         myApiUrl, myApiKey, myModel, subApiUrl, subApiKey, subModel,
         myCharacters, globalPosts, anonPosts, characterGroups, factionColors, charRelationships, relationshipTypePresets, statusTypes, globalEmoticons, worldbooks, worldbookCategories, globalChats, groupChats, currentUser, tabloidAccount, trendingTags,
-        globalBgImage, globalBgOpacity, allowActionTags, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, chatListViewMode, pinnedSessionIds, chatListGroupFilter,
+        globalBgImage, globalBgOpacity, allowActionTags, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, chatListViewMode, pinnedSessionIds,
         globalNovels, novelCustomCSS, globalCustomCSS, tabloidPosts, siteLogoImg,
         forumThreads,
         npcReplyProb, npcReplyMaxCount,
@@ -2201,7 +2200,6 @@ async function loadAllData() {
                 if (parsed.enableMiniGameCharSpeech !== undefined) enableMiniGameCharSpeech = parsed.enableMiniGameCharSpeech;
                 if (parsed.chatListViewMode !== undefined) chatListViewMode = parsed.chatListViewMode;
                 if (parsed.pinnedSessionIds !== undefined) pinnedSessionIds = parsed.pinnedSessionIds;
-                if (parsed.chatListGroupFilter !== undefined) chatListGroupFilter = parsed.chatListGroupFilter;
                 if (parsed.enableAnniversary !== undefined) enableAnniversary = parsed.enableAnniversary;
                 if (parsed.memoryAlbum) memoryAlbum = parsed.memoryAlbum;
                 if (parsed.chatWordLimit !== undefined) chatWordLimit = parsed.chatWordLimit;
@@ -2933,11 +2931,6 @@ function getChatListItems() {
         group: x.members ? null : (x.group || null), // 群聊没有分组概念，统一按"未分组"处理
     }));
 }
-function applyChatListGroupFilter(items) {
-    if (!chatListGroupFilter) return items;
-    if (chatListGroupFilter === '__ungrouped__') return items.filter(it => !it.group);
-    return items.filter(it => it.group === chatListGroupFilter);
-}
 function sortChatListItems(items) {
     const isPinnedId = (id) => pinnedSessionIds.some(pid => pid == id);
     const pinned = items.filter(it => isPinnedId(it.id));
@@ -2966,26 +2959,15 @@ function backToContactList() {
     chatListShowingList = true;
     renderChatCharList();
 }
-function setChatListGroupFilter(val) {
-    chatListGroupFilter = val;
-    renderChatCharList();
-}
-function renderChatGroupFilterBar() {
-    const bar = document.getElementById('chatGroupFilterBar');
-    if (!bar) return;
-    const tags = [{ label: '全部', val: null }, ...characterGroups.map(g => ({ label: g, val: g })), { label: '未分组', val: '__ungrouped__' }];
-    bar.innerHTML = tags.map(t => `<span class="group-tag" style="background:${chatListGroupFilter === t.val ? '#1d9bf0' : 'white'}; color:${chatListGroupFilter === t.val ? 'white' : '#1d9bf0'}; border:1px solid #1d9bf0;" onclick="setChatListGroupFilter(${t.val === null ? 'null' : `'${t.val}'`})">${t.label}</span>`).join('');
-}
 
 // ---------- 主入口：根据当前视图模式分派渲染 ----------
 function renderChatCharList() {
-    renderChatGroupFilterBar();
     const toggleBtn = document.getElementById('chatListViewToggleBtn');
     if (toggleBtn) toggleBtn.textContent = chatListViewMode === 'row' ? '☰ 列表视图' : '▦ 头像条视图';
 
     const rowContainer = document.getElementById('chatCharRow');
     const listContainer = document.getElementById('chatListVertical');
-    const backBar = document.getElementById('chatListBackBar');
+    const backBtn = document.getElementById('chatListBackBtn');
     const messagesArea = document.getElementById('chatMessagesArea');
     const inputArea = document.getElementById('chatInputArea');
 
@@ -2993,7 +2975,7 @@ function renderChatCharList() {
         // 头像条模式：联系人条和聊天内容一直同时显示，跟以前一样
         if (rowContainer) rowContainer.style.display = 'flex';
         if (listContainer) listContainer.style.display = 'none';
-        if (backBar) backBar.style.display = 'none';
+        if (backBtn) backBtn.style.display = 'none';
         if (messagesArea) messagesArea.style.display = 'flex';
         renderChatCharRow();
     } else {
@@ -3001,13 +2983,13 @@ function renderChatCharList() {
         if (rowContainer) rowContainer.style.display = 'none';
         if (chatListShowingList) {
             if (listContainer) listContainer.style.display = 'flex';
-            if (backBar) backBar.style.display = 'none';
+            if (backBtn) backBtn.style.display = 'none';
             if (messagesArea) messagesArea.style.display = 'none';
             if (inputArea) inputArea.style.display = 'none';
             renderChatCharListVertical();
         } else {
             if (listContainer) listContainer.style.display = 'none';
-            if (backBar) backBar.style.display = 'block';
+            if (backBtn) backBtn.style.display = 'inline-block';
             if (messagesArea) messagesArea.style.display = 'flex';
             // inputArea 的显示由 switchChatSession 自己控制，这里不用管
         }
@@ -3019,7 +3001,7 @@ function renderChatCharRow() {
     const container = document.getElementById('chatCharRow');
     if (!container) return;
     let html = '';
-    const items = sortChatListItems(applyChatListGroupFilter(getChatListItems()));
+    const items = sortChatListItems(getChatListItems());
     items.forEach(it => {
         const x = it.raw;
         let hasUnread = chatHasUnread(x.id);
@@ -3040,7 +3022,7 @@ function renderChatCharListVertical() {
     const container = document.getElementById('chatListVertical');
     if (!container) return;
     let html = '';
-    const items = sortChatListItems(applyChatListGroupFilter(getChatListItems()));
+    const items = sortChatListItems(getChatListItems());
     items.forEach(it => {
         const x = it.raw;
         const isPinned = pinnedSessionIds.some(pid => pid == x.id);
@@ -3059,13 +3041,16 @@ function renderChatCharListVertical() {
         }
         const timeText = lastMsg ? timeAgo(lastMsg.timestamp) : '';
         const isGroupItem = !!x.members;
-        html += `<div class="chat-list-row ${currentChatSessionId == x.id ? 'active' : ''} ${isPinned ? 'pinned' : ''}" onclick="switchChatSession('${x.id}')" ${isGroupItem ? `oncontextmenu="showGroupAvatarContextMenu(event, '${x.id}')"` : `oncontextmenu="showAvatarContextMenu(event, '${x.id}')"`}>
+        // 置顶操作收纳进右键/长按菜单，行内不再显示图钉图标；长按沿用和头像条模式一样的手机端支持
+        const ctxAttrs = isGroupItem
+            ? `oncontextmenu="showGroupAvatarContextMenu(event, '${x.id}')" ontouchstart="groupAvatarTouchStart(event, '${x.id}')" ontouchend="groupAvatarTouchEnd(event)" ontouchmove="groupAvatarTouchEnd(event)"`
+            : `oncontextmenu="showAvatarContextMenu(event, '${x.id}')" ontouchstart="avatarTouchStart(event, '${x.id}')" ontouchend="avatarTouchEnd(event)" ontouchmove="avatarTouchEnd(event)"`;
+        html += `<div class="chat-list-row ${currentChatSessionId == x.id ? 'active' : ''} ${isPinned ? 'pinned' : ''}" onclick="switchChatSession('${x.id}')" ${ctxAttrs}>
             <div style="position:relative; flex-shrink:0;">${x.members ? getGroupAvatarHTML(x, 44) : getAvatarHTML(x, 44)}${hasUnread ? '<div class="chat-list-unread-dot"></div>' : ''}</div>
             <div class="chat-list-info">
                 <div class="chat-list-top-row"><span class="chat-list-name">${isPinned ? '📌 ' : ''}${escapeHtml(x.name)}</span><span class="chat-list-time">${timeText}</span></div>
                 <div class="chat-list-preview">${escapeHtml(previewText)}</div>
             </div>
-            <div class="chat-list-pin-btn" onclick="event.stopPropagation(); toggleChatPin('${x.id}')" title="${isPinned ? '取消置顶' : '置顶'}">${isPinned ? '📌' : '📍'}</div>
         </div>`;
     });
     container.innerHTML = html;
