@@ -175,17 +175,20 @@ ${charB.name} 的人设：${charB.persona || '(无详细设定)'}
 async function pushNtfy(state, title, body) {
   if (!state.ntfyTopic) return;
   try {
-    await fetch(`https://ntfy.sh/${state.ntfyTopic}`, {
+    // 注意：不能把中文之类的非ASCII字符直接放进HTTP请求头（Title/Tags这种），
+    // fetch()在构造Headers时会直接抛错（Latin1限制），导致这个请求根本发不出去，
+    // 而外层try/catch又把这个错误默默吞掉——这就是之前所有角色消息在ntfy里一条都收不到的真正原因。
+    // 改用ntfy官方支持的JSON发布方式，标题/正文放进JSON body里，不受请求头字符集限制。
+    const res = await fetch('https://ntfy.sh/', {
       method: 'POST',
-      headers: {
-        Title: encodeTitleHeader(title),
-        'Content-Type': 'text/plain; charset=utf-8',
-        Tags: 'speech_balloon',
-      },
-      body,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ topic: state.ntfyTopic, title, message: body, tags: ['speech_balloon'] }),
     });
+    if (!res.ok) {
+      console.error('ntfy推送失败，状态码：', res.status, await res.text());
+    }
   } catch (e) {
-    console.error('ntfy推送失败', e);
+    console.error('ntfy推送失败：', e.message || e);
   }
 }
 
