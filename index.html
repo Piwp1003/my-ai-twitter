@@ -672,8 +672,33 @@
             <div class="input-group" style="margin-top: 10px;">
                 <label>选择主 AI 模型</label>
                 <select id="modelSelect" onchange="autoSaveApiSettings()">
-                    <option value="deepseek-chat">deepseek-chat (默认)</option>
+                    <option value="deepseek-chat">deepseek-chat (默认，⚠️官方将于2026-07-24停用，建议改用下面的deepseek-v4-flash)</option>
+                    <optgroup label="DeepSeek">
+                        <option value="deepseek-v4-flash">deepseek-v4-flash（低延迟低成本，原deepseek-chat/deepseek-reasoner的替代）</option>
+                        <option value="deepseek-v4-pro">deepseek-v4-pro（复杂推理/编程/多步任务）</option>
+                    </optgroup>
+                    <optgroup label="OpenAI">
+                        <option value="gpt-5.6">gpt-5.6（旗舰，等同gpt-5.6-sol）</option>
+                        <option value="gpt-5.6-terra">gpt-5.6-terra（性能与成本均衡）</option>
+                        <option value="gpt-5.6-luna">gpt-5.6-luna（高性价比/高并发）</option>
+                        <option value="gpt-5.5">gpt-5.5</option>
+                    </optgroup>
+                    <optgroup label="Anthropic Claude">
+                        <option value="claude-opus-4-8">claude-opus-4-8</option>
+                        <option value="claude-fable-5">claude-fable-5</option>
+                        <option value="claude-sonnet-5">claude-sonnet-5</option>
+                        <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
+                    </optgroup>
+                    <optgroup label="Google Gemini">
+                        <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+                        <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
+                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+                    </optgroup>
+                    <optgroup label="xAI Grok">
+                        <option value="grok-4.5">grok-4.5</option>
+                    </optgroup>
                 </select>
+                <div style="font-size:11px; color:#8b98a5; margin-top:4px;">以上是常见模型的快捷预设，具体以你使用的API服务商实际支持为准；如果你的API支持拉取模型列表，优先点上面的"🔄 拉取模型"按钮获取该服务商的真实可用列表。</div>
             </div>
         </div>
 
@@ -700,7 +725,31 @@
             <div class="input-group" style="margin-top: 10px;">
                 <label style="color:#f91880;">选择副 AI 模型</label>
                 <select id="subModelSelect" style="border-color:#f91880;" onchange="autoSaveApiSettings()">
-                    <option value="">-- 请先拉取 --</option>
+                    <option value="">-- 请先拉取，或直接从下面选一个预设 --</option>
+                    <optgroup label="DeepSeek">
+                        <option value="deepseek-v4-flash">deepseek-v4-flash</option>
+                        <option value="deepseek-v4-pro">deepseek-v4-pro</option>
+                    </optgroup>
+                    <optgroup label="OpenAI">
+                        <option value="gpt-5.6">gpt-5.6</option>
+                        <option value="gpt-5.6-terra">gpt-5.6-terra</option>
+                        <option value="gpt-5.6-luna">gpt-5.6-luna</option>
+                        <option value="gpt-5.5">gpt-5.5</option>
+                    </optgroup>
+                    <optgroup label="Anthropic Claude">
+                        <option value="claude-opus-4-8">claude-opus-4-8</option>
+                        <option value="claude-fable-5">claude-fable-5</option>
+                        <option value="claude-sonnet-5">claude-sonnet-5</option>
+                        <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
+                    </optgroup>
+                    <optgroup label="Google Gemini">
+                        <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+                        <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
+                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+                    </optgroup>
+                    <optgroup label="xAI Grok">
+                        <option value="grok-4.5">grok-4.5</option>
+                    </optgroup>
                 </select>
             </div>
         </div>
