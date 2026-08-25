@@ -4,9 +4,81 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>谷雨</title>
+    <meta name="theme-color" content="#1d9bf0">
+    <link rel="icon" href="./icons/icon-192.png">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <script>
+        // pwa-manifest.json 只在 http/https 下才去挂，file:// 本地直接打开的时候不挂。
+        // ⚠️ 名字特意不叫 manifest.json：HBuilderX 打包 APK 时，5+App 项目根目录的
+        // manifest.json 是 HBuilderX 自己的应用配置（appid/入口页/权限/启动图都在里面）。
+        // 两边重名的话，把谷雨拷进 HBuilderX 项目会直接把它的配置覆盖掉，打出来的包白屏。
+        // 原因：file:// 协议下浏览器把每一个文件都当成独立的"不透明源(null origin)"，
+        // 哪怕 manifest.json 和 index.html 就在同一个文件夹里，浏览器加载manifest时走的
+        // 内部fetch机制依然会把这当成"跨源请求"直接拦掉，控制台会报CORS错误
+        // （PWA的manifest/离线缓存本来就只能在真正部署到网站上（http/https）时才有意义，
+        // 本地双击打开index.html这种用法用不到，所以干脆不在file://下尝试加载，免得刷错误）。
+        if (location.protocol === 'http:' || location.protocol === 'https:') {
+            var manifestLink = document.createElement('link');
+            manifestLink.rel = 'manifest';
+            manifestLink.href = './pwa-manifest.json';
+            document.head.appendChild(manifestLink);
+        }
+    </script>
+    <script>
+/* ===== 启动自检 =====
+   手机（尤其是打包成 APK 之后）看不到控制台，一旦启动阶段有脚本报错，
+   页面就是一片白，什么线索都没有。这段在最前面挂全局错误捕获，
+   把报错直接画到屏幕上；另外加一个超时兜底：如果迟迟没渲染出内容，
+   也把当前状态显示出来，而不是让用户对着白屏猜。 */
+(function () {
+  var shown = false;
+  function panel(title, detail) {
+    if (shown) return; shown = true;
+    try {
+      var d = document.createElement('div');
+      d.setAttribute('style', 'position:fixed;inset:0;z-index:999999;background:#fff;color:#0f1419;'
+        + 'font:14px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;'
+        + 'padding:24px 18px;overflow:auto;-webkit-overflow-scrolling:touch;');
+      d.innerHTML = '<div style="font-size:17px;font-weight:700;color:#f91880;margin-bottom:12px;">谷雨启动失败</div>'
+        + '<div style="margin-bottom:14px;color:#536471;">' + title + '</div>'
+        + '<pre style="white-space:pre-wrap;word-break:break-all;background:#f7f9f9;padding:12px;'
+        + 'border-radius:8px;border:1px solid #eff3f4;font-size:12px;">' + detail + '</pre>'
+        + '<div style="margin-top:16px;color:#8b98a5;font-size:12px;">'
+        + '把这段内容截图发出来就能定位问题。</div>';
+      document.body.appendChild(d);
+    } catch (e) { /* 连这个都失败就真没辙了 */ }
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  window.addEventListener('error', function (e) {
+    // 脚本文件 404 之类的资源错误，target 是那个标签本身
+    if (e && e.target && e.target !== window && (e.target.src || e.target.href)) {
+      panel('有文件没加载成功（打包时可能漏了这个文件）：',
+        esc(e.target.tagName) + '\n' + esc(e.target.src || e.target.href));
+      return;
+    }
+    panel('启动时脚本报错：',
+      esc(e && e.message) + '\n\n' + esc(e && e.filename) + ' 第 ' + (e && e.lineno) + ' 行'
+      + '\n\n' + esc(e && e.error && e.error.stack));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e && e.reason;
+    panel('启动时有未处理的错误：', esc((r && r.stack) || r));
+  });
+  // 超时兜底：正常情况下 window.onload 跑完会把 __guyuBooted 置为 true
+  setTimeout(function () {
+    if (window.__guyuBooted) return;
+    panel('启动超时（12 秒还没就绪）。常见原因：',
+      '· localforage 没加载成功 —— ' + (typeof localforage === 'undefined' ? '【确实没加载到】' : '已加载') + '\n'
+      + '· 关键脚本没加载 —— saveAllData: ' + (typeof window.saveAllData) + '\n'
+      + '· 页面地址: ' + esc(location.href));
+  }, 12000);
+})();
+</script>
     <link rel="stylesheet" href="./style.css?v=3">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+    <script src="./js/vendor/localforage.min.js"></script>
+    <script src="./js/vendor/mammoth.browser.min.js"></script>
 </head>
 <body>
 
@@ -23,6 +95,7 @@
 </div>
 
 <div id="chatContextMenu" class="custom-context-menu"></div>
+
 
 <header class="mobile-topbar" id="mobileTopbar">
     <div class="mtb-left" style="display: flex; align-items: center;">
@@ -92,6 +165,9 @@
         <a onclick="switchMainView('plugins')" class="mdrawer-item">
             <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>插件
         </a>
+        <a onclick="switchMainView('presets')" class="mdrawer-item">
+            <svg viewBox="0 0 24 24"><path d="M4 21v-7"></path><path d="M4 10V3"></path><path d="M12 21v-9"></path><path d="M12 8V3"></path><path d="M20 21v-5"></path><path d="M20 12V3"></path><path d="M1 14h6"></path><path d="M9 8h6"></path><path d="M17 16h6"></path></svg>预设
+        </a>
         <a onclick="openModal('emoticonManagerModal'); renderEmoticonManagerGallery();" class="mdrawer-item">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>表情
         </a>
@@ -103,6 +179,7 @@
         <a onclick="switchMainView('settings')" class="mdrawer-item">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h-.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>设置
         </a>
+        <div class="app-signature">由 林 制作</div>
     </div>
 </aside>
 
@@ -125,7 +202,7 @@
 <div class="layout-container" id="mainLayoutContainer">
     <header class="sidebar-left">
         <div class="sidebar-content">
-            <div class="logo" onclick="clickHome()" id="siteLogoContainer"><h2>𝕏 (AI版)</h2></div>
+            <div class="logo" onclick="clickHome()" id="siteLogoContainer"><img src="./icons/icon-192.png" alt="谷雨" style="height:126px; width:auto; display:block; object-fit:contain; cursor:pointer;"><div class="app-signature" style="margin:0;">由 林 制作</div></div>
             <nav class="nav-menu">
                 <a onclick="switchMainView('home')" class="nav-item active" id="nav-home">
                     <svg class="nav-icon blue-line-icon" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>主页
@@ -146,6 +223,9 @@
                 <a onclick="switchMainView('novel')" oncontextmenu="openNovelCSSModal(event)" class="nav-item" id="nav-novel" title="右键点击可自定义美化UI">
                     <svg class="nav-icon blue-line-icon" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>我们的故事
                 </a>
+                <a onclick="switchMainView('storyStudio')" class="nav-item" id="nav-storystudio">
+                    <svg class="nav-icon blue-line-icon" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>续写
+                </a>
                 <a onclick="switchMainView('tabloid')" class="nav-item" id="nav-tabloid">
                     <svg class="nav-icon blue-line-icon" viewBox="0 0 24 24"><path d="M4 2h16v20H4zM12 6h4M12 10h4M12 14h4M8 6h2M8 10h2M8 14h2"></path></svg>营销号
                 </a>
@@ -163,6 +243,12 @@
                 </a>
                 <a onclick="switchMainView('plugins')" class="nav-item">
                     <svg class="nav-icon blue-line-icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>插件
+                </a>
+                <a onclick="switchMainView('presets')" class="nav-item" id="nav-presets">
+                    <svg class="nav-icon blue-line-icon" viewBox="0 0 24 24"><path d="M4 21v-7"></path><path d="M4 10V3"></path><path d="M12 21v-9"></path><path d="M12 8V3"></path><path d="M20 21v-5"></path><path d="M20 12V3"></path><path d="M1 14h6"></path><path d="M9 8h6"></path><path d="M17 16h6"></path></svg>预设
+                </a>
+                <a onclick="switchMainView('memoryHub')" class="nav-item" id="nav-memoryhub">
+                    <svg class="nav-icon blue-line-icon" viewBox="0 0 24 24"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z"></path><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z"></path></svg>记忆总览
                 </a>
                 <a onclick="openModal('emoticonManagerModal'); renderEmoticonManagerGallery();" class="nav-item">
                     <svg class="nav-icon blue-line-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>表情
@@ -203,21 +289,25 @@
             <div class="top-tabs" style="position:static;">
                 <div class="tab active" id="diary-tab-letter" onclick="switchDiaryTab('letter')">寄来的信件</div>
                 <div class="tab" id="diary-tab-diary" onclick="switchDiaryTab('diary')">偷看日记</div>
+                <div class="tab" id="diary-tab-mydiary" onclick="switchDiaryTab('mydiary')">我的日记</div>
             </div>
-            
+
             <div id="diaryListArea" style="padding: 15px; padding-bottom: 120px;">
                 <div id="diaryCardsContainer" class="diary-row-container"></div>
             </div>
 
-            <div class="diary-action-bar">
+            <div class="diary-action-bar" id="diaryActionBar">
                 <div style="text-align: center;">
                     <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
                         <input type="file" id="diaryTxtUpload" accept="*/*" style="display:none;" onchange="handleDiaryTxtUpload(event)">
-                        <button class="btn-edit-small" onclick="document.getElementById('diaryTxtUpload').click()">📄 上传TXT作为素材</button>
+                        <button class="btn-edit-small" onclick="openFilePickerForApp('diaryTxtUpload')">📄 上传TXT作为素材</button>
                         <span id="diaryTxtFileName" style="font-size:12px; color:#1d9bf0; display:none;"></span>
                         <span id="diaryTxtClearBtn" style="font-size:12px; color:#f91880; cursor:pointer; display:none;" onclick="clearDiaryTxtUpload()">✕ 清除</span>
                     </div>
-                    <button class="btn-primary" id="btnGenerateDiary" onclick="generateDiaryContent()" style="width: 80%; max-width: 400px; margin: 0 auto; padding: 12px; font-size: 16px;">好想对你说 </button>
+                    <div style="display:flex; gap:10px; align-items:center; justify-content:center; width: 80%; max-width: 400px; margin: 0 auto;">
+                        <button class="btn-primary" id="btnGenerateDiary" onclick="generateDiaryContent()" style="flex:1; padding: 12px; font-size: 16px; margin:0;">好想对你说</button>
+                        <button class="btn-secondary" id="btnOpenUserLetterCompose" onclick="openUserLetterCompose()" style="display:none; flex:1; padding: 12px; font-size: 16px; margin:0;">✍️ 写信给TA</button>
+                    </div>
                 </div>
             </div>
 
@@ -228,6 +318,21 @@
                     <button class="btn-primary" style="width:auto; padding: 10px 30px;" onclick="saveTempDiary()">💾 保留并存档</button>
                     <button class="btn-secondary" style="width:auto; padding: 10px 30px; margin-top:0; color:#f91880; border-color:#f91880;" onclick="discardTempDiary()">🗑️ 放弃</button>
                 </div>
+            </div>
+
+            <div id="myDiaryArea" style="display:none; padding: 15px; padding-bottom: 30px;">
+                <div class="form-hint" style="margin-bottom:10px;">写一篇你自己的日记，勾选允许"偷看"的角色。每个被勾选的角色会各自独立决定要不要看、看了要不要留下批注——不想看的话，也会在下面写一句符合Ta人设的话。反应不是立刻出现的，随机隔一段时间才会有动静，也可以点"立即回复"跳过等待。</div>
+                <input type="text" id="myDiaryTitleInput" placeholder="标题（可选）" style="width:100%; margin-bottom:8px; padding:8px; border:1px solid #1d9bf0; border-radius:4px; font-size:14px;">
+                <textarea id="myDiaryContentInput" rows="5" placeholder="今天发生的事、心里想的话……" style="width:100%; padding:8px; margin-bottom:10px; border:1px solid #1d9bf0; border-radius:4px; font-size:14px; font-family:inherit;"></textarea>
+                <div style="margin-bottom:8px; display:flex; gap:14px; font-size:13px; color:#536471;">
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="radio" name="myDiaryMode" value="peek" checked onchange="updateMyDiaryModeLabel()"> 🙈 可能被偷看（角色自己决定看不看）</label>
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="radio" name="myDiaryMode" value="invite" onchange="updateMyDiaryModeLabel()"> 📖 主动邀请观看（都会看，都要写批注）</label>
+                </div>
+                <div style="margin-bottom:8px; font-size:13px; color:#536471;" id="myDiaryTargetLabel">谁可以偷看这篇日记：</div>
+                <div id="myDiaryCharCheckboxes" style="display:flex; gap:10px; flex-wrap:wrap; border:1px solid #1d9bf0; padding:10px; border-radius:8px; background:rgba(255,255,255,0.8); margin-bottom:12px;"></div>
+                <button class="btn-primary" onclick="publishUserDiary()" style="width: 80%; max-width: 400px; margin: 0 auto; padding: 12px; font-size: 16px; display:block;">📔 写完了，锁进抽屉</button>
+
+                <div id="myDiaryListContainer" style="margin-top:20px; display:flex; flex-direction:column; gap:14px;"></div>
             </div>
         </div>
         <div id="view-novel" style="display: none;">
@@ -254,51 +359,216 @@
                     <button class="btn-primary" id="btnImmersiveRead" style="width:auto; margin:0; padding:8px 16px; font-size:14px;" onclick="openNovelReader()">📖 沉浸阅读</button>
                 </div>
 
+                <div class="form-hint" style="margin-bottom:20px;">
+                    💬 一轮一轮推进的互动续写已经独立成左侧导航栏的「<b>续写</b>」了，功能更全（独立会话、章节存档、楼层隐藏）。这里保留的是「填大纲 → 一次生成整章」的玩法。
+                </div>
+
                 <div class="input-group full-width" style="background: rgba(255,255,255,0.6); padding: 15px; border-radius: 12px; border: 1px solid #eff3f4;">
                     <label>🎭 设定出场角色 (将结合角色人设生成剧情)</label>
                     <div id="novelCharCheckboxes" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
                 </div>
-                
-                <div class="input-group full-width" style="background: rgba(255,255,255,0.6); padding: 15px; border-radius: 12px; border: 1px solid #eff3f4;">
-                    <label>🌍 挂载世界书 (将强制结合设定背景)</label>
-                    <div id="novelWbCheckboxes" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+
+                <div class="input-group full-width" style="background: rgba(255,255,255,0.6); padding: 12px 15px; border-radius: 12px; border: 1px solid #eff3f4;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+                        <input type="checkbox" id="novelSecondPerson" checked onchange="syncNovelSecondPerson(this.checked)">
+                        🫵 默认使用第二人称视角（把"你"当作故事主角来写；两种模式共用，取消勾选则不强制人称，由AI自行判断）
+                    </label>
                 </div>
-                
-                <div class="input-group full-width" style="background: rgba(255,255,255,0.6); padding: 15px; border-radius: 12px; border: 1px solid #eff3f4;">
-                    <label>📖 故事大纲 (AI将根据此大纲发展剧情)</label>
-                    <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-start;">
-                        <textarea id="novelOutlineText" rows="4" style="flex:1; min-width:300px; padding:10px; border:1px solid #1d9bf0; border-radius:8px; font-size:14px; outline:none; background:transparent; resize:vertical; overflow:auto;"></textarea>
-                        <div style="display:flex; flex-direction:column; gap:10px; min-width:140px;">
-                            <button class="btn-secondary" style="margin:0;" onclick="document.getElementById('novelOutlineFile').click()">📥 导入 TXT 大纲</button>
-                            <input type="file" id="novelOutlineFile" accept="*/*" style="display:none;" onchange="importNovelOutline(event)">
-                            <div class="input-group" style="margin:0;">
-                                <label style="margin:0; font-size:13px; color:#536471;">每章字数设定</label>
-                                <input type="number" id="novelWordCount" value="1000" style="width:100%; padding:8px; border:1px solid #1d9bf0; border-radius:6px; font-size:14px;">
+
+                <div class="input-group full-width" id="novelTheaterBox" style="display:none; background: rgba(255,255,255,0.6); padding: 12px 15px; border-radius: 12px; border: 1px solid #eff3f4;">
+                    <label>🎭 小剧场（来自当前启用的预设，两种模式共用）</label>
+                    <div class="form-hint" style="margin-bottom:8px;">当前启用的预设里检测到下面这些"剧场"相关模块，勾选想要的主题——生成正文时会额外附带一段小剧场番外。这里的开关跟"预设"设置页是同一份数据，改哪边都会同步。</div>
+                    <div id="novelTheaterCheckboxes" style="display:flex; flex-direction:column; gap:6px;"></div>
+                </div>
+
+                <div id="novelOutlineModeBox">
+                    <div class="input-group full-width" style="background: rgba(255,255,255,0.6); padding: 15px; border-radius: 12px; border: 1px solid #eff3f4;">
+                        <label>🌍 挂载世界书 (将强制结合设定背景)</label>
+                        <div id="novelWbCategoryBar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+                        <div id="novelWbCheckboxes" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+                    </div>
+                    
+                    <div class="input-group full-width" style="background: rgba(255,255,255,0.6); padding: 15px; border-radius: 12px; border: 1px solid #eff3f4;">
+                        <label>📖 故事大纲 (AI将根据此大纲发展剧情)</label>
+                        <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-start;">
+                            <textarea id="novelOutlineText" rows="4" style="flex:1; min-width:300px; padding:10px; border:1px solid #1d9bf0; border-radius:8px; font-size:14px; outline:none; background:transparent; resize:vertical; overflow:auto;"></textarea>
+                            <div style="display:flex; flex-direction:column; gap:10px; min-width:140px;">
+                                <button class="btn-secondary" style="margin:0;" onclick="openFilePickerForApp('novelOutlineFile')">📥 导入 TXT 大纲</button>
+                                <input type="file" id="novelOutlineFile" accept="*/*" style="display:none;" onchange="importNovelOutline(event)">
+                                <div class="input-group" style="margin:0;">
+                                    <label style="margin:0; font-size:13px; color:#536471;">每章字数设定</label>
+                                    <input type="number" id="novelWordCount" value="1000" style="width:100%; padding:8px; border:1px solid #1d9bf0; border-radius:6px; font-size:14px;">
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                
-                <div style="text-align:center; margin: 25px 0;">
-                    <button class="btn-primary" id="btnGenNovelChapter" onclick="generateNovelChapter()" style="width:60%; font-size: 18px;">继续发展</button>
-                </div>
-
-                <div id="novelTempArea" style="display:none; padding:15px; border:2px dashed #1d9bf0; border-radius:12px; margin-bottom:25px; background:rgba(29,155,240,0.05);">
-                    <h3 style="margin-top:0; color:#1d9bf0; display:flex; justify-content:space-between;">预览新章节 
-                        <button style="background:none; border:none; font-size:24px; cursor:pointer; color:#1d9bf0;" onclick="toggleNovelTempFull(this)">⛶</button>
-                    </h3>
-                    <textarea id="novelTempContent" style="width:100%; height:300px; padding:15px; font-family:inherit; font-size:15px; line-height:1.6; border:1px solid #1d9bf0; border-radius:8px; outline:none; resize:vertical; background:white; color:#0f1419;"></textarea>
-                    <div style="display:flex; gap:15px; justify-content:center; margin-top:15px;">
-                        <button class="btn-primary" style="width:auto; padding:10px 30px;" onclick="keepNovelChapter()">💾 保留此章</button>
-                        <button class="btn-secondary" style="width:auto; padding:10px 30px; margin-top:0;" onclick="generateNovelChapter(true)">🔄 重新生成</button>
-                        <button class="btn-secondary" style="width:auto; padding:10px 30px; margin-top:0; color:#f91880; border-color:#f91880;" onclick="discardNovelChapter()">🗑️ 放弃</button>
+                    
+                    <div style="text-align:center; margin: 25px 0; display:flex; gap:12px; justify-content:center; align-items:center; flex-wrap:wrap;">
+                        <button class="btn-primary" id="btnGenNovelChapter" onclick="generateNovelChapter()" style="width:60%; font-size: 18px;">继续发展</button>
+                        <button type="button" class="btn-secondary" style="width:auto; padding:10px 20px; margin-top:0;" onclick="showNovelGreetingPicker(true)" title="用已勾选角色的开场白直接作为一章内容">💬 用开场白开个头</button>
+                        <button type="button" class="btn-secondary" style="width:auto; padding:10px 20px; margin-top:0;" onclick="openNovelSourceSummaryModal()" title="从续写/日记信件/聊天/推文/评论/记忆里自选内容，AI帮你总结改写成一章">✨ 用已有内容生成</button>
                     </div>
+
+                    <div id="novelTempArea" style="display:none; padding:15px; border:2px dashed #1d9bf0; border-radius:12px; margin-bottom:25px; background:rgba(29,155,240,0.05);">
+                        <h3 style="margin-top:0; color:#1d9bf0; display:flex; justify-content:space-between;">预览新章节 
+                            <button style="background:none; border:none; font-size:24px; cursor:pointer; color:#1d9bf0;" onclick="toggleNovelTempFull(this)">⛶</button>
+                        </h3>
+                        <textarea id="novelTempContent" style="width:100%; height:300px; padding:15px; font-family:inherit; font-size:15px; line-height:1.6; border:1px solid #1d9bf0; border-radius:8px; outline:none; resize:vertical; background:white; color:#0f1419;"></textarea>
+                        <div style="display:flex; gap:15px; justify-content:center; margin-top:15px;">
+                            <button class="btn-primary" style="width:auto; padding:10px 30px;" onclick="keepNovelChapter()">💾 保留此章</button>
+                            <button class="btn-secondary" style="width:auto; padding:10px 30px; margin-top:0;" onclick="generateNovelChapter(true)">🔄 重新生成</button>
+                            <button class="btn-secondary" style="width:auto; padding:10px 30px; margin-top:0; color:#f91880; border-color:#f91880;" onclick="discardNovelChapter()">🗑️ 放弃</button>
+                        </div>
+                    </div>
+
+                    <h3 style="border-bottom:2px solid #eff3f4; padding-bottom:10px; color:#536471;">已发生的故事</h3>
+                    <div id="novelChaptersContainer" style="display:flex; flex-direction:column; gap:15px;"></div>
                 </div>
 
-                <h3 style="border-bottom:2px solid #eff3f4; padding-bottom:10px; color:#536471;">已发生的故事</h3>
-                <div id="novelChaptersContainer" style="display:flex; flex-direction:column; gap:15px;"></div>
             </div>
         </div>
+
+  <!-- ============================ 续写工作台 ============================ -->
+  <div id="view-story-studio" style="display: none;">
+
+    <!-- 会话列表 -->
+    <div id="storyStudioListView">
+        <div class="header-title"><div class="back-btn" onclick="goBackToPreviousView()">←</div> 续写</div>
+        <div style="padding:15px;">
+            <div class="ss-hint">
+                每段续写是一个独立的会话，大纲、出场角色、字数、人称都各存一份，互不干扰。
+                输入几句话开个头或引导方向，AI 会顺着往下写，一轮一轮推进剧情。
+            </div>
+            <button class="btn-primary" style="margin:15px 0;" onclick="newStorySession()">＋ 新建续写</button>
+            <div id="storyStudioList"></div>
+        </div>
+    </div>
+
+    <!-- 工作台 -->
+    <div id="storyStudioWorkView" style="display:none;">
+        <div class="header-title">
+            <div class="back-btn" onclick="closeStorySession()">←</div>
+            <input type="text" id="ssTitle" placeholder="给这段故事起个名字…" class="ss-title-input" onchange="saveSsSettings()">
+        </div>
+
+        <div class="ss-tabs">
+            <button class="ss-tab active" id="ssTab-write" onclick="switchStoryTab('write')">📖 续写</button>
+            <button class="ss-tab" id="ssTab-set" onclick="switchStoryTab('set')">⚙️ 设定</button>
+            <button class="ss-tab" id="ssTab-arc" onclick="switchStoryTab('arc')">📚 章节</button>
+        </div>
+
+        <!-- —— 续写页 —— -->
+        <div id="ssPane-write" style="padding:0 15px 15px;">
+            <div id="ssGreetRow" style="margin-bottom:12px;">
+                <button class="btn-secondary" style="width:auto; padding:8px 18px; margin-top:0;" onclick="showSsGreetingPicker()">💬 用角色开场白开个头</button>
+            </div>
+            <div id="ssTurns"></div>
+
+            <!-- 角色卡组件通过 replaceScriptButtons() 注册的按钮栏。
+                 酒馆里这类按钮挂在脚本库的抽屉里，谷雨这边直接放在续写的操作区上方——
+                 卡片就在这个页面里，按钮离它近才用得顺手。点一下把事件发回给注册它的那张卡。 -->
+            <div id="ssCardButtons" style="display:none; gap:8px; justify-content:center; margin:0 0 8px; flex-wrap:wrap;"></div>
+
+            <div id="ssActions" style="display:flex; gap:10px; justify-content:center; margin:0 0 8px; flex-wrap:wrap;">
+                <button class="btn-secondary" style="width:auto; padding:6px 14px; margin-top:0; font-size:13px;" onclick="regenSsLastTurn()">🔄 重roll</button>
+                <button class="btn-secondary" style="width:auto; padding:6px 14px; margin-top:0; font-size:13px;" onclick="saveSsChapter()">💾 存为新章节</button>
+                <button class="btn-secondary" style="width:auto; padding:6px 14px; margin-top:0; font-size:13px; color:#f91880; border-color:#f91880;" onclick="clearSsTurns()">🗑️ 清空</button>
+            </div>
+
+            <div id="ssImagePreviewBox" style="display:none; margin-bottom:8px;">
+                <div style="position:relative; display:inline-block;">
+                    <img id="ssImagePreview" style="max-height:90px; max-width:160px; border-radius:8px; border:1px solid #1d9bf0; display:block;">
+                    <span onclick="ssRemoveImage()" title="移除图片" style="position:absolute; top:-8px; right:-8px; background:#f91880; color:white; border-radius:50%; width:20px; height:20px; text-align:center; line-height:20px; font-size:13px; cursor:pointer;">×</span>
+                </div>
+            </div>
+
+            <div class="chat-input-area" style="border-radius:12px; border:1px solid #eff3f4;">
+                <div class="chat-input-row">
+                    <input type="file" id="ssImageInput" accept="image/*" style="display:none;" onchange="ssPickImage(event)">
+                    <span onclick="openFilePickerForApp('ssImageInput')" title="上传截图/图片，AI 会结合图片内容续写" style="cursor:pointer; font-size:20px; padding:0 4px; user-select:none;">🖼️</span>
+                    <input type="text" id="ssInput" placeholder="输入几句话，引导剧情往下发展..." onkeypress="if(event.key === 'Enter') ssSendClick()">
+                    <span title="语音输入" style="cursor:pointer; font-size:20px; padding:0 4px; user-select:none;" onclick="toggleVoiceInput('ssInput', this)">🎤</span>
+                    <button class="btn-post" onclick="ssSendClick()" id="ssSend">续写</button>
+                </div>
+            </div>
+
+
+        </div>
+
+        <!-- —— 设定页 —— -->
+        <div id="ssPane-set" style="display:none; padding:0 15px 15px;">
+            <div class="input-group full-width ss-box">
+                <label>📖 故事大纲（AI 将围绕此大纲发展剧情）</label>
+                <textarea id="ssOutline" rows="4" placeholder="留空则完全由你每一轮的输入带方向。"></textarea>
+            </div>
+
+            <div class="input-group full-width ss-box">
+                <label>🎭 出场角色（结合角色人设与各自的专属世界书）</label>
+                <div id="ssCharChecks" class="ss-checks"></div>
+            </div>
+
+            <div class="input-group full-width ss-box">
+                <label>➕ 补充登场人物</label>
+                <div class="form-hint" style="margin-bottom:8px;">角色卡里没有的临时人物写在这里，会一起发给 AI。</div>
+                <textarea id="ssExtraChars" rows="3" placeholder="例：便利店店员老陈，五十来岁，话少，认识主角很多年了。"></textarea>
+            </div>
+
+            <div class="input-group full-width ss-box">
+                <div class="ss-grid2">
+                    <div>
+                        <label>每轮续写字数</label>
+                        <input type="number" id="ssWordCount" value="300" min="50" max="5000">
+                    </div>
+                    <div>
+                        <label>发给 AI 的历史轮数</label>
+                        <input type="number" id="ssMaxHistory" value="20" min="2" max="200">
+                    </div>
+                </div>
+                <label class="ss-chk" style="margin-top:14px;">
+                    <input type="checkbox" id="ssSecondPerson" checked>
+                    🫵 默认使用第二人称视角（把"你"当作故事主角来写）
+                </label>
+            </div>
+
+            <div class="input-group full-width ss-box">
+                <label>🔌 这段续写用哪个 API</label>
+                <select id="ssApiMode">
+                    <option value="sub">副API 优先（没配副API就自动用主API）</option>
+                    <option value="main">固定用主API</option>
+                </select>
+                <div class="form-hint" style="margin-top:8px;">两种都会经过世界书、正则、宏和 EJS 模板，区别只是请求发给哪个接口。</div>
+            </div>
+
+            <button class="btn-primary" style="margin:15px 0;" onclick="saveSsSettings()">💾 保存设定</button>
+
+            <details class="ss-box" style="padding:12px 15px;">
+                <summary style="cursor:pointer; font-size:13px; font-weight:600; color:#536471;">🧩 这段续写当前接到了什么</summary>
+                <div id="ssDiag" style="font-size:13px; color:#536471; margin-top:10px;"></div>
+            </details>
+        </div>
+
+        <!-- —— 章节页 —— -->
+        <div id="ssPane-arc" style="display:none; padding:0 15px 15px;">
+            <div class="ss-hint" style="margin-bottom:12px;">
+                「存为新章节」会把当前所有剧情收成一章并清空，方便开始下一段。
+            </div>
+            <button class="btn-secondary" style="width:auto; padding:8px 18px; margin:0 0 15px;" onclick="exportSsTxt()">📥 导出全部为 TXT</button>
+            <div id="ssChapters"></div>
+        </div>
+    </div>
+  </div>
+
+  <div id="ssTurnContextMenu" class="custom-context-menu"></div>
+
+  <div id="ssReaderModal" class="modal-overlay">
+    <div class="modal-box" style="width:720px; max-width:92vw;">
+        <h2 id="ssReaderTitle">章节</h2>
+        <div id="ssReaderContent" style="font-size:17px; line-height:1.9; white-space:pre-wrap; max-height:64vh; overflow-y:auto; padding:10px 2px; color:#0f1419;"></div>
+        <div style="display:flex; justify-content:flex-end; margin-top:15px;">
+            <button class="btn-secondary" style="width:auto; padding:8px 24px; margin-top:0;" onclick="closeModal('ssReaderModal')">关闭</button>
+        </div>
+    </div>
+  </div>
 
   <div id="view-tabloid" style="display: none;">
             <div class="header-title"><div class="back-btn" onclick="goBackToPreviousView()">←</div> 瓜条来咯</div>
@@ -379,16 +649,26 @@
                 <div id="chatAttachmentPreview" class="emo-preview-box" style="display:none; padding-left:0; margin-bottom:10px;"></div>
                 <!-- 输入框上方的工具图标一排：导演耳语/表情图片/小游戏（小游戏图标点了以后由 registerMiniGame() 注册进来的具体游戏插件接管） -->
                 <div id="chatToolIconsRow" style="display:flex; gap:6px; margin-bottom:8px; align-items:center;">
-                    <button class="btn-edit-small" title="导演耳语 (Author's Note)" onclick="const an = document.getElementById('chatAuthorsNote'); an.style.display = an.style.display === 'none' ? 'block' : 'none';">📝</button>
+                    <button class="btn-edit-small" title="导演耳语 (Author's Note)" onclick="const an = document.getElementById('chatAuthorsNoteBox'); an.style.display = an.style.display === 'none' ? 'block' : 'none';">📝</button>
                     <button class="btn-edit-small" title="添加表情/图片" onclick="openEmoticonPicker('chat')">🖼️</button>
+                    <input type="file" id="chatImageUploadInput" accept="image/*" style="display:none;" onchange="handleDirectImageUpload(this, 'chat')">
+                    <button class="btn-edit-small" title="上传图片" onclick="document.getElementById('chatImageUploadInput').click()">📷</button>
                     <button class="btn-edit-small mini-game-icon-badge" id="miniGameIconBtn" title="小游戏" onclick="onMiniGameIconClick()">🎮</button>
+                    <button class="btn-edit-small" title="估算当前prompt字数/token体积" onclick="estimateCurrentPromptSize()">📊</button>
                 </div>
                 <div class="chat-input-row">
                     <input type="text" id="chatInput" placeholder="输入消息..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
+                    <button class="btn-edit-small" title="语音输入" style="margin:0;" onclick="toggleVoiceInput('chatInput', this)">🎤</button>
                     <button class="btn-post" onclick="sendChatMessage()">发送</button>
                 </div>
-                <!-- 新增：导演耳语隐藏输入框 -->
-                <input type="text" id="chatAuthorsNote" placeholder="[导演耳语 A/N]：输入上帝指令，如: 让角色接下来的语气变得极度暴躁..." style="display:none; margin-top:8px; border:1px dashed #f91880; background:rgba(249,24,128,0.05); color:#f91880; border-radius:8px; padding:8px 12px; font-size:13px; outline:none; width:100%;">
+                <!-- 导演耳语 (Author's Note)：文本 + 频率(每N条消息生效一次) + 深度(插到倒数第几条消息位置，0=固定在prompt末尾) -->
+                <div id="chatAuthorsNoteBox" style="display:none; margin-top:8px; border:1px dashed #f91880; background:rgba(249,24,128,0.05); border-radius:8px; padding:8px 12px;">
+                    <input type="text" id="chatAuthorsNote" placeholder="[导演耳语 A/N]：输入上帝指令，如: 让角色接下来的语气变得极度暴躁..." style="border:none; background:transparent; color:#f91880; font-size:13px; outline:none; width:100%; padding:0;">
+                    <div style="display:flex; align-items:center; gap:10px; margin-top:6px; font-size:11px; color:#8b98a5;">
+                        <label style="display:flex; align-items:center; gap:3px;">每<input type="number" id="anFrequencyInput" min="1" value="1" style="width:44px; padding:2px 4px;">条消息生效一次</label>
+                        <label style="display:flex; align-items:center; gap:3px;">插入深度<input type="number" id="anDepthInput" min="0" value="0" style="width:44px; padding:2px 4px;">（0＝固定在末尾，>0＝插到倒数第N条消息前）</label>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -557,12 +837,20 @@
                 <div id="collapse-char-behavior" style="display:none; margin-top:15px;">
 
                     <div class="input-group full-width" style="background:rgba(255,255,255,0.8); border:1px solid #1d9bf0; padding:10px; border-radius:8px;">
-                        <label style="color:#1d9bf0;">⏱️ 自动发帖频率设定</label>
+                        <label style="color:#1d9bf0;">⏱️ 自动发帖频率设定（首页推文）</label>
                         <div class="freq-group">每 <input type="number" id="freqInterval" value="1" min="1"> <select id="freqUnit" style="width:70px;"><option value="minute">分钟</option><option value="hour">小时</option><option value="day" selected>天</option></select> 发布 <input type="number" id="freqCount" value="1" min="1"> 条帖子</div>
                     </div>
                     <div class="input-group full-width" style="background:rgba(255,255,255,0.8); border:1px solid #1d9bf0; padding:10px; border-radius:8px;">
                         <label style="color:#1d9bf0;">💬 主动发消息间隔（私聊）</label>
                         <div class="freq-group">每 <input type="number" id="chatFreqInterval" value="0" min="0"> <select id="chatFreqUnit" style="width:70px;"><option value="minute">分钟</option><option value="hour" selected>小时</option><option value="day">天</option></select> 主动发起一次对话（设为 0 表示不主动发起）</div>
+                    </div>
+                    <div class="input-group full-width" style="background:rgba(255,255,255,0.8); border:1px solid #1d9bf0; padding:10px; border-radius:8px;">
+                        <label style="color:#1d9bf0;">✉️ 主动写信频率（寄来的信件）</label>
+                        <div class="freq-group">每 <input type="number" id="letterFreqInterval" value="0" min="0"> <select id="letterFreqUnit" style="width:70px;"><option value="minute">分钟</option><option value="hour">小时</option><option value="day" selected>天</option></select> 主动写一封信给你（设为 0 表示不主动写信）</div>
+                    </div>
+                    <div class="input-group full-width" style="background:rgba(255,255,255,0.8); border:1px solid #1d9bf0; padding:10px; border-radius:8px;">
+                        <label style="color:#1d9bf0;">📋 自动发帖频率（论坛板块，实名发新帖）</label>
+                        <div class="freq-group">每 <input type="number" id="forumFreqInterval" value="0" min="0"> <select id="forumFreqUnit" style="width:70px;"><option value="minute">分钟</option><option value="hour" selected>小时</option><option value="day">天</option></select> 主动发一条新帖（设为 0 表示不主动发帖）</div>
                     </div>
                     <div class="input-group full-width" style="background:rgba(255,255,255,0.8); border:1px solid #1d9bf0; padding:10px; border-radius:8px;">
                         <label style="color:#1d9bf0;">🤐 不愿回复时的自动回复（群聊@/不想理人时使用）</label>
@@ -586,6 +874,9 @@
                     <div class="form-grid" style="background:rgba(51,51,51,0.8); padding:10px; border-radius:8px;">
                         <div class="input-group"><label style="color:#ccc;">匿名论坛昵称</label><input type="text" id="charAnonName" placeholder="留空则由AI自动生成" style="background:#222; color:#fff; border-color:#555;"></div>
                         <div class="input-group"><label style="color:#ccc;">匿名论坛 ID</label><input type="text" id="charAnonId" placeholder="留空则由AI自动生成" style="background:#222; color:#fff; border-color:#555;"></div>
+                        <div class="input-group full-width"><label style="color:#ccc;">自动发帖频率（匿名身份主动发帖）</label>
+                            <div class="freq-group" style="color:#ccc;">每 <input type="number" id="anonFreqInterval" value="0" min="0" style="width:60px;"> <select id="anonFreqUnit" style="width:70px; background:#222; color:#fff; border-color:#555;"><option value="minute">分钟</option><option value="hour" selected>小时</option><option value="day">天</option></select> 主动发一条匿名帖（设为 0 表示不主动发）</div>
+                        </div>
                     </div>
 
                 </div>
@@ -601,6 +892,7 @@
                     <div class="input-group full-width">
                         <label>📚 挂载专属世界书 (可多选)</label>
                         <div class="form-hint" style="margin-bottom:8px;">角色将强制结合已勾选的世界观背景生成推文与对话。（全局生效的世界书已自动生效，此处无需勾选）</div>
+                        <div id="charWbCategoryBar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
                         <div id="charWbCheckboxes" style="display:flex; gap:10px; flex-wrap:wrap; border:1px solid #1d9bf0; padding:10px; border-radius:8px; background:rgba(255,255,255,0.8);"></div>
                     </div>
                     <div class="input-group full-width">
@@ -615,6 +907,7 @@
             </div>
 
             <button class="btn-primary" id="saveCharBtn" onclick="saveCharacter()" style="margin-top:20px;">保存并生成角色</button>
+            <button class="btn-secondary" onclick="exportCurrentFormCharacter()" style="margin-top:10px; background:rgba(29,155,240,0.05); color:#1d9bf0; border-color:#1d9bf0;">📤 导出角色卡(PNG)</button>
             <button class="btn-cancel" id="cancelCharBtn" onclick="showRoleList()">返回列表</button>
         </div>
     </div>
@@ -657,6 +950,12 @@
     <div class="header-title"><div class="back-btn" onclick="goBackToPreviousView()">←</div> 系统设置</div>
     <div style="padding:15px 20px 30px; max-width:700px; margin:0 auto;">
         <div class="form-hint">支持任何兼容 OpenAI 格式的 API。</div>
+        <div class="form-hint" style="border-left-color:#ffad1f; background:rgba(255,173,31,0.1);">
+            ⚠️ <b>网页版CORS提醒</b>：如果填好API地址/密钥后一直转圈圈、或报"网络错误/Failed to fetch"，
+            打开浏览器控制台（F12→Console）看一眼——如果报错里出现"CORS"或"blocked by CORS policy"字样，
+            说明是这家API服务商没有给浏览器开放跨域访问权限，不是你填错了。常见解法：①换一家支持CORS的中转/代理服务商；
+            ②自己套一层允许CORS的反向代理转发一下；③或者用打包好的APK版本（走的是手机原生网络通道，不受这个限制）。
+        </div>
 
         <div style="background: rgba(29, 155, 240, 0.05); border: 1px solid #1d9bf0; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
             <h4 style="margin-top:0; color:#1d9bf0; margin-bottom:10px;">🌟 主 API (负责发帖、匿名版、推文记忆等)</h4>
@@ -677,28 +976,28 @@
                         <option value="deepseek-v4-flash">deepseek-v4-flash（低延迟低成本，原deepseek-chat/deepseek-reasoner的替代）</option>
                         <option value="deepseek-v4-pro">deepseek-v4-pro（复杂推理/编程/多步任务）</option>
                     </optgroup>
-                    <optgroup label="OpenAI">
+                    <optgroup label="OpenAI ⚠️需服务商支持（通常需第三方中转/distributor提供，非官方直连）">
                         <option value="gpt-5.6">gpt-5.6（旗舰，等同gpt-5.6-sol）</option>
                         <option value="gpt-5.6-terra">gpt-5.6-terra（性能与成本均衡）</option>
                         <option value="gpt-5.6-luna">gpt-5.6-luna（高性价比/高并发）</option>
                         <option value="gpt-5.5">gpt-5.5</option>
                     </optgroup>
-                    <optgroup label="Anthropic Claude">
+                    <optgroup label="Anthropic Claude ⚠️需服务商支持（通常需第三方中转/distributor提供，非官方直连）">
                         <option value="claude-opus-4-8">claude-opus-4-8</option>
                         <option value="claude-fable-5">claude-fable-5</option>
                         <option value="claude-sonnet-5">claude-sonnet-5</option>
                         <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
                     </optgroup>
-                    <optgroup label="Google Gemini">
+                    <optgroup label="Google Gemini ⚠️需服务商支持（通常需第三方中转/distributor提供，非官方直连）">
                         <option value="gemini-3.5-flash">gemini-3.5-flash</option>
                         <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
                         <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
                     </optgroup>
-                    <optgroup label="xAI Grok">
+                    <optgroup label="xAI Grok ⚠️需服务商支持（通常需第三方中转/distributor提供，非官方直连）">
                         <option value="grok-4.5">grok-4.5</option>
                     </optgroup>
                 </select>
-                <div style="font-size:11px; color:#8b98a5; margin-top:4px;">以上是常见模型的快捷预设，具体以你使用的API服务商实际支持为准；如果你的API支持拉取模型列表，优先点上面的"🔄 拉取模型"按钮获取该服务商的真实可用列表。</div>
+                <div style="font-size:11px; color:#8b98a5; margin-top:4px;">以上是常见模型的快捷预设，标了"⚠️需服务商支持"的分组通常要走第三方中转/distributor才能用到，不保证你当前用的服务商已经开通；DeepSeek分组是官方默认直连地址(api.deepseek.com)相对稳妥。具体以你使用的API服务商实际支持为准；如果你的API支持拉取模型列表，优先点上面的"🔄 拉取模型"按钮获取该服务商的真实可用列表。</div>
             </div>
         </div>
 
@@ -730,24 +1029,24 @@
                         <option value="deepseek-v4-flash">deepseek-v4-flash</option>
                         <option value="deepseek-v4-pro">deepseek-v4-pro</option>
                     </optgroup>
-                    <optgroup label="OpenAI">
+                    <optgroup label="OpenAI ⚠️需服务商支持（通常需第三方中转/distributor提供，非官方直连）">
                         <option value="gpt-5.6">gpt-5.6</option>
                         <option value="gpt-5.6-terra">gpt-5.6-terra</option>
                         <option value="gpt-5.6-luna">gpt-5.6-luna</option>
                         <option value="gpt-5.5">gpt-5.5</option>
                     </optgroup>
-                    <optgroup label="Anthropic Claude">
+                    <optgroup label="Anthropic Claude ⚠️需服务商支持（通常需第三方中转/distributor提供，非官方直连）">
                         <option value="claude-opus-4-8">claude-opus-4-8</option>
                         <option value="claude-fable-5">claude-fable-5</option>
                         <option value="claude-sonnet-5">claude-sonnet-5</option>
                         <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
                     </optgroup>
-                    <optgroup label="Google Gemini">
+                    <optgroup label="Google Gemini ⚠️需服务商支持（通常需第三方中转/distributor提供，非官方直连）">
                         <option value="gemini-3.5-flash">gemini-3.5-flash</option>
                         <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
                         <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
                     </optgroup>
-                    <optgroup label="xAI Grok">
+                    <optgroup label="xAI Grok ⚠️需服务商支持（通常需第三方中转/distributor提供，非官方直连）">
                         <option value="grok-4.5">grok-4.5</option>
                     </optgroup>
                 </select>
@@ -756,12 +1055,63 @@
 
 
         <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
+            <label style="font-size:16px;">🎚️ 采样参数 (Sampling)</label>
+            <div class="form-hint" style="margin:6px 0 10px;">控制AI回复的随机性/重复度，全部留空＝不发送该参数，使用服务商默认值。不确定的话不用改。</div>
+            <div class="form-grid">
+                <div class="input-group">
+                    <label>温度 Temperature (0~2)</label>
+                    <input type="number" id="samplerTemperature" step="0.1" min="0" max="2" placeholder="留空=默认" oninput="autoSaveApiSettings()">
+                </div>
+                <div class="input-group">
+                    <label>Top P (0~1)</label>
+                    <input type="number" id="samplerTopP" step="0.01" min="0" max="1" placeholder="留空=默认" oninput="autoSaveApiSettings()">
+                </div>
+                <div class="input-group">
+                    <label>频率惩罚 Frequency Penalty (-2~2)</label>
+                    <input type="number" id="samplerFrequencyPenalty" step="0.1" min="-2" max="2" placeholder="留空=默认，仅OpenAI兼容接口生效" oninput="autoSaveApiSettings()">
+                </div>
+                <div class="input-group">
+                    <label>存在惩罚 Presence Penalty (-2~2)</label>
+                    <input type="number" id="samplerPresencePenalty" step="0.1" min="-2" max="2" placeholder="留空=默认，仅OpenAI兼容接口生效" oninput="autoSaveApiSettings()">
+                </div>
+                <div class="input-group">
+                    <label>Top K（整数，部分服务商/Claude支持）</label>
+                    <input type="number" id="samplerTopK" step="1" min="0" placeholder="留空=默认，仅Anthropic接口生效" oninput="autoSaveApiSettings()">
+                </div>
+            </div>
+        </div>
+
+        <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
             <label style="font-size:16px;">📝 AI 生成字数上限设置</label>
             <div class="form-grid">
-                <div class="input-group"><label>聊天消息字数</label><input type="number" id="limitChat" value="50"></div>
+                <div class="input-group"><label>聊天回复总字数</label><input type="number" id="limitChat" value="50"></div>
                 <div class="input-group"><label>推文(动态)字数</label><input type="number" id="limitPost" value="50"></div>
                 <div class="input-group"><label>日记生成字数</label><input type="number" id="limitDiary" value="400"></div>
                 <div class="input-group"><label>信件生成字数</label><input type="number" id="limitLetter" value="400"></div>
+                <div class="input-group"><label>评论/回帖字数</label><input type="number" id="limitComment" value="30"></div>
+            </div>
+
+            <div class="input-group" style="margin-top:14px; border-top:1px dashed #cfd9de; padding-top:12px;">
+                <label>💬 聊天回复条数/长度模式</label>
+                <select id="chatReplyStyleModeSelect" onchange="toggleChatReplyStyleFieldsVisibility()">
+                    <option value="limited">可控字数模式（默认）：上面"聊天回复总字数"封顶，条数在下面"最少~最多"范围内AI自己决定</option>
+                    <option value="classic">经典模式（旧版聊天体验）：条数随机1~4条，单条不限字数，不受"聊天回复总字数"限制</option>
+                </select>
+                <div class="form-hint" style="margin-top:6px;">两种模式二选一，切换随时可以改回来：想控制回复长度/省token用"可控字数模式"；觉得被总字数卡得不够自然、更喜欢旧版本那种聊天感觉的可以切回"经典模式"——这是照搬旧版本的原始设定，条数固定随机1~4条、每条想写多长写多长，不设总字数上限。</div>
+            </div>
+            <div class="form-grid" id="chatReplyLimitedFields">
+                <div class="input-group"><label>聊天回复最少条数</label><input type="number" id="limitChatMsgCountMin" value="1" min="1"></div>
+                <div class="input-group"><label>聊天回复最多条数</label><input type="number" id="limitChatMsgCountMax" value="5" min="1"></div>
+            </div>
+            <div style="font-size:12px; color:#536471; margin-top:6px;">💡"聊天回复总字数"是AI一次回复（可能拆成好几条消息分开发）加起来的总预算，不是每条单独的上限；具体分几条发、每条写多少字，由AI自己在"最少~最多条数"范围内决定。（这一段仅在"可控字数模式"下生效；切到"经典模式"后这两个条数输入框会隐藏、也不再生效，聊天回复总字数仍然会被"拍一拍反应""重新生成单条回复"这些其它场景用到）</div>
+        </div>
+
+        <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
+            <label style="font-size:16px;">⏳ 回信/日记反应等待时间</label>
+            <div class="form-hint" style="margin-bottom:8px;">你写信寄出去之后、或者日记被角色偷看之后，Ta不会立刻有反应，而是隔一段随机时间（在下面这个范围内随机抽一个数）才会回信/留批注——也可以直接点"⚡立即回复"跳过等待。</div>
+            <div class="form-grid">
+                <div class="input-group"><label>最短等待（分钟）</label><input type="number" id="letterReplyDelayMinInput" value="60" min="1"></div>
+                <div class="input-group"><label>最长等待（分钟）</label><input type="number" id="letterReplyDelayMaxInput" value="360" min="1"></div>
             </div>
         </div>
 
@@ -800,6 +1150,34 @@
                         <input type="checkbox" id="allowActionTags">
                         <label style="margin:0; font-size:14px; color:#536471;">允许角色使用动作与心理描写 (需在括号内，如()或【】)</label>
                     </div>
+                    <div class="input-group checkbox-group" style="margin-top:10px; margin-bottom:0;">
+                        <input type="checkbox" id="humanFeelEnabled" checked>
+                        <label style="margin:0; font-size:14px; color:#536471;">🎭 人味强化协议（反套路句式/反回声复述/情绪反应校准，注入到每次生成前）</label>
+                    </div>
+                    <div class="input-group checkbox-group" style="margin-top:10px; margin-bottom:0;">
+                        <input type="checkbox" id="tpesEnabled" checked>
+                        <label style="margin:0; font-size:14px; color:#536471;">⏰ TPES 时间感知增强（角色感知真实时间流逝，区分线上/线下/离线三种状态）</label>
+                    </div>
+                    <div class="input-group checkbox-group" style="margin-top:10px; margin-bottom:0;">
+                        <input type="checkbox" id="autoRenderStatusChips" checked>
+                        <label style="margin:0; font-size:14px; color:#536471;">🏷️ 自动识别方括号状态栏（把角色卡/世界书常见的 [标签|值] 格式自动渲染成好看的状态行，不区分具体标签名，聊天和推文评论都生效）</label>
+                    </div>
+                    <div class="input-group checkbox-group" style="margin-top:10px; margin-bottom:0;">
+                        <input type="checkbox" id="enableCharMoveToChat">
+                        <label style="margin:0; font-size:14px; color:#536471;">💬 允许角色把推文/评论互动转到私聊（关闭=按原逻辑在评论区回应；开启后角色可以自己判断"这事儿更适合私下聊"，转而主动发私聊消息找你）</label>
+                    </div>
+                    <div class="input-group checkbox-group" style="margin-top:10px; margin-bottom:0;">
+                        <input type="checkbox" id="showNovelReasoning" checked>
+                        <label style="margin:0; font-size:14px; color:#536471;">💭 小说/续写展示AI思考过程（可折叠展开，关闭则直接不显示思维链内容）</label>
+                    </div>
+                    <div class="input-group checkbox-group" style="margin-top:10px; margin-bottom:0;">
+                        <input type="checkbox" id="showNovelFloorNumber" checked>
+                        <label style="margin:0; font-size:14px; color:#536471;">🔢 互动续写展示楼层数（论坛楼层式编号）</label>
+                    </div>
+                    <div class="input-group checkbox-group" style="margin-top:10px; margin-bottom:0;">
+                        <input type="checkbox" id="showNovelThinkingTime" checked>
+                        <label style="margin:0; font-size:14px; color:#536471;">⏱️ 小说/续写展示AI生成耗时</label>
+                    </div>
                 </div>
 
                 <div class="input-group" style="margin-top:15px; border-top:1px dashed #1d9bf0; padding-top:15px; margin-bottom:0;">
@@ -816,6 +1194,17 @@
                         <input type="checkbox" id="enableMiniGameCharSpeech" checked>
                         <label style="margin:0; font-size:14px; color:#536471;">🎮 小游戏中角色发言（关闭后玩小游戏时角色不再评论/吐槽，只保留出牌/落子等系统消息）</label>
                     </div>
+                    <div class="input-group checkbox-group" style="margin-bottom:8px;">
+                        <input type="checkbox" id="quietHoursEnabled">
+                        <label style="margin:0; font-size:14px; color:#536471;">🌙 开启休息时间段（该时段内角色不会主动给你发消息，网页开着或关着都生效，云端同步已配置的话也会一起生效）</label>
+                    </div>
+                    <div class="input-group" style="margin-bottom:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-left:24px;">
+                        <label style="font-size:13px; color:#536471; white-space:nowrap;">从</label>
+                        <input type="time" id="quietHoursStart" value="23:00" style="padding:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:13px;">
+                        <label style="font-size:13px; color:#536471; white-space:nowrap;">到</label>
+                        <input type="time" id="quietHoursEnd" value="08:00" style="padding:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:13px;">
+                        <span style="font-size:12px; color:#8b98a5;">支持跨零点，比如 23:00 到 08:00</span>
+                    </div>
                     <div class="input-group full-width" style="margin-top: 20px; padding: 20px 10px 10px; border-top: 1px dashed #1d9bf0;">
             <h4 style="color:#1d9bf0; margin-top:0; margin-bottom:10px;">👥 角色后台互动设置</h4>
             
@@ -824,9 +1213,19 @@
                 <div><strong>允许角色私下互动</strong> <br><span style="font-size:12px; color:#536471;">推文/论坛的关系网联动，及后台小剧场将受此开关控制。</span></div>
             </label>
             
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419;">
+            <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px; cursor:pointer; font-size:14px; color:#0f1419;">
                 <input type="checkbox" id="settingNotifyCharInteraction" style="width:16px; height:16px; cursor:pointer;" onchange="saveGlobalInteractionSettings()">
                 <div><strong>互动时弹窗提醒我</strong> <br><span style="font-size:12px; color:#536471;">当系统抽中角色在后台发生私下互动时，在顶部弹出提示。</span></div>
+            </label>
+
+            <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px; cursor:pointer; font-size:14px; color:#0f1419;">
+                <input type="checkbox" id="settingCharReplyDelay" style="width:16px; height:16px; cursor:pointer;" onchange="saveGlobalInteractionSettings()">
+                <div><strong>角色评论不要秒回</strong> <br><span style="font-size:12px; color:#536471;">开启后，角色看到推文评论会隔几秒到几分钟才回（刷到的旧帖子拖得更久），更像真人刚刷到。关掉就是立刻回复。<b>注意：延迟期间关掉页面就不回了</b>，不会攒着下次补发。</span></div>
+            </label>
+
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419;">
+                <input type="checkbox" id="settingNpcArgue" style="width:16px; height:16px; cursor:pointer;" onchange="saveGlobalInteractionSettings()">
+                <div><strong>路人之间会互相接话</strong> <br><span style="font-size:12px; color:#536471;">评论区的路人网友会互相搭话、抬杠，而不是各说各的。关掉就只有各自评论一句。</span></div>
             </label>
         </div>
                     <div class="input-group checkbox-group" style="margin-bottom:0;">
@@ -847,8 +1246,37 @@
 
         <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
             <label style="font-size:16px;">🎨 全局界面自定义 (CSS)</label>
-            <div style="font-size:12px; color:#1d9bf0; margin-bottom:10px;">通过输入 CSS 代码完全美化和改变 UI。留空将使用默认外观。</div>
+            <div style="font-size:12px; color:#1d9bf0; margin-bottom:6px;">这里的CSS会作用于<b>整个App的所有界面</b>（首页/聊天/群聊/论坛/个人主页/设置……全部都行，不是只改某一页），留空则用默认外观。</div>
+            <div class="form-hint" style="margin-bottom:10px; font-size:12px;">
+                💡小贴士：改了某个东西没生效？大概率是因为那个元素本身写了内联样式(style="...")，内联样式的优先级天生比这里的CSS规则高，
+                加上 <code>!important</code> 就能强制覆盖，比如 <code>.chat-bubble.other { background:#eee !important; }</code>。
+                想知道该改哪个类名/id，可以用浏览器"检查元素"(F12)点一下你想改的东西看看。
+            </div>
             <textarea id="globalCSSInput" rows="6" style="width:100%; padding:10px; border:1px solid #1d9bf0; border-radius:8px; font-family:monospace; background:rgba(29,155,240,0.02); outline:none;"></textarea>
+        </div>
+
+        <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
+            <label style="font-size:16px;">🖱️ 点击特效</label>
+            <div style="font-size:12px; color:#1d9bf0; margin-bottom:10px;">开启后，点一下页面任何地方都会弹出一个小动画，纯装饰，不影响任何功能。</div>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:10px;">
+                <input type="checkbox" id="clickEffectEnabledInput" style="width:16px; height:16px; cursor:pointer;" onchange="saveClickEffectSettings()">
+                <div>开启点击特效</div>
+            </label>
+            <div class="input-group" style="margin-bottom:0;">
+                <label>特效样式</label>
+                <select id="clickEffectStyleSelect" onchange="onClickEffectStyleChange()">
+                    <option value="paw">🐾 爪印</option>
+                    <option value="heart">💗 爱心</option>
+                    <option value="sparkle">✨ 星星</option>
+                    <option value="custom">🖼️ 自定义图片</option>
+                </select>
+            </div>
+            <div id="clickEffectCustomImageBox" style="display:none; margin-top:10px; align-items:center; gap:10px;">
+                <div id="clickEffectCustomPreview" style="width:36px; height:36px; border-radius:8px; border:1px solid #1d9bf0; background-size:cover; background-position:center; flex-shrink:0;"></div>
+                <input type="file" id="clickEffectImageInput" accept="image/*" style="display:none;" onchange="if(this.files[0]) handleImageCrop(this.files[0], 1, b64 => { clickEffectCustomImage = b64; updateClickEffectCustomPreview(); saveClickEffectSettings(); this.value=''; })">
+                <button class="btn-edit-small" style="margin:0;" onclick="openFilePickerForApp('clickEffectImageInput')">上传图片</button>
+                <button class="btn-edit-small" style="margin:0; color:#f91880; border-color:#f91880;" onclick="clickEffectCustomImage=null; updateClickEffectCustomPreview(); saveClickEffectSettings();">清除</button>
+            </div>
         </div>
 
         <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
@@ -856,7 +1284,7 @@
 
             <label style="margin-top:10px;">自定义网站左上角 Logo (1:1 自选范围)</label>
             <input type="file" id="siteLogoFileInput" accept="image/*" onchange="if(this.files[0]) handleImageCrop(this.files[0], 1, b64 => { siteLogoImg = b64; updateSiteLogo(); saveAllData(); this.value=''; })">
-            <button class="btn-edit-small" style="margin-top:5px; margin-bottom:15px;" onclick="siteLogoImg=null; updateSiteLogo(); saveAllData();">恢复默认文字 Logo</button>
+            <button class="btn-edit-small" style="margin-top:5px; margin-bottom:15px;" onclick="siteLogoImg=null; updateSiteLogo(); saveAllData();">恢复默认 Logo</button>
 
             <label>上传全局背景图 (自由裁剪)</label>
             <input type="file" id="globalBgFileInput" accept="image/*" onchange="if(this.files[0]) handleImageCrop(this.files[0], window.innerWidth/window.innerHeight, b64 => { globalBgImage = b64; updateGlobalBgStyles(); saveAllData(); this.value=''; })">
@@ -880,6 +1308,130 @@
                 <input type="file" id="importFileInput" accept="*/*" style="display:none;" onchange="importData(event)">
             </div>
         </div>
+
+        <div class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px;">
+            <label style="font-size:15px;">🔗 从Git链接导入</label>
+            <div class="form-hint" style="margin:0 0 10px;">粘贴一个指向"原始文件"的直链——GitHub的raw.githubusercontent.com链接、Gitee的raw链接、jsdelivr链接，或者GitHub网页链接（会自动转成raw直链）都可以。会自动识别这是预设 / 世界书 / 角色卡(JSON或PNG) / 独立正则脚本里的哪一种，直接调用对应的导入逻辑——只导入数据，不会执行任何来源不明的代码。</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <input type="text" id="gitImportUrlInput" placeholder="https://raw.githubusercontent.com/xxx/xxx/main/xxx.json" style="flex:1; min-width:220px; padding:8px; border:1px solid #1d9bf0; border-radius:6px;">
+                <button class="btn-secondary" style="margin:0;" onclick="importFromGitLink()">📥 拉取并导入</button>
+            </div>
+            <div id="gitImportStatus" style="font-size:12px; color:#1d9bf0; margin-top:6px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 记忆总览：所有"AI自动记了什么/总结了什么"的数据，集中在这一个页面查看 ===== -->
+<div id="view-memory-hub" style="display: none;">
+    <div class="header-title"><div class="back-btn" onclick="goBackToPreviousView()">←</div> 🧠 记忆总览</div>
+    <div style="padding:15px 20px 40px; max-width:700px; margin:0 auto;">
+
+        <div class="input-group">
+            <label style="font-size:15px;">选择要查看的角色 / 群聊</label>
+            <select id="memoryHubTargetSelect" onchange="selectMemoryHubTarget(this.value)" style="width:100%; padding:10px; border:1px solid #1d9bf0; border-radius:6px; font-size:14px;"></select>
+        </div>
+
+        <div class="input-group" style="background:rgba(29,155,240,0.05); border:1px solid #1d9bf0; border-radius:10px; padding:14px 16px;">
+            <label style="font-size:15px;">⏱️ 自动总结频率</label>
+            <div style="font-size:12px; color:#536471; margin-bottom:10px;">聊天/群聊聊到第N条消息、或角色发了第N条推文，就会自动触发一次AI总结（总结内容会追加进下面对应的总结区）。数字越小总结越勤快（更省心但更耗token），越大越省但可能有段时间没被总结进去。</div>
+            <div class="form-grid">
+                <div class="input-group" style="margin-bottom:0;"><label style="font-size:13px; color:#536471;">单聊：每几条消息</label><input type="number" id="memHubChatSummaryInterval" min="1"></div>
+                <div class="input-group" style="margin-bottom:0;"><label style="font-size:13px; color:#536471;">群聊：每几条消息</label><input type="number" id="memHubGroupSummaryInterval" min="1"></div>
+                <div class="input-group" style="margin-bottom:0;"><label style="font-size:13px; color:#536471;">推文记忆：每几条推文</label><input type="number" id="memHubPostMemoryInterval" min="1"></div>
+            </div>
+            <button type="button" class="btn-primary" style="margin-top:12px; width:auto; padding:8px 20px;" onclick="saveMemoryHubIntervals()">保存频率设置</button>
+        </div>
+
+        <div class="input-group" style="background:rgba(29,155,240,0.05); border:1px solid #1d9bf0; border-radius:10px; padding:14px 16px;">
+            <label style="font-size:15px;">🧠 向量记忆总开关 / 模型 / 字数上限</label>
+            <div style="font-size:12px; color:#536471; margin-bottom:10px;">开启后，不只是最近几条聊天消息——聊天记录、日记、信件、小说续写与章节、论坛发帖跟帖、匿名论坛发言，只要是角色自己写的内容，都会参与语义检索：AI会根据当前话题从这些历史内容里找相关片段一起喂给它（需要你的API支持 /embeddings 接口）。同时也会用于角色的专属资料库检索。下面选好角色/群聊后可以看到具体检索库里存了什么。</div>
+            <div class="input-group checkbox-group" style="margin-bottom:8px;">
+                <input type="checkbox" id="enableVectorMemory">
+                <label style="margin:0; font-size:14px; color:#536471;">启用向量记忆与资料库语义检索</label>
+            </div>
+            <div class="input-group" style="margin-bottom:8px; background:rgba(23,191,99,0.05); border:1px solid #17bf63; border-radius:8px; padding:12px;">
+                <label style="color:#17bf63; font-size:13px;">🧬 向量记忆专用 API（选填）</label>
+                <div class="form-hint" style="margin: 4px 0 8px; border-left-color:#17bf63; background:rgba(23,191,99,0.1);">如果留空，下面的 Embedding 拉取模型 / 生成向量都会自动改用"主 API"的接口地址和密钥；填了就只专用于向量记忆（跟主API、副API完全独立，互不影响）。</div>
+                <div class="input-group" style="margin-bottom:8px;">
+                    <label style="color:#17bf63; font-size:12px;">向量记忆 API 接口地址</label>
+                    <input type="text" id="vecApiUrlInput" placeholder="留空则使用主API的地址" style="border-color:#17bf63;" oninput="saveVectorApiSettings()">
+                </div>
+                <div class="input-group" style="margin-bottom:0;">
+                    <label style="color:#17bf63; font-size:12px;">向量记忆 API Key</label>
+                    <input type="password" id="vecApiKeyInput" placeholder="留空则使用主API的Key" style="border-color:#17bf63;" oninput="saveVectorApiSettings()">
+                </div>
+            </div>
+            <div class="input-group" style="margin-bottom:8px;">
+                <label style="color:#536471; font-size:13px;">Embedding 模型</label>
+                <div class="form-hint" style="margin: 4px 0 8px;">优先使用上面"向量记忆专用API"拉取（没填就自动用主API），拉取到的列表里选一个支持向量/embedding的模型即可。</div>
+                <button type="button" class="btn-secondary" style="margin: 0 0 8px; padding: 8px; width:100%;" onclick="fetchEmbeddingModels()">🔄 拉取模型</button>
+                <select id="embeddingModelSelect" onchange="saveEmbeddingModelSelection()">
+                    <option value="text-embedding-3-small">text-embedding-3-small (默认，建议先拉取)</option>
+                </select>
+            </div>
+            <div class="input-group" style="margin-bottom:0;">
+                <label style="color:#536471; font-size:13px;">向量记忆/资料库检索结果字数上限</label>
+                <input type="number" id="semanticCharBudgetInput" value="1200" min="200">
+            </div>
+        </div>
+
+        <div id="memoryHubEmptyState" style="display:none; text-align:center; color:#536471; padding:40px 0;">还没有角色，先去「角色中心」创建一个吧～</div>
+
+        <div id="memoryHubContent" style="display:none;">
+
+            <div class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px;">
+                <label style="font-size:15px;">🧵 聊天总结</label>
+                <div style="font-size:12px; color:#536471; margin-bottom:8px;">每聊到设定的条数，AI会自动追加一条总结在这里（滚动保留最近20条），聊天生成时也会把最近几条喂给AI当背景。可以直接在这里编辑/修正。</div>
+                <textarea id="memHubChatSummaryArea" rows="7" style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #cfd9de; border-radius:6px; font-size:13px; font-family:inherit;"></textarea>
+                <button type="button" class="btn-edit-small" style="margin-top:8px;" onclick="saveMemoryHubSummaries()">💾 保存修改</button>
+            </div>
+
+            <div id="memHubPostMemoryWrap" class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px;">
+                <label style="font-size:15px;">🐦 推文记忆总结</label>
+                <div style="font-size:12px; color:#536471; margin-bottom:8px;">每发布设定条数的推文，AI会自动总结一次这个角色最近关注的点、情绪和经历规律。</div>
+                <textarea id="memHubPostSummaryArea" rows="7" style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #cfd9de; border-radius:6px; font-size:13px; font-family:inherit;"></textarea>
+                <button type="button" class="btn-edit-small" style="margin-top:8px;" onclick="saveMemoryHubSummaries()">💾 保存修改</button>
+            </div>
+
+            <div id="memHubGroupSummaryWrap" class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px; display:none;">
+                <label style="font-size:15px;">👥 所在群聊的总结</label>
+                <div id="memHubGroupSummaryList" style="display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+
+            <div class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px;">
+                <label style="font-size:15px;">🧠 向量记忆（语义检索库）</label>
+                <div id="memHubVectorStats" style="font-size:12px; color:#536471; margin-bottom:8px;"></div>
+                <div id="memHubVectorList" style="display:flex; flex-direction:column; gap:6px; max-height:420px; overflow-y:auto;"></div>
+            </div>
+
+            <div class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px;">
+                <label style="font-size:15px;">📖 记忆召回库</label>
+                <div style="font-size:12px; color:#536471; margin-bottom:10px;">有些预设（比如"数据库"类）会让AI每轮带一段 &lt;recall&gt;AM001（标题）...&lt;/recall&gt; 这类记忆编码，聊天/续写生成时会自动识别、剥离原始标签，改成一个默认折叠的召回面板。面板里具体显示的内容来自这份记忆库——按<b>当前选中的角色/群聊</b>分开存放，需要你自己登记条目（编码要跟AI输出里的编码对上，比如AM001）。</div>
+                <div id="memoryEntriesList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;"></div>
+                <div style="background:white; padding:10px; border-radius:6px; border:1px solid #eff3f4; display:flex; flex-direction:column; gap:6px;">
+                    <div style="display:flex; gap:6px;">
+                        <input type="text" id="newMemoryCode" placeholder="编码，如：AM001" style="width:110px; padding:6px; border:1px solid #1d9bf0; border-radius:4px;">
+                        <input type="text" id="newMemoryTitle" placeholder="标题（可选）" style="flex:1; padding:6px; border:1px solid #1d9bf0; border-radius:4px;">
+                    </div>
+                    <textarea id="newMemoryContent" placeholder="记忆内容" style="padding:6px; border:1px solid #1d9bf0; border-radius:4px; min-height:60px; font-family:inherit;"></textarea>
+                    <input type="text" id="newMemorySource" placeholder="来源（可选，比如：纪要表·第3行）" style="padding:6px; border:1px solid #1d9bf0; border-radius:4px;">
+                    <button type="button" class="btn-primary" style="margin:0; padding:6px 12px;" onclick="addMemoryEntry(currentMemoryHubTargetId)">添加记忆条目</button>
+                </div>
+            </div>
+
+            <div id="memHubDataBankWrap" class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px;">
+                <label style="font-size:15px;">📚 专属资料库</label>
+                <div style="font-size:12px; color:#536471; margin-bottom:8px;">文档上传入口在角色编辑页里；这里只做汇总查看和删除。</div>
+                <div id="memHubDataBankList" style="display:flex; flex-direction:column; gap:6px;"></div>
+            </div>
+
+            <div class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px;">
+                <label style="font-size:15px;">📊 当前状态栏快照</label>
+                <div style="font-size:12px; color:#536471; margin-bottom:8px;">如果用的角色卡/预设带有MVU风格的状态更新块，这里显示最新一次识别到的数值快照。</div>
+                <div id="memHubMvuSnapshot"></div>
+            </div>
+
+        </div>
     </div>
 </div>
 
@@ -887,6 +1439,20 @@
 <div id="view-ai-enhance" style="display: none;">
     <div class="header-title"><div class="back-btn" onclick="goBackToPreviousView()">←</div> 🧩 AI 增强功能</div>
     <div style="padding:15px 20px 30px; max-width:700px; margin:0 auto;">
+
+        <div style="background:#fdecee; border:2px solid #f91880; border-radius:10px; padding:14px 16px; margin-bottom:20px;">
+            <div style="font-size:15px; font-weight:bold; color:#f91880; margin-bottom:6px;">⚠️ 安全警告：脚本执行</div>
+            <div style="font-size:12px; color:#333; line-height:1.6;">
+                开启下面这个开关后，帖子 / 评论 / 小报里出现的 &lt;script&gt; 标签会被当成真正的代码执行——不是沙箱隔离，跟你自己在控制台里敲代码权限一样大，能读写这个网页里的所有本地数据（角色、聊天记录、世界书、API Key等）。
+                <b style="color:#f91880;">只有在你完全信任这段内容/角色卡的来源时才应该开启；不确定来源就保持关闭，或者只在需要用的时候临时开、用完关掉。</b>
+                同时也新增了一个 <code>window.TavernHelper</code> 兼容层（可以读写变量、取聊天记录、取角色信息），方便照着酒馆助手API写的脚本更有机会在这里跑起来——它本身只是几个数据读写函数，真正的执行风险仍然全部来自下面这个开关。
+                <br><span style="color:#8b98a5;">💡 聊天现在统一是纯文本显示，不会再渲染HTML/脚本了，所以这个开关不影响聊天，只影响仍然正常显示HTML的帖子/评论/小报。</span>
+            </div>
+            <div class="input-group checkbox-group" style="margin:10px 0 0;">
+                <input type="checkbox" id="enableChatScriptExecution">
+                <label style="margin:0; font-size:14px; color:#f91880; font-weight:bold;">启用帖子 / 评论 / 小报中的脚本执行（有风险，谨慎开启）</label>
+            </div>
+        </div>
 
         <div class="input-group">
             <label style="font-size:15px;">🔤 正则替换脚本</label>
@@ -903,48 +1469,59 @@
                         <option value="user_input">仅处理我发的消息</option>
                         <option value="both">两者都处理</option>
                     </select>
+                    <select id="newRegexCharScope" style="padding:4px; border:1px solid #1d9bf0; border-radius:4px; font-size:13px; max-width:160px;" onchange="renderNewRegexCharScopeHint()" title="很多角色卡自带的状态栏/HTML卡片只是为某一个角色设计的，绑定角色后，这条脚本只在渲染那个角色自己发的帖子/评论/续写/小说/论坛内容时才生效，不会波及其它角色">
+                        <option value="">🌐 全局（不限定角色，默认）</option>
+                    </select>
                     <button type="button" class="btn-primary" style="margin:0; padding:6px 12px;" onclick="addRegexScript()">添加脚本</button>
                 </div>
+                <div id="newRegexCharScopeHint" class="form-hint" style="margin:0; font-size:11px;"></div>
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:12px; color:#536471; border-top:1px dashed #eff3f4; padding-top:6px;">
+                    <label style="display:flex; align-items:center; gap:3px;"><input type="checkbox" id="newRegexDisplayOnly" onchange="if(this.checked) document.getElementById('newRegexPromptOnly').checked=false"> 仅影响界面显示（不改存档/不影响发给AI的内容）</label>
+                    <label style="display:flex; align-items:center; gap:3px;"><input type="checkbox" id="newRegexPromptOnly" onchange="if(this.checked) document.getElementById('newRegexDisplayOnly').checked=false"> 仅影响发给AI的内容（不改存档/不影响界面显示）</label>
+                </div>
+                <div class="form-hint" style="margin:0; font-size:11px;">💡 以上两个都不勾＝默认行为：按上面选的"仅处理AI回复/我的消息/两者"，在生成/发送那一刻处理并永久写入存档（跟以前完全一样）。勾选其中一个，就会变成只在对应场景临时生效，不碰存档，两者互斥。</div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; color:#536471; border-top:1px dashed #eff3f4; padding-top:6px;">
+                    <span>深度范围（仅"仅影响发给AI的内容"时才有意义，留空＝不限制）：</span>
+                    <input type="number" id="newRegexMinDepth" placeholder="最小深度" style="width:90px; padding:4px; border:1px solid #1d9bf0; border-radius:4px;">
+                    <input type="number" id="newRegexMaxDepth" placeholder="最大深度" style="width:90px; padding:4px; border:1px solid #1d9bf0; border-radius:4px;">
+                </div>
+                <div class="form-hint" style="margin:0; font-size:11px;">💡 "深度"是距离最新一条消息多少条（最新=0，越往前越大）。比如只想隐藏5条以前的旧历史给AI省token、又不想影响最近几条，最小深度填5、最大深度留空即可——跟酒馆自己的正则脚本"深度限定"是同一个概念，从酒馆导入的脚本会自动带上这两个值。</div>
             </div>
         </div>
 
         <div class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px; margin-bottom:0;">
-            <label style="font-size:15px;">🧠 向量记忆（语义检索历史聊天）</label>
-            <div style="font-size:12px; color:#536471; margin-bottom:10px;">开启后，除了最近几条消息，AI还会根据当前话题从更早的聊天记录里语义检索相关片段（需要你的API支持 /embeddings 接口）。同时也会用于角色的专属资料库检索。</div>
-            <div class="input-group checkbox-group" style="margin-bottom:8px;">
-                <input type="checkbox" id="enableVectorMemory">
-                <label style="margin:0; font-size:14px; color:#536471;">启用向量记忆与资料库语义检索</label>
-            </div>
-            <div class="input-group" style="margin-bottom:0;">
-                <label style="color:#536471; font-size:13px;">Embedding 模型</label>
-                <div class="form-hint" style="margin: 4px 0 8px;">默认优先使用上方的"副 API"拉取（没配置副API则用主API），拉取到的列表里选一个支持向量/embedding的模型即可。</div>
-                <button type="button" class="btn-secondary" style="margin: 0 0 8px; padding: 8px; width:100%;" onclick="fetchEmbeddingModels()">🔄 拉取模型</button>
-                <select id="embeddingModelSelect" onchange="saveEmbeddingModelSelection()">
-                    <option value="text-embedding-3-small">text-embedding-3-small (默认，建议先拉取)</option>
+            <label style="font-size:15px;">💭 思维链识别与处理</label>
+            <div style="font-size:12px; color:#536471; margin-bottom:10px;">不少接自定义/中转API的模型会把完整思考过程直接堆在正文最前面（用各种标签包一层，不同预设/模型约定的标签名都不一样）。这里可以配置识别哪些"前缀+后缀"组合当作思维链。<b>思维链只在「小说」和「续写」里可以展开查看</b>（跟酒馆一样），聊天、评论、推文、论坛这些地方一律直接剥掉不显示——因为折叠框会拼在正文最前面，把角色卡状态栏那种从开头锚定匹配的正则挡住，导致状态栏出不来。下面这个选项只影响小说和续写。只会在文本<b>最开头</b>匹配，不会误伤正文中间偶然出现的同名标签；没有闭合标签的思维链无法安全识别，会原样保留。</div>
+            <div class="input-group" style="margin-bottom:10px;">
+                <label style="color:#536471; font-size:13px;">在小说 / 续写里如何处理思维链</label>
+                <select id="reasoningDisplayModeSelect" onchange="saveReasoningDisplayMode()">
+                    <option value="collapse">折叠展示（默认，做成可点开/收起的"💭思考过程"框）</option>
+                    <option value="strip">直接删除（不保留，不显示思考过程）</option>
+                    <option value="off">不处理（原样显示，包括标签本身）</option>
                 </select>
+            </div>
+            <div id="reasoningFormatsList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;"></div>
+            <div style="background:white; padding:10px; border-radius:6px; border:1px solid #eff3f4; display:flex; flex-direction:column; gap:6px;">
+                <input type="text" id="newReasoningFormatName" placeholder="格式名称，如：我的预设用的标签" style="padding:6px; border:1px solid #1d9bf0; border-radius:4px;">
+                <div style="display:flex; gap:6px;">
+                    <input type="text" id="newReasoningFormatPrefix" placeholder="前缀，如：<mythink>" style="flex:1; padding:6px; border:1px solid #1d9bf0; border-radius:4px;">
+                    <input type="text" id="newReasoningFormatSuffix" placeholder="后缀，如：</mythink>" style="flex:1; padding:6px; border:1px solid #1d9bf0; border-radius:4px;">
+                </div>
+                <button type="button" class="btn-primary" style="margin:0; padding:6px 12px;" onclick="addReasoningFormat()">添加格式</button>
             </div>
         </div>
 
-        <div class="input-group" style="margin-top:20px; border-top:1px dashed #f91880; padding-top:15px; margin-bottom:0;">
-            <label style="font-size:15px; color:#f91880;">⚠️ 允许聊天消息里的脚本执行</label>
-            <div style="font-size:12px; color:#536471; margin-bottom:10px;">部分角色卡自带的HTML卡片（比如状态栏的展开/收起按钮）依赖内嵌的 &lt;script&gt; 才能工作，浏览器默认不会执行这类动态插入的脚本，开启后才能生效。<b style="color:#f91880;">但这意味着聊天内容里只要出现脚本就会真的运行，存在安全风险</b>——只有在明确信任自己导入的角色卡来源时才建议开启，不确定的话保持关闭。</div>
-            <div class="input-group checkbox-group" style="margin-bottom:0;">
-                <input type="checkbox" id="enableChatScriptExecution">
-                <label style="margin:0; font-size:14px; color:#536471;">启用聊天消息中的脚本执行（有风险，谨慎开启）</label>
-            </div>
+        <div style="background:rgba(29,155,240,0.08); border:1px dashed #1d9bf0; border-radius:10px; padding:12px 14px; margin-top:20px; font-size:13px; color:#536471;">
+            💡 "记忆召回面板/记忆库管理"、聊天总结、推文记忆总结、向量记忆浏览与开关/模型/字数上限这些"跟记忆有关"的设置和展示功能，已经全部搬到独立的新页面「🧠 记忆总览」集中管理去了（侧边栏可以直接进，不用再从设置这里找）。这里只留正则脚本/思维链这些配置项。
         </div>
 
         <div class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px; margin-bottom:0;">
             <label style="font-size:15px;">⚡ 上下文预算管理（省token/省钱）</label>
-            <div style="font-size:12px; color:#536471; margin-bottom:10px;">功能越加越多，每次请求塞给AI的内容也越滚越大。这里可以限制各部分最多占用多少字数——世界书会按优先级/权重自动只保留预算内的高优先条目，其余悄悄跳过，不影响核心设定。</div>
+            <div style="font-size:12px; color:#536471; margin-bottom:10px;">功能越加越多，每次请求塞给AI的内容也越滚越大。这里可以限制各部分最多占用多少字数——世界书会按优先级/权重自动只保留预算内的高优先条目，其余悄悄跳过，不影响核心设定。（向量记忆/资料库的字数上限已经搬去「🧠 记忆总览」页跟其它向量记忆设置放一起了）</div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <div class="input-group" style="flex:1; min-width:140px; margin-bottom:0;">
                     <label style="color:#536471; font-size:13px;">世界书字数上限</label>
                     <input type="number" id="worldbookCharBudgetInput" value="2000" min="200">
-                </div>
-                <div class="input-group" style="flex:1; min-width:140px; margin-bottom:0;">
-                    <label style="color:#536471; font-size:13px;">向量记忆/资料库字数上限</label>
-                    <input type="number" id="semanticCharBudgetInput" value="1200" min="200">
                 </div>
                 <div class="input-group" style="flex:1; min-width:140px; margin-bottom:0;">
                     <label style="color:#536471; font-size:13px;">带入最近聊天轮数</label>
@@ -963,22 +1540,25 @@
         <div style="display:flex; align-items:center; gap:15px;"><div class="back-btn" onclick="goBackToPreviousView()">←</div> 📚 世界书</div>
         <div id="wbCategoryBar" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:12px; font-weight:normal;"></div>
     </div>
-    <div style="padding:15px 20px 30px; max-width:700px; margin:0 auto;">
+    <div class="wb-scroll-area">
         <div class="form-hint">新增的世界书可以设为全局强制生效，或者设为局部生效（在角色设定、故事设定中手动勾选挂载）。内容里可以用 {{char}}、{{user}}、{{time}}、{{date}}、{{random:A,B,C}} 这类占位符，生成时会自动替换。可以在右上角给世界书分类，方便查找。</div>
         <div id="worldbookContainer" style="display: flex; gap: 12px; overflow-x: auto; padding: 5px 5px 15px 5px; margin-bottom: 10px;"></div>
-        <div style="border-top: 1px solid #1d9bf0; padding-top: 15px;">
+    </div>
+    <div class="wb-form-resize-handle" onpointerdown="startWbFormResize(event, this)" title="按住拖动可调整上下两块区域的高度比例"></div>
+    <div class="wb-edit-form-dock">
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <h4 style="margin:0; color:#1d9bf0;" id="wbFormTitle">新增世界书</h4>
                 <div>
                     <input type="file" id="wbFileInput" accept="*/*" style="display:none;" onchange="handleWbFileUpload(event)">
-                    <button class="btn-edit-small" id="btnWbImport" style="margin:0; background:rgba(29,155,240,0.1); color:#1d9bf0;" onclick="openFilePickerForApp('wbFileInput')">📄 导入 TXT/JSON 自动添加</button>
+                    <button class="btn-edit-small" id="btnWbImport" style="margin:0; background:rgba(29,155,240,0.1); color:#1d9bf0;" onclick="openFilePickerForApp('wbFileInput')" title="解析后会弹窗让你编辑确认，再正式导入">📄 导入 TXT/JSON（可编辑确认）</button>
                 </div>
             </div>
 
             <input type="hidden" id="editWbId" value="">
             <input type="text" id="newWbTitle" placeholder="输入设定标题 (例: 赛博朋克2077)" style="width:100%; margin-bottom:8px; padding:8px; border:1px solid #1d9bf0; border-radius:4px; font-size:14px; color:#1d9bf0;">
-            <textarea id="newWbContent" rows="3" placeholder="详细输入世界的背景信息...(支持 {{char}} {{user}} 等宏)" style="width:100%; padding:8px; margin-bottom:8px; border:1px solid #1d9bf0; border-radius:4px; font-size:14px; font-family:inherit; outline:none;"></textarea>
+            <textarea id="newWbContent" rows="3" placeholder="详细输入世界的背景信息...(支持 {{char}} {{user}} 等宏)" style="width:100%; padding:8px; border:1px solid #1d9bf0; border-radius:4px 4px 0 0; font-size:14px; font-family:inherit; outline:none; min-height:90px; resize:none;"></textarea>
+            <div class="textbox-drag-handle" onpointerdown="startDragResize(event, this)" style="margin-bottom:8px;">⋯</div>
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
                 <label style="font-size:13px; color:#536471; white-space:nowrap;">权重</label>
                 <input type="number" id="newWbWeight" value="50" min="0" max="100" style="width:60px; padding:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:14px;">
@@ -989,6 +1569,26 @@
                 <label style="font-size:13px; color:#536471; white-space:nowrap; display:flex; align-items:center; gap:3px;" title="开启后，这条世界书除了能被聊天记录里的关键词触发，也能被【已经生效的其它世界书正文】里出现的关键词递归触发">
                     <input type="checkbox" id="newWbRecursive"> 允许递归触发
                 </label>
+                <label style="font-size:13px; color:#536471; white-space:nowrap;">插入位置</label>
+                <select id="newWbPosition" onchange="onWbPositionChange()" style="padding:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:13px;" title="决定这条世界书触发后插到提示词里的哪个位置（目前只对聊天/推文/评论/论坛等主流程生效，日记/小说/续写仍是整段一起塞，不区分位置）">
+                    <option value="before_persona">角色定义之前</option>
+                    <option value="after_persona" selected>角色定义之后（默认）</option>
+                    <option value="before_example">示例消息之前</option>
+                    <option value="after_example">示例消息之后</option>
+                    <option value="before_an">作者注释之前</option>
+                    <option value="after_an">作者注释之后</option>
+                    <option value="end">提示词末尾</option>
+                    <option value="at_depth">插入深度 (@Depth)</option>
+                </select>
+                <span id="newWbDepthBox" style="display:none; align-items:center; gap:6px;">
+                    <select id="newWbDepthRole" style="padding:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:12px;" title="这段内容要伪装成聊天记录里谁说的话插进去">
+                        <option value="system">[系统]</option>
+                        <option value="user">[用户]</option>
+                        <option value="assistant">[AI]</option>
+                    </select>
+                    <span style="font-size:12px; color:#536471; white-space:nowrap;">深度</span>
+                    <input type="number" id="newWbDepth" value="4" min="0" style="width:50px; padding:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:13px;" title="插到聊天记录倒数第N条消息前，0=固定放在系统提示词里">
+                </span>
             </div>
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
                 <label style="font-size:13px; color:#536471; white-space:nowrap;">🏷️ 分类</label>
@@ -997,11 +1597,25 @@
             </div>
             <!-- 新增：世界书触发关键词 -->
             <input type="text" id="newWbKeywords" placeholder="触发关键词 (多词用逗号分隔，如: 魔法,深渊。留空则无条件生效)" style="width:100%; margin-bottom:8px; padding:8px; border:1px dashed #1d9bf0; border-radius:4px; font-size:13px; color:#f91880; outline:none; background:rgba(29,155,240,0.02);">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+                <input type="text" id="newWbSecondaryKeywords" placeholder="次要关键词（可选，多词逗号分隔）" style="flex:1; min-width:140px; padding:6px; border:1px dashed #1d9bf0; border-radius:4px; font-size:12px; color:#f91880; outline:none; background:rgba(29,155,240,0.02);">
+                <select id="newWbSecondaryLogic" style="padding:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:12px;" title="次要关键词和主关键词之间的逻辑关系">
+                    <option value="and_any">命中主词+任一次要词</option>
+                    <option value="and_all">命中主词+全部次要词</option>
+                    <option value="not_any">命中主词但不含次要词</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap; font-size:12px; color:#536471;">
+                <label style="display:flex; align-items:center; gap:3px; white-space:nowrap;" title="触发后维持N轮不用重新匹配关键词也算命中，0=不启用">维持<input type="number" id="newWbSticky" value="0" min="0" style="width:50px; padding:4px; border:1px solid #1d9bf0; border-radius:4px;">轮(sticky)</label>
+                <label style="display:flex; align-items:center; gap:3px; white-space:nowrap;" title="触发后N轮内即使关键词命中也不会再次触发，0=不启用">冷却<input type="number" id="newWbCooldown" value="0" min="0" style="width:50px; padding:4px; border:1px solid #1d9bf0; border-radius:4px;">轮</label>
+                <label style="display:flex; align-items:center; gap:3px; white-space:nowrap;" title="对话满N轮之后才允许这条开始触发，0=不启用">延迟<input type="number" id="newWbDelay" value="0" min="0" style="width:50px; padding:4px; border:1px solid #1d9bf0; border-radius:4px;">轮</label>
+                <label style="display:flex; align-items:center; gap:3px; white-space:nowrap;" title="不管是靠关键词命中、还是设为常驻/无条件生效，只要判定'应该触发'，最后都会再按这个百分比抽一次决定是否真的插入，100=一定触发，适合想要'有概率随机出现'的设定">触发概率<input type="number" id="newWbProbability" value="100" min="0" max="100" style="width:50px; padding:4px; border:1px solid #1d9bf0; border-radius:4px;">%</label>
+            </div>
+            <div class="form-hint" style="margin-bottom:8px; font-size:11px;">💡 维持/冷却/延迟这几个"触发节奏"设置，只在聊天里生效（发推文/评论等一次性生成场景不涉及"第几轮"这个概念，会自动按纯关键词匹配）。</div>
             <div style="display:flex; gap:10px;">
                 <button class="btn-primary" onclick="saveWorldbook()" style="margin-top:0; flex:1;" id="saveWbBtn">添加并保存</button>
                 <button class="btn-secondary" onclick="cancelEditWb()" style="margin-top:0; display:none; flex:1;" id="cancelWbBtn">取消编辑</button>
             </div>
-        </div>
     </div>
 </div>
 
@@ -1011,11 +1625,12 @@
     <div style="padding:15px 20px 30px; max-width:700px; margin:0 auto;">
         <div class="form-hint">插件是可以导入/导出、分享给别人使用的"打包好的功能"，不用每次都改代码。支持四种类型：<b>提示词规则</b>（往AI脑子里塞一条固定指令）、<b>快捷动作</b>（聊天框上方加一个按钮，点一下发送预设指令，比如掷骰子）、<b>宏</b>（扩展 {{xxx}} 占位符）、<b>脚本钩子</b>（进阶，自定义JS，请只导入信任来源的脚本）。</div>
 
-        <div style="display:flex; gap:10px; margin-bottom:15px;">
+        <div style="display:flex; gap:10px; margin-bottom:10px;">
             <input type="file" id="pluginImportInput" accept="*/*" style="display:none;" onchange="handlePluginImport(event)">
             <button class="btn-primary" style="margin:0; flex:1;" onclick="openFilePickerForApp('pluginImportInput')">📥 导入插件 (JSON)</button>
             <button class="btn-secondary" style="margin:0; flex:1;" onclick="exportPlugins()">📤 导出全部插件</button>
         </div>
+        <div class="form-hint" style="margin-bottom:15px; font-size:12px;">💡 想导入 SillyTavern 的"Chat Completion 预设"？现在有了专门的「预设」页面（仿酒馆预设管理界面：可整体导入/切换/拖拽排序/导出），去左侧导航栏「预设」里操作。</div>
 
         <div id="pluginsList" style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;"></div>
 
@@ -1066,6 +1681,54 @@
                 <button class="btn-primary" style="margin:0; flex:1;" id="savePluginBtn" onclick="createPlugin()">添加插件</button>
                 <button class="btn-secondary" style="margin:0; display:none; flex:1;" id="cancelPluginEditBtn" onclick="cancelPluginEdit()">取消编辑</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== AI 预设系统（仿 SillyTavern Chat Completion 预设界面） ===== -->
+<div id="view-presets" style="display: none;">
+    <div class="header-title"><div class="back-btn" onclick="goBackToPreviousView()">←</div> 🧩 预设</div>
+    <div style="padding:15px 20px 30px; max-width:760px; margin:0 auto;">
+        <div class="form-hint">"预设"对应 SillyTavern 里的 Chat Completion 预设：一整套可以整体导入/切换的提示词模块（主提示、文风、思维链、NSFW开关等）+ 采样参数。同一时间只有一个预设"⭐启用中"，会自动拼进AI生成的系统提示词里；没启用的预设数据完整保留，随时可以点回去切换。每条模块都能单独勾选启用/编辑内容/拖拽调整顺序。</div>
+
+        <div style="display:flex; gap:10px; margin-bottom:12px;">
+            <input type="file" id="presetImportInput" accept="*/*" style="display:none;" onchange="handlePresetFileUpload(event)">
+            <button class="btn-primary" style="margin:0; flex:1;" onclick="openFilePickerForApp('presetImportInput')">📥 导入预设 (JSON)</button>
+            <button class="btn-secondary" style="margin:0; flex:1;" onclick="createBlankPreset()">＋ 新建空白预设</button>
+        </div>
+
+        <div id="presetTabsList" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;"></div>
+
+        <div id="presetDetailEmpty" class="empty-state">还没有任何预设，导入一个 SillyTavern 预设 JSON，或新建一个空白预设吧</div>
+
+        <div id="presetDetailBox" style="display:none;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+                <input type="text" id="presetDetailName" style="flex:1; min-width:140px; padding:8px; border:1px solid #1d9bf0; border-radius:4px; font-weight:bold; color:#1d9bf0; box-sizing:border-box;" onchange="renamePresetFromInput()">
+                <button class="btn-primary" id="presetActivateBtn" style="margin:0; font-size:12px; padding:6px 10px; white-space:nowrap;" onclick="setActivePreset(currentEditingPresetId)">⭐ 设为当前使用</button>
+            </div>
+            <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px; font-size:12px;">
+                <span style="color:#1d9bf0; cursor:pointer;" onclick="duplicatePreset(currentEditingPresetId)">📑 复制此预设</span>
+                <span style="color:#1d9bf0; cursor:pointer;" onclick="exportPreset(currentEditingPresetId)">📤 导出此预设</span>
+                <span style="color:#f91880; cursor:pointer;" onclick="deletePreset(currentEditingPresetId)">🗑️ 删除此预设</span>
+            </div>
+
+            <div id="presetActiveBadge" style="display:none; align-items:center; gap:6px; font-size:12px; color:#00ba7c; margin-bottom:10px; background:rgba(0,186,124,0.08); padding:6px 10px; border-radius:8px;">⭐ 当前正在使用的预设，会自动注入到所有角色的AI生成中</div>
+
+            <div style="border:1px solid #1d9bf0; border-radius:8px; padding:10px; margin-bottom:14px; background:rgba(29,155,240,0.03);">
+                <div style="font-size:13px; font-weight:bold; color:#1d9bf0; margin-bottom:8px;">🎚️ 采样参数（留空＝不设置，用服务商默认值；"设为当前使用"时会自动应用到"设置-采样参数"）</div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <label style="font-size:12px; color:#536471;">温度<br><input type="number" step="0.01" id="presetParamTemp" style="width:80px; margin-top:2px; padding:5px; border:1px solid #1d9bf0; border-radius:4px;" onchange="updatePresetSamplerField('temperature', this.value)"></label>
+                    <label style="font-size:12px; color:#536471;">Top P<br><input type="number" step="0.01" id="presetParamTopP" style="width:80px; margin-top:2px; padding:5px; border:1px solid #1d9bf0; border-radius:4px;" onchange="updatePresetSamplerField('top_p', this.value)"></label>
+                    <label style="font-size:12px; color:#536471;">Top K<br><input type="number" step="1" id="presetParamTopK" style="width:80px; margin-top:2px; padding:5px; border:1px solid #1d9bf0; border-radius:4px;" onchange="updatePresetSamplerField('top_k', this.value)"></label>
+                    <label style="font-size:12px; color:#536471;">频率惩罚<br><input type="number" step="0.01" id="presetParamFreqP" style="width:80px; margin-top:2px; padding:5px; border:1px solid #1d9bf0; border-radius:4px;" onchange="updatePresetSamplerField('frequency_penalty', this.value)"></label>
+                    <label style="font-size:12px; color:#536471;">存在惩罚<br><input type="number" step="0.01" id="presetParamPresP" style="width:80px; margin-top:2px; padding:5px; border:1px solid #1d9bf0; border-radius:4px;" onchange="updatePresetSamplerField('presence_penalty', this.value)"></label>
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <div style="font-size:13px; font-weight:bold; color:#1d9bf0;">📜 提示词模块（拖拽 ⠿ 排序，勾选启用/禁用；新增条目的表单在列表最下面）</div>
+            </div>
+            <div id="presetPromptList"></div>
         </div>
     </div>
 </div>
@@ -1255,10 +1918,25 @@
         <h2 id="diaryDetailTitle" style="color:#1d9bf0; margin-top:0;"></h2>
         <div id="diaryDetailDate" style="color:#536471; font-size:13px; margin-bottom:15px; border-bottom:1px solid #eff3f4; padding-bottom:10px;"></div>
         <div id="diaryDetailContent" style="font-size:15px; line-height:1.6; white-space:pre-wrap; max-height:55vh; overflow-y:auto; padding-right:10px; color:#0f1419;"></div>
-        <div style="display:flex; gap:10px; margin-top:20px;">
+        <div style="display:flex; gap:10px; margin-top:20px; flex-wrap:wrap;">
+            <button id="btnReplyToThisLetter" class="btn-secondary" style="display:none; color:#17bf63; border-color:#17bf63;" onclick="replyToLetterFromDetail()">↩️ 回复这封信</button>
             <button class="btn-secondary" style="color:#1d9bf0; border-color:#1d9bf0;" onclick="exportCurrentDiary()">📥 导出为TXT</button>
             <button class="btn-secondary" style="color:#f91880; border-color:#f91880;" onclick="deleteCurrentDiary()">🗑️ 删除此篇</button>
             <button class="btn-cancel" onclick="closeModal('diaryDetailModal')">关闭</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="userLetterComposeModal">
+    <div class="modal-box" style="width: 480px;">
+        <h2 style="color:#1d9bf0; margin-top:0;">✍️ 写信给TA</h2>
+        <div class="form-hint" style="margin-bottom:10px;">寄出后不会马上收到回信——Ta 会隔一段随机时间才回复，也可以在信件列表里点"⚡立即回复"跳过等待。</div>
+        <div id="userLetterReplyHint" style="display:none; margin-bottom:10px; font-size:13px; color:#17bf63; background:rgba(23,191,99,0.08); padding:8px; border-radius:4px;"></div>
+        <input type="text" id="userLetterTitleInput" placeholder="标题（可选）" style="width:100%; margin-bottom:8px; padding:8px; border:1px solid #1d9bf0; border-radius:4px; font-size:14px;">
+        <textarea id="userLetterContentInput" rows="6" placeholder="想对Ta说的话……" style="width:100%; padding:8px; margin-bottom:15px; border:1px solid #1d9bf0; border-radius:4px; font-size:14px; font-family:inherit;"></textarea>
+        <div style="display:flex; gap:10px;">
+            <button class="btn-primary" style="margin:0;" onclick="sendUserLetter()">💌 寄出</button>
+            <button class="btn-cancel" onclick="closeModal('userLetterComposeModal')">取消</button>
         </div>
     </div>
 </div>
@@ -1291,11 +1969,15 @@
         <div class="form-hint">支持本地文件上传或通过网络URL添加。若要让AI智能使用，请为表情包添加含义描述。</div>
         <div style="display: flex; gap: 8px; margin-bottom: 10px;">
             <input type="file" id="emoFileInput" multiple accept="image/*" style="display: none;" onchange="handleEmoticonUpload(event)">
-            <button class="btn-secondary" style="margin-top:0; flex:1;" onclick="document.getElementById('emoFileInput').click()">📁 本地批量上传</button>
+            <button class="btn-secondary" style="margin-top:0; flex:1;" onclick="openFilePickerForApp('emoFileInput')">📁 本地批量上传</button>
         </div>
-        <div style="display: flex; gap: 8px; margin-bottom: 15px; align-items:flex-start;">
+        <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items:flex-start;">
             <textarea id="emoUrlInput" placeholder="输入图片网络 URL，多条请用换行或逗号分隔" style="flex:1; padding:8px; border:1px solid #1d9bf0; border-radius:4px; font-size:14px; color:#1d9bf0; outline:none; resize:vertical; overflow:auto;" rows="2"></textarea>
-            <button class="btn-post" onclick="addEmoticonByUrl()">添加链接</button>
+            <button class="btn-post" onclick="addEmoticonByUrl(event)">添加链接</button>
+        </div>
+        <div style="margin-bottom: 15px;">
+            <button id="emoScanBtn" class="btn-secondary" style="margin-top:0; width:100%;" onclick="scanBrokenEmoticons(event)">🔍 检查失效链接</button>
+            <div class="form-hint" style="margin-top:6px;">网络链接导入的表情包如果来源失效（比如临时图床/CDN过期），已经用过它的帖子、评论、聊天记录会显示成空白图。点这里检查并一键修复。</div>
         </div>
         <div id="emoticonManagerGallery" class="emo-grid"></div>
         <button class="btn-cancel" onclick="closeModal('emoticonManagerModal')">关闭窗口</button>
@@ -1337,6 +2019,16 @@
 <div class="modal-overlay" id="userProfileModal">
     <div class="modal-box">
         <h2>自定义我的资料</h2>
+        <div class="input-group full-width" style="background:rgba(29,155,240,0.05); padding:10px; border-radius:8px; border:1px solid #1d9bf0; margin-bottom:12px;">
+            <label style="font-size:13px; color:#1d9bf0;">👤 人设切换（多个"我"的身份，随时切换）</label>
+            <div class="form-hint" style="margin:4px 0 8px;">可以为同一个你保存多份不同的资料快照（比如"本体""马甲小号"），切换后下方表单会整体替换成对应的内容，记得切换后点最下面的"保存设置"确认生效。</div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <select id="personaSwitchSelect" onchange="switchToPersona(this.value)" style="flex:1; min-width:140px;"></select>
+                <button type="button" class="btn-secondary" style="margin:0; padding:6px 10px; font-size:12px;" onclick="saveCurrentAsPersona()">💾 另存为人设</button>
+                <button type="button" class="btn-secondary" style="margin:0; padding:6px 10px; font-size:12px;" onclick="renameCurrentPersona()">✏️ 重命名</button>
+                <button type="button" class="btn-secondary" style="margin:0; padding:6px 10px; font-size:12px; color:#f91880; border-color:#f91880;" onclick="deleteCurrentPersona()">🗑️ 删除</button>
+            </div>
+        </div>
         <div class="form-grid">
             <div class="input-group">
                 <label>自定义头像 (1:1 自选范围)</label>
@@ -1443,6 +2135,40 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="wbImportPreviewModal">
+    <div class="modal-box" style="width:520px; max-height:80vh; overflow-y:auto;">
+        <h2>📥 确认导入内容</h2>
+        <div class="form-hint" style="margin-bottom:8px;">从文件里解析出了下面这些条目，导入前可以先编辑标题/内容/分类等，不想要的条目点右上角"×"去掉，确认无误后再点"确认导入"。</div>
+        <div id="wbImportPreviewList"></div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+            <button class="btn-primary" style="margin-top:0; flex:1;" onclick="confirmWbImportAll()">✅ 确认导入</button>
+            <button class="btn-cancel" style="margin-top:0; flex:1;" onclick="cancelWbImportPreview()">取消</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="presetImportPreviewModal">
+    <div class="modal-box" style="width:560px; max-height:80vh; overflow-y:auto;">
+        <h2>📥 导入 SillyTavern 预设</h2>
+        <div class="form-hint" style="margin-bottom:8px;">解析出 <b id="presetImportCount"></b> 条提示词模块。这类预设通常包含大量互斥/可选的模块（比如各种文风、思维链变体、NSFW开关），建议只勾选你实际需要的（默认已按预设自带的顺序与启用状态勾好，未被引用的备选模块默认不勾）。确认后会生成一个新的"预设"并自动切换为当前使用，之后随时可以在"预设"页面继续调整。</div>
+        <div class="input-group full-width" style="margin-bottom:8px;">
+            <label>预设名称</label>
+            <input type="text" id="presetImportSourceName" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #1d9bf0; border-radius:4px; color:#1d9bf0; font-weight:bold;">
+        </div>
+        <div id="presetImportSamplerBlock" style="display:none;"></div>
+        <div id="presetImportRegexBlock" style="display:none;"></div>
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <button class="btn-secondary" style="margin:0; flex:1; font-size:12px; padding:6px;" onclick="setAllPresetImportChecked(true)">全选</button>
+            <button class="btn-secondary" style="margin:0; flex:1; font-size:12px; padding:6px;" onclick="setAllPresetImportChecked(false)">全不选</button>
+        </div>
+        <div id="presetImportPreviewList"></div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+            <button class="btn-primary" style="margin-top:0; flex:1;" onclick="confirmPresetImportAll()">✅ 确认导入勾选项</button>
+            <button class="btn-cancel" style="margin-top:0; flex:1;" onclick="cancelPresetImportPreview()">取消</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="memoryModal">
     <div class="modal-box" style="width:520px; max-height:80vh; overflow-y:auto;">
         <h2 id="memoryModalTitle">记忆管理</h2>
@@ -1475,21 +2201,32 @@
     <div class="modal-box" style="width: 400px;">
         <h2>📄 聊天选项与记录管理</h2>
         <div class="form-hint">支持编辑AI自动生成的聊天总结，或导入/导出本会话的TXT纯文本记录。</div>
-        <button class="btn-primary" id="btnChatSummaryOption" onclick="closeModal('chatTxtModal'); openMemoryModal(currentSummaryCharId)">📝 编辑记忆</button>
+        <button class="btn-primary" id="btnChatSummaryOption" onclick="closeModal('chatTxtModal'); openMemoryHub(currentSummaryCharId)">🧠 记忆总览</button>
         <div id="groupSpeakOrderSection" style="display:none; margin:10px 0; padding:10px; background:rgba(29,155,240,0.05); border-radius:8px; border:1px solid #1d9bf0;">
             <label style="font-size:14px; color:#1d9bf0;">🗣️ 群聊发言顺序</label>
             <div class="form-hint" style="margin:4px 0 8px;">"随便聊"是默认模式：被@的人必须回，其他人自己判断要不要插话。</div>
-            <select id="groupSpeakOrderSelect" onchange="updateGroupSpeakOrder()" style="width:100%;">
+            <select id="groupSpeakOrderSelect" onchange="updateGroupSpeakOrder()" style="width:100%; padding:8px 10px; border:1px solid #1d9bf0; border-radius:4px; box-sizing:border-box; font-size:14px; color:#0f1419; background:white; outline:none;">
                 <option value="all">随便聊（默认，被@的必须回，其余自行判断）</option>
                 <option value="sequential">按顺序轮流发言（每人依次回应一轮）</option>
                 <option value="random">随机顺序发言（每次打乱顺序）</option>
                 <option value="mentioned">仅@到的人回复（不@就不说话）</option>
             </select>
+            <div style="margin-top:10px;">
+                <label style="font-size:13px; color:#1d9bf0;">🔇 临时禁言成员</label>
+                <div class="form-hint" style="margin:4px 0 6px;">勾选后该成员这一轮不会参与AI回复判断，不影响角色本身、也不会退群，随时可以取消勾选恢复。</div>
+                <div id="groupMuteCheckboxes" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+            </div>
         </div>
         <button class="btn-secondary" id="btnClearGroupChatOption" style="display:none; color:#f91880; border-color:#f91880;" onclick="closeModal('chatTxtModal'); clearGroupChatHistory()">🗑️ 一键清空所有聊天记录</button>
         <button class="btn-secondary" onclick="exportChatTxt()">📥 导出当前聊天记录 (TXT)</button>
-        <button class="btn-secondary" onclick="document.getElementById('importTxtInput').click()">📤 导入外部聊天记录 (TXT)</button>
+        <button class="btn-secondary" onclick="openFilePickerForApp('importTxtInput')">📤 导入外部聊天记录 (TXT)</button>
         <input type="file" id="importTxtInput" accept="*/*" style="display:none;" onchange="importChatTxt(event)">
+        <div style="display:flex; align-items:center; gap:5px; margin-top:8px; font-size:12px; color:#536471;">
+            <input type="checkbox" id="jsonlImportCleanReasoning" checked>
+            <label for="jsonlImportCleanReasoning">导入时按"AI增强功能"页面设置的思维链规则处理（折叠展示/直接删除，取决于当前设置；不保证覆盖所有格式）</label>
+        </div>
+        <button class="btn-secondary" onclick="openFilePickerForApp('importJsonlInput')">🐍 导入SillyTavern聊天记录 (.jsonl)</button>
+        <input type="file" id="importJsonlInput" accept=".jsonl,*/*" style="display:none;" onchange="importChatJsonl(event)">
         <button class="btn-cancel" onclick="closeModal('chatTxtModal')">关闭</button>
     </div>
 </div>
@@ -1512,10 +2249,77 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="sharePostToChatModal">
+    <div class="modal-box" style="width:420px; max-height:75vh; overflow-y:auto;">
+        <h2 style="margin-top:0; color:#1d9bf0;">📤 分享这条推文给...</h2>
+        <div class="form-hint" style="margin-bottom:10px;">选一个角色，推文内容会填进跟TA的聊天输入框，你可以再编辑几句然后发送。</div>
+        <div id="sharePostToChatCharList"></div>
+        <button class="btn-cancel" onclick="closeModal('sharePostToChatModal')">取消</button>
+    </div>
+</div>
+
+<div class="modal-overlay" id="novelSourceSummaryModal">
+    <div class="modal-box" style="width:560px; max-width:92vw; max-height:85vh; overflow-y:auto;">
+        <h2 style="margin-top:0; color:#1d9bf0;">✨ 用已有内容生成小说</h2>
+        <div class="form-hint" style="margin-bottom:12px;">勾选想让AI参考的真实互动内容，AI会把它们改写、揉合成一段小说正文，作为新的一章加入当前故事。</div>
+
+        <div class="novel-src-category">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:bold; cursor:pointer;">
+                <input type="checkbox" id="srcCatContinuation" onchange="toggleNovelSrcCategory('continuation')"> 📖 续写内容
+            </label>
+            <div id="srcListContinuation" class="novel-src-sublist"></div>
+        </div>
+        <div class="novel-src-category">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:bold; cursor:pointer;">
+                <input type="checkbox" id="srcCatDiary" onchange="toggleNovelSrcCategory('diary')"> 📔 日记和信件
+            </label>
+            <div id="srcListDiary" class="novel-src-sublist"></div>
+        </div>
+        <div class="novel-src-category">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:bold; cursor:pointer;">
+                <input type="checkbox" id="srcCatChat" onchange="toggleNovelSrcCategory('chat')"> 💬 聊天
+            </label>
+            <div id="srcListChat" class="novel-src-sublist"></div>
+        </div>
+        <div class="novel-src-category">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:bold; cursor:pointer;">
+                <input type="checkbox" id="srcCatTweet" onchange="toggleNovelSrcCategory('tweet')"> 🐦 推文
+            </label>
+            <div id="srcListTweet" class="novel-src-sublist"></div>
+        </div>
+        <div class="novel-src-category">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:bold; cursor:pointer;">
+                <input type="checkbox" id="srcCatComment" onchange="toggleNovelSrcCategory('comment')"> 💭 评论
+            </label>
+            <div id="srcListComment" class="novel-src-sublist"></div>
+        </div>
+        <div class="novel-src-category">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:bold; cursor:pointer;">
+                <input type="checkbox" id="srcCatMemory" onchange="toggleNovelSrcCategory('memory')"> 🧠 记忆
+            </label>
+            <div id="srcListMemory" class="novel-src-sublist"></div>
+        </div>
+
+        <div class="input-group full-width" style="margin-top:15px;">
+            <label>💡 补充要求（可选，比如想突出哪段关系、什么基调）</label>
+            <textarea id="novelSourceExtraInstruction" rows="2" style="width:100%; padding:8px; border:1px solid #1d9bf0; border-radius:8px; font-size:14px; background:transparent; resize:vertical; box-sizing:border-box;"></textarea>
+        </div>
+        <div class="input-group" style="margin-top:10px;">
+            <label style="font-size:13px;">目标字数</label>
+            <input type="number" id="novelSourceWordCount" value="1200" style="width:120px; padding:6px 8px; border:1px solid #1d9bf0; border-radius:6px; font-size:13px;">
+        </div>
+
+        <div style="text-align:center; margin-top:18px; display:flex; gap:12px; justify-content:center;">
+            <button class="btn-primary" id="btnGenNovelFromSources" style="width:auto; padding:10px 26px; margin:0;" onclick="generateNovelFromSources()">✨ 生成</button>
+            <button class="btn-cancel" style="margin:0;" onclick="closeModal('novelSourceSummaryModal')">取消</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="postCreateModal">
     <div class="modal-box" style="width: 580px; padding: 20px;">
         <h2 style="margin-top:0; color:#1d9bf0;">✨ 有什么新鲜事？</h2>
-        
+        <div id="quoteComposerPreview" style="display:none;"></div>
         <div class="user-post-area" style="border:none; padding:0; margin-bottom: 10px;">
             <div class="user-post-input-row">
                 <div id="homeUserAvatar" class="avatar" style="width:40px; height:40px; font-size:16px;">我</div>
@@ -1524,6 +2328,8 @@
             <div class="user-post-icon-row" style="padding-left: 50px;">
                 <button class="btn-edit-small" title="高级设置" onclick="toggleAdvancedPostOptions()">⚙️</button>
                 <button class="btn-edit-small" title="添加表情/图片" onclick="openEmoticonPicker('post')">🖼️</button>
+                <input type="file" id="postImageUploadInput" accept="image/*" style="display:none;" onchange="handleDirectImageUpload(this, 'post')">
+                <button class="btn-edit-small" title="上传图片" onclick="document.getElementById('postImageUploadInput').click()">📷</button>
                 <button class="btn-post" onclick="userPost()">发布推文</button>
             </div>
             <div id="advancedPostOptions" style="display:none; width: 100%; margin-top: 5px; gap: 8px; flex-wrap: wrap; background: rgba(29, 155, 240, 0.05); padding: 10px; border-radius: 8px; border: 1px solid #1d9bf0;">
@@ -1562,35 +2368,26 @@
             border-top: 1px solid #eff3f4;
             z-index: 10;
         }
-        @media (max-width: 900px) {
-            .diary-action-bar {
-                position: fixed;
-                bottom: 50px; /* 避开手机底部的导航栏 */
-                left: 0;
-                right: 0;
-                padding-bottom: 25px; /* 适配全面屏底部安全区 */
-                box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
-            }
-        }
-    </style>
-<div class="modal-overlay" id="inviteGroupModal" style="z-index: 3000;">
-    <div class="modal-box" style="width: 400px;">
-        <h3 style="margin-top:0; color:#1d9bf0;">➕ 邀请角色进群</h3>
-        <div style="font-size:13px; color:#536471; margin-bottom:15px;">群里的老成员将对新人的到来发表态度。</div>
-        
-        <div class="input-group full-width">
-            <label>选择要邀请的角色</label>
-            <select id="inviteGroupCharSelect" style="font-size: 15px; padding: 10px;"></select>
-        </div>
-        
-        <div style="display:flex; gap:10px; margin-top:15px;">
-            <button class="btn-primary" style="margin-top:0; flex: 2;" id="btnConfirmInvite" onclick="confirmInviteToGroup()">立即邀请</button>
-            <button class="btn-cancel" style="margin-top:0; flex: 1;" onclick="closeModal('inviteGroupModal')">取消</button>
-        </div>
-    </div>
-</div>
+</style>
 
-<script src="./script.js"></script>
-
+    <!-- EJS模板引擎：本地打包(vendor)而不用CDN，离线(PWA)时也能正常渲染带<%%>语法的提示词/世界书 -->
+    <script src="./js/vendor/ejs.min.js"></script>
+    <script src="./js/01-core-state-infra.js"></script>
+    <script src="./js/02-databank-plugins-minigames.js"></script>
+    <script src="./js/03-markdown-feed-tags.js"></script>
+    <script src="./js/04-mobile-bootstrap-notifications.js"></script>
+    <script src="./js/05-anniversary-memory.js"></script>
+    <script src="./js/06-emoticons-time-humanfeel-relationships-worldbook.js"></script>
+    <script src="./js/07-proactive-cloudsync.js"></script>
+    <script src="./js/08-diary-novel.js"></script>
+    <script src="./js/09-memories-search-postfixes.js"></script>
+    <script src="./js/10-comments-npc-forum-reply.js"></script>
+    <script src="./js/11-tabloid-story-forum-engine.js"></script>
+    <script src="./js/12-worldbook-import-appexport.js"></script>
+    <script src="./js/13-charreply-groupchat-faction-cardimport.js"></script>
+    <script src="./js/14-settings-archive.js"></script>
+    <script src="./js/15-ai-presets.js"></script>
+<script src="./js/16-story-studio.js"></script>
+<script src="./js/17-tavern-bridge.js"></script>
 </body>
-</html>            
+</html>

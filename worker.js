@@ -192,6 +192,24 @@ async function pushNtfy(state, title, body) {
   }
 }
 
+// 休息时间段判断：跟手机端 isInQuietHours() 逻辑保持一致。
+// Worker 这边 Date.now() 是 UTC 毫秒数，要先用客户端同步过来的 tzOffsetMin 换算成用户本地时间再比较。
+// tzOffsetMin 是 JS 的 Date.prototype.getTimezoneOffset() 语义：本地时间 = UTC时间 - tzOffsetMin分钟。
+function isInQuietHours(state, nowMs) {
+  if (!state.quietHoursEnabled || !state.quietHoursStart || !state.quietHoursEnd) return false;
+  const tzOffsetMin = typeof state.tzOffsetMin === 'number' ? state.tzOffsetMin : 0;
+  const localMs = nowMs - tzOffsetMin * 60000;
+  const localDate = new Date(localMs);
+  const curMin = localDate.getUTCHours() * 60 + localDate.getUTCMinutes(); // 用 UTC getter 读，避免 Worker 运行环境自己的时区又插一脚
+  const [sh, sm] = state.quietHoursStart.split(':').map(Number);
+  const [eh, em] = state.quietHoursEnd.split(':').map(Number);
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return false;
+  const startMin = sh * 60 + sm, endMin = eh * 60 + em;
+  if (startMin === endMin) return false;
+  if (startMin < endMin) return curMin >= startMin && curMin < endMin;
+  return curMin >= startMin || curMin < endMin;
+}
+
 async function runProactiveCheck(env) {
   const state = await getState(env);
   if (!state.apiKey || !state.apiUrl || !Array.isArray(state.characters) || state.characters.length === 0) return;
@@ -202,7 +220,8 @@ async function runProactiveCheck(env) {
   let changed = false;
 
   // ---- 1. 主动发消息（聊天）----
-  const dueChat = state.characters.filter((char) => {
+  const inQuietHours = isInQuietHours(state, now);
+  const dueChat = inQuietHours ? [] : state.characters.filter((char) => {
     if (!char.chatFreq || !char.chatFreq.interval || char.chatFreq.interval <= 0) return false;
     const unitMs = char.chatFreq.unit === 'minute' ? 60000 : char.chatFreq.unit === 'hour' ? 3600000 : 86400000;
     const reqMs = char.chatFreq.interval * unitMs;
@@ -360,6 +379,10 @@ export default {
       state.charInteractionEnabled = !!body.charInteractionEnabled;
       state.charInteractionNotify = !!body.charInteractionNotify;
       state.relationships = Array.isArray(body.relationships) ? body.relationships : [];
+      state.quietHoursEnabled = !!body.quietHoursEnabled;
+      state.quietHoursStart = body.quietHoursStart || '';
+      state.quietHoursEnd = body.quietHoursEnd || '';
+      state.tzOffsetMin = typeof body.tzOffsetMin === 'number' ? body.tzOffsetMin : 0; // 手机端 Date.getTimezoneOffset()，UTC-本地，分钟
       state.updatedAt = Date.now();
 
       // 合并角色：保留云端已经推进过的 lastChatProactiveTime/lastPostTime（避免手机端旧数据把云端进度覆盖回去）

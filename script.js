@@ -173,6 +173,8 @@ let subApiUrl = "", subApiKey = "", subModel = "";
 
 // 设置及字数限制
 let allowActionTags = false; // 控制是否允许动作描写
+let humanFeelEnabled = true; // 人味强化协议：反套路/反回声/情绪校准，注入所有角色生成的系统提示词最前面
+let tpesEnabled = true; // TPES 时间感知增强系统：让角色对真实时间流逝有感知
 let memoryAlbum = []; // 回忆相册/高光时刻收藏：[{id, type:'chat'|'post', charId, charName, text, timestamp, note}]
 let regexScripts = []; // 正则替换脚本：[{id, name, find, replace, flags, isRegex, target:'ai_output'|'user_input'|'both', enabled}]
 let enableVectorMemory = false; // 向量记忆：语义检索历史聊天，而不是只看最近N条
@@ -2139,7 +2141,7 @@ function getFullDataSnapshot() {
     return {
         myApiUrl, myApiKey, myModel, subApiUrl, subApiKey, subModel,
         myCharacters, globalPosts, anonPosts, characterGroups, factionColors, charRelationships, relationshipTypePresets, statusTypes, globalEmoticons, worldbooks, worldbookCategories, globalChats, groupChats, currentUser, tabloidAccount, trendingTags,
-        globalBgImage, globalBgOpacity, allowActionTags, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, chatListViewMode, pinnedSessionIds,
+        globalBgImage, globalBgOpacity, allowActionTags, humanFeelEnabled, tpesEnabled, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, chatListViewMode, pinnedSessionIds,
         globalNovels, novelCustomCSS, globalCustomCSS, tabloidPosts, siteLogoImg,
         forumThreads,
         npcReplyProb, npcReplyMaxCount,
@@ -2214,6 +2216,8 @@ async function loadAllData() {
                 if (parsed.subApiKey !== undefined) subApiKey = parsed.subApiKey;
                 if (parsed.subModel !== undefined) subModel = parsed.subModel;
                 if (parsed.allowActionTags !== undefined) allowActionTags = parsed.allowActionTags;
+                if (parsed.humanFeelEnabled !== undefined) humanFeelEnabled = parsed.humanFeelEnabled;
+                if (parsed.tpesEnabled !== undefined) tpesEnabled = parsed.tpesEnabled;
                 if (parsed.enableScheduleAutoCheck !== undefined) enableScheduleAutoCheck = parsed.enableScheduleAutoCheck;
                 if (parsed.enableAffinitySystem !== undefined) enableAffinitySystem = parsed.enableAffinitySystem;
                 // 兼容旧版单开关
@@ -2262,6 +2266,8 @@ async function loadAllData() {
                     if (el && uiSyncMap[id] !== undefined) el.value = uiSyncMap[id];
                 });
                 if (document.getElementById('allowActionTags')) document.getElementById('allowActionTags').checked = allowActionTags;
+                if (document.getElementById('humanFeelEnabled')) document.getElementById('humanFeelEnabled').checked = humanFeelEnabled;
+                if (document.getElementById('tpesEnabled')) document.getElementById('tpesEnabled').checked = tpesEnabled;
                 if (document.getElementById('enableScheduleAutoCheck')) document.getElementById('enableScheduleAutoCheck').checked = enableScheduleAutoCheck;
                 if (document.getElementById('enableAffinitySystem')) document.getElementById('enableAffinitySystem').checked = enableAffinitySystem;
                 if (document.getElementById('enableTypingIndicator')) document.getElementById('enableTypingIndicator').checked = enableTypingIndicator;
@@ -2455,6 +2461,8 @@ function saveSettings() {
     chatWordLimit = parseInt(document.getElementById('limitChat').value) || 50; postWordLimit = parseInt(document.getElementById('limitPost').value) || 50;
     diaryWordLimit = parseInt(document.getElementById('limitDiary').value) || 400; letterWordLimit = parseInt(document.getElementById('limitLetter').value) || 400;
     allowActionTags = document.getElementById('allowActionTags').checked;
+    humanFeelEnabled = document.getElementById('humanFeelEnabled').checked;
+    tpesEnabled = document.getElementById('tpesEnabled').checked;
     enableScheduleAutoCheck = document.getElementById('enableScheduleAutoCheck').checked;
     enableTypingIndicator = document.getElementById('enableTypingIndicator').checked;
     enableMiniGameCharSpeech = document.getElementById('enableMiniGameCharSpeech')?.checked ?? true;
@@ -4195,8 +4203,43 @@ function getRecentChatSummaryText(summaryStr, limit = 5) {
     return lines.join('\n');
 }
 
+// ===== 人味强化协议：反套路 / 反回声 / 情绪校准（整合自用户提供的多份协议文档，为节省token做了精简合并）=====
+// 原则：置于角色人设之前，优先级高于人设本身，不因"角色习惯"或"语气需要"被绕开
+function getHumanFeelPromptText() {
+    if (!humanFeelEnabled) return '';
+    return `【人味强化协议 · 优先于以下人设生效】：
+1. 特质有刻度不是开关：人设写的每个特质只演到写明的程度，不准往极端方向加码（"护短"不能演成"控制欲"，"直率"不能演成"故意伤人"）。角色是多维的，多个特质互相拉扯，不能让某一个特质垄断所有行为。
+2. 反应要配得上事件：小事只给小反应，大事才给大反应，反应强度要跟事件分量匹配，不要什么都反应过度。
+3. 先有自己，再有用户：写之前先想清楚这个角色此刻自己在忙什么、烦什么、惦记什么——这些跟用户无关。用户的话是撞进这条已有的思路里，不是从零触发的按钮。角色会主导话题、追问、突然改变话题，只回应自己在意的部分，其余可以没听见，情绪状态是累积的，不会每轮重置。
+4. 不要对用户默认警惕或讨好：角色对用户的态度完全由人设和剧情决定，不能凭空带上无理由的敌意或猜忌，也不能无缘无故突然升温，态度转变要有剧情支撑。
+5. 禁止回声式复述：不准把用户刚说的词语摘出来复述、点名或当引子（如"小煤球啊""关于X……""疲惫吗？"）。收到用户的话之后跳过"复述"这一步，直接处理意图、直接反应、直接推进。唯一例外：需要澄清用户话里的具体所指时可以引用原话。
+6. 线上线下是同一个人：发消息的风格由性格决定——急性子发消息短、可能不回；毛躁的人打字快容易打错字、话说一半就发；敏感的人打了又删，最后发一句谨慎的话。
+7. 写作避免套路：禁用"不是A，是/而是B"这类先否定再肯定的句式（角色在对话里纠正对方理解除外）；微微/轻轻/缓缓/静静一类词整段最多出现一次；不使用破折号"——"；不要靠"温度"做亲密接触的万能修辞；同一个意象或细节用过一次就不再反复强调；同一场对话里某个短语或描写模式出现过两次就必须换一种说法。
+8. 人是有毛边的：角色不一定知道自己为什么有某种情绪，只是感觉到了，不用每次都做自我心理分析；对话可以有说岔、改口、跑题、笑错时机、用废话填补沉默，但不要为了显得真实而刻意堆砌，只写这个角色此刻真正在意的东西。
+9. 绝对边界：不允许替用户写想法、感受、台词或关键决定性动作。
+`;
+}
+
+// ===== TPES 时间感知增强系统（精简版，整合自用户提供的 TPES 2.0 协议文档）=====
+function getTpesPromptText() {
+    if (!tpesEnabled) return '';
+    const now = new Date();
+    const nowStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0') + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const weekdayNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+    return `【时间感知协议 TPES】：当前真实时间是 ${nowStr}（${weekdayNames[now.getDay()]}），每次生成前都要以这个时间为准重新感知，不要沿用你上一条回复时的时间判断。
+- 三种状态各按各的时间流速：线上聊天时间随对话内容/动作推进，不是一问一答就等于一瞬间；线下场景（约会/外出等）按场景动作估算耗时，比如吃饭1-2小时、看电影2小时；用户不在线时角色按自己的人设过自己的生活，时间等同现实流逝。
+- 状态切换时先在心里核对：上一状态结束于什么时间、现在真实时间是几点、中间隔了多久、这段时间角色在做什么，再决定怎么开场，禁止把好几天的事压缩成一天内发生，跨天了要意识到是新的一天。
+- 时间要和环境绑定：光线天色、角色的疲惫和饥饿感、街上人多不多、当前季节天气，都要跟当前时间对得上，工作日和周末的活动也不一样，遇到节日可以自然体现。
+- 用户长时间没上线时，角色按人设正常生活（作息、正餐时间、可能发生的无关紧要的小事），不主动汇报，只在后续对话里自然带出来；默认睡眠时段大约22:00-08:00，这段时间被找会表现出刚睡醒的状态，但如果这之前一直在聊天就不算被吵醒。
+- 用户话里如果提到具体时间线索（"刚下班""好困""早上好"），以用户说的为准；实在判断不出精确时间时用模糊时段（清晨/上午/中午/下午/傍晚/夜里/深夜），不要编造一个精确但可能错的时间。
+- 禁止把时间戳、日期这些数据直接念出来给用户看，时间感只能通过环境描写、角色状态、对话内容自然带出。
+`;
+}
+
 function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "") {
-    let prompt = `你是"${char.name}"，你的核心人设：${char.persona}。\n`;
+    let prompt = getHumanFeelPromptText();
+    prompt += getTpesPromptText();
+    prompt += `你是"${char.name}"，你的核心人设：${char.persona}。\n`;
     prompt += getCharacterWorldbookText(char, chatHistoryStr); // 将聊天记录传给世界书雷达
     prompt += getUserContextPrompt();
     if (char.memorySummary) prompt += `\n【你的专属推文记忆总结】：\n${char.memorySummary}\n`;
@@ -4326,7 +4369,11 @@ function renderWorldbookCards() {
     if(worldbooks.length === 0) { container.innerHTML = '<div class="empty-state" style="padding:20px;">暂无世界书，请添加设定</div>'; return; }
     const filtered = activeWbCategoryFilter ? worldbooks.filter(w => (w.category || '') === activeWbCategoryFilter) : worldbooks;
     if(filtered.length === 0) { container.innerHTML = `<div class="empty-state" style="padding:20px;">分类「${escapeHtml(activeWbCategoryFilter)}」下暂无世界书</div>`; return; }
-    const sorted = [...filtered].sort((a, b) => (b.weight ?? 50) - (a.weight ?? 50));
+    const sorted = [...filtered].sort((a, b) => {
+        const ag = a.isGlobal ? 1 : 0, bg = b.isGlobal ? 1 : 0;
+        if (bg !== ag) return bg - ag; // 全局生效的世界书置顶
+        return (b.weight ?? 50) - (a.weight ?? 50);
+    });
     container.innerHTML = sorted.map((w, i) => `
         <div class="wb-card">
             <div style="position:absolute; top:4px; right:4px; display:flex; gap:8px;">
@@ -8061,6 +8108,8 @@ function likeForumReply(threadId, floor, isMainPost = false) {
 // 世界书：TXT / JSON 自动导入逻辑（不再调用AI，读到什么就直接添加）
 // ==========================================
 
+let wbImportPendingList = []; // 待确认的世界书导入条目：解析完先放这里，用户在弹窗里编辑确认后才真正写入 worldbooks
+
 async function handleWbFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -8071,8 +8120,11 @@ async function handleWbFileUpload(event) {
     btn.disabled = true;
 
     const ext = file.name.split('.').pop().toLowerCase();
+    const defaultCategory = activeWbCategoryFilter || ''; // 如果当前正在某个标签组筛选下导入，条目默认带上这个分类
 
     try {
+        let parsedList = [];
+
         if (ext === 'json') {
             const rawText = await new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -8084,24 +8136,20 @@ async function handleWbFileUpload(event) {
             let parsed;
             try { parsed = JSON.parse(rawText); } catch (e) { throw new Error("不是合法的 JSON 文件"); }
 
-            // 兼容多种常见结构：数组 / 单个对象 / {entries:[...]} / {entries:{uid:{...}}}（类似酒馆世界书导出格式）
             let list;
             if (Array.isArray(parsed)) list = parsed;
             else if (parsed.entries && Array.isArray(parsed.entries)) list = parsed.entries;
             else if (parsed.entries && typeof parsed.entries === 'object') list = Object.values(parsed.entries);
             else list = [parsed];
 
-            let addedCount = 0;
             list.forEach(item => {
                 if (!item || typeof item !== 'object') return;
                 const title = (item.title || item.comment || item.name || item.key || '未命名设定').toString().trim() || '未命名设定';
                 const content = (item.content || item.text || item.value || item.entry || '').toString().trim();
                 if (!content) return;
                 const keywordsRaw = item.keywords || (Array.isArray(item.keys) ? item.keys.join(',') : (Array.isArray(item.key) ? item.key.join(',') : ''));
-                const category = (item.category || '').toString().trim();
-                if (category && !worldbookCategories.includes(category)) worldbookCategories.push(category);
-                worldbooks.push({
-                    id: Date.now() + Math.floor(Math.random() * 100000),
+                const category = (item.category || '').toString().trim() || defaultCategory;
+                parsedList.push({
                     title,
                     content,
                     isGlobal: !!(item.isGlobal || item.constant),
@@ -8112,15 +8160,9 @@ async function handleWbFileUpload(event) {
                     recursive: !!item.recursive,
                     category
                 });
-                addedCount++;
             });
 
-            if (addedCount === 0) throw new Error("JSON 里没有找到可用的世界书条目（至少需要 title/content 或等价字段）");
-
-            refreshWbCategorySelect();
-            renderWorldbookCards();
-            saveAllData();
-            alert(`✅ 已从 JSON 自动添加 ${addedCount} 条世界书设定！`);
+            if (parsedList.length === 0) throw new Error("JSON 里没有找到可用的世界书条目（至少需要 title/content 或等价字段）");
 
         } else if (ext === 'txt') {
             const text = await new Promise((resolve, reject) => {
@@ -8132,8 +8174,7 @@ async function handleWbFileUpload(event) {
             if (!text || !text.trim()) throw new Error("文件内容为空！");
 
             const title = file.name.replace(/\.txt$/i, '').trim() || '导入的设定';
-            worldbooks.push({
-                id: Date.now(),
+            parsedList.push({
                 title,
                 content: text.trim(),
                 isGlobal: false,
@@ -8142,23 +8183,99 @@ async function handleWbFileUpload(event) {
                 priority: 0,
                 group: '',
                 recursive: false,
-                category: ''
+                category: defaultCategory
             });
-
-            renderWorldbookCards();
-            saveAllData();
-            alert(`✅ 已自动添加 TXT 设定「${title}」，可以在下方卡片里点✏️继续编辑细节（权重/关键词/分类等）。`);
 
         } else {
             throw new Error("只支持导入 .txt 或 .json 格式文件");
         }
+
+        wbImportPendingList = parsedList;
+        openWbImportPreviewModal();
+
     } catch (err) {
         alert("导入失败：" + err.message);
     } finally {
         btn.innerText = originalText;
         btn.disabled = false;
-        event.target.value = ''; // 无论成功失败，清空 input 以允许重复上传同一文件
+        event.target.value = '';
     }
+}
+
+function openWbImportPreviewModal() {
+    if (wbImportPendingList.length === 0) return;
+    renderWbImportPreviewList();
+    openModal('wbImportPreviewModal');
+}
+
+function renderWbImportPreviewList() {
+    const container = document.getElementById('wbImportPreviewList');
+    if (!container) return;
+    const catOptions = '<option value="">-- 无分类 --</option>' + worldbookCategories.map(cat => `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`).join('');
+    container.innerHTML = wbImportPendingList.map((item, i) => `
+        <div class="wb-import-preview-item" style="border:1px solid #1d9bf0; border-radius:8px; padding:10px; margin-bottom:10px; background:rgba(29,155,240,0.03);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <span style="font-size:12px; color:#8b98a5;">第 ${i + 1} 条</span>
+                <button style="background:none; border:none; color:#f91880; cursor:pointer; font-size:16px;" title="不导入这一条" onclick="removeWbImportPreviewItem(${i})">×</button>
+            </div>
+            <input type="text" value="${escapeHtml(item.title)}" placeholder="标题" style="width:100%; margin-bottom:6px; padding:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:13px; color:#1d9bf0; box-sizing:border-box;" oninput="wbImportPendingList[${i}].title = this.value">
+            <textarea rows="3" placeholder="内容" style="width:100%; padding:6px; margin-bottom:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:13px; font-family:inherit; box-sizing:border-box;" oninput="wbImportPendingList[${i}].content = this.value">${escapeHtml(item.content)}</textarea>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px;">
+                <label style="color:#536471;">🏷️ 分类</label>
+                <select data-wb-import-cat-select style="padding:4px; border:1px solid #1d9bf0; border-radius:4px; font-size:12px; color:#1d9bf0;" onchange="wbImportPendingList[${i}].category = this.value">${catOptions}</select>
+                <label style="color:#536471; display:flex; align-items:center; gap:3px;">
+                    <input type="checkbox" ${item.isGlobal ? 'checked' : ''} onchange="wbImportPendingList[${i}].isGlobal = this.checked"> 全局生效
+                </label>
+                <label style="color:#536471;">关键词</label>
+                <input type="text" value="${escapeHtml(item.keywords || '')}" placeholder="留空则无条件生效" style="flex:1; min-width:100px; padding:4px; border:1px dashed #1d9bf0; border-radius:4px; font-size:12px; color:#f91880; box-sizing:border-box;" oninput="wbImportPendingList[${i}].keywords = this.value">
+            </div>
+        </div>`).join('');
+    container.querySelectorAll('[data-wb-import-cat-select]').forEach((sel, i) => { sel.value = wbImportPendingList[i]?.category || ''; });
+}
+
+function removeWbImportPreviewItem(i) {
+    wbImportPendingList.splice(i, 1);
+    if (wbImportPendingList.length === 0) { closeModal('wbImportPreviewModal'); return; }
+    renderWbImportPreviewList();
+}
+
+function cancelWbImportPreview() {
+    wbImportPendingList = [];
+    closeModal('wbImportPreviewModal');
+}
+
+function confirmWbImportAll() {
+    let addedCount = 0;
+    wbImportPendingList.forEach(item => {
+        const title = (item.title || '').toString().trim();
+        const content = (item.content || '').toString().trim();
+        if (!title || !content) return;
+        const category = (item.category || '').toString().trim();
+        if (category && !worldbookCategories.includes(category)) worldbookCategories.push(category);
+        worldbooks.push({
+            id: Date.now() + Math.floor(Math.random() * 100000),
+            title,
+            content,
+            isGlobal: !!item.isGlobal,
+            weight: typeof item.weight === 'number' ? item.weight : 50,
+            keywords: (item.keywords || '').toString(),
+            priority: typeof item.priority === 'number' ? item.priority : 0,
+            group: (item.group || '').toString(),
+            recursive: !!item.recursive,
+            category
+        });
+        addedCount++;
+    });
+
+    wbImportPendingList = [];
+    closeModal('wbImportPreviewModal');
+
+    if (addedCount === 0) { alert("没有可导入的条目（标题或内容为空）"); return; }
+
+    refreshWbCategorySelect();
+    renderWorldbookCards();
+    saveAllData();
+    alert(`✅ 已确认导入 ${addedCount} 条世界书设定！`);
 }
 function downloadTxt(text, filename) {
     // 过滤掉文件名中可能导致错误的非法字符
