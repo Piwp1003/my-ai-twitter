@@ -895,6 +895,15 @@ function renderChatMessages() {
                 </div>`;
             }
 
+            // 渲染侧兜底：已经存坏在历史里的旧消息（比如修好之前那批带着 [QUOTE:12] 的）
+            // 也要能显示干净。只对**角色**说的话生效——用户自己打的字一个都不动。
+            // 万一整条消息就只有一个标记、清完是空的，那就原样显示，宁可露一次也别给个空气泡。
+            let displayText = msg.text;
+            if (!isMe && typeof stripLeftoverMarkers === 'function') {
+                const cleaned = stripLeftoverMarkers(msg.text);
+                if (cleaned && cleaned.trim()) displayText = cleaned;
+            }
+
             // 💡 聊天气泡改为【纯文本显示】：不再渲染MVU状态栏卡片、记忆召回面板，也不再把
             // renderMarkdownLite（会保留卡/正则里原样的HTML标签）用在聊天正文上——统一换成
             // renderPlainChatText，只剥离标签取纯文字。注意：mvuSnapshot/recallHtml 等后台数据
@@ -904,7 +913,7 @@ function renderChatMessages() {
                     ${!isMe ? avatarHtml : ''}
                     <div class="chat-bubble-wrapper" style="align-items: ${isMe ? 'flex-end' : 'flex-start'};">
                         <div class="chat-sender-name" style="font-size:10px;">${!isMe && isGroup ? senderChar?.name : ''} ${timeStr}</div>
-                        <div class="chat-bubble ${isMe ? 'me' : 'other'}" oncontextmenu="showChatContextMenu(event, ${idx})" ontouchstart="chatBubbleTouchStart(event, ${idx})" ontouchend="chatBubbleTouchEnd(event)" ontouchmove="chatBubbleTouchEnd(event)">${msg.quote ? `<div class="chat-quote-bubble${msg.quote.type === 'tweet' ? ' tweet-quote-card' : ''}">${msg.quote.type === 'tweet' ? '<div class="tweet-quote-label">🐦 分享的推文</div>' : ''}<b>${msg.quote.name}</b>: ${renderPlainChatText(msg.quote.text)}</div>` : ''}${renderPlainChatText(msg.text)}${msg.mediaUrl ? `<img src="${msg.mediaUrl}">` : ''}${swipeHtml}</div>
+                        <div class="chat-bubble ${isMe ? 'me' : 'other'}" oncontextmenu="showChatContextMenu(event, ${idx})" ontouchstart="chatBubbleTouchStart(event, ${idx})" ontouchend="chatBubbleTouchEnd(event)" ontouchmove="chatBubbleTouchEnd(event)">${msg.quote ? `<div class="chat-quote-bubble${msg.quote.type === 'tweet' ? ' tweet-quote-card' : ''}">${msg.quote.type === 'tweet' ? '<div class="tweet-quote-label">🐦 分享的推文</div>' : ''}<b>${msg.quote.name}</b>: ${renderPlainChatText(msg.quote.text)}</div>` : ''}${renderPlainChatText(displayText)}${msg.mediaUrl ? `<img src="${msg.mediaUrl}">` : ''}${swipeHtml}</div>
                         ${isMe ? readStatusHtml : ''}
                     </div>
                     ${isMe ? avatarHtml : ''}
@@ -916,6 +925,15 @@ function renderChatMessages() {
     }).join('');
     if (__markedAnyRead) saveAllData();   // 整轮只存一次，不再每条一次
     container.scrollTop = container.scrollHeight;
+
+    // 「空着点发送＝重新生成」这个功能得让人看得见，不然没人知道有它。
+    // 只在真的可用（最后一条是你说的）而且输入框空着的时候改提示文字。
+    const inputEl = document.getElementById('chatInput');
+    if (inputEl && !inputEl.value) {
+        inputEl.placeholder = collectTrailingMyTexts(history).length > 0
+            ? '输入消息…（留空点发送＝让TA重新回一次）'
+            : '输入消息...';
+    }
     // 💡 聊天气泡现在统一是纯文本渲染（renderPlainChatText），不会再有真实HTML/<script>标签进到DOM里，
     // 这里以前的"聊天注入脚本执行"调用已经是死代码了，去掉。脚本执行开关(enableChatScriptExecution)本身
     // 还留着——推文/评论/小报这些地方仍然正常渲染HTML，那些地方还用得到，见 08/09/11 号文件里的调用。
@@ -961,7 +979,9 @@ function showChatContextMenu(e, msgIdx) {
     const menu = document.getElementById('chatContextMenu');
     menu.innerHTML = `
         <button class="context-btn" onclick="contextActionReplyChat()">引用回复</button>
-        ${msg.sender === 'me' ? '<button class="context-btn" onclick="contextActionEditChat()">重新编辑</button>' : '<button class="context-btn" onclick="contextActionRegenerateChat()">🔄 侧滑重新生成</button>'}
+        ${msg.sender === 'me'
+            ? '<button class="context-btn" onclick="contextActionEditChat()">重新编辑</button>'
+            : '<button class="context-btn" onclick="contextActionEditCharMsg()">✏️ 编辑这条消息</button><button class="context-btn" onclick="contextActionRegenerateChat()">🔄 侧滑重新生成</button>'}
         ${!currentChatSessionId.startsWith('g_') ? '<button class="context-btn" style="color:#17bf63;" onclick="contextActionBranchChat()">🌳 从此处开辟分支（保留旧对话）</button>' : ''}
         <button class="context-btn" onclick="contextActionSpeakChat()">🔊 朗读这条消息</button>
         <button class="context-btn" onclick="contextActionAddToMemory()">⭐ 收藏进相册</button>
@@ -1103,6 +1123,86 @@ async function contextActionEditChat() {
     let newText = await appPrompt("重新编辑您的消息：", msg.text); if (newText === null || newText.trim() === "") return;
     msg.text = newText.trim(); globalChats[sessionId].splice(idx + 1); renderChatMessages(); saveAllData();
     await triggerAIBatchReply(sessionId, msg.text);
+}
+
+// ✏️ 编辑角色说过的话。
+//
+// 跟上面"重新编辑自己的消息"不是一回事，别看着像就合并：
+//   改自己的话 = "我刚才那句重说一遍" → 后面的对话作废，砍掉重新生成；
+//   改角色的话 = "就当TA当时是这么说的" → 后面的对话全都还算数，一条都不许动。
+// 所以这里既不 splice 也不重新请求AI。
+//
+// 真正麻烦的是"各处都同步"。这句话不只存在气泡里，还散落在好几个地方，
+// 只改 msg.text 的话会出现"改完了，但别的地方还是旧的"：
+//   · msg.swipes —— 侧滑抽卡的当前这张。不改的话左右滑一下，改动就被旧版本盖回去了。
+//   · 别的消息里的 msg.quote —— 引用回复存的是**当时那句话的文字副本**，不是指针。
+//   · memoryAlbum —— 收藏进回忆相册时同样存的是副本。
+//   · msg.embVec —— 向量记忆的 embedding 是按旧文字算出来的，不清掉，
+//                    语义检索还会拿着旧内容去匹配，角色"记得"的还是没改之前那句。
+//
+// 有一样确实同步不了，也不装作能同步：**已经生成过的聊天总结**。那是模型读完一段对话
+// 之后自己写的一段话，不是这句话的副本，没法定位到"哪几个字来自这条消息"。
+// 所以改完之后给一句明确提示，让用户自己决定要不要重新总结，而不是让他以为全同步了。
+async function contextActionEditCharMsg() {
+    document.getElementById('chatContextMenu').style.display = 'none';
+    if (chatContextMenuMsgIdx === null || !currentChatSessionId) return;
+    const sessionId = currentChatSessionId, idx = chatContextMenuMsgIdx;
+    const msg = (globalChats[sessionId] || [])[idx];
+    if (!msg || msg.sender === 'system' || msg.sender === 'me') return;
+
+    const oldText = msg.text || '';
+    const senderChar = myCharacters.find(c => c.id == msg.sender);
+    const senderName = (senderChar && senderChar.name) || '未知';
+
+    const newTextRaw = await appPrompt(`编辑「${senderName}」的这条消息（后面的对话不会被删掉）：`, oldText);
+    if (newTextRaw === null) return;
+    const newText = String(newTextRaw).trim();
+    if (!newText) return alert('内容不能为空。想让这条消失请用"删除消息"。');
+    if (newText === oldText) return;
+
+    msg.text = newText;
+    msg.editedAt = Date.now();
+
+    // 1) 侧滑抽卡的当前这张也跟着改，否则左右滑一下就被旧版本盖回去
+    if (Array.isArray(msg.swipes) && msg.swipes.length) {
+        let cIdx = msg.currentSwipe || 0;
+        if (cIdx >= 0 && cIdx < msg.swipes.length) msg.swipes[cIdx] = newText;
+    }
+
+    // 2) 所有会话里引用了这句话的快照
+    let quoteFixed = 0;
+    Object.keys(globalChats).forEach(sid => {
+        (globalChats[sid] || []).forEach(m => {
+            if (m && m.quote && m.quote.text === oldText && (!m.quote.name || m.quote.name === senderName)) {
+                m.quote.text = newText; quoteFixed++;
+            }
+        });
+    });
+
+    // 3) 回忆相册里收藏过的副本
+    let memFixed = 0;
+    if (typeof memoryAlbum !== 'undefined' && Array.isArray(memoryAlbum)) {
+        memoryAlbum.forEach(m => {
+            if (m && m.type === 'chat' && m.text === oldText && (m.refId == sessionId || m.charId == sessionId)) {
+                m.text = newText; memFixed++;
+            }
+        });
+    }
+
+    // 4) 向量记忆：旧向量必须作废，不然检索出来的还是改之前那句
+    if (msg.embVec) delete msg.embVec;
+
+    renderChatMessages();
+    saveAllData();
+    if (typeof embedMessageInBackground === 'function') embedMessageInBackground(msg);
+
+    // 改完给个明确回执：哪些地方跟着改了、哪一样确实改不了。不留"点了好像有反应又好像没有"的空档。
+    const parts = ['已改这条消息'];
+    if (quoteFixed) parts.push(`同步了 ${quoteFixed} 处引用`);
+    if (memFixed) parts.push(`同步了 ${memFixed} 条回忆收藏`);
+    const note = parts.join('，') + '。已经生成过的聊天总结里是模型自己写的话，没法逐句对应，需要的话可以重新总结一次。';
+    if (typeof showToast === 'function' && senderChar) showToast(getAvatarHTML(senderChar, 40), '已修改', note, null, null);
+    else alert(note);
 }
 
 // 🌳 开辟分支（保留旧对话）：复制一份角色和到目前为止的聊天记录，另开一条独立时间线
@@ -1247,9 +1347,46 @@ let pendingBatchReplyTimers = {};
 let pendingBatchReplyTexts = {};
 const CHAT_BATCH_REPLY_DELAY_MS = 5000; // 用户5秒内连发的消息会合并成一次触发AI回复
 
+// 🔁 输入框空着点「发送」＝ 让 AI 把上一轮重新回一次。
+//
+// 场景：角色回的这条不满意，右键删掉。删完最后一条就是你自己说的话了，
+// 但发送键这时候是**哑的**（原来的逻辑是"没内容就 return"），只能靠再打一遍
+// 一模一样的话来催它重来——很别扭。
+// 现在空着点发送就直接拿最后那几条你说的话重新触发一次回复。
+//
+// 只在"最后一条是你说的"时候才生效。要是最后一条是角色说的，那说明这一轮
+// 它已经回过了，重新生成应该走气泡上的「🔄 侧滑重新生成」——那个会把旧回复
+// 存成 swipe 可以左右切换，比在这儿凭空再生一条更合适。
+function collectTrailingMyTexts(msgs) {
+    const out = [];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (!m) continue;
+        if (m.sender === 'system') continue;          // 拍一拍之类的系统提示不算打断
+        if (m.sender !== 'me') break;                 // 遇到角色说的话就停
+        if (m.text) out.unshift(m.text);
+    }
+    return out;
+}
+async function retriggerLastReply(sessionId) {
+    const msgs = globalChats[sessionId] || [];
+    const mine = collectTrailingMyTexts(msgs);
+    if (mine.length === 0) {
+        // 不能默默地什么都不做——那又变成"点了没反应"了，得说清楚为什么
+        const last = msgs.filter(m => m && m.sender !== 'system').slice(-1)[0];
+        showToast('<div class="avatar" style="width:40px;height:40px;">💬</div>', '没什么可以重新生成的',
+            last ? '最后一条是角色说的。想让这条重来，右键点它选「🔄 侧滑重新生成」，旧的那条会留着能左右切换。'
+                 : '这里还没有消息。', null, null);
+        return;
+    }
+    // 防连点：正在等这个会话回复时不再叠一次
+    if (pendingBatchReplyTimers[sessionId] || (currentlyTypingChars && currentlyTypingChars.size > 0)) return;
+    await triggerAIBatchReply(sessionId, mine.join('\n'));
+}
+
 async function sendChatMessage() {
     if (!currentChatSessionId) return; const sessionId = currentChatSessionId; const input = document.getElementById('chatInput'); let text = input.value.trim();
-    if (!text && !pendingChatAttachment) return;
+    if (!text && !pendingChatAttachment) return retriggerLastReply(sessionId);
     text = applyRegexScripts(text, 'user_input');
     if (!globalChats[sessionId]) globalChats[sessionId] = [];
     const myMsg = { sender: 'me', text: text, timestamp: Date.now(), mediaUrl: pendingChatAttachment, readBy: [], quote: pendingChatQuote };
@@ -1291,6 +1428,8 @@ async function triggerAIBatchReply(sessionId, triggerText) {
     else { let c = myCharacters.find(c => c.id == sessionId); if (c) targetChars = [c]; }
 
     let currentBatchText = triggerText, anyCharReplied = false;
+    // 每个角色的"私聊时间线"各自独立跑，最后统一等一下再收尾（标已读/存档）
+    let pendingPrivateChains = [];
     let semanticContextCache = {}; // 按角色缓存，避免群聊里给每个角色重复请求 embedding
 
     // 🆕 识图：把这一批用户刚发的消息里带的图片（不管是拍的照片还是从表情/图片库选的）一并收集起来，
@@ -1374,6 +1513,16 @@ async function triggerAIBatchReply(sessionId, triggerText) {
         
         let multiReplyBlock = getChatMultiReplyBlock();
 
+        // 群聊转私聊：角色看完群里的对话，可以自己决定要不要私下来找用户说这件事。
+        // 只在**群聊**里给这个选项——1v1本来就是私聊，再"转私聊"没有意义，白占提示词。
+        // 跟推特评论区那个转私聊是同一套机制（[MOVETOCHAT] + deliverCharMoveToChatMessage），
+        // 但开关是分开的：群里当着大家的面不好说的话，和评论区不想公开回应，是两回事。
+        let groupMoveToChatOption = (isGroup && (typeof enableGroupMoveToChat === 'undefined' || enableGroupMoveToChat))
+            ? `\n【额外选项·可以私戳】：如果群里聊到的事你不想当着大家的面接、只想单独跟${userDisplayName()}说，就在那条回复的最前面加上"[MOVETOCHAT]"，紧跟着写你想私下说的话（例：[MOVETOCHAT]刚才那事我们私下说吧），这条会变成私聊消息发给${userDisplayName()}，群里的人看不到。
+可以加不止一条，也**可以一边在群里正常接话、一边私戳TA**——真人本来就是这样：群里说着场面话，私聊里说真话，两边同时进行。所以不用二选一，该在群里说的照常在群里说，同时把不方便公开的那句单独标出来就行。
+用不用、用几条你自己判断。大部分话本来就该在群里说，别每次都用；不想用就正常回复，什么都不用加。\n`
+            : '';
+
         // 🆕 AI自主引用最近消息：给一份编号列表，AI自己判断这一轮要不要引用、引用哪条
         let quotable = buildQuotableRecentMessages(sessionId, char, isGroup);
 
@@ -1394,54 +1543,131 @@ ${emoPrompt}
 ${quotable.promptText}
 ${anPrompt}
 ${latestEmphasis}
+${groupMoveToChatOption}
 ${actionTagReminder}
 ${multiReplyBlock}`;
         let prompt = buildStructuredMessages(systemText, historyTurns, finalUserText);
 
         try {
             if (currentChatSessionId === sessionId && document.getElementById('view-chat').style.display !== 'none') { currentlyTypingChars.add(char.name); updateTypingIndicator(); }
-            let data = await callChatCompletionAPI(api, prompt, 2, batchImages.length > 0 ? batchImages : null);
-            
-            if (data.error) {
-                currentlyTypingChars.delete(char.name); updateTypingIndicator();
-                alert(`⚠️ 聊天 API 报错（${char.name} 回复失败）:\n${data.error.message || JSON.stringify(data.error)}`);
-                continue; 
-            }
+            // ===== 取回复：流式和非流式塞进同一个队列，下面的消费循环一行都不用分叉 =====
+            // 聊天要模型返回一整段 {"replies":[...]} 的JSON，半截JSON贴进气泡是乱码，所以聊天的
+            // 流式不是"按字"而是"按气泡"：一边收一边扫，数组里哪条写完了就立刻入队发出去，
+            // 模型还在写第二条的时候第一条已经出现在屏幕上了。
+            // 流式关掉（或接口不支持流式、原生App壳子）时 streamCompletionText 会自动退回普通请求，
+            // 这里 streamedCount 保持 0，全部由下面那次完整解析一次性入队 —— 就是老行为。
+            const replyQueue = [];
+            let queueClosed = false, queueWake = null, streamedCount = 0;
+            const pushReply = (r) => { if (!r) return; replyQueue.push(r); if (queueWake) { const w = queueWake; queueWake = null; w(); } };
+            const closeQueue = () => { queueClosed = true; if (queueWake) { const w = queueWake; queueWake = null; w(); } };
 
-            let rawText = data.choices?.[0]?.message?.content?.trim() || "";
-            let replies = [];
-            
-             // 解析 JSON（改用 extractJsonObject：逐字符找匹配的花括号+自动修复裸换行/多余逗号，
-             // 不再是"截图里代码原文整段被当成消息发出来"背后那个粗暴正则）
-            try {
-                let parsed = extractJsonObject(rawText);
-                if (!parsed) throw new Error("No JSON object found");
+            let data = null;
+            // 流式结束（或压根没走流式）后做一次完整解析：stateUpdate、插件钩子、格式没对上的兜底
+            // 都还在这里，跟以前一模一样。唯一多出来的是最后那个 for —— 只补流式还没发过的部分，
+            // 不然同一条会发两遍。
+            const finalizeReplies = () => {
+                if (!data || data.error || data.aborted) return;
+                let rawText = data.choices?.[0]?.message?.content?.trim() || "";
+                let replies = [];
+                // 解析 JSON（用 extractJsonObject：逐字符找匹配的花括号+自动修复裸换行/多余逗号，
+                // 不再是"截图里代码原文整段被当成消息发出来"背后那个粗暴正则）
+                try {
+                    let parsed = extractJsonObject(rawText);
+                    if (!parsed) throw new Error("No JSON object found");
 
-                runPluginResponseHooks(char, sessionId, parsed);
-                if (parsed.stateUpdate) saveCharLifeState(char, parsed.stateUpdate, parsed.statusTypeLabel);
+                    runPluginResponseHooks(char, sessionId, parsed);
+                    if (parsed.stateUpdate) saveCharLifeState(char, parsed.stateUpdate, parsed.statusTypeLabel);
 
-                if (parsed.replies && Array.isArray(parsed.replies) && parsed.replies.length > 0) {
-                    replies = parsed.replies;
-                } else if (parsed.stateUpdate) {
-                    // 💡 强力兜底：如果 AI 忘了写对话，只写了动作/状态，就直接把动作发出来！
-                    replies = [{ delay: 1, text: `(${parsed.stateUpdate})` }];
-                } else {
-                    throw new Error("Invalid structure");
+                    if (parsed.replies && Array.isArray(parsed.replies) && parsed.replies.length > 0) {
+                        replies = parsed.replies;
+                    } else if (parsed.stateUpdate) {
+                        // 💡 强力兜底：如果 AI 忘了写对话，只写了动作/状态，就直接把动作发出来！
+                        replies = [{ delay: 1, text: `(${parsed.stateUpdate})` }];
+                    } else {
+                        throw new Error("Invalid structure");
+                    }
+                } catch (err) {
+                    // 降级处理：模型没按格式吐JSON，直接把原始文本当一整条回复发出来——这种情况下更容易夹带
+                    // 没被JSON结构"天然过滤掉"的思维链前缀，这里顺手处理一次（关闭/折叠/删除按当前设置来）
+                    // unwrapAiEnvelopeText 会把思维链、``` 围栏、以及"其实是个 JSON 信封但上面没解析成功"
+                    // 这三种情况一次处理干净，不会再把一整坨 JSON 原样当成一条消息发出来
+                    replies = [{ delay: 1, text: unwrapAiEnvelopeText(rawText) }];
                 }
-            } catch (err) {
-                // 降级处理：模型没按格式吐JSON，直接把原始文本当一整条回复发出来——这种情况下更容易夹带
-                // 没被JSON结构"天然过滤掉"的思维链前缀，这里顺手处理一次（关闭/折叠/删除按当前设置来）
-                // unwrapAiEnvelopeText 会把思维链、``` 围栏、以及"其实是个 JSON 信封但上面没解析成功"
-                // 这三种情况一次处理干净，不会再把一整坨 JSON 原样当成一条消息发出来
-                replies = [{ delay: 1, text: unwrapAiEnvelopeText(rawText) }];
-            }
+                for (let k = streamedCount; k < replies.length; k++) pushReply(replies[k]);
+            };
 
-            currentlyTypingChars.delete(char.name); updateTypingIndicator();
-            if (replies.length === 0) continue;
+            const chatImages = batchImages.length > 0 ? batchImages : null;
+            const useChatStream = (typeof enableStreaming !== 'undefined') && enableStreaming
+                && typeof streamCompletionText === 'function' && typeof extractStreamingReplies === 'function';
 
-            for (let replyObj of replies) {
+            const producing = (async () => {
+                try {
+                    if (useChatStream) {
+                        data = await streamCompletionText(api, prompt, (fullSoFar, isDone) => {
+                            if (isDone) return; // 收尾那一次交给 finalizeReplies 统一解析，别重复
+                            const partial = extractStreamingReplies(fullSoFar);
+                            while (streamedCount < partial.length) { pushReply(partial[streamedCount]); streamedCount++; }
+                        }, chatImages);
+                    } else {
+                        data = await callChatCompletionAPI(api, prompt, 2, chatImages);
+                    }
+                } catch (e) {
+                    data = { error: { message: (e && e.message) || String(e) } };
+                }
+                finalizeReplies();
+                closeQueue();
+            })();
+
+            // 私聊是**另一条时间线**：真人一边在群里接话、一边私戳你，两边各按各的节奏，
+            // 不会"等群里这句发完才轮到私聊那句"。所以转私聊的消息不占下面这个循环的队——
+            // 挂到 privateChain 上自己跑，群聊那边照常往下走，谁先到谁先出现。
+            let privateChain = Promise.resolve(), privateSent = 0;
+
+            let gotFirstReply = false;
+            while (true) {
+                if (replyQueue.length === 0) {
+                    if (queueClosed) break;
+                    await new Promise(res => { queueWake = res; }); // 等下一条写完
+                    continue;
+                }
+                let replyObj = replyQueue.shift();
+                if (!gotFirstReply) { gotFirstReply = true; currentlyTypingChars.delete(char.name); updateTypingIndicator(); }
                 let repText = replyObj.text || "";
                 let delaySec = replyObj.delay || 1;
+
+                // 群聊转私聊：角色给某条回复加了 [MOVETOCHAT] 前缀，表示这句不想当着群里说。
+                // 开关关掉时提示词里压根没给它这个选项，但万一它自己写了（预设/角色卡里教过），
+                // 也只是把标记抹掉当普通群消息发——绝不能让 "[MOVETOCHAT]" 原样出现在用户眼前。
+                let moveToChat = false;
+                const mtcMatch = repText.match(/^\s*\[MOVETOCHAT\]\s*/i);
+                if (mtcMatch) {
+                    repText = repText.slice(mtcMatch[0].length).trim();
+                    moveToChat = isGroup && (typeof enableGroupMoveToChat === 'undefined' || enableGroupMoveToChat);
+                }
+
+                if (moveToChat) {
+                    if (repText) {
+                        const grp = groupChats.find(x => x.id === sessionId);
+                        const quoteInfo = { name: (grp && grp.name) || '群聊', text: '（群里没说出口的话）' };
+                        const rawPriv = repText;
+                        // 第一条私聊消息额外多等一会儿：真人得先切到私聊窗口再打字，
+                        // 不可能群里刚说完下一秒私聊就到。后面几条就按模型自己给的节奏走。
+                        const leadMs = privateSent === 0 ? 1500 + Math.floor(Math.random() * 2500) : 0;
+                        const waitMs = leadMs + delaySec * 1000;
+                        privateSent++;
+                        privateChain = privateChain.then(async () => {
+                            await new Promise(r => setTimeout(r, waitMs));
+                            // 清洗跟群聊那边同一套，只是作用域换成1v1的会话
+                            let t = stripLeftoverMarkers(applyRegexScripts(rawPriv, 'ai_output', char.id));
+                            t = processMvuPatchInText(t, String(char.id)).cleanText;
+                            t = processRecallBlockInText(t, String(char.id)).cleanText;
+                            t = t.replace(/^["\u201c]|["\u201d]$/g, '').trim();
+                            if (t && typeof deliverCharMoveToChatMessage === 'function') deliverCharMoveToChatMessage(char, t, quoteInfo);
+                        }).catch(() => {});
+                        anyCharReplied = true;
+                    }
+                    continue; // 不 await：群聊那边不等私聊，两条线并行
+                }
 
                 if (isMentioned && repText.toUpperCase().startsWith("NO") && repText.length < 5) repText = char.autoReplyText?.trim() || "嗯，我看到了。";
                 else if (!isMentioned && repText.toUpperCase().startsWith("NO") && repText.length < 5) continue;
@@ -1460,12 +1686,17 @@ ${multiReplyBlock}`;
 
                 // 🆕 解析AI自己选的[QUOTE:编号]标记：编号对照的是这一轮prompt里给它的quotable.list，
                 // 拿到手就是原始{name,text}快照，跟手动"引用回复"存的数据结构完全一样，渲染那边不用另外改。
-                let repQuote = null, quoteMatch = repText.match(/^\[QUOTE:(\d+)\]\s*/i);
+                //
+                // ⚠️ 这里**故意不锚定 ^ 句首**。以前只认写在最前面的标记，可模型经常把它甩在句子末尾
+                // （prompt里白纸黑字写着"加在最前面"照样不听），结果标记既没被解析成引用、也没被清掉，
+                // "[QUOTE:12]" 五个字就原样出现在聊天气泡里了。现在不管它写在哪儿都认，并且把所有
+                // 出现过的都清干净——认不出编号（比如编号超出列表范围）时至少也不会漏给用户看见。
+                let repQuote = null, quoteMatch = repText.match(/\[\s*QUOTE\s*:\s*(\d+)\s*\]/i);
                 if (quoteMatch) {
                     const qIdx = parseInt(quoteMatch[1], 10) - 1;
                     const qTarget = quotable.list[qIdx];
                     if (qTarget) repQuote = { name: qTarget.name, text: qTarget.text };
-                    repText = repText.replace(quoteMatch[0], '').trim();
+                    repText = repText.replace(/\[\s*QUOTE\s*:\s*\d+\s*\]/ig, '').trim();
                 }
 
                 if (repText.includes("[NUDGE]")) { repText = repText.replace(/\[NUDGE\]/ig, '').trim(); globalChats[sessionId].push({ sender: 'system', text: `"${char.name}" 拍了拍 "${currentUser.name}" ${currentUser.nudgeText || '的脑袋'}`, timestamp: Date.now() }); anyCharReplied = true; }
@@ -1479,6 +1710,7 @@ ${multiReplyBlock}`;
                     repText = char.autoReplyText?.trim() || "嗯。";
                 }
                 repText = applyRegexScripts(repText, 'ai_output', char.id);
+                repText = stripLeftoverMarkers(repText); // 漏网的内部标记不许进气泡（见 js/01 里的说明）
                 // MVU变量补丁块（酒馆"状态栏"预设常见格式）：识别+剥离，并把应用后的状态快照挂在这条消息上，
                 // 渲染时读快照画一个真正的状态栏卡片，而不是把原始JSON糊在气泡里。
                 const mvuResult = processMvuPatchInText(repText, sessionId);
@@ -1500,10 +1732,19 @@ ${multiReplyBlock}`;
                     saveAllData(); checkAndAutoSummarizeChat(sessionId);
                 }
             }
+            await producing;
+            pendingPrivateChains.push(privateChain);
+            currentlyTypingChars.delete(char.name); updateTypingIndicator();
+            if (data && data.error) {
+                alert(`⚠️ 聊天 API 报错（${char.name} 回复失败）:\n${data.error.message || JSON.stringify(data.error)}`);
+                continue;
+            }
         } catch(e) { 
             currentlyTypingChars.delete(char.name); updateTypingIndicator(); 
         }
     }
+
+    if (pendingPrivateChains.length) await Promise.all(pendingPrivateChains);
 
     if (anyCharReplied) {
         let myMsgsToMark = isGroup ? targetChars.map(c => String(c.id)) : [String(targetChars[0]?.id)].filter(Boolean);

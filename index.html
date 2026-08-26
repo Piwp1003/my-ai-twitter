@@ -1252,7 +1252,12 @@
 
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419;">
                 <input type="checkbox" id="settingEnableStreaming" style="width:16px; height:16px; cursor:pointer;" onchange="saveGlobalInteractionSettings()">
-                <div><strong>流式输出（边写边显示）</strong> <br><span style="font-size:12px; color:#536471;">开启后续写/生成时文字一个字一个字出现，能提前看到写成什么样。<b>如果你的中转接口流式不稳（吞字、卡住不动、报错重试）就关掉它</b>，关掉后是整段生成完一次性显示，功能完全一样。聊天页一直是非流式，不受这个开关影响。</span></div>
+                <div><strong>流式输出（边写边显示）</strong> <br><span style="font-size:12px; color:#536471;">管三个地方：<b>续写/小说</b>和<b>酒馆角色卡脚本</b>是按字逐个出；<b>聊天/群聊</b>是按气泡出——角色一次回好几句时，写完一句先发一句，不用等它全部写完（聊天要求模型返回整段JSON，半截JSON贴进气泡里是乱码，所以做不到逐字）。<b>如果你的中转接口流式不稳（吞字、卡住不动、报错重试）就关掉它</b>，关掉后整段生成完再一次性出，功能完全一样。</span></div>
+            </label>
+
+            <label style="display:flex; align-items:center; gap:8px; margin-top:12px; cursor:pointer; font-size:14px; color:#0f1419;">
+                <input type="checkbox" id="settingEnableGroupMoveToChat" style="width:16px; height:16px; cursor:pointer;" onchange="saveGlobalInteractionSettings()">
+                <div><strong>允许角色从群聊转私聊</strong> <br><span style="font-size:12px; color:#536471;">开启后，角色看完群里的对话可以自己判断“这句不想当着大家的面说”，把其中一句改成私聊发给你，群里看不到。去不去由它自己决定，不是每次都转。跟上面“推文/评论转私聊”是两个独立开关，互不影响。</span></div>
             </label>
         </div>
                     <div class="input-group checkbox-group" style="margin-bottom:0;">

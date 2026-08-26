@@ -9,22 +9,36 @@ function selectDiaryChar(id) { currentDiaryCharId = id; renderDiaryCharList(); }
 // "我的日记"不是按角色分开看的（一篇日记可以同时被好几个角色偷看），跟另外两个tab不共用同一套渲染，
 // 这里统一按当前tab分发到对应的渲染函数——避免"切角色头像"这个跟另外两个tab共用的操作，在"我的日记"tab下
 // 误触发 renderDiaryContent() 把日记列表区域重新显示出来、把"我的日记"区域的显示状态搞乱。
-function renderActiveDiaryTab() { if (currentDiaryTab === 'mydiary') { if (typeof renderMyDiaryArea === 'function') renderMyDiaryArea(); } else { renderDiaryContent(); } }
-function switchDiaryTab(tab) {
-    currentDiaryTab = tab;
-    document.getElementById('diary-tab-letter').className = tab === 'letter' ? 'tab active' : 'tab';
-    document.getElementById('diary-tab-diary').className = tab === 'diary' ? 'tab active' : 'tab';
-    document.getElementById('diary-tab-mydiary').className = tab === 'mydiary' ? 'tab active' : 'tab';
+function renderActiveDiaryTab() {
+    applyDiaryTabVisibility();   // 不管从哪条路进来，按钮/标签的显示状态都得对上
+    if (currentDiaryTab === 'mydiary') { if (typeof renderMyDiaryArea === 'function') renderMyDiaryArea(); } else { renderDiaryContent(); }
+}
+// 🐛 「✍️ 写信给TA」这个按钮找不到的原因就在这儿。
+// 它在 index.html 里写死了 style="display:none"，而把它显示出来的代码**只在 switchDiaryTab 里**。
+// 但从左边导航直接点进「信件与日记」是不走 switchDiaryTab 的
+// （走的是 renderDiaryCharList → renderActiveDiaryTab → renderDiaryContent），
+// 于是默认停在"信件"tab 上、按钮却一直是隐藏的 —— 非得手动再点一下"信件"那个标签才会冒出来。
+// 现在把这段可见性逻辑单独抽出来，两条路都调一遍。
+function applyDiaryTabVisibility() {
+    const tab = currentDiaryTab;
+    const setCls = (id, on) => { const el = document.getElementById(id); if (el) el.className = on ? 'tab active' : 'tab'; };
+    setCls('diary-tab-letter', tab === 'letter');
+    setCls('diary-tab-diary', tab === 'diary');
+    setCls('diary-tab-mydiary', tab === 'mydiary');
     const isMyDiary = tab === 'mydiary';
-    document.getElementById('diaryListArea').style.display = isMyDiary ? 'none' : 'block';
-    document.getElementById('diaryActionBar').style.display = isMyDiary ? 'none' : 'block';
-    document.getElementById('myDiaryArea').style.display = isMyDiary ? 'block' : 'none';
-    document.getElementById('diaryTempArea').style.display = 'none';
+    const show = (id, on, disp) => { const el = document.getElementById(id); if (el) el.style.display = on ? (disp || 'block') : 'none'; };
+    show('diaryListArea', !isMyDiary);
+    show('diaryActionBar', !isMyDiary);
+    show('myDiaryArea', isMyDiary);
+    show('diaryTempArea', false);
     // 角色头像选择条只跟"寄来的信件"/"偷看日记"这两个按角色分开看的tab有关，"我的日记"是面向多个角色的，不需要选中某一个角色
     const charListWrapper = document.getElementById('diaryCharList');
     if (charListWrapper && charListWrapper.parentElement) charListWrapper.parentElement.style.display = isMyDiary ? 'none' : 'block';
-    const composeLetterBtn = document.getElementById('btnOpenUserLetterCompose');
-    if (composeLetterBtn) composeLetterBtn.style.display = (tab === 'letter') ? 'block' : 'none';
+    show('btnOpenUserLetterCompose', tab === 'letter');
+}
+function switchDiaryTab(tab) {
+    currentDiaryTab = tab;
+    applyDiaryTabVisibility();
     renderActiveDiaryTab();
 }
 
@@ -129,7 +143,8 @@ ${getFinalAnswerMarkerPromptNote()}
             // （不解析HTML/Markdown），角色卡自带的HTML组件会被当成纯文字原样糊出来。现在跟推文/论坛/续写
             // 用同一条渲染路径（formatPostText，内部会调用 renderMarkdownLite 保留合法HTML），详情展示见 openDiaryDetail。
             parsed.content = applyRegexScripts(parsed.content || raw, 'ai_output', char.id);
-            tempGeneratedDiary = { id: 'd_' + Date.now(), title: parsed.title || (currentDiaryTab === 'letter' ? '新信件' : '新日记'), content: parsed.content || raw, date: Date.now() };
+            // author 必须带上：不带的话这封信在"回复这封信"的判断里认不出是角色写的，按钮就不显示
+            tempGeneratedDiary = { id: 'd_' + Date.now(), title: parsed.title || (currentDiaryTab === 'letter' ? '新信件' : '新日记'), content: parsed.content || raw, date: Date.now(), author: 'char' };
             document.getElementById('diaryListArea').style.display = 'none'; document.getElementById('diaryTempArea').style.display = 'block';
             document.getElementById('tempDiaryTitle').innerText = tempGeneratedDiary.title;
             document.getElementById('tempDiaryContent').innerHTML = namespaceInjectedIds(formatPostText(tempGeneratedDiary.content, char.id), tempGeneratedDiary.id);
@@ -171,7 +186,9 @@ function openDiaryDetail(id) {
     if (typeof enableChatScriptExecution !== 'undefined' && enableChatScriptExecution) { try { executeInjectedScripts(document.getElementById('diaryDetailContent')); } catch (e) { console.error('执行日记详情注入脚本时出错：', e); } }
     // 🆕 只有"信件"tab里、且这封是角色寄来的（不是用户自己写的），回复才有意义——展示"↩️回复这封信"按钮
     const replyBtn = document.getElementById('btnReplyToThisLetter');
-    if (replyBtn) replyBtn.style.display = (currentDiaryTab === 'letter' && item.author === 'char') ? 'inline-block' : 'none';
+    // 判断写成 !== 'user' 而不是 === 'char'：早期版本存下来的信件根本没有 author 这个字段，
+    // 用 === 'char' 判的话那些老信件永远不显示回复按钮（用户反馈"找不到回信键"的另一半原因）。
+    if (replyBtn) replyBtn.style.display = (currentDiaryTab === 'letter' && item.author !== 'user') ? 'inline-block' : 'none';
     openModal('diaryDetailModal');
 }
 async function deleteCurrentDiary() {

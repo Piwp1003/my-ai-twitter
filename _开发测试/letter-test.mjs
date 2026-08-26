@@ -107,7 +107,48 @@ const p3 = await page.evaluate(() => {
 });
 check('没写过信的角色提示词里没有通信段落', !p3.includes('之间的通信'), p3.slice(-200));
 
-// ---- 8. 信件正文不该混进思维链/代码围栏 ----
+// ---- 8. 两个按钮必须**真的看得见**（用户反馈"回信键在哪我怎么没找到"） ----
+// 从左边导航直接进「信件与日记」，不经过点 tab 那一步 —— 这条路以前会让「写信给TA」一直隐藏着
+await page.evaluate(() => {
+  myCharacters[0].diaryData.letters = [
+    { id: 'l_char', title: '角色寄来的', content: '见字如面。', date: Date.now(), author: 'char' },
+    { id: 'l_old',  title: '老版本存的信（没有 author 字段）', content: '早期数据。', date: Date.now() - 1000 },
+    { id: 'l_mine', title: '我写的', content: '我写的信。', date: Date.now() - 2000, author: 'user' },
+  ];
+  currentDiaryCharId = 9001;
+  currentDiaryTab = 'letter';
+  switchMainView('diary');
+  renderDiaryCharList();          // 这就是导航进来时真正走的那条路
+});
+await page.waitForTimeout(400);
+check('直接进信件页时「✍️ 写信给TA」是可见的（不用先点一下 tab）',
+  await page.evaluate(() => getComputedStyle(document.getElementById('btnOpenUserLetterCompose')).display !== 'none'),
+  await page.evaluate(() => getComputedStyle(document.getElementById('btnOpenUserLetterCompose')).display));
+
+await page.evaluate(() => openDiaryDetail('l_char'));
+await page.waitForTimeout(300);
+check('打开角色寄来的信，「↩️ 回复这封信」可见',
+  await page.evaluate(() => getComputedStyle(document.getElementById('btnReplyToThisLetter')).display !== 'none'));
+
+await page.evaluate(() => { closeModal('diaryDetailModal'); openDiaryDetail('l_old'); });
+await page.waitForTimeout(300);
+check('老版本没有 author 字段的信，也要能回复',
+  await page.evaluate(() => getComputedStyle(document.getElementById('btnReplyToThisLetter')).display !== 'none'));
+
+await page.evaluate(() => { closeModal('diaryDetailModal'); openDiaryDetail('l_mine'); });
+await page.waitForTimeout(300);
+check('自己写的信不显示"回复这封信"（回复自己没意义）',
+  await page.evaluate(() => getComputedStyle(document.getElementById('btnReplyToThisLetter')).display === 'none'));
+await page.evaluate(() => closeModal('diaryDetailModal'));
+
+// 切到日记 tab，写信按钮要收起来
+await page.evaluate(() => switchDiaryTab('diary'));
+await page.waitForTimeout(300);
+check('切到「日记」tab 时写信按钮收起',
+  await page.evaluate(() => getComputedStyle(document.getElementById('btnOpenUserLetterCompose')).display === 'none'));
+await page.evaluate(() => switchDiaryTab('letter'));
+
+// ---- 9. 信件正文不该混进思维链/代码围栏 ----
 const clean = await page.evaluate(() =>
   unwrapAiEnvelopeText('<think>该怎么回这封信呢</think>```json\n{"title":"回信","content":"我不生气。"}\n```'));
 check('信件生成的清洗链路能剥掉思维链和围栏',

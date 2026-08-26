@@ -386,11 +386,25 @@ let npcReplyProb = 0.4, npcReplyMaxCount = 3;
 let npcArgueProb = 0.5;
 // 角色回应是否延迟（不秒回）。关掉就是老行为——测试和"我就想立刻看到效果"时有用。
 let charReplyDelayEnabled = true;
-// 流式输出（边生成边逐字显示）开关。开着更有"正在写"的实时感；
+// 流式输出（边生成边显示）开关。开着更有"正在写"的实时感；
 // 关掉就整段生成完再一次性显示——有些中转服务商的流式通道不稳定（吞字、卡住、直接报错），
-// 遇到这种情况关掉它更省心。影响的是续写工作台和酒馆桥接的 generate；
-// 聊天本身一直走非流式（聊天要求模型返回整段JSON，半截JSON显示出来是乱码），不受这个开关影响。
+// 遇到这种情况关掉它更省心。
+//
+// 这个开关现在管三个地方：
+//   1. 续写工作台（互动续写/小说）—— 逐字往正文里贴，最细的那种流式。
+//   2. 酒馆桥接的 generate（给角色卡里的脚本用）—— 同上，逐字回调。
+//   3. 聊天 / 群聊 —— **按气泡**流式，不是按字。原因是聊天要求模型返回一整段
+//      {"replies":[...]} 的JSON，半截JSON贴到气泡里就是一堆乱码；但"数组里已经写完的
+//      那几条"是可以提前发出来的。所以这里一边收一边扫，扫到一个闭合的 {...} 就立刻发一条，
+//      模型还在写第二条的时候第一条气泡已经出来了（见 extractStreamingReplies）。
+//      关掉就退回老行为：整段收完再一条条发，功能完全一样，只是第一条要多等一会儿。
+// 表情包/图片/引用/转私聊这些标记的解析在两条路上是同一段代码，不会因为开不开流式而不一样。
 let enableStreaming = true;
+// 群聊转私聊：角色看完群里的对话，可以自己决定要不要私下来找用户说。
+// 跟推特评论区那个"转私聊"是同一套机制（[MOVETOCHAT] 标记 + deliverCharMoveToChatMessage），
+// 但开关分开——群里当着大家的面不好说的话转私聊，跟评论区那个场景是两回事，
+// 有人想要群聊安静点、只在评论区用，得能分别关。
+let enableGroupMoveToChat = true;
 let globalBgImage = null, globalBgOpacity = 1;
 
 // 全局自定义CSS
@@ -993,11 +1007,13 @@ async function streamCompletionText(api, promptContent, onDelta, images = null, 
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder('utf-8');
-        let buffer = '', fullText = '', fullReasoning = '';
+        let buffer = '', fullText = '', fullReasoning = '', rawAll = '';
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            buffer += decoder.decode(value, { stream: true });
+            const chunk = decoder.decode(value, { stream: true });
+            rawAll += chunk;   // 原样留一份：有些服务商收到 stream:true 也照样返回整段普通JSON，见下面
+            buffer += chunk;
             let lines = buffer.split('\n');
             buffer = lines.pop(); // 最后一行可能被截断在中间，留到下一轮再和新数据拼在一起
             for (let line of lines) {
@@ -1023,7 +1039,20 @@ async function streamCompletionText(api, promptContent, onDelta, images = null, 
             }
         }
         if (!fullText.trim()) {
-            // 流式没解析出任何内容（比如接口返回格式和预期不一致）——兜底重新用非流式请求一次，避免直接"生成了个寂寞"
+            // 一个字都没从 SSE 里解析出来。先别急着重发——很多中转服务商压根不支持 stream，
+            // 收到 stream:true 也照样返回一整段普通的 JSON 响应。这种情况下内容其实**已经拿到手了**，
+            // 再请求一次纯属白花一次钱、还多等一轮。先试着按普通响应解析，解析得出来就直接用。
+            try {
+                const asPlain = JSON.parse(rawAll);
+                const plainText = asPlain && asPlain.choices && asPlain.choices[0] &&
+                    ((asPlain.choices[0].message && asPlain.choices[0].message.content) || asPlain.choices[0].text);
+                if (plainText && String(plainText).trim()) {
+                    onDelta(String(plainText), true);
+                    return { choices: [{ message: { content: String(plainText) } }] };
+                }
+                if (asPlain && asPlain.error) return asPlain; // 人家已经明确报错了，重发也是一样的结果
+            } catch (e) { /* 不是完整JSON，继续走下面的重发兜底 */ }
+            // 真的什么都没拿到（返回格式和预期完全对不上）——兜底重新用非流式请求一次，避免直接"生成了个寂寞"
             const data = await callChatCompletionAPI(api, promptContent, 2, images);
             const text = (!data.error && data.choices?.[0]?.message?.content) || '';
             if (text) onDelta(text, true);
@@ -1038,6 +1067,55 @@ async function streamCompletionText(api, promptContent, onDelta, images = null, 
         if (e.name === 'AbortError') return { aborted: true }; // 用户主动点了"取消"，不是真的报错，调用方要区分对待
         return { error: { message: enhanceNetworkErrorMessage(e.message) } };
     }
+}
+
+// 聊天/群聊专用的"半截JSON里捞出已经写完的那几条回复"。
+//
+// 为什么需要它：聊天让模型返回的是 {"replies":[{"text":"..."},{"text":"..."}]}，
+// 流式收到一半是 {"replies":[{"text":"我刚 ——这种半截货直接显示就是乱码。
+// 但数组里**已经闭合的那几个对象**是完整可用的，可以立刻发出去，不用等整段写完。
+// 这个函数就负责扫出这些完整对象，扫到第一个没写完的就停手（后面的等下一波数据再说）。
+//
+// 刻意保守：任何一处不确定（花括号没配对、JSON.parse 失败、对象里没有 text 字段）
+// 就直接停在那儿，把剩下的交给流式结束后那次完整解析。宁可少发一条晚点补上，
+// 也不能猜错了发出去——发出去的消息是收不回来的。
+function extractStreamingReplies(text) {
+    if (!text) return [];
+    // 思维链先剥掉：推理模型会把 <think> 拼在正文最前面，里面可能出现花括号
+    let s = String(text).replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+    const keyIdx = s.search(/["']?replies["']?\s*:\s*\[/);
+    if (keyIdx < 0) return [];
+    let i = s.indexOf('[', keyIdx) + 1;
+    const out = [];
+    while (i < s.length) {
+        while (i < s.length && /[\s,]/.test(s[i])) i++;
+        if (s[i] !== '{') break;              // 数组结束（']'）或者还没开始写下一条
+        let depth = 0, inStr = false, esc = false, closed = -1;
+        for (let j = i; j < s.length; j++) {
+            const c = s[j];
+            if (inStr) {
+                if (esc) esc = false;
+                else if (c === '\\') esc = true;
+                else if (c === '"') inStr = false;
+                continue;
+            }
+            if (c === '"') inStr = true;
+            else if (c === '{') depth++;
+            else if (c === '}') { depth--; if (depth === 0) { closed = j; break; } }
+        }
+        if (closed < 0) break;                // 这条还没写完，等下一波
+        const objText = s.slice(i, closed + 1);
+        let obj = null;
+        try { obj = JSON.parse(objText); }
+        catch (e) {
+            // 模型经常在字符串里直接敲回车（裸换行在JSON里是非法的），跟 extractJsonObject 一样修一下
+            try { obj = JSON.parse(objText.replace(/([^\\])\n/g, '$1\\n')); } catch (e2) { obj = null; }
+        }
+        if (!obj || typeof obj.text !== 'string') break;
+        out.push(obj);
+        i = closed + 1;
+    }
+    return out;
 }
 
 // ===================== 变量系统（兼容SillyTavern的聊天变量/全局变量）=====================
@@ -1616,6 +1694,35 @@ function processReasoningInText(text) {
 // 经验规律：这类文本里，模型思考完之后给出的真正答案几乎总是全文最后一段（往往就是一两句话），
 // 前面大段的分析/草稿都在这段之前。这里只在明显超出预期字数（超过expectedMaxLen的2.5倍）时才生效，
 // 退化成"只取最后一段"、把前面的思考过程扔掉；长度正常的普通回复完全不受影响，避免误伤。
+// 🐛 "[QUOTE:12] 原样出现在聊天气泡里" 的兜底。
+//
+// [QUOTE:N] / [MOVETOCHAT] / [NUDGE] / [EMO:xxx] 这几个方括号标记是**给代码看的暗号**，
+// 各自的解析逻辑在前面都跑过了。能活到这一步的都是没被认出来的漏网之鱼，常见两种：
+//   1. 模型把标记写在了句子**末尾**而不是开头（prompt里写了"加在最前面"也拦不住它）；
+//   2. 预设/角色卡教了它一个当前场景根本没启用的标记（比如1v1聊天里写 [MOVETOCHAT]）。
+// 不管哪种，原样显示给用户看都是"内部实现漏出来了"，跟那坨 ```json 是同一类事故。
+//
+// ⚠️ 这个函数只跑在 **AI 输出** 的清洗链路上，永远不碰用户自己打的字——
+// 用户真想在消息里打 "[QUOTE:1]" 这几个字符，那是他的自由，不该被吃掉。
+// 也刻意**没有**清理 [回复N]：论坛体/楼层小说的正文里本来就可能出现这种写法，
+// 那是内容不是标记，只有评论区那条解析路径知道该不该处理它。
+function stripLeftoverMarkers(text) {
+    if (!text || typeof text !== 'string') return text;
+    let t = text
+        .replace(/\[\s*QUOTE\s*:\s*\d+\s*\]/ig, '')
+        .replace(/\[\s*MOVETOCHAT\s*\]/ig, '')
+        .replace(/\[\s*NUDGE\s*\]/ig, '')
+        .replace(/\[\s*EMO\s*:\s*emo_[\w-]+\s*\]/ig, '');
+    if (t === text) return text;
+    // 只收拾标记留下的多余空格，不动正文本身的换行结构
+    return t.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').trim();
+}
+
+// ⚠️ 别图省事把 stripLeftoverMarkers 塞进这个函数里当"公共清洗"。试过，会出事：
+// 评论区那几条路径是**先**调这个函数、**后**才解析 [MOVETOCHAT] 和 [EMO:xxx] 的
+// （见 js/09 和 js/10），标记在这里就被清掉的话，转私聊和表情包会直接失效——
+// 而且是那种"功能没报错，只是再也不触发了"的哑火，最难发现。
+// 标记的清理必须放在**各自解析完之后**，谁解析谁负责。
 function stripUndelimitedReasoningIfOverLength(text, expectedMaxLen) {
     if (!text) return text;
     // 优先用"正式输出标记"精确切割（如果模型遵循了prompt里的要求），比长度启发式准得多。

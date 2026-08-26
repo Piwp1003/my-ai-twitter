@@ -338,7 +338,7 @@ function renderSinglePostDetail(postId) {
 
             <div class="twitter-reply-box">
                 <div id="replyAttachmentPreview" class="emo-preview-box" style="display:none; padding:0; margin-bottom:10px;"></div>
-                <input type="text" id="myCommentInput" placeholder="发布你的回复" onkeypress="if(event.key === 'Enter') postUserComment('${postId}')">
+                <input type="text" id="myCommentInput" placeholder="${(post.replies || []).some(r => (r.charId === 'me') || (r.char && r.char.id === 'me')) ? '发布你的回复（留空点回复＝让角色重新评论一次）' : '发布你的回复'}" onkeypress="if(event.key === 'Enter') postUserComment('${postId}')">
                 <div class="toolbar-divider"></div>
                 <div class="toolbar-actions">
                     <div class="toolbar-icons">
@@ -381,6 +381,26 @@ function isCoolPersona(persona) {
     const coolKeywords = ['高冷', '内向', '冷淡', '寡言', '沉默寡言', '冷漠', '不善言辞', '独来独往', '不爱说话', '惜字如金', '话很少'];
     const hitCount = coolKeywords.filter(kw => persona.includes(kw)).length;
     return hitCount >= 2;
+}
+
+// 🐛🐛 「角色跟用户是情侣，但因为人设写着高冷，就永远只会点个赞」——这才是"不活人"的硬病根。
+//
+// isCoolPersona 只数人设里的关键词，命中两个就把这个角色**锁死**在"只能输出 LIKE"那条分支上，
+// 代码层面直接剥夺了它说话的资格。一个"沉默寡言的旧书店老板"哪怕是用户的恋人，
+// 在评论区也永远只能点赞——这不是性格，这是被代码判了哑。
+//
+// 关系网里有跟用户的关系记录时，就不再走那条死路。注意**不是强迫它说话**：
+// 普通分支里"随手点赞"照样是个选项，它想只点赞完全可以。区别只是这个选择权
+// 从代码手里还给了角色自己——高冷是对外人的，对亲近的人应该体现成回得短、嘴硬，
+// 而不是永远只有一个赞。
+function hasBondWithUser(char) {
+    if (!char || typeof charRelationships === 'undefined' || !Array.isArray(charRelationships)) return false;
+    return charRelationships.some(r =>
+        (r.fromId == char.id && r.toId === 'me') || (r.toId == char.id && r.fromId === 'me'));
+}
+function isCoolTowardUser(char) {
+    if (!char || !isCoolPersona(char.persona)) return false;
+    return !hasBondWithUser(char);
 }
 
 // 修复：主页用户发推功能 (userPost)
@@ -478,7 +498,7 @@ async function userPost() {
         if (char.id === postChar.id) continue;
         if (char.replyToUser === false) continue; // 新增：设置里关闭了"回复用户"的角色，直接跳过不参与互动
         
-        const isCool = isCoolPersona(char.persona);
+        const isCool = isCoolTowardUser(char);   // 跟用户有关系的角色不再被锁进"只能点赞"
         let actionStrictRule = allowActionTags ? "" : "\n【严格禁止】：绝对不要包含任何动作、神态或心理描写（不要用括号()或【】），只输出你直接说的话。";
 
         // 修复："所有角色都要围着用户转"：之前这里给了角色"NO"这个选项，会导致有的角色对用户的
@@ -513,6 +533,7 @@ async function userPost() {
 
             let repMediaUrl = null; let emoMatch = repText.match(/\[EMO:(emo_\w+)\]/i);
             if (emoMatch) { let emo = globalEmoticons.find(e => e.id === emoMatch[1]); if (emo) repMediaUrl = emo.url; repText = repText.replace(emoMatch[0], '').trim(); }
+            repText = stripLeftoverMarkers(repText); // 上面几种标记都解析完了，漏网的不许显示给用户（见 js/01）
             // 评论不需要状态栏HTML卡片，只去掉AI偶尔自己加的首尾引号
             if (repText.toUpperCase() !== 'LIKE') repText = repText.replace(/^["“]|["”]$/g, '').trim();
 

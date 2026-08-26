@@ -7,7 +7,11 @@
 // ==========================================
 async function postUserComment(postId) {
     const input = document.getElementById('myCommentInput'); if (!input) return;
-    const text = input.value ? input.value.trim() : ""; if (!text && !pendingReplyAttachment) return alert("评论内容不能为空！");
+    const text = input.value ? input.value.trim() : "";
+    // 🔁 输入框空着点「回复」＝ 让角色们针对你上一条评论重新回应一次。
+    // 场景跟聊天页那个一样：角色回的这条不满意，删掉之后就没入口再叫它了 ——
+    // 原来这里只会弹一句"评论内容不能为空"，等于死路。
+    if (!text && !pendingReplyAttachment) return retriggerCharComments(postId);
 
     let isTabloid = postId.startsWith('tb_');
     let post = isTabloid ? tabloidPosts.find(p => p.id == postId) : globalPosts.find(p => p.id == postId);
@@ -48,13 +52,48 @@ async function postUserComment(postId) {
         return;
     }
 
+    // 真正让角色们回应这条评论的活儿，抽到 runCharRepliesToComment 里了 —— 因为它
+    // 需要被**两个**地方调用：一个是这里（用户刚发了评论），另一个是"删掉角色评论之后
+    // 想让它重新生成"（见下面的 retriggerCharComments）。以前只有这一个入口，
+    // 所以评论一删就再也叫不回来了。
+    await runCharRepliesToComment(post, postId, newReply, text);
+}
+
+// 让角色们针对用户的评论各自决定回应/点赞/转私聊。
+// postUserComment 和 retriggerCharComments 共用这一份，避免两边逻辑慢慢长歪。
+//
+// opts.userComments：只有「重新生成」那条路会传。传了就进**挑一条回**模式：
+//   · 给模型一份编号列表（用户在这条帖子下说过的话），让它自己挑一条回应
+//   · 允许输出 NO 直接不回 —— 这样每次参与的角色数、回的是哪条都不固定，
+//     而不是每个角色齐刷刷冲着最后一条来（那样"重新生成"每次结果都一个样）
+//   · 挑哪条、回不回，都交给人设自己判断，不是代码随机指派
+// 不传的话是老行为：用户刚发了评论，大家就针对那条回，一个都不许装看不见。
+async function runCharRepliesToComment(post, postId, newReply, text, opts) {
+    const o = opts || {};
+    const pickList = Array.isArray(o.userComments) && o.userComments.length > 0 ? o.userComments : null;
     let emoPrompt = getEmoticonPrompt();
     // 🆕 识图：这条推文本身带的图（比如用户发的是一张照片），以及用户这条评论顺手附的图，
     // 一起交给角色，让它能看懂图里是什么再回应，而不是只看文字瞎猜。
     let commentImages = [post.mediaUrl, newReply.mediaUrl].filter(Boolean);
 
-    for (let char of myCharacters) {
-        if (char.replyToUser === false) continue; // 新增：设置里关闭了"回复用户"的角色，直接跳过不参与互动
+    // 挑一条回的模式下，角色的顺序也打乱 —— 不然每次都是同一个人先开口，
+    // 后面的角色永远只能接在它后面说，看着就很假。
+    let charQueue = myCharacters.slice();
+    if (pickList) {
+        for (let i = charQueue.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [charQueue[i], charQueue[j]] = [charQueue[j], charQueue[i]];
+        }
+    }
+
+    // 编号列表：给模型看的"用户在这条帖子下说过哪些话"
+    const pickListText = pickList
+        ? `\n【${userDisplayName()}在这条推文下说过的话（编号供你挑选）】：\n`
+          + pickList.map((c, i) => `${i + 1}. ${String(c.text || '').slice(0, 120)}`).join('\n') + '\n'
+        : '';
+
+    for (let char of charQueue) {
+        if (char.replyToUser === false) continue; // 设置里关闭了"回复用户"的角色，直接跳过不参与互动
         let isPostAuthor = (char.id === post.char.id);
         // 修复：之前这里完全没告诉AI这条推文到底是谁发的，角色容易默认脑补成"用户自己发的"，
         // 结果在给别的角色的推文回复用户评论时，把不属于自己的推文错当成自己发的来回应。
@@ -62,7 +101,9 @@ async function postUserComment(postId) {
         let postAuthorLabel = isPostAuthor ? '你自己' : (post.char.id === 'me' ? `用户（${userDisplayName()}）本人` : `角色"${post.char.name}"（不是你，也不是用户）`);
 
         let actionStrictRule = allowActionTags ? "" : "\n【严格禁止】：绝对不要在回复中包含任何动作、神态或心理描写（如括号内的动作），只能输出你直接说出的话！";
-        let contextInfo = `\n【原推文内容】(发布者是：${postAuthorLabel})："${post.text}"\n【用户的评论】："${text}"\n`;
+        let contextInfo = pickList
+            ? `\n【原推文内容】(发布者是：${postAuthorLabel})："${post.text}"\n${pickListText}`
+            : `\n【原推文内容】(发布者是：${postAuthorLabel})："${post.text}"\n【用户的评论】："${text}"\n`;
         // 设置里打开"转私聊"选项后，给角色多一个选择：不想在评论区公开回应，可以转而私聊找用户聊
         let moveToChatOption = (typeof enableCharMoveToChat !== 'undefined' && enableCharMoveToChat)
             ? `\n【额外选项】：如果你觉得这件事更适合私下聊、不想在评论区公开回应，可以输出"[MOVETOCHAT]"，紧跟着写你想在私聊里对用户说的话（比如：[MOVETOCHAT]哎这个我们私下聊聊吧...），这样这段话会私聊发给用户而不是公开评论。这只是众多选项之一，不是必须用。\n`
@@ -81,14 +122,32 @@ async function postUserComment(postId) {
             ? `\n【额外提醒，仅供参考】：这条推文是另一个角色发的，你不一定认识对方（除非你的关系网/世界书里另有说明）。但你和评论区里的用户是有关系的——留意一下用户这条评论的语气/称呼/内容，如果透出跟这位陌生博主不一般的亲近感，这可能会牵动到你和用户之间关系的某种情绪（不一定是吃醋，也可能是好奇、警惕、单纯八卦一下、或者完全不在意——具体是哪种、要不要表现出来，由你的人设和你们的关系阶段决定，不要机械套用"吃醋"这一种模板）。如果你觉得这类心思不适合摆在公开评论区说，可以用上面提到的私聊选项。这只是提供一种可能性，不是必须往这个方向写，更多时候正常回应评论内容即可。\n`
             : '';
 
+        // 挑一条回的模式：让角色自己选回哪条、也允许完全不回。
+        // 这正是"条数不固定、谁开口不固定"的来源 —— 由人设决定，不是代码随机指派。
+        const pickRule = pickList
+            ? `\n【这一轮怎么做】：上面列出了${userDisplayName()}在这条推文下说过的每一句话。请你**按自己的人设**判断：
+- 有想接的话：在回复的最前面写上 [回复N]（N 是上面的编号，只能选一条），紧跟着写你要说的内容。挑哪条完全看你在意什么，不必挑最后一条。
+- 只想随手点个赞：写 [回复N] 之后紧跟着 LIKE，比如"[回复2]LIKE"。
+- 确实没什么想说的：直接输出 NO，这一轮就不出声（这是允许的，不用勉强找话说）。
+不要几个人都盯着同一句话说车轱辘话，你只管按自己的性子来。\n`
+            : '';
+
         let prompt = "";
-        if (isPostAuthor) {
+        if (pickList) {
+            // 「重新生成」模式：不再强制每个人都出声，回哪条也由角色自己挑
+            const ownerLine = isPostAuthor
+                ? '这条推文是你自己发的。'
+                : `这条推文不是你发的，发布者是${postAuthorLabel}，你只是在评论区里看到了这些话。`;
+            prompt = `${buildBasePrompt(char, true, contextInfo)}${contextInfo}${emoPrompt}${ownerLine}${moveToChatOption}${pickRule}`
+                + `要回的话，紧扣你挑中的那句直接输出话术（不超过${postWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}），若用表情附[EMO:ID]。`
+                + `${actionStrictRule}${ownerReinforcement}${crossRelationshipHint}${getFinalAnswerMarkerPromptNote()}`;
+        } else if (isPostAuthor) {
             prompt = `${buildBasePrompt(char, true, contextInfo)}${contextInfo}${emoPrompt}${moveToChatOption}用户刚刚在你的推文下评论了。你必须互动！如果只需点赞请输出"LIKE"；若文字回复，请紧扣原推文和评论内容直接输出话术（不超过${postWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}）。绝对不能输出"NO"。若用表情附[EMO:ID]。${actionStrictRule}${ownerReinforcement}${getFinalAnswerMarkerPromptNote()}`;
         } else {
             // 修复："所有角色都要围着用户转"：即使不是这条推文的博主，只要用户发了评论，也不允许完全无视，
             // 高冷人设最多是"倾向于只点赞"，而不是可以彻底装看不见。
             let ownerReminder = `这条推文不是你发的，发布者是${postAuthorLabel}，你只是在旁边看到了用户的评论。`;
-            prompt = isCoolPersona(char.persona) ? `${buildBasePrompt(char, true, contextInfo)}${contextInfo}${ownerReminder}${moveToChatOption}用户刚刚评论了。你性格高冷，通常只点赞，但也必须对用户的评论有所反应，不能完全无视。请输出"LIKE"。${actionStrictRule}${ownerReinforcement}${crossRelationshipHint}${getFinalAnswerMarkerPromptNote()}` : `${buildBasePrompt(char, true, contextInfo)}${contextInfo}${emoPrompt}${ownerReminder}${moveToChatOption}针对上述推文和用户的评论，你必须插话反应一下，不能完全无视。如果想认真回复，请紧扣推文内容直接输出话术（不超过${postWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}），若用表情附[EMO:ID]；如果只是随手点赞，输出"LIKE"。只能二选一，不允许输出"NO"。${actionStrictRule}${ownerReinforcement}${crossRelationshipHint}${getFinalAnswerMarkerPromptNote()}`;
+            prompt = isCoolTowardUser(char) ? `${buildBasePrompt(char, true, contextInfo)}${contextInfo}${ownerReminder}${moveToChatOption}用户刚刚评论了。你性格高冷，通常只点赞，但也必须对用户的评论有所反应，不能完全无视。请输出"LIKE"。${actionStrictRule}${ownerReinforcement}${crossRelationshipHint}${getFinalAnswerMarkerPromptNote()}` : `${buildBasePrompt(char, true, contextInfo)}${contextInfo}${emoPrompt}${ownerReminder}${moveToChatOption}针对上述推文和用户的评论，你必须插话反应一下，不能完全无视。如果想认真回复，请紧扣推文内容直接输出话术（不超过${postWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}），若用表情附[EMO:ID]；如果只是随手点赞，输出"LIKE"。只能二选一，不允许输出"NO"。${actionStrictRule}${ownerReinforcement}${crossRelationshipHint}${getFinalAnswerMarkerPromptNote()}`;
         }
         try {
             let data = await callChatCompletionAPI({ url: myApiUrl, key: myApiKey, model: myModel }, prompt, 2, commentImages.length > 0 ? commentImages : null);
@@ -111,8 +170,21 @@ async function postUserComment(postId) {
                 continue;
             }
 
+            // 🆕 挑一条回：解析开头的 [回复N]，把这条回复挂到用户对应的那条评论下面。
+            // 没写编号的话就退回默认那条（newReply），不至于挂丢。
+            let replyTarget = newReply;
+            if (pickList) {
+                const mark = repText.match(/^\s*[\[【]\s*回复\s*(\d+)\s*[\]】]\s*/);
+                if (mark) {
+                    repText = repText.slice(mark[0].length).trim();
+                    const picked = pickList[parseInt(mark[1], 10) - 1];
+                    if (picked) replyTarget = picked;
+                }
+            }
+
             let repMediaUrl = null; let emoMatch = repText.match(/\[EMO:(emo_\w+)\]/i);
             if (emoMatch) { let emo = globalEmoticons.find(e => e.id === emoMatch[1]); if (emo) repMediaUrl = emo.url; repText = repText.replace(emoMatch[0], '').trim(); }
+            repText = stripLeftoverMarkers(repText); // 标记都解析完了，漏网的不许显示给用户（见 js/01）
 
             // ⚠️ 修复"角色卡自带的状态栏模板在评论区显示成一整段带尖括号标签的裸文本"：这里之前特意跳过了
             // ai_output正则烘焙，理由是"状态栏卡片只在小说/日记/信件里显示"——但这跟"帖子/评论/小报继续
@@ -124,18 +196,22 @@ async function postUserComment(postId) {
             // 顺手把AI偶尔自己加的首尾引号去掉（正则烘焙之后再做，避免烘焙脚本本身依赖首尾引号做匹配）。
             if (repText.toUpperCase() !== 'LIKE') repText = repText.replace(/^["“]|["”]$/g, '').trim();
 
-            if (isPostAuthor && repText.toUpperCase().startsWith("NO") && repText.length < 5) repText = "LIKE";
+            // 老行为：博主本人不许装看不见，输出 NO 也强行转成点赞。
+            // 但「重新生成」模式下必须允许 NO —— 不允许的话每个角色都一定会出声，
+            // 参与人数又变回固定的了，跟"条数不固定"的诉求正好相反。
+            if (!pickList && isPostAuthor && repText.toUpperCase().startsWith("NO") && repText.length < 5) repText = "LIKE";
+            if (pickList && repText.toUpperCase().startsWith('NO') && repText.length < 5) continue;   // 这一轮它选择不出声
 
             if (repText.toUpperCase() === 'LIKE') {
-                newReply.likes = (newReply.likes || 0) + 1;
-                if (!newReply.likedBy) newReply.likedBy = [];
-                if (!newReply.likedBy.includes(char.id)) newReply.likedBy.push(char.id); // 记录AI点赞
+                replyTarget.likes = (replyTarget.likes || 0) + 1;
+                if (!replyTarget.likedBy) replyTarget.likedBy = [];
+                if (!replyTarget.likedBy.includes(char.id)) replyTarget.likedBy.push(char.id); // 记录AI点赞
                 if(typeof addNotification === 'function') addNotification(`<b>${char.name}</b> 赞了您的评论 ❤️`, postId, null, char, "");
             }
             else if (!repText.toUpperCase().startsWith("NO") && repText !== "") {
                 post.replies.push({
                     id: 'r_' + Date.now() + Math.floor(Math.random()*100),
-                    parentId: newReply.id,
+                    parentId: replyTarget.id,
                     char: char,
                     text: repText,
                     timestamp: Date.now(),
@@ -152,6 +228,53 @@ async function postUserComment(postId) {
         } catch(e) { console.error(`角色"${char.name}"回复评论请求异常：`, e); }
     }
     if (Math.random() < npcReplyProb) spawnNpcComments(postId, false, { triggerName: currentUser.name, triggerText: text, triggerId: newReply.id });
+}
+
+// 🔁 删掉角色的评论之后，让它们重新回应一次。
+// 入口：帖子详情页里评论框空着直接点「回复」。
+//
+// 为什么需要它：角色评论**只有一个触发口** —— 用户发评论的那一刻。
+// 所以一旦把角色回的那条删了，就再也没有任何办法让它重新生成，
+// 除非把自己那条评论也删了、原话再打一遍，很别扭。
+//
+// 做法是拿你在这条帖子下**最后一条自己的评论**当触发点，重新跑一遍生成，
+// 不会新增一条你的评论。
+async function retriggerCharComments(postId) {
+    const isTabloid = String(postId).startsWith('tb_');
+    const post = isTabloid ? tabloidPosts.find(p => p.id == postId) : globalPosts.find(p => p.id == postId);
+    if (!post) return;
+    if (!myApiKey) return alert('请先配置 API Key！');
+
+    const replies = post.replies || [];
+    // 收集**所有**我发过的评论，不只是最后一条 —— 角色可以从里面自己挑一条回。
+    // 营销号帖子的结构是 charId:'me'，普通推文是 char.id === 'me'。
+    // 只取最近 8 条：再多提示词就开始膨胀了，而且更早的评论也不太可能有人还想接。
+    const MAX_PICKABLE = 8;
+    const myComments = replies.filter(r => isTabloid ? (r.charId === 'me') : (r.char && r.char.id === 'me'))
+                              .filter(r => r && r.text)
+                              .slice(-MAX_PICKABLE);
+    const mine = myComments.length > 0 ? myComments[myComments.length - 1] : null;
+    if (!mine) {
+        showToast('<div class="avatar" style="width:40px;height:40px;">💬</div>', '没什么可以重新生成的',
+            '得先有一条你自己的评论，角色才知道要回应什么。先说点什么吧。', null, null);
+        return;
+    }
+
+    // 防连点：正在生成时不再叠一次
+    if (retriggerCharComments._busy) return;
+    retriggerCharComments._busy = true;
+    try {
+        if (isTabloid) {
+            // 营销号帖子没有"博主本人"，走它自己那套：营销号互动 + 路人围观
+            rollTabloidAIParticipation(postId, mine.text, mine.name || userDisplayName());
+            await spawnNpcComments(postId, 'tabloid', { triggerName: mine.name || userDisplayName(), triggerText: mine.text, triggerId: mine.id });
+        } else {
+            // 传 userComments 就进"挑一条回"模式：谁开口、回哪条、回几条，全由人设决定
+            await runCharRepliesToComment(post, postId, mine, mine.text || '', { userComments: myComments });
+        }
+    } finally {
+        retriggerCharComments._busy = false;
+    }
 }
 
 // 1. 全新：支持无限极嵌套、3层自动折叠的深渊渲染器
@@ -1065,7 +1188,7 @@ async function submitInlineReply(postId, replyIdx) {
 
     const char = myCharacters.find(c => c.id === targetId); if (!char) return;
     if (char.replyToUser === false) return; // 新增：设置里关闭了"回复用户"的角色，用户直接@/回复它也不会再收到回应
-    let emoPrompt = getEmoticonPrompt(); const isCool = isCoolPersona(char.persona);
+    let emoPrompt = getEmoticonPrompt(); const isCool = isCoolTowardUser(char);
 
     let targetText = targetReply.text || targetReply.content || '';
     let actionStrictRule = allowActionTags ? "" : "\n【严格禁止】：绝对不要在回复中包含任何动作、神态或心理描写（如括号内的动作），只能输出你直接说出的话！";
@@ -1097,6 +1220,7 @@ async function submitInlineReply(postId, replyIdx) {
         repText = stripUndelimitedReasoningIfOverLength(repText, commentWordLimit);
         let repMediaUrl = null; let emoMatch = repText.match(/\[EMO:(emo_\w+)\]/i);
         if (emoMatch) { let emo = globalEmoticons.find(e => e.id === emoMatch[1]); if (emo) repMediaUrl = emo.url; repText = repText.replace(emoMatch[0], '').trim(); }
+        repText = stripLeftoverMarkers(repText); // 标记都解析完了，漏网的不许显示给用户（见 js/01）
         // 去掉AI偶尔自己加的首尾引号，再跑一遍该角色的"生成后处理"正则脚本——
         // 角色卡自带的状态栏/格式化HTML卡片就是靠这批脚本烘焙进正文的，评论回复也不例外。
         repText = repText.replace(/^["“]|["”]$/g, '').trim();
@@ -1504,4 +1628,3 @@ async function saveCharacter() {
     showRoleList(); renderDiaryCharList();
     updateCharSelects();
 }
-

@@ -30,6 +30,13 @@ function loadGlobalInteractionSettings() {
         cbStream.checked = localStorage.getItem('settingEnableStreaming') !== 'false';
         if (typeof enableStreaming !== 'undefined') enableStreaming = cbStream.checked;
     }
+    // 群聊转私聊默认开着——“有些话不当着大家面说”本来就是真人会做的事，
+    // 而且只是多一个选项，不强制角色用。想让群聊安静点的在设置里关掉。
+    const cbGmtc = document.getElementById('settingEnableGroupMoveToChat');
+    if (cbGmtc) {
+        cbGmtc.checked = localStorage.getItem('settingEnableGroupMoveToChat') !== 'false';
+        if (typeof enableGroupMoveToChat !== 'undefined') enableGroupMoveToChat = cbGmtc.checked;
+    }
 }
 // 网页加载时自动读取
 document.addEventListener("DOMContentLoaded", loadGlobalInteractionSettings);
@@ -58,6 +65,11 @@ function saveGlobalInteractionSettings() {
     if (cbStream) {
         localStorage.setItem('settingEnableStreaming', cbStream.checked);
         if (typeof enableStreaming !== 'undefined') enableStreaming = cbStream.checked;
+    }
+    const cbGmtc = document.getElementById('settingEnableGroupMoveToChat');
+    if (cbGmtc) {
+        localStorage.setItem('settingEnableGroupMoveToChat', cbGmtc.checked);
+        if (typeof enableGroupMoveToChat !== 'undefined') enableGroupMoveToChat = cbGmtc.checked;
     }
 }
 
