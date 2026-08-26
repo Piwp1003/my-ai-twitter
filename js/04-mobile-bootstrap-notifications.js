@@ -435,15 +435,62 @@ function fileToBase64(file) {
     });
 }
 
-function getAvatarHTML(char, size = 40, extraClass = '') { 
+// 🐛 头像 base64 不再往每个 HTML 片段里塞一遍。
+// 以前 getAvatarHTML 是把整串 base64 直接写进 style="background-image:url('data:image/png;base64,....')"。
+// 一个 120KB 的头像、一屏 60 条消息，拼出来的 innerHTML 就是 7 MB 起步——浏览器解析这坨字符串
+// 要几百毫秒，聊天越长越卡，也是"打不了字"的帮凶之一。
+// 现在改成：同一张图只在 <style> 里登记一条 CSS 类（.gy-av-N{background-image:url(...)}），
+// HTML 里只写类名。显示效果一模一样，7 MB 的 HTML 变成几十 KB。
+const __gyAvatarClsMap = new Map();   // key(角色id/群id) -> { url, cls }
+let __gyAvatarStyleEl = null;
+let __gyAvatarClsSeq = 0;
+function gyAvatarBgClass(key, imgUrl) {
+    if (!imgUrl || typeof imgUrl !== 'string') return '';
+    const cacheKey = String(key == null ? imgUrl.length + ':' + imgUrl.slice(0, 48) : key);
+    const hit = __gyAvatarClsMap.get(cacheKey);
+    if (hit && hit.url === imgUrl) return hit.cls;   // 同一张图，直接复用
+    try {
+        if (!__gyAvatarStyleEl || !__gyAvatarStyleEl.isConnected) {
+            __gyAvatarStyleEl = document.createElement('style');
+            __gyAvatarStyleEl.id = 'gyAvatarStyles';
+            document.head.appendChild(__gyAvatarStyleEl);
+        }
+        // url() 里出现引号/换行会把整条规则弄坏，先清掉；base64 和普通 http 链接都不含这些字符
+        const safe = imgUrl.replace(/["'\\\n\r]/g, '');
+        const cls = hit ? hit.cls : ('gy-av-' + (++__gyAvatarClsSeq));
+        if (hit) {
+            // 换头像了：把旧规则替换掉，类名不变，已经渲染出来的节点会自动跟着更新
+            const rules = __gyAvatarStyleEl.sheet.cssRules;
+            for (let i = rules.length - 1; i >= 0; i--) {
+                if (rules[i].selectorText === '.' + cls) { __gyAvatarStyleEl.sheet.deleteRule(i); break; }
+            }
+        }
+        __gyAvatarStyleEl.sheet.insertRule(
+            '.' + cls + '{background-image:url("' + safe + '");background-size:cover;background-position:center;}',
+            __gyAvatarStyleEl.sheet.cssRules.length);
+        __gyAvatarClsMap.set(cacheKey, { url: imgUrl, cls });
+        return cls;
+    } catch (e) {
+        return '';   // 拿不到 sheet（极少数环境）就退回老写法，见下面的调用点
+    }
+}
+function getAvatarHTML(char, size = 40, extraClass = '') {
     if(!char) char = { name:'未知', themeColor:'#1d9bf0', avatarEmoji:'?' };
-    const style = `width:${size}px; height:${size}px;`; 
-    if (char.avatarImg) return `<div class="avatar ${extraClass}" style="${style} background-image:url('${char.avatarImg}'); background-size:cover; background-position:center; border:2px solid transparent;"></div>`; 
-    return `<div class="avatar ${extraClass}" style="${style} background-color:rgba(255,255,255,0.8); border:2px solid #1d9bf0; color:#1d9bf0; font-size:${size*0.4}px;">${char.avatarEmoji || char.name?.[0] || '?'}</div>`; 
+    const style = `width:${size}px; height:${size}px;`;
+    if (char.avatarImg) {
+        const bgCls = gyAvatarBgClass(char.id, char.avatarImg);
+        if (bgCls) return `<div class="avatar ${extraClass} ${bgCls}" style="${style} border:2px solid transparent;"></div>`;
+        return `<div class="avatar ${extraClass}" style="${style} background-image:url('${char.avatarImg}'); background-size:cover; background-position:center; border:2px solid transparent;"></div>`;
+    }
+    return `<div class="avatar ${extraClass}" style="${style} background-color:rgba(255,255,255,0.8); border:2px solid #1d9bf0; color:#1d9bf0; font-size:${size*0.4}px;">${char.avatarEmoji || char.name?.[0] || '?'}</div>`;
 }
 function getGroupAvatarHTML(g, size=50, extraClass = '') {
     const style = `width:${size}px; height:${size}px;`;
-    if(g && g.avatarImg) return `<div class="avatar ${extraClass}" style="${style} background-image:url('${g.avatarImg}'); background-size:cover; background-position:center; border:2px solid transparent;"></div>`;
+    if(g && g.avatarImg) {
+        const bgCls = gyAvatarBgClass('g:' + g.id, g.avatarImg);
+        if (bgCls) return `<div class="avatar ${extraClass} ${bgCls}" style="${style} border:2px solid transparent;"></div>`;
+        return `<div class="avatar ${extraClass}" style="${style} background-image:url('${g.avatarImg}'); background-size:cover; background-position:center; border:2px solid transparent;"></div>`;
+    }
     return `<div class="avatar ${extraClass}" style="${style} background:rgba(255,255,255,0.8); color:#1d9bf0; font-size:${size*0.4}px; border:2px solid #1d9bf0; display:flex; align-items:center; justify-content:center;">群</div>`;
 }
 function openModal(id) {
@@ -489,13 +536,62 @@ function getFullDataSnapshot() {
     };
 }
 
-function saveAllData() {
+// 🐛🐛 "对面一发消息就打不了字 / 导入备份后必须大退" 的真正病根，就在这个函数上。
+//
+// 病理：saveAllData() 以前是"叫一次就真存一次"。localforage.setItem 把整份存档写进 IndexedDB，
+// 写之前浏览器要先做一次**结构化克隆**——这一步是**同步跑在主线程上的**，整份存档多大就克隆多久。
+// 存档里最占地方的是 base64 图片（表情包、角色头像、聊天里的图），几十MB很常见。
+//
+// 而全项目里 saveAllData() 被调用了两百多处，其中好几处是**在循环里**调的：
+//   · renderChatMessages 每遇到一条未读消息就调一次（60条未读 = 60次全量克隆）
+//   · triggerAIBatchReply 每落地一条回复调一次（模型一次吐3条 = 3次）
+// 实测：4.5MB 的存档，"对面连发3条"能把主线程占住 1.4 秒，"60条未读渲染一次"占住 1.7 秒。
+// 主线程被占住的这段时间里，键盘敲进去的字**是丢的**，光标也不闪——看起来就是"输入框坏了"。
+// 存档越大越明显，用户那边的存档远不止 4.5MB，所以直接卡到要大退。
+//
+// 治法：合并写入。叫多少次都行，400ms 内的所有调用合并成一次真写。
+// 调用点一处都不用改（签名没变），效果是 N 次全量克隆变成 1 次。
+// 关键节点（关页面、切后台、导入导出前后）用 saveAllData({ immediate: true }) 立刻落盘，不会丢数据。
+const GY_SAVE_DEBOUNCE_MS = 400;
+let __gySaveTimer = null;      // 合并窗口的计时器
+let __gySavePending = false;   // 窗口期内有没有人叫过存档
+let __gySaveLastPromise = null;
+
+function __gyDoSaveNow() {
+    __gySavePending = false;
     const dataToSave = getFullDataSnapshot();
-    localforage.setItem('myTwitterAppData', dataToSave).catch(function (e) { 
-        console.error("存档失败", e); 
-        alert("⚠️ 保存失败：设备硬盘空间可能已满！"); 
+    __gySaveLastPromise = localforage.setItem('myTwitterAppData', dataToSave).catch(function (e) {
+        console.error("存档失败", e);
+        alert("⚠️ 保存失败：设备硬盘空间可能已满！");
     });
+    return __gySaveLastPromise;
 }
+
+function saveAllData(opts) {
+    if (opts && opts.immediate) {
+        if (__gySaveTimer) { clearTimeout(__gySaveTimer); __gySaveTimer = null; }
+        return __gyDoSaveNow();
+    }
+    __gySavePending = true;
+    if (__gySaveTimer) return __gySaveLastPromise;   // 窗口已经开着，搭这趟车就行
+    __gySaveTimer = setTimeout(function () {
+        __gySaveTimer = null;
+        if (__gySavePending) __gyDoSaveNow();
+    }, GY_SAVE_DEBOUNCE_MS);
+    return __gySaveLastPromise;
+}
+
+// 有待写入的存档时立刻落盘。关窗口/切后台/手动导出前调，保证合并窗口里的改动不会丢。
+function flushPendingSave() {
+    if (__gySaveTimer) { clearTimeout(__gySaveTimer); __gySaveTimer = null; }
+    if (__gySavePending) return __gyDoSaveNow();
+    return Promise.resolve();
+}
+window.addEventListener('beforeunload', function () { try { flushPendingSave(); } catch (e) {} });
+window.addEventListener('pagehide', function () { try { flushPendingSave(); } catch (e) {} });
+document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') { try { flushPendingSave(); } catch (e) {} }
+});
 
 async function loadAllData() {
     try {
@@ -756,6 +852,9 @@ async function importData(event) {
             // 这样备份恢复和日常自动存档永远读取的是同一份字段清单，不会再出现"恢复漏了什么"的问题
             await localforage.setItem('myTwitterAppData', data);
             await loadAllData();
+            // 恢复存档等于把内存里所有数据整个换掉，这时候还开着的任何弹窗显示的都是旧数据，
+            // 留着只会挡住界面（用户反馈的"导入备份之后必须大退一次"，这是其中一种情况）。
+            gyCloseAllOverlays();
             updateUserMiniProfile(); if(typeof renderTrends === 'function') renderTrends(); updateGlobalBgStyles(); applyGlobalCSS(); applyNovelCSS(); updateSiteLogo(); switchMainView('home'); updateCharSelects();
             alert("数据恢复成功！欢迎回来。");
         } catch(err) { alert("文件格式错误，恢复失败！" + err.message); }
@@ -1378,3 +1477,187 @@ function updateStatusOpacityDisplay(value) {
     const displayElem = document.getElementById('statusOpacityDisplay');
     if(displayElem) displayElem.innerText = value + '%';
 }
+// ============================================================================
+// 界面「卡住打不了字」的兜底三件套
+// ----------------------------------------------------------------------------
+// 真正的病根（saveAllData 每条消息全量写一次存档、头像 base64 塞满 innerHTML）已经在
+// 上面修掉了。但用户的要求是"不要有任何输入框不能输入的情况"，所以再补三道保险，
+// 让"就算又冒出个没想到的原因，用户也能自己救回来、不用大退"：
+//   1) Esc 逃生口：一键关掉最上面那层弹窗/右键菜单
+//   2) 点输入区任意位置 → 焦点强制回到输入框（点到内边距上也算数）
+//   3) 看门狗：定期检查输入框是不是被什么东西盖住了，是的话把已知的"残留浮层"收掉，
+//      并把挡住它的元素打到控制台，下次真出问题能直接看到是谁干的
+// ============================================================================
+
+// 当前屏幕上真正显示着的弹窗（按 DOM 顺序，最后一个就是最上面那个）
+function gyVisibleOverlays() {
+    return Array.from(document.querySelectorAll('.modal-overlay'))
+        .filter(m => getComputedStyle(m).display !== 'none');
+}
+
+// 一次性收掉所有浮层。用在"界面整个换了一套数据"的时刻（比如恢复存档）——
+// 那时候还开着的弹窗内容都是旧的，留着只会挡路。
+function gyCloseAllOverlays() {
+    gyVisibleOverlays().forEach(m => { if (typeof closeModal === 'function') closeModal(m.id); else m.style.display = 'none'; });
+    const menu = document.getElementById('chatContextMenu');
+    if (menu) menu.style.display = 'none';
+}
+
+// 关掉最上层的一个浮层；什么都没开就返回 false
+function gyCloseTopOverlay() {
+    const menu = document.getElementById('chatContextMenu');
+    if (menu && getComputedStyle(menu).display !== 'none') { menu.style.display = 'none'; return true; }
+    const overlays = gyVisibleOverlays();
+    if (overlays.length === 0) return false;
+    const top = overlays[overlays.length - 1];
+    if (typeof closeModal === 'function') closeModal(top.id); else top.style.display = 'none';
+    return true;
+}
+
+document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    // 正在弹窗里的输入框打字时按 Esc，先让输入框自己失焦，不要直接把弹窗关了（会丢内容）
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && ae.value) { ae.blur(); return; }
+    if (gyCloseTopOverlay()) { e.preventDefault(); return; }
+    // 没有浮层可关：在聊天页就把焦点送回输入框
+    const view = document.getElementById('view-chat');
+    const input = document.getElementById('chatInput');
+    if (view && input && view.style.display !== 'none') { try { input.focus(); } catch (err) {} }
+});
+
+function gySetupInputWatchdog() {
+    // 点输入区的任何位置（包括图标行、内边距）都把焦点交给输入框
+    const area = document.getElementById('chatInputArea');
+    if (area) {
+        area.addEventListener('mouseup', function (e) {
+            if (e.target.closest('button, input, textarea, select, a, [contenteditable]')) return;
+            const input = document.getElementById('chatInput');
+            if (input) { try { input.focus(); } catch (err) {} }
+        });
+    }
+
+    // 看门狗：2 秒一次，只在聊天页开着的时候跑，开销可以忽略
+    setInterval(function () {
+        try {
+            const view = document.getElementById('view-chat');
+            const area2 = document.getElementById('chatInputArea');
+            const input = document.getElementById('chatInput');
+            if (!view || !area2 || !input) return;
+            if (view.style.display === 'none' || area2.style.display === 'none') return;
+            if (gyVisibleOverlays().length > 0) return;   // 用户自己开着弹窗，正常，不管
+
+            const r = input.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) return;
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            if (!hit || hit === input || input.contains(hit) || hit.contains(input)) return;
+
+            // 输入框被挡住了。先收掉已知的"忘了关"的残留浮层
+            let fixed = '';
+            const menu = document.getElementById('chatContextMenu');
+            if (menu && menu.contains(hit)) { menu.style.display = 'none'; fixed = '右键菜单'; }
+            const strayOverlay = hit.closest ? hit.closest('.modal-overlay') : null;
+            if (!fixed && strayOverlay) {
+                const box = strayOverlay.querySelector('.modal-box') || strayOverlay.firstElementChild;
+                if (!box || box.offsetHeight === 0) { strayOverlay.style.display = 'none'; fixed = '空弹窗 #' + strayOverlay.id; }
+            }
+            if (fixed) { console.warn('[输入框看门狗] 输入框被挡住了，已自动收掉：' + fixed); return; }
+
+            // 不是已知情况：不乱动别人的元素，但把凶手打出来，下次能直接定位
+            console.warn('[输入框看门狗] 输入框被挡住了，挡住它的是：',
+                '<' + hit.tagName.toLowerCase() + ' id="' + (hit.id || '') + '" class="' + (hit.className || '') + '">',
+                '按 Esc 可以尝试关掉最上层浮层。');
+        } catch (e) { /* 看门狗自己出错绝对不能影响正常使用 */ }
+    }, 2000);
+}
+// 脚本是在 </body> 前同步加载的，DOMContentLoaded 有可能已经过去了，两种情况都要能挂上
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', gySetupInputWatchdog);
+else gySetupInputWatchdog();
+
+// ============================================================================
+// 浮层式滚动条：平时透明，鼠标移到可滚动区域上、或正在滚动时才浮现
+// ----------------------------------------------------------------------------
+// 为什么要用 JS：CSS 里 `.某元素:hover::-webkit-scrollbar-thumb` 这个写法
+// **在 Chromium 里画不出来**（实测过：同样的颜色写死就有，挂到宿主的 :hover 上就没了。
+// 滚动条伪元素只认它自己的伪类，不跟着宿主元素的 :hover 状态走）。
+// 所以只能由 JS 给元素加一个 class，让样式命中的是 class 选择器。
+//
+// 开销控制：mouseover 只在"鼠标移到另一个元素上"时触发，不是每移动一像素都触发；
+// 而且每次只往上找到**最近的那个**可滚动祖先就停，不遍历整棵树。
+// ============================================================================
+(function () {
+    const CLS = 'gy-sb-on';
+    let hoverEl = null;                 // 当前因为"鼠标在上面"而点亮的元素
+    const scrollTimers = new WeakMap(); // 因为"正在滚动"而临时点亮的元素
+
+    function isScrollable(el) {
+        if (!el || el.nodeType !== 1) return false;
+        if (el === document.documentElement || el === document.body) {
+            return document.documentElement.scrollHeight > document.documentElement.clientHeight;
+        }
+        const cs = getComputedStyle(el);
+        if ((cs.overflowY === 'auto' || cs.overflowY === 'scroll') && el.scrollHeight > el.clientHeight) return true;
+        if ((cs.overflowX === 'auto' || cs.overflowX === 'scroll') && el.scrollWidth > el.clientWidth) return true;
+        return false;
+    }
+
+    // 从 target 往上找最近的可滚动祖先；找不到就返回 null
+    function nearestScrollable(target) {
+        let el = target;
+        let guard = 0;
+        while (el && el.nodeType === 1 && guard++ < 12) {   // 12 层够到最近的滚动容器了，再深就不值当
+            if (isScrollable(el)) return el;
+            el = el.parentElement;
+        }
+        return isScrollable(document.documentElement) ? document.documentElement : null;
+    }
+
+    function light(el) { if (el && el.classList) el.classList.add(CLS); }
+    function dim(el) {
+        // 正在滚动的计时器还没到，就先别熄
+        if (el && el.classList && !scrollTimers.has(el)) el.classList.remove(CLS);
+    }
+
+    // ⚠️ 这里必须省着点花。mouseover 虽然不是每像素触发，但鼠标扫过界面时一秒也能来几十次，
+    // 而 nearestScrollable 里每层都要 getComputedStyle、可滚动的还要读 scrollHeight（会强制回流）。
+    // 直接在事件里同步跑，DOM 一大就是典型的 layout thrashing：主线程一直在算布局，
+    // 点击排不上队，用起来就是"点了没反应"。
+    // 两道限流：① 一帧最多算一次（rAF 合并）② 只往上找有限层数，找不到就当页面滚动条。
+    let pendingTarget = null, rafId = 0;
+    function resolveHover() {
+        rafId = 0;
+        const t = pendingTarget; pendingTarget = null;
+        if (!t || !t.isConnected) return;
+        const el = nearestScrollable(t);
+        if (el === hoverEl) return;
+        if (hoverEl) dim(hoverEl);
+        hoverEl = el;
+        light(hoverEl);
+    }
+    document.addEventListener('mouseover', function (e) {
+        pendingTarget = e.target;
+        if (!rafId) rafId = requestAnimationFrame(resolveHover);
+    }, true);
+
+    // 鼠标离开整个窗口：全部熄掉
+    document.addEventListener('mouseleave', function () {
+        if (hoverEl) { dim(hoverEl); hoverEl = null; }
+    });
+    window.addEventListener('blur', function () {
+        if (hoverEl) { dim(hoverEl); hoverEl = null; }
+    });
+
+    // 滚轮/触摸滚动时也点亮一下：正在滚的时候看得见滚到哪儿了，停手 1.2 秒后淡出
+    document.addEventListener('scroll', function (e) {
+        let el = e.target;
+        if (el === document || el === window) el = document.documentElement;
+        if (!el || !el.classList) return;
+        light(el);
+        const old = scrollTimers.get(el);
+        if (old) clearTimeout(old);
+        scrollTimers.set(el, setTimeout(function () {
+            scrollTimers.delete(el);
+            if (el !== hoverEl) el.classList.remove(CLS);
+        }, 1200));
+    }, true);
+})();

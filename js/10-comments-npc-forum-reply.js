@@ -59,7 +59,7 @@ async function postUserComment(postId) {
         // 修复：之前这里完全没告诉AI这条推文到底是谁发的，角色容易默认脑补成"用户自己发的"，
         // 结果在给别的角色的推文回复用户评论时，把不属于自己的推文错当成自己发的来回应。
         // 现在明确写清楚博主是谁（是你自己/用户本人/还是另一个角色），避免这种归属错乱。
-        let postAuthorLabel = isPostAuthor ? '你自己' : (post.char.id === 'me' ? `用户（${currentUser.name}）本人` : `角色"${post.char.name}"（不是你，也不是用户）`);
+        let postAuthorLabel = isPostAuthor ? '你自己' : (post.char.id === 'me' ? `用户（${userDisplayName()}）本人` : `角色"${post.char.name}"（不是你，也不是用户）`);
 
         let actionStrictRule = allowActionTags ? "" : "\n【严格禁止】：绝对不要在回复中包含任何动作、神态或心理描写（如括号内的动作），只能输出你直接说出的话！";
         let contextInfo = `\n【原推文内容】(发布者是：${postAuthorLabel})："${post.text}"\n【用户的评论】："${text}"\n`;
@@ -1041,7 +1041,7 @@ async function submitInlineReply(postId, replyIdx) {
 
     if (String(targetId).startsWith('npc')) {
         let npcActionRule = allowActionTags ? "" : "不要有任何动作、神态或心理描写，不要用括号()或【】，只输出要说的话。";
-        let p = `你是路人网友"${targetName}"。刚才用户"${currentUser.name}"针对你的评论回复道："${text}"。请你以路人网友的身份（八卦、吃瓜、拱火）简短回击，不超过${commentWordLimit}字。如果在扮演具体角色，注意带入角色的情绪。直接输出内容，不要带引号。${npcActionRule}\n${getFinalAnswerMarkerPromptNote()}`;
+        let p = `你是路人网友"${targetName}"。刚才用户"${userDisplayName()}"针对你的评论回复道："${text}"。请你以路人网友的身份（八卦、吃瓜、拱火）简短回击，不超过${commentWordLimit}字。如果在扮演具体角色，注意带入角色的情绪。直接输出内容，不要带引号。${npcActionRule}\n${getFinalAnswerMarkerPromptNote()}`;
         try {
             let rep = (await sendChatRequest(api, p)).choices?.[0]?.message?.content?.trim();
             // 去掉可能混进来的思维链前缀（比如<think>...</think>），评论只应该显示真正的回复内容。
@@ -1071,7 +1071,7 @@ async function submitInlineReply(postId, replyIdx) {
     let actionStrictRule = allowActionTags ? "" : "\n【严格禁止】：绝对不要在回复中包含任何动作、神态或心理描写（如括号内的动作），只能输出你直接说出的话！";
     // 修复：同上，这条推文可能是用户自己发的，也可能是另一个角色发的，被@的角色需要明确知道，
     // 不要下意识把别的角色发的推文当成自己或用户发的。
-    let inlinePostAuthorLabel = (post.char && post.char.id === char.id) ? '你自己' : (!post.char || post.char.id === 'me' ? `用户（${currentUser.name}）本人` : `角色"${post.char.name}"（不是你，也不是用户）`);
+    let inlinePostAuthorLabel = (post.char && post.char.id === char.id) ? '你自己' : (!post.char || post.char.id === 'me' ? `用户（${userDisplayName()}）本人` : `角色"${post.char.name}"（不是你，也不是用户）`);
     let contextInfo = `\n【原推文内容】(发布者是：${inlinePostAuthorLabel})："${post.text}"\n【原评论/你想回的话】："${targetText}"\n`;
     // 修复：之前这里是手写的简化版prompt（只有人设+世界书+聊天总结），没走buildBasePrompt，
     // 漏了关系网/预设/插件这些上下文，换成buildBasePrompt统一走一遍完整上下文，避免OOC。

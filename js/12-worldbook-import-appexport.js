@@ -229,28 +229,125 @@ function appToast(msg) {
 // 这里同样改用 plus.nativeUI.confirm/prompt（系统原生对话框，走的是原生UI而不是网页层，靠谱得多）。
 // 这两个原生API都是"非阻塞"的（回调式，不能直接同步拿到返回值），所以封装成返回Promise的写法，
 // 调用的地方改成 await appConfirm(...) / await appPrompt(...) 即可，网页版环境行为完全不变。
-function appConfirm(message, okText, cancelText) {
-    okText = okText || '确定'; cancelText = cancelText || '取消';
+// ============================================================================
+// 🐛🐛 页面内的输入框/确认框 —— 不再用浏览器原生的 prompt()/confirm()
+//
+// 病根（打包成 exe 之后才暴露）：**Electron 根本不支持 window.prompt()**，
+// 调用它直接抛 "Error: prompt() is not supported."。
+// 而 appPrompt 里是 resolve(prompt(...))，异常一抛，promise 变成 rejected，
+// 调用方 `await appPrompt(...)` 直接中断——表现就是**点了完全没反应，连报错都看不见**。
+// 用户实测的"新建预设点击没反应"就是这么来的（js/15 那个入口正是走 appPrompt）。
+// 受影响的不止一处：重命名人设、编辑消息、开分支、改标签、新建势力、重命名续写…… 全是死的。
+//
+// confirm() 在 Electron 里能用，但它是**系统级模态窗口**，关掉之后不保证把键盘焦点
+// 还给网页（就是"导入备份之后打不了字"那个毛病）。既然要动，一并换掉。
+//
+// 所以改成自己画一个页面内的弹窗：
+//   · 不依赖任何浏览器原生对话框，Electron / 安卓 WebView / 普通浏览器行为一致
+//   · 不抢系统焦点，关掉之后光标自己回到原来的位置
+//   · 返回 Promise，调用点全都已经是 await 了，一行都不用改
+//   · 长文本自动用多行输入框（编辑消息正文这类场景原来挤在一行里很难用）
+// 打包成安卓 App（window.plus）时仍然优先走原生对话框——那条路在那个环境里是好的。
+// ============================================================================
+function gyInPageDialog(opts) {
+    const o = opts || {};
     return new Promise((resolve) => {
-        if (window.plus && plus.nativeUI && plus.nativeUI.confirm) {
-            try {
-                plus.nativeUI.confirm(message, (e) => resolve(e.index === 0), '', [okText, cancelText]);
-                return;
-            } catch (e) {}
+        let done = false;
+        const finish = (val) => {
+            if (done) return; done = true;
+            document.removeEventListener('keydown', onKey, true);
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            // 把焦点还给弹窗之前那个元素，接着打字不用重新点
+            try { if (prevFocus && prevFocus.isConnected && prevFocus.focus) prevFocus.focus(); } catch (e) {}
+            resolve(val);
+        };
+        const prevFocus = document.activeElement;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay gy-dialog-overlay';
+        overlay.style.cssText = 'display:flex; z-index:100000;';
+
+        const box = document.createElement('div');
+        box.className = 'modal-box';
+        box.style.cssText = 'width:min(460px, 92vw); max-height:80vh; display:flex; flex-direction:column; gap:14px;';
+
+        const msg = document.createElement('div');
+        msg.style.cssText = 'font-size:15px; line-height:1.6; white-space:pre-wrap; word-break:break-word;';
+        msg.textContent = String(o.message == null ? '' : o.message);
+        box.appendChild(msg);
+
+        let field = null;
+        if (o.withInput) {
+            const val = (o.defaultValue === undefined || o.defaultValue === null) ? '' : String(o.defaultValue);
+            // 内容长或者本来就有换行，就用多行框；短的用单行，回车直接确定
+            const multiline = val.length > 60 || val.indexOf('\n') !== -1;
+            field = document.createElement(multiline ? 'textarea' : 'input');
+            field.className = 'gy-dialog-input';
+            if (!multiline) field.type = 'text';
+            field.value = val;
+            field.style.cssText = 'width:100%; box-sizing:border-box; padding:10px 12px; font-size:15px;'
+                + 'border:2px solid #1d9bf0; border-radius:10px; outline:none; font-family:inherit;'
+                + (multiline ? ' min-height:160px; resize:vertical; line-height:1.6;' : '');
+            box.appendChild(field);
         }
-        resolve(confirm(message));
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex; gap:10px; justify-content:flex-end;';
+        const mkBtn = (text, primary, onClick) => {
+            const b = document.createElement('button');
+            b.textContent = text;
+            // 带上固定的 class，方便测试脚本定位，也方便以后写样式
+            b.className = (primary ? 'btn-post gy-dialog-ok' : 'btn-secondary gy-dialog-cancel');
+            b.style.cssText = 'padding:9px 22px; font-size:15px; margin:0; cursor:pointer;';
+            b.addEventListener('click', onClick);
+            return b;
+        };
+        if (o.showCancel) btnRow.appendChild(mkBtn(o.cancelText || '取消', false, () => finish(o.cancelValue)));
+        btnRow.appendChild(mkBtn(o.okText || '确定', true, () => finish(o.withInput ? field.value : true)));
+        box.appendChild(btnRow);
+
+        overlay.appendChild(box);
+        // 点空白处 = 取消
+        overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(o.cancelValue); });
+        document.body.appendChild(overlay);
+
+        // Esc 取消 / Enter 确定。用捕获阶段并且拦下来，免得被全局那个"Esc 关最上层弹窗"的
+        // 监听器抢先关掉——那样关掉的话这个 promise 就永远悬着不 resolve 了。
+        function onKey(e) {
+            if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); finish(o.cancelValue); return; }
+            if (e.key === 'Enter' && (!field || field.tagName !== 'TEXTAREA' || e.ctrlKey || e.metaKey)) {
+                e.stopPropagation(); e.preventDefault(); finish(o.withInput ? field.value : true);
+            }
+        }
+        document.addEventListener('keydown', onKey, true);
+
+        setTimeout(() => {
+            try { if (field) { field.focus(); field.select && field.select(); } } catch (e) {}
+        }, 30);
     });
 }
+
+function appConfirm(message, okText, cancelText) {
+    okText = okText || '确定'; cancelText = cancelText || '取消';
+    if (window.plus && plus.nativeUI && plus.nativeUI.confirm) {
+        try {
+            return new Promise((resolve) => {
+                plus.nativeUI.confirm(message, (e) => resolve(e.index === 0), '', [okText, cancelText]);
+            });
+        } catch (e) {}
+    }
+    return gyInPageDialog({ message, okText, cancelText, showCancel: true, cancelValue: false });
+}
 function appPrompt(message, defaultValue) {
-    return new Promise((resolve) => {
-        if (window.plus && plus.nativeUI && plus.nativeUI.prompt) {
-            try {
-                plus.nativeUI.prompt(message, (e) => resolve(e.index === 0 ? e.value : null), '', (defaultValue === undefined || defaultValue === null) ? '' : String(defaultValue), ['确定', '取消']);
-                return;
-            } catch (e) {}
-        }
-        resolve(prompt(message, defaultValue));
-    });
+    if (window.plus && plus.nativeUI && plus.nativeUI.prompt) {
+        try {
+            return new Promise((resolve) => {
+                plus.nativeUI.prompt(message, (e) => resolve(e.index === 0 ? e.value : null), '',
+                    (defaultValue === undefined || defaultValue === null) ? '' : String(defaultValue), ['确定', '取消']);
+            });
+        } catch (e) {}
+    }
+    return gyInPageDialog({ message, defaultValue, withInput: true, showCancel: true, cancelValue: null });
 }
 // ★ "Coding error"排查：两边目录都同样报编码错误，说明跟写哪个目录无关，问题出在内容本身——
 // 常见两个诱因：1）内容里混进了"孤立代理项"（复制粘贴/输入法产生的半个emoji之类的残缺字符），

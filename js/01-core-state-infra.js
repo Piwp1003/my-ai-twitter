@@ -1,3 +1,42 @@
+// ============================================================================
+// 🐛 原生弹窗（alert / confirm / prompt）关掉之后，把键盘焦点抢回来
+// ----------------------------------------------------------------------------
+// 病根：打包成 exe（Electron）之后，这三个是**系统级的模态窗口**，不是网页里画的。
+// 它关闭时，Windows 不保证把键盘焦点还给网页那一层 —— 于是弹窗一关，
+// 整个界面就再也打不了字、点了也没反应，非得把窗口切出去再切回来才恢复。
+//
+// 用户实测出来的触发条件是"导入备份之后"：importData 成功那一支最后会
+// alert("数据恢复成功")，就是这一下把焦点弄丢的。但凡走 alert/confirm/prompt 的
+// 地方都会中招，不止导入这一处，所以在这里统一包一层，而不是去改某个调用点。
+//
+// 做两件事：① 让窗口重新激活；② 把焦点还给弹窗之前那个正在用的元素
+// （比如你正在聊天框里打字时弹了个确认框，关掉之后光标还在原来那个框里）。
+// 普通浏览器里本来就没这个毛病，多做这两步也没有副作用。
+// ============================================================================
+(function () {
+    if (typeof window === 'undefined') return;
+    ['alert', 'confirm', 'prompt'].forEach(function (name) {
+        const native = window[name];
+        if (typeof native !== 'function') return;
+        window[name] = function () {
+            const prev = document.activeElement;
+            try {
+                return native.apply(window, arguments);
+            } finally {
+                // 放到下一个事件循环再抢：弹窗刚关的那一瞬间窗口还没完成激活，立刻调是空操作
+                setTimeout(function () {
+                    try {
+                        window.focus();
+                        if (prev && prev !== document.body && typeof prev.focus === 'function' && prev.isConnected) {
+                            prev.focus();
+                        }
+                    } catch (e) {}
+                }, 0);
+            }
+        };
+    });
+})();
+
 let tempCropResults = {}; // 存储各类裁剪临时 Base64 数据
 let pendingImportedGreetings = null; // 角色卡导入时读到的候选开场白，等角色保存后挂到角色身上
 // 角色卡导入时顺带识别到的正则脚本（比如状态栏HTML组件），此时角色卡本身还没保存、拿不到真正的角色id，
@@ -347,6 +386,11 @@ let npcReplyProb = 0.4, npcReplyMaxCount = 3;
 let npcArgueProb = 0.5;
 // 角色回应是否延迟（不秒回）。关掉就是老行为——测试和"我就想立刻看到效果"时有用。
 let charReplyDelayEnabled = true;
+// 流式输出（边生成边逐字显示）开关。开着更有"正在写"的实时感；
+// 关掉就整段生成完再一次性显示——有些中转服务商的流式通道不稳定（吞字、卡住、直接报错），
+// 遇到这种情况关掉它更省心。影响的是续写工作台和酒馆桥接的 generate；
+// 聊天本身一直走非流式（聊天要求模型返回整段JSON，半截JSON显示出来是乱码），不受这个开关影响。
+let enableStreaming = true;
 let globalBgImage = null, globalBgOpacity = 1;
 
 // 全局自定义CSS
@@ -381,9 +425,24 @@ let memoryViewingCharId = null, currentSummaryCharId = null, chatContextMenuMsgI
 let currentMemoryHubTargetId = null; // "记忆总览"独立页面里当前选中查看的角色/群聊id
 let currentDiaryCharId = null, currentDiaryTab = 'letter', tempGeneratedDiary = null, viewingDiaryId = null;
 
+// ⚠️ 这里是**新装时的默认资料**，不是谁的名字写死在这里。
+// 以前默认名字是作者本人的名字，别人装上这个网站，一进来自己的账号就叫那个名字，
+// 而且所有提示词里都会出现它（"用户XXX给你寄来一封信"…）——等于把作者的名字硬塞给了每一个用户。
+// 改成中性的"我"，用户在"编辑资料"里改成自己的名字之后，全站提示词自动跟着变。
 let currentUser = {
-    id: 'me', name: "林", handle: "@my_account", bio: "这是我的个人签名...",persona: "", followers: 128, following: 50, location: "地球", website: "myblog.com", birthdate: "2000-01-01", verified: false, avatarImg: null, bgImg: null, avatarEmoji: "我", themeColor: "#1d9bf0", anonName: "匿名用户", anonId: Math.random().toString(36).substr(2,8).toUpperCase(), nudgeText: "的聪明脑袋", gender: "未知", customAnniversaries: []
+    id: 'me', name: "我", handle: "@my_account", bio: "这是我的个人签名...",persona: "", followers: 128, following: 50, location: "地球", website: "myblog.com", birthdate: "2000-01-01", verified: false, avatarImg: null, bgImg: null, avatarEmoji: "我", themeColor: "#1d9bf0", anonName: "匿名用户", anonId: Math.random().toString(36).substr(2,8).toUpperCase(), nudgeText: "的聪明脑袋", gender: "未知", customAnniversaries: []
 };
+
+// 提示词里要写"用户叫什么"的地方统一走这个函数，不要直接拼 currentUser.name。
+// 两个作用：
+//   1) 名字被清空/存档里没有这个字段时，不会拼出"用户 给你寄来一封信"这种断句；
+//   2) 名字还是默认的"我"时，在提示词里写"我给你寄来一封信"会让模型分不清是谁——
+//      这种情况下换成"用户"这个中性称呼，模型不会误解，界面上显示的仍然是用户自己设的名字。
+function userDisplayName() {
+    const n = ((typeof currentUser !== 'undefined' && currentUser && currentUser.name) || '').trim();
+    if (!n || n === '我') return '用户';
+    return n;
+}
 let tabloidAccount = {
     id: 'tabloid_admin', name: "X星圈内爆料", handle: "@tabloid_news", persona: "专业狗仔，娱乐圈纪委，看热闹不嫌事大", bio: "掌握全网第一手瓜。欢迎私信爆料。", followers: 99999, following: 0, location: "深渊暗网", website: "", birthdate: "2020-01-01", verified: true, avatarImg: null, bgImg: null, avatarEmoji: "📰", themeColor: "#f91880", isFollowing: false, isSpecialFollow: false
 };
@@ -869,7 +928,11 @@ async function callChatCompletionAPI(api, promptContent, maxRetries = 2, images 
 // (plus.net.XMLHttpRequest) 不支持真正中断，取消功能在那种环境下不生效，只在普通浏览器/webview里有效。
 async function streamCompletionText(api, promptContent, onDelta, images = null, signal = null) {
     const isNativeApp = typeof window !== 'undefined' && window.plus && window.plus.net && window.plus.net.XMLHttpRequest;
-    if (isNativeApp) {
+    // 用户在设置里关掉了流式：走跟原生App壳子完全一样的那条路——发普通请求，
+    // 拿到完整文字后一次性回调一次。所有调用方（续写工作台、酒馆桥接的 generate）
+    // 都不用改，界面上的区别只是"没有逐字效果"，功能一样。
+    const streamOff = (typeof enableStreaming !== 'undefined') && !enableStreaming;
+    if (isNativeApp || streamOff) {
         const data = await callChatCompletionAPI(api, promptContent, 2, images);
         const text = (!data.error && data.choices?.[0]?.message?.content) || '';
         if (text) onDelta(text, true);
@@ -1056,7 +1119,10 @@ function applyMacros(text, char, scopeId) {
     text = renderEjsTemplate(text, char, scope);
     return text
         .replace(/\{\{char\}\}/gi, (char && char.name) || '')
-        .replace(/\{\{user\}\}/gi, (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || '')
+        // ⚠️ 这里以前是 currentUser.name || ''：名字被清空时，{{user}} 会被替换成**空字符串**，
+        // 人设里写的"{{user}}走进书店"就变成"走进书店"，主语没了。跟别处统一走 userDisplayName()：
+        // 名字空着或者还是默认的"我"时，兜底成中性的"用户"。
+        .replace(/\{\{user\}\}/gi, (typeof userDisplayName === 'function') ? userDisplayName() : ((typeof currentUser !== 'undefined' && currentUser && currentUser.name) || '用户'))
         .replace(/\{\{time\}\}/gi, now.toLocaleTimeString('zh-CN', { hour12: false }))
         .replace(/\{\{date\}\}/gi, now.toLocaleDateString('zh-CN'))
         .replace(/\{\{weekday\}\}/gi, now.toLocaleDateString('zh-CN', { weekday: 'long' }))
@@ -1382,8 +1448,59 @@ function stripHtmlKeepPlainText(raw) {
 // 聊天气泡/匿名论坛帖子最终用的渲染函数：先剥离所有HTML标签只留纯文字，再转义成安全文本，
 // 最后把换行还原成 <br> 让多段文字看着不会挤成一坨——这一步不是"渲染HTML"，只是让纯文本能正常分行显示。
 function renderPlainChatText(raw) {
-    const plain = stripHtmlKeepPlainText(raw);
+    const plain = stripHtmlKeepPlainText(unwrapAiEnvelopeText(raw));
     return escapeHtml(plain).replace(/\n/g, '<br>');
+}
+
+// 🐛 "一整坨 ```json 原样发到聊天里"的统一兜底。
+//
+// 正常情况下模型返回的 {"replies":[...],"stateUpdate":"..."} 会被 extractJsonObject 解析、拆成
+// 一条条气泡。但只要有一步没对上——模型多写了闭合花括号、字段名写错、思维链混在前面、
+// 或者走的是某条没做解析的旧代码路径——整段原文就会被当成一条消息文本存进 globalChats，
+// 之后每次渲染都原样显示，用户看到的就是截图里那坨 JSON。
+//
+// 这个函数做两件事，任何一层没命中都原样返回，不会误伤正常聊天内容：
+//   1) 剥掉思维链标签和 ``` 代码围栏；
+//   2) 如果剩下的东西整体就是一个带 replies/stateUpdate 的 JSON 信封，把里面的话拿出来。
+//
+// 关键是它**同时用在两个地方**：
+//   · 写入侧（各处解析失败的兜底分支）——新消息不会再存成一坨 JSON；
+//   · 渲染侧（renderPlainChatText）——**已经存坏在历史记录里的旧消息，这次打开就能正常显示了**，
+//     不用用户自己去一条条删。
+function unwrapAiEnvelopeText(raw) {
+    if (raw === null || raw === undefined) return '';
+    let t = String(raw);
+    if (!t) return '';
+    // 快速排除：正常聊天内容里既没有代码围栏也不会以 { 开头，直接原样返回，零开销
+    if (t.indexOf('```') === -1 && t.trim()[0] !== '{' && t.indexOf('<think') === -1 && t.indexOf('<thinking') === -1) return t;
+
+    let s = t;
+    try { s = processReasoningInText(s); } catch (e) {}
+    // 剥掉包裹整段内容的代码围栏（```json ... ``` / ``` ... ```），只在首尾成对时才剥
+    const fence = s.trim().match(/^```[a-zA-Z0-9_-]*\s*\n?([\s\S]*?)\n?```$/);
+    if (fence) s = fence[1];
+    else s = s.trim().replace(/^```[a-zA-Z0-9_-]*\s*\n?/, '').replace(/\n?```\s*$/, '');
+    s = s.trim();
+
+    if (s[0] !== '{') return s === t.trim() ? t : (s || t);
+
+    let parsed = null;
+    try { parsed = extractJsonObject(s); } catch (e) {}
+    if (!parsed || typeof parsed !== 'object') return s || t;
+
+    // 认得出来的信封才拆，别的 JSON（角色卡自己要展示的数据之类）原样留着
+    const hasReplies = Array.isArray(parsed.replies);
+    if (!hasReplies && !parsed.stateUpdate) return s || t;
+
+    let out = '';
+    if (hasReplies) {
+        out = parsed.replies
+            .map(r => (r && typeof r === 'object') ? String(r.text || '') : String(r || ''))
+            .filter(x => x.trim())
+            .join('\n');
+    }
+    if (!out.trim() && parsed.stateUpdate) out = '(' + String(parsed.stateUpdate) + ')';
+    return out.trim() || s || t;
 }
 
 // ===================== 思维链识别与折叠展示 =====================
@@ -1461,11 +1578,36 @@ function buildReasoningCollapseHtml(collapsedBlocks) {
 // 一旦思维链 HTML 堵在最前面，锚点永远匹配不上，状态栏就再也出不来。
 // 与其让一个全局开关同时影响两边（想在小说里看思维链就得打开 collapse，一打开聊天的状态栏就废），
 // 不如按场景分开：别处永远剥掉，只有小说/续写保留。
+// 🐛 "思维链偶尔会跑出来"的补漏。
+// stripLeadingReasoningBlocks 只认**文本最开头**的思维链前缀。但模型经常不老实：
+// 先客套一句"好的，我来想想。"再写 <think>…</think>，或者把思考塞在正文中间。
+// 这种情况开头匹配不上，整段思考就原样留在正文里了——这就是"偶尔"跑出来的那个偶尔。
+//
+// 这里补一道：把正文里**任意位置**的**成对**思维链标签整块删掉。
+// 只处理成对的（有头有尾，边界明确，不会误伤），不处理落单的标签。
+// <details> 这条格式故意不参与：角色卡自己经常用 <details> 做折叠面板，
+// 全文乱删会把卡片内容一起删掉，它继续只在开头匹配（老行为不变）。
+const REASONING_ANYWHERE_SAFE = ['think', 'thinking', 'custom_think', 'SECRET/thought'];
+function escapeRegExpLiteral(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function stripPairedReasoningAnywhere(text) {
+    let t = text;
+    for (const fmt of reasoningFormats) {
+        if (fmt.enabled === false || !fmt.prefix || !fmt.suffix) continue;
+        if (!REASONING_ANYWHERE_SAFE.includes(fmt.name)) continue;
+        try {
+            const re = new RegExp(escapeRegExpLiteral(fmt.prefix) + '[\\s\\S]*?' + escapeRegExpLiteral(fmt.suffix), 'gi');
+            t = t.replace(re, '');
+        } catch (e) { /* 用户自定义的前后缀拼不出合法正则就跳过这条 */ }
+    }
+    return t;
+}
 function processReasoningInText(text) {
     if (!text || typeof text !== 'string') return text;
-    const { collapsedBlocks, rest } = stripLeadingReasoningBlocks(text);
-    if (collapsedBlocks.length === 0) return text;
-    return rest;
+    let t = stripPairedReasoningAnywhere(text);
+    const { collapsedBlocks, rest } = stripLeadingReasoningBlocks(t);
+    if (collapsedBlocks.length > 0) t = rest;
+    // 全被当成思维链删光了说明判断有误（正文不该是空的），宁可原样显示也不要给用户一条空消息
+    return t.trim() ? t : text;
 }
 
 // 🐛 修复"评论/回帖里混入一整段思考过程"：部分模型（尤其没有走标准reasoning_content通道、只是被prompt

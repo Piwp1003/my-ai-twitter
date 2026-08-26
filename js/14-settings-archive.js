@@ -24,6 +24,12 @@ function loadGlobalInteractionSettings() {
         cbArgue.checked = localStorage.getItem('settingNpcArgue') !== 'false';
         if (typeof npcArgueProb !== 'undefined') npcArgueProb = cbArgue.checked ? 0.5 : 0;
     }
+    // 流式输出默认开着（逐字显示体验更好）；接口流式不稳的用户可以关掉。
+    const cbStream = document.getElementById('settingEnableStreaming');
+    if (cbStream) {
+        cbStream.checked = localStorage.getItem('settingEnableStreaming') !== 'false';
+        if (typeof enableStreaming !== 'undefined') enableStreaming = cbStream.checked;
+    }
 }
 // 网页加载时自动读取
 document.addEventListener("DOMContentLoaded", loadGlobalInteractionSettings);
@@ -47,6 +53,11 @@ function saveGlobalInteractionSettings() {
         localStorage.setItem('settingNpcArgue', cbArgue.checked);
         // 关掉就是概率 0；打开恢复默认的一半概率（每轮都吵会把角色的话刷没）
         if (typeof npcArgueProb !== 'undefined') npcArgueProb = cbArgue.checked ? 0.5 : 0;
+    }
+    const cbStream = document.getElementById('settingEnableStreaming');
+    if (cbStream) {
+        localStorage.setItem('settingEnableStreaming', cbStream.checked);
+        if (typeof enableStreaming !== 'undefined') enableStreaming = cbStream.checked;
     }
 }
 

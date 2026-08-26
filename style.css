@@ -1659,28 +1659,62 @@ body.dark-theme .app-signature { color: #71767b; }
 .mini-spinner { width: 32px; height: 32px; border: 3px solid #eff3f4; border-top-color: #1d9bf0; border-radius: 50%; animation: mini-spin 0.8s linear infinite; }
 @keyframes mini-spin { to { transform: rotate(360deg); } }
 
-/* ===================== 隐藏滚动条 ===================== */
-::-webkit-scrollbar { width: 0; height: 0; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: transparent; }
-html { scrollbar-width: none; }
-body { scrollbar-width: none; }
+/* ===================== 滚动条：平时看不见，鼠标移上去才浮现 =====================
+   以前这里是把滚动条整个藏掉（width:0），为的是像个 App 而不像网页。
+   代价是完全看不出"这块还能往下滚""现在滚到哪儿了"。
+   现在改成常见的"浮层式滚动条"：
 
-/* 修复：textarea 无法拖拽右下角调节手柄的问题（实测：不管有没有内容都会中招）。
-   原因：上面把全局 ::-webkit-scrollbar 宽高设为 0，Chromium 内核会把
-   resize 手柄和滚动条共用的"角落"区域也一并收缩，导致手柄的可拖拽热区
-   跟着变成 0 抓不到了。实测验证：宽高设为 6px 时热区仍然太小抓不到，
-   10px 起才能稳定拖动，所以这里用 10px（比默认滚动条略细，但足够撑起
-   可拖拽热区），同时不影响页面其它地方隐藏滚动条的效果。 */
-textarea::-webkit-scrollbar { width: 10px; height: 10px; }
-textarea::-webkit-scrollbar-track { background: transparent; }
-textarea::-webkit-scrollbar-thumb { background: rgba(15,20,25,0.15); border-radius: 3px; }
-textarea:hover::-webkit-scrollbar-thumb,
-textarea:focus::-webkit-scrollbar-thumb { background: rgba(15,20,25,0.28); }
-textarea { scrollbar-width: thin; }
-body.dark-theme textarea::-webkit-scrollbar-thumb { background: rgba(231,233,234,0.18); }
-body.dark-theme textarea:hover::-webkit-scrollbar-thumb,
-body.dark-theme textarea:focus::-webkit-scrollbar-thumb { background: rgba(231,233,234,0.3); }
+   · 宽度**恒定 10px**，任何时候都占着这点位置 —— 关键就在这。
+     如果靠改宽度来显示/隐藏，每次鼠标移进移出，内容区宽度都会跳一下，文字重排，很晃眼。
+     所以宽度不动，只让滑块本身在透明和有色之间淡入淡出，布局纹丝不动。
+   · 滑块用 border + background-clip:content-box 做出内缩效果，看起来是根 4px 的细条，
+     但可点击热区仍然有 10px 宽，好抓。
+   · 鼠标移到某个可滚动区域上，它自己的滚动条浮现；鼠标移开（或移出窗口）就淡出。
+     鼠标压在滑块上时再加深一档，表示"可以拖了"。
+   · 这个宽度顺带解决了以前那个 textarea 右下角拖不动的问题：resize 手柄和滚动条共用
+     角落区域，宽度为 0 时热区跟着变 0 就抓不住了，实测要 10px 才稳。 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+    transition: background-color 0.22s ease;
+}
+/* 鼠标在这块可滚动区域里 / 正在滚动 —— 滑块浮现。
+   ⚠️ 这里不能写成 :hover::-webkit-scrollbar-thumb —— 那样写**在 Chromium 里完全不生效**
+   （实测：同样的样式写死是有的，挂到宿主元素的 :hover 上就画不出来了。
+   滚动条伪元素只认它自己的伪类，不跟着宿主的 :hover 走）。
+   所以改成由 JS 给可滚动元素加 .gy-sb-on 这个 class 来控制，见 js/04 末尾。 */
+.gy-sb-on::-webkit-scrollbar-thumb { background-color: rgba(15,20,25,0.22); }
+/* 鼠标正压在滑块上 —— 再深一档。这个是滑块自己的 :hover，能生效 */
+::-webkit-scrollbar-thumb:hover { background-color: rgba(15,20,25,0.42); }
+::-webkit-scrollbar-thumb:active { background-color: rgba(29,155,240,0.6); }
+
+/* Firefox 没有 ::-webkit-scrollbar，用它自己那套（scrollbar-width / scrollbar-color）。
+   ⚠️ 但这两条**绝对不能裸写**，必须圈在 @supports 里只给 Firefox：
+   scrollbar-color 是**继承属性**，写在 html 上会传给页面里每一个元素；
+   而 Chromium 只要在某个元素上看到这个标准属性，就会**整个忽略**它的
+   ::-webkit-scrollbar 规则，改用系统默认样式。
+   实测踩过：加了这行之后上面那一整套浮层滚动条全部失效，
+   显示出来的是带上下箭头的 15px 系统滚动条。
+   @supports not selector(::-webkit-scrollbar) 只有 Firefox 会命中，Chromium 直接跳过。 */
+@supports not selector(::-webkit-scrollbar) {
+    html { scrollbar-width: thin; scrollbar-color: rgba(15,20,25,0.22) transparent; }
+    body.dark-theme { scrollbar-color: rgba(231,233,234,0.24) transparent; }
+}
+
+/* 深色主题 */
+body.dark-theme .gy-sb-on::-webkit-scrollbar-thumb { background-color: rgba(231,233,234,0.24); }
+body.dark-theme.gy-sb-on::-webkit-scrollbar-thumb { background-color: rgba(231,233,234,0.24); }
+body.dark-theme ::-webkit-scrollbar-thumb:hover { background-color: rgba(231,233,234,0.45); }
+body.dark-theme ::-webkit-scrollbar-thumb:active { background-color: rgba(77,179,245,0.65); }
+
+/* 注：这里本来还有两条 textarea:focus::-webkit-scrollbar-thumb，已经删了——
+   宿主元素的伪类（:hover / :focus）对滚动条伪元素一律不生效，写了也画不出来，是死代码。
+   textarea 自己就是可滚动元素，鼠标移上去时会被 JS 加上 .gy-sb-on，一样能看见。 */
 
 /* ===================== 深色模式 (Dark Mode) ===================== */
 body.dark-theme { background-color: #15202b !important; color: #e7e9ea !important; }
@@ -1914,3 +1948,25 @@ body.dark-theme .ss-chk { color: #8b98a5; }
 }
 /* 美化版开场白是作者做好的一整页，给它足够宽度，别被弹窗内边距挤瘦 */
 .ss-greet-pretty { margin: 0 -6px; }
+
+/* ============================================================
+   光标（caret）必须永远看得见
+   ------------------------------------------------------------
+   打包成 exe（Electron）之后有人反馈"输入框里没有光标"。
+   原因是没有任何地方显式声明过 caret-color：它默认跟着 color 走，
+   而这里好几个输入框的 color 是浅蓝(#1d9bf0)，压在浅色背景上本来就淡；
+   深色主题下更是直接糊进背景里看不出来。
+   这里给所有可输入元素显式指定光标颜色，并且加粗一点（caret 宽度跟字号走，
+   字号已经够大了），确保任何主题、任何壳子里都能一眼看到光标在哪。
+   ============================================================ */
+input, textarea, select, [contenteditable="true"] { caret-color: #1d9bf0; }
+body.dark-theme input,
+body.dark-theme textarea,
+body.dark-theme select,
+body.dark-theme [contenteditable="true"] { caret-color: #4db3f5; }
+/* 聚焦时给个明确的边框提示，光标之外再多一层"这里能打字"的反馈 */
+.chat-input-row input:focus,
+#chatInput:focus { box-shadow: 0 0 0 3px rgba(29,155,240,0.18); }
+
+/* 聊天输入区永远在最上层，任何浮层都不许压住它 */
+.chat-input-area { position: relative; z-index: 20; }

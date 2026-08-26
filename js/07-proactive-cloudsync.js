@@ -379,12 +379,16 @@ ${getChatMultiReplyBlock()}`;
             let parsed = extractJsonObject(rawText);
             if (!parsed) throw new Error("No JSON object found");
             runPluginResponseHooks(char, sessionId, parsed); // 插件系统：好感度/日程联动等行为现在由插件接管
-            if (parsed.replies && Array.isArray(parsed.replies)) replies = parsed.replies;
             if (parsed.stateUpdate) saveCharLifeState(char, parsed.stateUpdate, parsed.statusTypeLabel);
+            if (parsed.replies && Array.isArray(parsed.replies) && parsed.replies.length > 0) replies = parsed.replies;
+            else if (parsed.stateUpdate) replies = [{ delay: 1, text: `(${parsed.stateUpdate})` }];
+            else throw new Error("Invalid structure");   // 交给下面的兜底，别静悄悄什么都不发
         } catch (err) {
-            // 降级处理：跟聊天页的主回复流程保持一致，模型没按JSON格式吐字时直接把原始文本当一整条发出来，
-            // 这种情况下更容易夹带没被JSON结构天然过滤掉的思维链前缀，这里顺手处理一次。
-            replies = [{ delay: 1, text: processReasoningInText(rawText) }];
+            // 🐛 这里以前只调 processReasoningInText(rawText)——它只剥思维链标签，**不剥 ``` 代码围栏**，
+            // 所以模型一旦把 JSON 包在 ```json ... ``` 里返回而上面又解析失败，整段原文（连 ```json 那一行）
+            // 就原样变成一条聊天消息发出来了。截图里那坨 JSON 就是从这条路出来的。
+            // 换成 unwrapAiEnvelopeText：剥思维链 + 剥围栏 + 认得出 JSON 信封就把里面的话取出来。
+            replies = [{ delay: 1, text: unwrapAiEnvelopeText(rawText) }];
         }
         if (replies.length === 0) return;
 

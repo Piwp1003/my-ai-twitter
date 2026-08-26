@@ -232,7 +232,7 @@ window.submitCustomCharReply = async function() {
         try {
             let rep = (await sendChatRequest(api, p2)).choices?.[0]?.message?.content?.trim();
             if (rep && !rep.toUpperCase().startsWith("NO")) {
-                rep = rep.replace(/^"|"$/g, '');
+                rep = unwrapAiEnvelopeText(rep).replace(/^"|"$/g, '');   // 剥思维链/代码围栏，别让原始 JSON 漏进聊天
 
                 // 写入 NPC 的回击
                 if (t.type === 'global' || t.type === 'tabloid') {
@@ -484,7 +484,7 @@ window.triggerGroupWelcomeSequence = async function(groupId, newCharId) {
         try {
             let rep = (await sendChatRequest(api, prompt)).choices?.[0]?.message?.content?.trim();
             if (rep && !rep.toUpperCase().startsWith("NO")) {
-                rep = rep.replace(/^"|"$/g, '');
+                rep = unwrapAiEnvelopeText(rep).replace(/^"|"$/g, '');   // 同上
                 // 这句表态也是走 buildBasePrompt 拼出来的完整人设+预设，角色卡挂的预设一样可能强制要求带状态栏JSON块，
                 // 跟主聊天流程一样过一遍正则脚本+MVU剥离，不然新人入群这几句话会漏网。
                 rep = applyRegexScripts(rep, 'ai_output', member.id);
@@ -506,7 +506,7 @@ window.triggerGroupWelcomeSequence = async function(groupId, newCharId) {
     try {
         let rep2 = (await sendChatRequest(api, newCharPrompt)).choices?.[0]?.message?.content?.trim();
         if (rep2 && !rep2.toUpperCase().startsWith("NO")) {
-            rep2 = rep2.replace(/^"|"$/g, '');
+            rep2 = unwrapAiEnvelopeText(rep2).replace(/^"|"$/g, '');   // 同上
             rep2 = applyRegexScripts(rep2, 'ai_output', newChar.id);
             const mvuResult2 = processMvuPatchInText(rep2, groupId);
             rep2 = mvuResult2.cleanText;

@@ -777,6 +777,21 @@ function getHumanFeelPromptText() {
 // prompt 里，重复讲会显得啰嗦。这里只保留 getTimeAwarenessPrompt 覆盖不到的部分：绝对时间基准（推文/日记/
 // 小说/新聊天首条消息都用得到，getTimeAwarenessPrompt 只在有历史消息的聊天里才生效）、线上线下三种状态各自
 // 的时间流速模型、时间与环境的绑定、睡眠时段。
+// ⏰ 睡眠时段这一行以前在提示词里写死成"约22:00-08:00"。
+// 问题有两个：一是这个时间段在设置里本来就能改（设置 → 休息时间段），写死等于用户改了也没用，
+// 角色照样按 22:00 睡；二是它连本app自己的默认值（23:00-08:00）都对不上。
+// 现在直接读设置里的值；用户没开启"休息时间段"就不写死任何钟点，只说"按你的人设有自己的作息"，
+// 让角色自己按人设决定几点睡——毕竟一个昼伏夜出的角色本来就不该被塞一个 22:00 的作息。
+function getSleepWindowPromptLine() {
+    const on = (typeof quietHoursEnabled !== 'undefined') && quietHoursEnabled
+        && (typeof quietHoursStart !== 'undefined') && quietHoursStart
+        && (typeof quietHoursEnd !== 'undefined') && quietHoursEnd
+        && quietHoursStart !== quietHoursEnd;
+    if (!on) {
+        return '- 你有自己的作息（几点睡、几点醒由你的人设决定，夜猫子和早睡的人不一样），在你该睡觉的时段被找，会自然表现出刚睡醒的状态（前提是这之前没有一直在聊天）。';
+    }
+    return `- 你的睡眠时段是 ${quietHoursStart}-${quietHoursEnd}，这段时间被找会自然表现出刚睡醒的状态（前提是这之前没有一直在聊天）。`;
+}
 function getTpesPromptText() {
     if (!tpesEnabled) return '';
     const now = new Date();
@@ -785,9 +800,42 @@ function getTpesPromptText() {
     return `【时间感知协议 TPES】：当前真实时间是 ${nowStr}（${weekdayNames[now.getDay()]}），生成时以这个时间为准。
 - 时间流速：线上聊天时间随对话内容/动作自然推进，不是一问一答就等于一瞬间；线下场景（约会/外出等）按场景动作估算耗时，比如吃饭1-2小时、看电影2小时；用户不在线时角色按人设过自己的生活，时间等同现实流逝，期间可能发生的无关紧要小事不用主动汇报，自然带出即可。
 - 时间要和环境绑定：光线天色、疲惫和饥饿感、街上人多不多、当前季节天气都要跟这个时间对得上，工作日/周末/节日的活动安排也不一样。
-- 默认睡眠时段约22:00-08:00，这段时间被找会自然表现出刚睡醒的状态（前提是这之前没有一直在聊天）。
+${getSleepWindowPromptLine()}
 - 用户话里提到的时间线索（"刚下班""好困""早上好"）优先于上面这个系统时间判断。
 `;
+}
+
+// 📮 让角色在【聊天/发推/评论】里也记得"我们通过信"。
+//
+// 信件系统本身早就有完整的往来记忆（buildLetterThreadContext），但那份上下文**只在写信/回信时**才喂给模型。
+// 结果就是：用户刚寄了一封长信，转头去聊天页找角色说话，角色完全不知道有这回事——
+// 用户体感是"信白写了""角色转脸就忘"。
+//
+// 这里补一段**很短**的信件感知，拼进 buildBasePrompt，所有走 buildBasePrompt 的场景
+// （聊天、群聊、发推、评论、日记、主动找茬…）都能看到。
+// 刻意只给标题 + 一小段摘要，不给全文：全文有 buildLetterThreadContext 在写信时负责，
+// 这里的目的只是让角色"知道有这件事、大概聊了什么"，不该占掉聊天上下文的预算。
+function getLetterAwarenessPrompt(char, maxLetters = 4, perLetterChars = 90) {
+    if (!char || !char.diaryData) return '';
+    const letters = (char.diaryData.letters || []).filter(l => l && l.content);
+    const pendingCount = (char.pendingLetterReplies || []).length;
+    if (letters.length === 0) return '';
+
+    const sorted = letters.slice().sort((a, b) => (a.date || 0) - (b.date || 0)).slice(-maxLetters);
+    const lines = sorted.map(l => {
+        const who = l.author === 'user' ? userDisplayName() : '你';
+        const when = (typeof timeAgo === 'function' && l.date) ? timeAgo(l.date) : '之前';
+        const body = String(l.content).replace(/\s+/g, ' ').trim();
+        const snip = body.slice(0, perLetterChars) + (body.length > perLetterChars ? '…' : '');
+        return `· ${when}，${who}寄出《${l.title || '无题'}》：${snip}`;
+    });
+
+    let txt = `\n【你和${userDisplayName()}之间的通信（你记得这些信，聊天时可以自然提起，但不要每次都把话题硬拽到信上）】：\n${lines.join('\n')}\n`;
+    if (pendingCount > 0) {
+        // 这一条最要紧：用户刚寄了信、角色还没回，这时候在聊天里装作不知道是最出戏的
+        txt += `你收到了${pendingCount > 1 ? `${pendingCount}封` : '一封'}${userDisplayName()}寄来的信，还没来得及回。你心里是记着这件事的——聊天时可以顺口提一句"你信我看了""还没想好怎么回你"之类，符合你性格就行，不用刻意。\n`;
+    }
+    return txt;
 }
 
 // options（可选，都不传就是老行为，完全兼容现有的一堆调用点）：
@@ -829,6 +877,7 @@ function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", o
     }
     const groupTopics = getCharGroupChatTopics(char);
     if (groupTopics) prompt += `\n【你参与的群聊最近话题（发帖/发言时可以自然提及）】：\n${groupTopics}\n`;
+    prompt += getLetterAwarenessPrompt(char);   // 📮 让角色在聊天/发推时也记得你们通过信
     prompt += getRelationshipContextPrompt(char);
     // "作者注释前/后"和"插入深度"这两类默认在这里摊平兜底展示；聊天回复主线路会传 excludeWorldbookPositions
     // 把它们排除在外，改成精确插到作者注释旁边/聊天历史的深度位置（见 js/05 里对应的调用）。

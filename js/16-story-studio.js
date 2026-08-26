@@ -114,11 +114,13 @@ async function deleteStorySession(id, event) {
     renderStoryStudioList();
 }
 
-function renameStorySession(id, event) {
+async function renameStorySession(id, event) {
     if (event) event.stopPropagation();
     const s = storySessions.find(x => x.id === id);
     if (!s) return;
-    const next = prompt('新的名字：', s.title || '');
+    // 用 appPrompt 而不是原生 prompt：Electron 不支持 window.prompt()，
+    // 调了直接抛异常，表现是"点了重命名完全没反应"。
+    const next = await appPrompt('新的名字：', s.title || '');
     if (next == null) return;
     s.title = next.trim() || '未命名续写';
     s.updatedAt = Date.now();
@@ -946,7 +948,7 @@ async function ssMenuAct(act) {
     if (act === 'regen') return regenSsTurn(turnId);
 
     if (act === 'edit') {
-        const next = prompt('编辑这一楼的正文：', turn.text);
+        const next = await appPrompt('编辑这一楼的正文：', turn.text);   // 同上，不能用原生 prompt
         if (next == null) return;
         turn.text = next;
         if (turn.swipes && turn.swipes.length) turn.swipes[turn.currentSwipe || 0] = next;

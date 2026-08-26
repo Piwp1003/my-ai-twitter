@@ -51,19 +51,41 @@
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+  /* ⚠️ 这个面板只能在"真的没启动起来"的时候出现。
+     踩过的坑：以前它监听所有资源错误，**一张远程图片加载失败**（图床挂了、断网、
+     链接过期）就会弹出满屏的"谷雨启动失败 / 打包时可能漏了这个文件"，整个 app 用不了。
+     图根本不是启动必需品，而且这个监听器装上就不摘，用到一半挂掉一张图同样会把界面糊死。
+     现在收窄成两条：
+       1) 只有 <script> 和样式表 <link> 这种"少了就真跑不起来"的才算启动失败；
+       2) 只在启动完成（__guyuBooted）之前算数，之后一律只打控制台。 */
+  var FATAL_TAGS = { SCRIPT: 1, LINK: 1 };
+  function bootDone() { return !!window.__guyuBooted; }
+
   window.addEventListener('error', function (e) {
-    // 脚本文件 404 之类的资源错误，target 是那个标签本身
+    // 资源加载失败（404 之类），target 是那个标签本身
     if (e && e.target && e.target !== window && (e.target.src || e.target.href)) {
-      panel('有文件没加载成功（打包时可能漏了这个文件）：',
-        esc(e.target.tagName) + '\n' + esc(e.target.src || e.target.href));
+      var tag = String(e.target.tagName || '').toUpperCase();
+      var url = String(e.target.src || e.target.href || '');
+      var fatal = !!FATAL_TAGS[tag];
+      // <link> 里只有样式表是必需的，preload/icon/manifest 挂了都无所谓
+      if (tag === 'LINK' && String(e.target.rel || '').toLowerCase() !== 'stylesheet') fatal = false;
+      // 远程地址加载失败是网络/图床的问题，不是打包漏文件，任何情况下都不该拦住启动
+      if (/^https?:/i.test(url)) fatal = false;
+      if (!fatal || bootDone()) { console.warn('[资源加载失败·已忽略]', tag, url); return; }
+      panel('有文件没加载成功（打包时可能漏了这个文件）：', esc(tag) + '\n' + esc(url));
       return;
     }
+    // 脚本运行时报错：启动完成之后就不再糊全屏面板了——
+    // 角色卡自带的脚本报错是常事（card-diag 里就有一个），不能让它把整个界面盖住。
+    if (bootDone()) { console.error('[运行时错误]', e && e.message, e && e.error); return; }
     panel('启动时脚本报错：',
       esc(e && e.message) + '\n\n' + esc(e && e.filename) + ' 第 ' + (e && e.lineno) + ' 行'
       + '\n\n' + esc(e && e.error && e.error.stack));
   }, true);
   window.addEventListener('unhandledrejection', function (e) {
     var r = e && e.reason;
+    // 同理：启动之后的 promise 失败（接口超时、图片读取失败……）只记控制台
+    if (bootDone()) { console.error('[未处理的 promise 错误]', r); return; }
     panel('启动时有未处理的错误：', esc((r && r.stack) || r));
   });
   // 超时兜底：正常情况下 window.onload 跑完会把 __guyuBooted 置为 true
@@ -1223,9 +1245,14 @@
                 <div><strong>角色评论不要秒回</strong> <br><span style="font-size:12px; color:#536471;">开启后，角色看到推文评论会隔几秒到几分钟才回（刷到的旧帖子拖得更久），更像真人刚刷到。关掉就是立刻回复。<b>注意：延迟期间关掉页面就不回了</b>，不会攒着下次补发。</span></div>
             </label>
 
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419;">
+            <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px; cursor:pointer; font-size:14px; color:#0f1419;">
                 <input type="checkbox" id="settingNpcArgue" style="width:16px; height:16px; cursor:pointer;" onchange="saveGlobalInteractionSettings()">
                 <div><strong>路人之间会互相接话</strong> <br><span style="font-size:12px; color:#536471;">评论区的路人网友会互相搭话、抬杠，而不是各说各的。关掉就只有各自评论一句。</span></div>
+            </label>
+
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419;">
+                <input type="checkbox" id="settingEnableStreaming" style="width:16px; height:16px; cursor:pointer;" onchange="saveGlobalInteractionSettings()">
+                <div><strong>流式输出（边写边显示）</strong> <br><span style="font-size:12px; color:#536471;">开启后续写/生成时文字一个字一个字出现，能提前看到写成什么样。<b>如果你的中转接口流式不稳（吞字、卡住不动、报错重试）就关掉它</b>，关掉后是整段生成完一次性显示，功能完全一样。聊天页一直是非流式，不受这个开关影响。</span></div>
             </label>
         </div>
                     <div class="input-group checkbox-group" style="margin-bottom:0;">

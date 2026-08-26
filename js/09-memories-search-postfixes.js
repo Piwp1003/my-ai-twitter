@@ -492,7 +492,7 @@ async function userPost() {
         // 修复：这条推文可能是用户本人发的，也可能是用户"以某个角色身份"发的（发推框里能选身份）——
         // 后一种情况下发帖人其实是 postChar 这个角色，不是"用户"本人，之前无论哪种都写死成"用户XXX发了推文"，
         // 容易让其它角色搞混"这到底是用户亲口说的，还是某个角色账号发的"。这里跟评论区那个修复用同一个思路。
-        let postAuthorLabel = postChar.id === 'me' ? `用户（${currentUser.name}）本人` : `角色"${postChar.name}"`;
+        let postAuthorLabel = postChar.id === 'me' ? `用户（${userDisplayName()}）本人` : `角色"${postChar.name}"`;
         let prompt = isCool
             ? `${buildBasePrompt(char, true, text)}${moveToChatOption}${postAuthorLabel}发了推文："${text}"。你性格高冷，通常只点赞、很少主动多说话，但这条动态你必须看到并作出反应，绝对不能完全无视。请输出"LIKE"，或者直接输出一句简短的话（不超过${chatWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}）。只能二选一，不允许输出其他内容（包括"NO"）。${actionStrictRule}`
             : `${buildBasePrompt(char, true, text)}${emoPrompt}${moveToChatOption}${postAuthorLabel}发了推文："${text}"。你必须对这条动态作出反应，绝对不能完全无视。如果想认真回复，直接输出内容（不超过${chatWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}），若要在回复中带表情包，请在文本最后附上 [EMO:对应ID]；如果只是随手点个赞，输出"LIKE"。只能二选一，不允许输出"NO"或保持沉默。${actionStrictRule}`;

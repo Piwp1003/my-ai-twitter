@@ -488,6 +488,25 @@ function openForumThread(threadId) {
     bindEditableEvents(threadId);
 }
 
+// 💬 引用回复某一楼。
+// ⚠️ 这个函数原来**根本不存在**——楼层上那个"💬 引用回复"绑的就是它，点下去只在控制台
+// 报一句 replyForumFloor is not defined，界面上毫无反应。周边零件其实都齐了：
+// currentQuoteFloor 变量在、submitForumReply 会把它存成 quoteFloor、渲染那边也会画引用框，
+// 就缺中间这一下把楼层号记下来。
+// 再点一次同一楼 = 取消引用。
+function replyForumFloor(threadId, floor) {
+    const input = document.getElementById('forumReplyInput');
+    if (!input) return;
+    if (currentQuoteFloor === floor) {
+        currentQuoteFloor = null;
+        input.placeholder = '发布回复 (@角色名 可召唤回复)...';
+    } else {
+        currentQuoteFloor = floor;
+        input.placeholder = `正在引用 ${floor} 楼（再点一次取消）…`;
+    }
+    input.focus();
+}
+
 function setForumFilter(threadId, type) { currentForumFilter = type; openForumThread(threadId); }
 
 function bindEditableEvents(threadId) {

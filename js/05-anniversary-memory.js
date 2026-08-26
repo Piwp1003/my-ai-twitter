@@ -864,11 +864,16 @@ function renderChatMessages() {
     // 防御：单条消息渲染出错（比如内容含有异常字符/宏替换失败）之前会导致 .map() 整体抛错，
     // container.innerHTML 完全不会被赋值——表现出来就是"聊天区一片空白/开场白不显示"，其实是有一条消息渲染炸了拖累了全部。
     // 改成逐条 try/catch，单条出错就跳过那一条（控制台留错误方便排查），不影响其它消息正常显示。
+    // ⚠️ 这里以前是"每遇到一条未读就调一次 saveAllData()"。saveAllData 会把整份存档做一次
+    // 结构化克隆写进 IndexedDB，这一步同步占着主线程——60条未读就是60次全量克隆，实测能把
+    // 主线程占住近2秒，这段时间里键盘敲的字全丢，就是"对面一发消息就打不了字"的直接原因。
+    // 现在改成：先记个标记，整轮渲染完只存一次（saveAllData 本身也已经改成合并写入了，双保险）。
+    let __markedAnyRead = false;
     container.innerHTML = history.map((msg, idx) => {
         try {
             if (msg.sender === 'system') return `<div class="chat-system-msg"><span>${msg.text}</span></div>`;
             let isMe = msg.sender === 'me', senderChar = isMe ? currentUser : myCharacters.find(c => c.id == msg.sender), timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            if (!isMe && (!msg.readBy || !msg.readBy.includes('me'))) { if(!msg.readBy) msg.readBy=[]; msg.readBy.push('me'); saveAllData(); }
+            if (!isMe && (!msg.readBy || !msg.readBy.includes('me'))) { if(!msg.readBy) msg.readBy=[]; msg.readBy.push('me'); __markedAnyRead = true; }
 
             let readStatusHtml = '';
             if (isMe && enableTypingIndicator) {
@@ -909,6 +914,7 @@ function renderChatMessages() {
             return '';
         }
     }).join('');
+    if (__markedAnyRead) saveAllData();   // 整轮只存一次，不再每条一次
     container.scrollTop = container.scrollHeight;
     // 💡 聊天气泡现在统一是纯文本渲染（renderPlainChatText），不会再有真实HTML/<script>标签进到DOM里，
     // 这里以前的"聊天注入脚本执行"调用已经是死代码了，去掉。脚本执行开关(enableChatScriptExecution)本身
@@ -1425,7 +1431,9 @@ ${multiReplyBlock}`;
             } catch (err) {
                 // 降级处理：模型没按格式吐JSON，直接把原始文本当一整条回复发出来——这种情况下更容易夹带
                 // 没被JSON结构"天然过滤掉"的思维链前缀，这里顺手处理一次（关闭/折叠/删除按当前设置来）
-                replies = [{ delay: 1, text: processReasoningInText(rawText.replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim()) }];
+                // unwrapAiEnvelopeText 会把思维链、``` 围栏、以及"其实是个 JSON 信封但上面没解析成功"
+                // 这三种情况一次处理干净，不会再把一整坨 JSON 原样当成一条消息发出来
+                replies = [{ delay: 1, text: unwrapAiEnvelopeText(rawText) }];
             }
 
             currentlyTypingChars.delete(char.name); updateTypingIndicator();

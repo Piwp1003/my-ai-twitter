@@ -98,7 +98,7 @@ async function generateDiaryContent() {
     const btn = document.getElementById('btnGenerateDiary'); btn.innerText = "思念自笔尖流出... "; btn.disabled = true;
     let recentChat = getRecentChatContext(char.id); 
     let recentPosts = getCharRecentPosts(char.id, 15).map(p => p.text).join('\n');
-    let targetType = currentDiaryTab === 'letter' ? '寄给用户' + currentUser.name + '的信' : '私密的个人日记';
+    let targetType = currentDiaryTab === 'letter' ? '寄给用户' + userDisplayName() + '的信' : '私密的个人日记';
     let limit = currentDiaryTab === 'letter' ? letterWordLimit : diaryWordLimit;
     
     // 💡 处理用户上传的 TXT 素材
@@ -194,7 +194,7 @@ function buildLetterThreadContext(char, maxLetters = 12) {
     if (letters.length === 0) return '';
     const sorted = letters.slice().sort((a, b) => a.date - b.date).slice(-maxLetters);
     return sorted.map(l => {
-        const who = l.author === 'user' ? (currentUser.name || '用户') : char.name;
+        const who = l.author === 'user' ? userDisplayName() : char.name;
         return `【${who}】《${l.title || '无题'}》：\n${l.content}`;
     }).join('\n\n———\n\n');
 }
@@ -208,7 +208,9 @@ async function generateTitledLetterContent(systemText, userText, charIdForRegex)
     let data = await callChatCompletionAPI(api, prompt);
     let raw = data.choices?.[0]?.message?.content?.trim();
     if (!raw) return null;
-    raw = raw.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+    // 跟聊天那边用同一套清洗：剥思维链、剥 ``` 围栏。信件解析失败时正文会直接原样落地成一封信，
+    // 不清洗的话思维链/代码围栏就会白纸黑字印在信里。
+    raw = unwrapAiEnvelopeText(raw).trim();
     let parsed = { title: '', content: raw };
     let parsedJson = extractJsonObject(raw); if (parsedJson) parsed = parsedJson;
     parsed.content = applyRegexScripts(parsed.content || raw, 'ai_output', charIdForRegex);
@@ -230,8 +232,8 @@ async function generateProactiveLetter(char) {
         let recentPosts = getCharRecentPosts(char.id, 15).map(p => p.text).join('\n');
         const letterThread = buildLetterThreadContext(char);
         const systemText = buildBasePrompt(char, true, recentChat + '\n' + recentPosts);
-        const userText = `请你结合上述你的核心人设、世界观背景、推文记忆总结、历史聊天总结，以及以下近期的动态、聊天记录，主动写一封寄给用户${currentUser.name}的信（是你自己想写就写的一封信，不是在回复谁的来信）。字数${letterWordLimit}字左右。${WORD_LIMIT_PRIORITY_NOTE}要深刻体现你的性格情感。
-${letterThread ? `\n【你和${currentUser.name}之间目前为止的通信记录，供你了解已经聊过什么、避免重复或前后矛盾——不是每次都要接着信里的话题写，但要记得】：\n${letterThread}\n` : ''}
+        const userText = `请你结合上述你的核心人设、世界观背景、推文记忆总结、历史聊天总结，以及以下近期的动态、聊天记录，主动写一封寄给用户${userDisplayName()}的信（是你自己想写就写的一封信，不是在回复谁的来信）。字数${letterWordLimit}字左右。${WORD_LIMIT_PRIORITY_NOTE}要深刻体现你的性格情感。
+${letterThread ? `\n【你和${userDisplayName()}之间目前为止的通信记录，供你了解已经聊过什么、避免重复或前后矛盾——不是每次都要接着信里的话题写，但要记得】：\n${letterThread}\n` : ''}
 最近推文：\n${recentPosts || '暂无'}\n近期聊天记录：\n${recentChat || '暂无'}
 
 【重要】：即使这次写的是信件而不是一段正常对话，如果你的世界观设定/正则脚本里要求每次输出/每段情境结束时固定附带某种格式标签、状态栏或HTML卡片，也请把它们照常当作这段内容的一部分正常写出来，放在正文末尾即可，不要因为这次的体裁是信件就跳过或省略这些规则。
@@ -364,10 +366,17 @@ async function resolveLetterReply(char, pending) {
             ? `\n【注意】：这封信是用户特意针对你之前寄出的那封《${repliedToLetter.title || '无题'}》写的回信，请确保你的回信真的接得上、记得自己之前信里说了什么，不要答非所问。\n`
             : '';
         const letterThread = buildLetterThreadContext(char);
-        const userText = `用户${currentUser.name}给你寄来了一封信，标题是《${userLetter.title || '无题'}》，正文如下：
+        // ⏰ 隔了多久才回这封信，是用户在设置里调的（最短/最长等待时间），可以是十分钟也可以是三天。
+        // 提示词里不能写死一个时长、也不能什么都不说——什么都不说模型默认"刚收到就回"，
+        // 于是设置里调成三天之后，角色还是写"刚收到你的信我就……"，跟界面上显示的时间对不上。
+        // 这里直接把**实际过去的时间**算出来告诉它，用户怎么调都对得上。
+        const elapsedSinceLetter = formatDurationZh(Math.max(0, Date.now() - (userLetter.date || Date.now())));
+        const userText = `用户${userDisplayName()}给你寄来了一封信，标题是《${userLetter.title || '无题'}》，正文如下：
 「${userLetter.content}」
+
+【这封信是大约 ${elapsedSinceLetter} 前寄到你手上的】——你现在才提笔回信，中间隔了这么久。这段时间你在按自己的人设过日子，可能一直惦记着这封信、也可能忙忘了搁置到现在，由你的性格决定。不要写成"刚收到就立刻回"，也不要专门解释/道歉为什么这么晚才回（除非你的人设就是会在意这个），自然一点就好，别把时间当成播报。
 ${replyContextNote}
-${letterThread ? `\n【你和${currentUser.name}之间目前为止完整的通信记录，供你回忆前因后果、确保这次回信和以前说过的话保持一致，不会前后矛盾或"失忆"】：\n${letterThread}\n` : ''}
+${letterThread ? `\n【你和${userDisplayName()}之间目前为止完整的通信记录，供你回忆前因后果、确保这次回信和以前说过的话保持一致，不会前后矛盾或"失忆"】：\n${letterThread}\n` : ''}
 请你结合上述你的核心人设、世界观背景，认真读完这封信，然后给用户写一封回信。回信要针对信里具体提到的内容来回应，不能是一封答非所问、随便写写的信。字数${letterWordLimit}字左右。${WORD_LIMIT_PRIORITY_NOTE}要深刻体现你的性格情感。
 
 【重要】：即使这次写的是信件而不是一段正常对话，如果你的世界观设定/正则脚本里要求每次输出/每段情境结束时固定附带某种格式标签、状态栏或HTML卡片，也请把它们照常当作这段内容的一部分正常写出来，放在正文末尾即可，不要因为这次的体裁是信件就跳过或省略这些规则。
@@ -543,17 +552,21 @@ async function resolveDiaryReaction(entry, reaction) {
     try {
         const systemText = buildBasePrompt(char, false);
         const noteMaxLen = Math.min(diaryWordLimit || 100, 120);
-        const userText = isInvite ? `用户${currentUser.name}把自己写的一篇日记直接拿给你看，明确邀请你阅读——这不是偷看，Ta知道你会看到全部内容，你也清楚这是Ta主动给你看的。日记标题《${entry.title || '无题'}》，正文如下：
+        // 跟回信同理：日记从写下到角色去看，隔了多久是用户在设置里调的（跟回信共用同一组时间设置），
+        // 不告诉模型的话它默认"刚写完就被看到了"，跟界面上显示的时间对不上。
+        const elapsedSinceDiary = formatDurationZh(Math.max(0, Date.now() - (entry.date || Date.now())));
+        const timeNote = `\n【这篇日记是大约 ${elapsedSinceDiary} 前写下的】，你现在才看到/才有反应，不是刚写完就立刻被你翻开的。写批注时按这个时间差来，别写成"刚看到你写……"，也不用特意提隔了多久。\n`;
+        const userText = isInvite ? `用户${userDisplayName()}把自己写的一篇日记直接拿给你看，明确邀请你阅读——这不是偷看，Ta知道你会看到全部内容，你也清楚这是Ta主动给你看的。日记标题《${entry.title || '无题'}》，正文如下：
 「${entry.content}」
-
+${timeNote}
 请结合你的人设和你们之间的关系，认真读完之后给出你的批注/感想/回应（不超过${noteMaxLen}字），要紧扣日记里具体写了什么来回应，不能是一句空话或者跟内容不相关的场面话。因为是Ta主动给你看的，语气可以更直接、更坦率，不需要带偷看那种心虚或窥探感——不管是感动、心疼、吐槽、说教还是不以为然，就以你的真实反应来写。
 
 ${getFinalAnswerMarkerPromptNote()}
 
 【极为严格的格式要求】：请仅返回合法 JSON 格式，不要用 \`\`\`json 包裹，不要有任何多余说明文字：
-{"text": "这里写你的批注内容"}` : `用户${currentUser.name}写了一篇日记，放在你能"偷看"到的地方（Ta允许你看，但这不代表Ta主动拿给你看，要不要真的凑过去翻开这篇日记，由你自己的性格和这段关系决定）。日记标题《${entry.title || '无题'}》，正文如下：
+{"text": "这里写你的批注内容"}` : `用户${userDisplayName()}写了一篇日记，放在你能"偷看"到的地方（Ta允许你看，但这不代表Ta主动拿给你看，要不要真的凑过去翻开这篇日记，由你自己的性格和这段关系决定）。日记标题《${entry.title || '无题'}》，正文如下：
 「${entry.content}」
-
+${timeNote}
 请你先自己判断：以你的性格和现在的心情/状态，这种情况下你会不会真的去看这篇日记？
 - 如果会看：看完之后，用你的语气在日记本上留一句批注/吐槽/感想（不超过${noteMaxLen}字），要紧扣日记里具体写了什么来回应，不能是一句空话或者跟内容不相关的场面话。
 - 如果不会看（比如觉得偷看不太好、没兴趣、正在忙别的事）：绝对不能提到日记里的具体内容（因为设定上你没看），只需要写一句符合你人设、解释你此刻在干嘛/为什么没去看的话（不超过50字）。
@@ -1264,7 +1277,7 @@ async function generateNovelFromSources() {
             if (!c || msgs.length === 0) return;
             // 太长的聊天记录只取最近80条，避免prompt过大发不出去或者被截断
             const recent = msgs.slice(-80);
-            block += `【和${c.name}的聊天】\n` + recent.map(m => `${m.sender === 'me' ? ((currentUser && currentUser.name) || '用户') : c.name}：${m.text || '[图片/表情]'}`).join('\n') + '\n\n';
+            block += `【和${c.name}的聊天】\n` + recent.map(m => `${m.sender === 'me' ? userDisplayName() : c.name}：${m.text || '[图片/表情]'}`).join('\n') + '\n\n';
         });
         if (block.trim()) sections.push(`【聊天记录】\n${block.trim()}`);
     }

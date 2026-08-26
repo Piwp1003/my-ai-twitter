@@ -18,7 +18,12 @@ const os = require('os');
 // 这类问题在用户机器上没有控制台可看，什么线索都留不下。所以从进程一起来就往
 // 文件里记里程碑，任何一步炸了都能从日志看出卡在哪，而不是干瞪眼猜。
 // ------------------------------------------------------------------
-const bootDir = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'));
+// 打包后：日志写在 exe 旁边，用户一眼能找到。
+// 试跑（先试跑一下.bat / npm start）：app.getPath('exe') 指向 node_modules 里的 electron.exe，
+// 日志写到那儿根本没人找得到——所以改成写在 桌面版\ 目录下，跟 main.js 放一起。
+const bootDir = app.isPackaged
+  ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')))
+  : __dirname;
 let logPath = path.join(bootDir, '启动日志.txt');
 
 function logBoot(msg) {
@@ -175,14 +180,179 @@ function createWindow() {
     });
 
   // 等页面画好再显示，避免先闪一下白屏
-  mainWindow.once('ready-to-show', () => { logBoot('ready-to-show'); mainWindow.show(); });
+  //
+  // ⚠️ "exe 里输入框不显示光标"就出在这一段。show:false + 后面 show() 这个写法，
+  // 在 Windows 上窗口会出现、看起来也是激活的，但**键盘焦点不一定真的给到了渲染进程**
+  // ——网页那边没拿到焦点，浏览器就不画光标（caret 只在获得焦点的文档里闪）。
+  // 表现就是：窗口好好的、鼠标能点，光标死活不出来，点一下输入框有时才好。
+  // 第一版修法（show 之后调一次 focus + webContents.focus）**没修好**，实测症状照旧：
+  // 窗口起来了、鼠标能点，但所有输入框都打不了字，切出去再切回来就正常了。
+  // "切回来就好"这条说明 mainWindow.on('focus') 里那句 webContents.focus() 是有效的，
+  // 只是首次显示的时候调它等于白调——Windows 那时候还没把前台激活权给到这个窗口，
+  // 窗口没被系统激活，webContents.focus() 就是个空操作。
+  //
+  // 根源是 show:false → 后面手动 show() 这个写法：这次 show 不是用户点出来的，
+  // Windows 会拒绝把前台权交给它（防止程序抢焦点的机制）。
+  // 所以改成"逐级加码 + 每一级都记日志"：
+  //   ① 常规：app.focus({steal:true}) → 窗口 focus → 网页 focus
+  //   ② 150ms 后没拿到：blur 再 focus，强制走一遍完整的焦点切换（等价于手动 alt-tab）
+  //   ③ 600ms 后还没拿到：置顶一下再取消，Windows 上这招能强行拿到前台激活权
+  // 每一级都只在"确实还没拿到"的时候才执行，正常情况下第①级就结束了，不会有闪烁。
+  // 日志会写进 启动日志.txt，万一还是不行，看日志就知道卡在哪一级，不用再猜。
+  const focusState = () => {
+    try {
+      return 'win=' + mainWindow.isFocused() + ' web=' + mainWindow.webContents.isFocused();
+    } catch (e) { return '(读不到)'; }
+  };
+  const grabWebFocus = () => { try { mainWindow.webContents.focus(); } catch (e) {} };
+  const hasWebFocus = () => { try { return mainWindow.webContents.isFocused(); } catch (e) { return false; } };
+  const alive = () => mainWindow && !mainWindow.isDestroyed();
+
+  const showAndFocus = () => {
+    if (!alive()) return;
+    mainWindow.show();
+    // Windows 专用：把前台激活权抢过来。不加这句，下面两个 focus 经常都是空操作。
+    if (process.platform === 'win32') { try { app.focus({ steal: true }); } catch (e) {} }
+    mainWindow.focus();
+    grabWebFocus();
+    logBoot('① 显示并请求焦点 → ' + focusState());
+
+    setTimeout(() => {
+      if (!alive() || hasWebFocus()) return;
+      logBoot('② 网页仍未拿到焦点，强制走一遍焦点切换 → ' + focusState());
+      try { mainWindow.blur(); mainWindow.focus(); } catch (e) {}
+      grabWebFocus();
+    }, 150);
+
+    setTimeout(() => {
+      if (!alive() || hasWebFocus()) return;
+      logBoot('③ 还是没拿到，用置顶强行激活 → ' + focusState());
+      try {
+        mainWindow.setAlwaysOnTop(true);
+        mainWindow.focus();
+        mainWindow.setAlwaysOnTop(false);
+      } catch (e) {}
+      grabWebFocus();
+      setTimeout(() => { if (alive()) logBoot('④ 最终焦点状态 → ' + focusState()); }, 200);
+    }, 600);
+  };
+  mainWindow.once('ready-to-show', () => { logBoot('ready-to-show'); showAndFocus(); });
+  // 页面加载完再补一次：ready-to-show 有时早于渲染进程真正就绪
+  mainWindow.webContents.on('did-finish-load', () => { if (alive() && mainWindow.isVisible()) grabWebFocus(); });
+
+  // 从任务栏点回来、或者从别的程序切回来时，同样把焦点交还给网页。
+  // （这条本来就是对的——你"切出去再切回来就能打字"，靠的就是它。）
+  mainWindow.on('focus', () => { grabWebFocus(); });
+  mainWindow.on('restore', () => { grabWebFocus(); });
+  mainWindow.on('show', () => { grabWebFocus(); });
+
+  // ------------------------------------------------------------------
+  // 焦点看门狗
+  //
+  // 不去猜"焦点会在什么时候丢"，直接盯**结果**：
+  // 只要出现「窗口是激活的，但网页那层没有焦点」这种自相矛盾的状态，就把它修回来。
+  //
+  // 已知会造成这个状态的是原生弹窗（alert/confirm/prompt）——用户实测是导入备份
+  // 之后必现，因为那一支最后会 alert 一下。渲染进程那边也包了一层去抢焦点
+  // （见 js/01 开头），这里是第二道保险：万一还有别的没想到的路径能弄丢焦点，
+  // 最多两秒也会被这条捞回来，不用再靠"把窗口切出去再切回来"。
+  //
+  // 开销可以忽略：两秒一次，就读两个布尔值。修好时记一次日志，方便回头看它到底救过几次。
+  // ------------------------------------------------------------------
+  let focusFixCount = 0;
+  const focusWatchdog = setInterval(() => {
+    if (!alive() || !mainWindow.isVisible()) return;
+    try {
+      if (mainWindow.isFocused() && !mainWindow.webContents.isFocused()) {
+        grabWebFocus();
+        focusFixCount++;
+        // 只记前几次，别把日志刷爆
+        if (focusFixCount <= 5) {
+          logBoot(`[焦点看门狗] 窗口是激活的但网页没焦点，已抢回（第 ${focusFixCount} 次）`);
+        }
+      }
+    } catch (e) {}
+  }, 2000);
+  mainWindow.on('closed', () => clearInterval(focusWatchdog));
+
+  // ------------------------------------------------------------------
+  // 把「网页里发生了什么」也记进启动日志
+  //
+  // 上一轮日志证明了窗口和网页的焦点都拿到了（win=true web=true），
+  // 但界面点了没反应 —— 说明问题在网页那一层，不在主进程。
+  // 而网页那层的报错平时只有开发者工具能看到，用户不一定会开。
+  // 这里把渲染进程的 console 错误、崩溃、卡死、资源加载失败统统转写进同一份
+  // 启动日志.txt，用户照旧把那个文件发出来就够了。
+  // ------------------------------------------------------------------
+  mainWindow.webContents.on('console-message', (...args) => {
+    try {
+      let level, message, line, sourceId;
+      // Electron 新版把这些合进了一个事件对象，老版是分开的参数，两种都兼容
+      const a0 = args[0];
+      if (a0 && typeof a0 === 'object' && typeof a0.message === 'string') {
+        level = a0.level; message = a0.message; line = a0.lineNumber; sourceId = a0.sourceId;
+      } else {
+        level = args[1]; message = args[2]; line = args[3]; sourceId = args[4];
+      }
+      const isBad = level === 'error' || level === 'warning' || level === 2 || level === 3;
+      if (!isBad) return;
+      logBoot(`[网页${(level === 'error' || level === 3) ? '报错' : '警告'}] ${message}` +
+              (sourceId ? `   @ ${String(sourceId).split(/[\\/]/).pop()}:${line}` : ''));
+    } catch (e) { /* 记日志本身不能出事 */ }
+  });
+  mainWindow.webContents.on('did-fail-load', (e, code, desc, url) => {
+    logBoot(`[资源加载失败] ${code} ${desc} ${url}`);
+  });
+  mainWindow.webContents.on('render-process-gone', (e, details) => {
+    logBoot('!!! 渲染进程没了: ' + JSON.stringify(details));
+  });
+  // 这两条最值钱：直接告诉我们主线程是不是被卡住了 —— "点了没反应"最常见的成因
+  mainWindow.webContents.on('unresponsive', () => logBoot('!!! 页面无响应（主线程被卡住了）'));
+  mainWindow.webContents.on('responsive', () => logBoot('页面恢复响应'));
+
+  // 起来 6 秒之后，主动问网页几个问题，把答案写进日志。
+  // 这几项基本能定位"点了没反应"到底是哪一类：
+  //   启动完成了吗 / 有没有东西盖在最上层 / 样式表加载了没 / 焦点在哪个元素上
+  setTimeout(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.executeJavaScript(`(function () {
+      try {
+        var covers = [];
+        var all = document.body ? document.body.querySelectorAll('*') : [];
+        for (var i = 0; i < all.length; i++) {
+          var el = all[i], cs = getComputedStyle(el);
+          if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+          if (cs.position !== 'fixed' && cs.position !== 'absolute') continue;
+          var r = el.getBoundingClientRect();
+          if (r.width > innerWidth * 0.8 && r.height > innerHeight * 0.8) {
+            covers.push('<' + el.tagName.toLowerCase() + ' id=' + (el.id || '-') +
+                        ' class=' + String(el.className || '-').slice(0, 30) + ' z=' + cs.zIndex + '>');
+          }
+        }
+        var mid = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+        return JSON.stringify({
+          启动完成: !!window.__guyuBooted,
+          文档有焦点: document.hasFocus(),
+          焦点元素: document.activeElement ? (document.activeElement.tagName + '#' + (document.activeElement.id || '')) : null,
+          样式表数: document.styleSheets.length,
+          盖住大半屏的元素: covers,
+          屏幕正中点到的是: mid ? ('<' + mid.tagName.toLowerCase() + ' id=' + (mid.id || '-') + '>') : null,
+          有没有聊天输入框: !!document.getElementById('chatInput'),
+          正文开头: (document.body ? (document.body.innerText || '') : '').replace(/\\s+/g, ' ').slice(0, 100)
+        });
+      } catch (e) { return 'probe error: ' + (e && e.message); }
+    })()`, true).then(
+      r => logBoot('页面自检 → ' + r),
+      err => logBoot('页面自检失败 → ' + ((err && err.message) || err))
+    );
+  }, 6000);
 
   // 兜底：万一 ready-to-show 因为页面异常一直不触发，也要把窗口显示出来，
   // 否则用户看到的就是"进程在跑但没有窗口"，比直接报错还难查。
   setTimeout(() => {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       logBoot('ready-to-show 超时未触发，强制显示窗口');
-      mainWindow.show();
+      showAndFocus();
     }
   }, 10000);
 
