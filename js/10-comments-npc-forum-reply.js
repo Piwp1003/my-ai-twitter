@@ -111,7 +111,7 @@ async function runCharRepliesToComment(post, postId, newReply, text, opts) {
         // 修复：只在prompt中间提一次"发布者是谁"容易被中间夹的世界书/关系网/预设内容冲淡、模型读到末尾时已经忘了。
         // 这里在prompt最后再明确重申一遍归属（离生成越近的内容模型越重视），并顺带强调必须结合人设/预设/世界书/
         // 记忆/关系网来组织回复，不要只看到"评论"两个字就机械回应、把这些设定丢在一边。
-        let ownerReinforcement = `\n\n【重要，请务必留意】：这条推文的发布者是${postAuthorLabel}。${isPostAuthor ? '这确实是你自己发的推文。' : '这不是你发的推文，' + (post.char.id === 'me' ? '是用户本人发的，不要误以为是你自己发的。' : '是另一个角色发的，既不是你也不是用户，不要把它当成你自己发的、也不要当成用户发的。')}请结合你的人设、当前生效的预设规则、世界书设定、你的相关记忆、以及你和上面提到的人物之间的关系网来组织这条回复，不要遗忘这些设定，也不要人设崩坏(OOC)。\n`;
+        let ownerReinforcement = `\n\n【重要，请务必留意】：这条推文的发布者是${postAuthorLabel}。${isPostAuthor ? '这确实是你自己发的推文。' : '这不是你发的推文，' + (post.char.id === 'me' ? '是用户本人发的，不要误以为是你自己发的。' : '是另一个角色发的，既不是你也不是用户，不要把它当成你自己发的、也不要当成用户发的。')}请结合你的人设、当前生效的预设规则、世界书设定、你的相关记忆、以及你和上面提到的人物之间的关系网来组织这条回复，不要遗忘这些设定，也不要人设崩坏(OOC)。\n\n【回复的写法·硬性要求】：直接说你想说的话，**不要复述、不要转引、不要总结推文原文或别人的评论**——那些内容用户已经看得见了，再抄一遍只会让评论又臭又长。也不要写"关于你说的XXX……"这种把原话再念一遍的开场。就像真人刷到一条推文随手回一句那样，上来直接是你的反应。`;
 
         // 🆕 三角关系提醒：只有"这条推文不是你发的，也不是用户发的"（即作者是另一个角色）这种情况才需要——
         // 这时候你（当前回复的角色）未必认识发帖的那个角色，但你跟用户之间是有关系的，用户在别人帖子下的评论
@@ -518,11 +518,123 @@ function likeAnonPost(postId) {
     saveAllData();
 }
 
+// 论坛发帖身份下拉框：填充「我 / 随机角色 / 各个角色」，并同步左边那个小头像。
+// 跟 updateCharSelects 里其它几个下拉框一样，角色增删后会被重新填一遍。
+function populateAnonPostRoleSelect() {
+    const sel = document.getElementById('anonPostRoleSelect');
+    if (!sel) return;
+    const old = sel.value;
+    sel.innerHTML = '<option value="me">我（自己写）</option>'
+        + '<option value="random">🎲 随机角色（AI 代笔）</option>'
+        + (myCharacters || []).map(c => `<option value="${c.id}">${escapeHtml(c.name)}（AI 代笔）</option>`).join('');
+    if (old && sel.querySelector(`option[value="${old}"]`)) sel.value = old;
+    updateAnonPostAvatar();
+}
+
+function updateAnonPostAvatar() {
+    const sel = document.getElementById('anonPostRoleSelect');
+    const box = document.getElementById('anonPostAvatar');
+    if (!sel || !box) return;
+    const v = sel.value;
+    // 论坛是匿名的，这里不显示真实头像（那就等于当场破功了），只用一个符号提示"这条要以谁的身份写"
+    if (v === 'me') { box.innerText = '我'; box.title = '以你自己的身份发'; }
+    else if (v === 'random') { box.innerText = '🎲'; box.title = '随机挑一个角色，由 AI 代笔'; }
+    else {
+        const c = (myCharacters || []).find(x => x.id == v);
+        box.innerText = '匿';
+        box.title = c ? `由「${c.name}」代笔（论坛上仍然匿名）` : '由角色代笔';
+    }
+}
+
+// 让角色们来回这条论坛帖子。用户自己发的帖、以及角色代笔发的帖，走的都是这一个函数——
+// 「发布的论坛和推文一样，角色都可以互动」说的就是这件事：不管帖子是谁发的，
+// 其他角色都有机会看到并回应，而不是只有用户发的帖才有人理。
+async function runCharRepliesToAnonPost(post) {
+    if (!post) return;
+    const st = document.getElementById('anonLoadingStatus');
+    if (st) st.style.display = 'block';
+    const text = post.text || ''; // 帖子正文（原来这段是内联在 userAnonPost 里的，直接用外层的 text 变量）
+    // 💰 跟推文那条路一样：以前是全角色库遍历，一人一次完整上下文的请求，帖子一发就是几十次调用。
+    // 现在先按相关度挑出最多 charInteractMaxCount 个（设置里可调，0＝不限）。
+    // 🔌 同上：关掉之后帖子只是安静地发出去
+    const anonPool = (typeof isAutoOn === 'function' && !isAutoOn('postReactions'))
+        ? []
+        : myCharacters.filter(c => c.replyToUser !== false && String(post.charId) !== String(c.id));
+    const anonChars = (typeof pickInteractingChars === 'function')
+        ? pickInteractingChars(anonPool, text, post.charId) : anonPool;
+    for (let char of anonChars) {
+        let actionStrictRule = allowActionTags ? "" : "\n【严格禁止】：绝对不要包含任何动作、神态或心理描写（不要用括号()或【】），只输出你直接说的话。";
+        // 修复：同上，补齐世界书/关系网/预设上下文，避免匿名论坛这种"卸下伪装"场景里OOC
+        let p = `${buildBasePrompt(char, false, text)}你正在逛一个匿名论坛，看到有人发帖："${text}"。
+
+【最重要的一条】匿名 = **不署真名**，不等于换一个人格。
+你还是你——人设、说话习惯、在意的事、跟其他人的关系，全都不变。
+匿名只是让你**敢说平时不方便公开说的话**（更直接、更真实、少一点场面话），
+不是让你变成一个暴躁发癫的陌生人。绝对不要为了"符合论坛氛围"而演一个不是自己的角色。
+该冷淡就冷淡，该话少就话少，该不感兴趣就明说不感兴趣。
+${actionStrictRule}
+直接输出你的回复内容（不超过${chatWordLimit}字）。${WORD_LIMIT_PRIORITY_NOTE}
+如果你确实对这个帖子没什么想说的，直接输出 NO。`;
+
+        try {
+            let data = await sendChatRequest({ url: myApiUrl, key: myApiKey, model: myModel }, p);
+            // ⚠️ 修复"评论带思考过程"：同上，统一走清洗流程，避免思考草稿混进评论正文
+            let repText = stripUndelimitedReasoningIfOverLength(extractAfterFinalMarker(data.choices?.[0]?.message?.content || '').trim(), chatWordLimit);
+
+            if (!repText.toUpperCase().startsWith("NO") && repText !== "") {
+                repText = repText.replace(/^["“]|["”]$/g, '').trim();
+                post.replies.push({
+                    charId: char.id,
+                    anonName: char.anonName || '匿名者',
+                    anonId: char.anonId || Math.random().toString(36).substr(2,6).toUpperCase(),
+                    text: repText,
+                    timestamp: Date.now()
+                });
+                post.stats.comments++;
+                
+                let avatarHtml = `<div class="avatar" style="background:#555; border:1px solid #777; color:#fff;">?</div>`;
+                showToast(avatarHtml, `匿名用户 评论了你的帖子`, repText, post.id, null, true);
+                renderAnonPosts();
+            }
+        } catch(e) { console.error(e); }
+    }
+    if (st) st.style.display = 'none';
+    saveAllData();
+}
+
 async function userAnonPost() {
     const input = document.getElementById('userAnonInput');
     const text = input.value.trim();
-    if (!text) return;
     if (!myApiKey) return alert("请先在设置中配置密钥！");
+
+    // 🆕 发帖身份：选了角色（或随机角色）时，这条帖子交给 AI 照着那个角色的人设+记忆写，
+    // 走的是 autoGenerateAnonPostForChar——也就是跟"召唤角色发言"完全同一套逻辑和格式，
+    // 发完之后一样会被路人和其他角色围观、互动。输入框里的文字这时当成"给角色的题目"。
+    const roleSel = document.getElementById('anonPostRoleSelect');
+    const roleId = roleSel ? roleSel.value : 'me';
+    if (roleId !== 'me') {
+        let char = null;
+        if (roleId === 'random') {
+            const pool = (myCharacters || []).filter(c => c.replyToUser !== false);
+            char = pool[Math.floor(Math.random() * pool.length)] || null;
+        } else {
+            char = (myCharacters || []).find(c => c.id == roleId) || null;
+        }
+        if (!char) return alert('没有可用的角色，先去【角色中心】建一个。');
+
+        const st = document.getElementById('anonLoadingStatus');
+        if (st) { st.innerText = `「${char.name}」正在写…`; st.style.display = 'block'; }
+        try {
+            const r = await autoGenerateAnonPostForChar(char, text || null);
+            if (!r || !r.success) alert('角色发帖失败：' + ((r && r.error) || '未知原因'));
+            else input.value = '';
+        } finally {
+            if (st) { st.innerText = '深渊正在低语... '; st.style.display = 'none'; }
+        }
+        return;
+    }
+
+    if (!text) return;
 
     const newPost = {
         id: 'anon_' + Date.now(),
@@ -545,46 +657,14 @@ async function userAnonPost() {
     spawnNpcComments(newPost.id, 'anon', { triggerName: newPost.anonName, triggerText: text });
     // ==========================================
 
-    document.getElementById('anonLoadingStatus').style.display = 'block';
-
-    for (let char of myCharacters) {
-        if (char.replyToUser === false) continue; // 新增：设置里关闭了"回复用户"的角色，直接跳过不参与互动
-        let actionStrictRule = allowActionTags ? "" : "\n【严格禁止】：绝对不要包含任何动作、神态或心理描写（不要用括号()或【】），只输出你直接说的话。";
-        // 修复：同上，补齐世界书/关系网/预设上下文，避免匿名论坛这种"卸下伪装"场景里OOC
-        let p = `${buildBasePrompt(char, false, text)}你处于一个完全匿名的暗网与抽象论坛。看到有人发帖："${text}"。
-在这里你可以卸下伪装，展现你内心真实、阴暗、极端、或者是极度发癫、抽象、逆天、神经质、色情的一面。不要有任何顾虑，不用保持礼貌。
-你必须在下面回复，不能装作没看见。直接输出你的评论内容（不超过${chatWordLimit}字，语气要符合上述的匿名论坛恶劣环境和你的隐藏性格）。${WORD_LIMIT_PRIORITY_NOTE}绝对不能输出"NO"。${actionStrictRule}${getFinalAnswerMarkerPromptNote()}`;
-
-        try {
-            let data = await sendChatRequest({ url: myApiUrl, key: myApiKey, model: myModel }, p);
-            // ⚠️ 修复"评论带思考过程"：同上，统一走清洗流程，避免思考草稿混进评论正文
-            let repText = stripUndelimitedReasoningIfOverLength(extractAfterFinalMarker(data.choices?.[0]?.message?.content || '').trim(), chatWordLimit);
-
-            if (!repText.toUpperCase().startsWith("NO") && repText !== "") {
-                repText = repText.replace(/^["“]|["”]$/g, '').trim();
-                newPost.replies.push({
-                    charId: char.id,
-                    anonName: char.anonName || '匿名者',
-                    anonId: char.anonId || Math.random().toString(36).substr(2,6).toUpperCase(),
-                    text: repText,
-                    timestamp: Date.now()
-                });
-                newPost.stats.comments++;
-                
-                let avatarHtml = `<div class="avatar" style="background:#555; border:1px solid #777; color:#fff;">?</div>`;
-                showToast(avatarHtml, `匿名用户 评论了你的帖子`, repText, newPost.id, null, true);
-                renderAnonPosts();
-            }
-        } catch(e) { console.error(e); }
-    }
-    document.getElementById('anonLoadingStatus').style.display = 'none';
-    saveAllData();
+    // 角色们来回帖（跟角色代笔发的帖走的是同一个函数，一视同仁）
+    await runCharRepliesToAnonPost(newPost);
 }
 
 // 匿名论坛发帖的核心生成逻辑：抽出来单独一个函数，手动"召唤角色发言"按钮和角色自主发帖定时器共用同一套逻辑，
 // 不用维护两份几乎一样的prompt。返回 {success, error?, post?}，调用方自己决定失败了要不要弹提示
 // （手动触发失败要弹给用户看；后台自动触发失败静默跳过就行，不然天天弹烦死人）。
-async function autoGenerateAnonPostForChar(char) {
+async function autoGenerateAnonPostForChar(char, topicHint) {
     if (!char) return { success: false, error: '没有指定角色' };
     const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : { url: myApiUrl, key: myApiKey, model: myModel };
     if (!api.key) return { success: false, error: '未配置API Key' };
@@ -594,8 +674,17 @@ async function autoGenerateAnonPostForChar(char) {
         // 补齐世界书/关系网/预设上下文，避免匿名论坛发帖OOC
         // ⚠️ 防御修复：buildBasePrompt 调用之前在try外面，一旦抛异常会变成未捕获的promise rejection，
         // 挪进来后跟其它类型的自动发帖统一走同一套"单个角色失败不影响其它角色"的错误处理。
-        let p = `${buildBasePrompt(char, false)}现在你处于一个完全匿名的暗网与抽象论坛。在这里你可以完全卸下伪装，展现你内心极度阴暗、或者极度发癫、抽象、逆天、色情、神经质的一面。
-用第一人称发一条匿名帖子，不超过${postWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}不要暴露你的真实身份。直接输出帖子内容，不要包含JSON或其他说明。${actionStrictRule}${getFinalAnswerMarkerPromptNote()}`;
+        let p = `${buildBasePrompt(char, false)}${typeof getRecentPostsAwarenessText === 'function' ? getRecentPostsAwarenessText(char) : ''}${typeof getTimeAwarenessPrompt === 'function' ? getTimeAwarenessPrompt(String(char.id), char) : ''}
+
+你要在一个匿名论坛上发一条帖子。${topicHint ? `\n【这次想写的方向】：${topicHint}（照这个方向写，但要用你自己的语气和视角，不要照抄这句话）` : ''}
+
+【最重要的一条】匿名 = **不署真名**，不等于换一个人格。
+你还是你——人设、语气、最近在经历的事、心里装着的人，全都不变。
+匿名只是让你敢把平时不会公开讲的心里话讲出来，而不是变成一个陌生的暴躁网友。
+内容要能从你的人设、你最近的经历、你和其他人的关系里长出来，不要凭空编一件跟你无关的事。
+${actionStrictRule}
+用第一人称写，不超过${postWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}
+不要暴露你的真实姓名和身份。直接输出帖子正文，不要 JSON、不要标题、不要任何说明文字。`;
 
         let data = await sendChatRequest(api, p);
         if (data.error) { console.warn("[匿名帖生成] 失败：", data.error); return { success: false, error: data.error.message || "API 返回了错误，请检查密钥/模型配置" }; }
@@ -616,6 +705,9 @@ async function autoGenerateAnonPostForChar(char) {
         if (typeof renderAnonPosts === 'function') renderAnonPosts();
         // 角色发帖后，随机召唤 NPC 阴阳怪气
         spawnNpcComments(newPost.id, 'anon', { triggerName: aName, triggerText: repText });
+        // 角色发的帖子，其他角色同样会来围观互动（跟用户发帖一视同仁）。
+        // 不 await：让它在后台慢慢来，别把"发帖"这个动作卡在这儿等一圈人回完。
+        runCharRepliesToAnonPost(newPost).catch(e => console.error('角色围观论坛帖失败：', e));
         return { success: true, post: newPost };
     } catch (e) {
         console.error("[匿名帖生成] 出错：", e);
@@ -794,7 +886,10 @@ ${getFinalAnswerMarkerPromptNote()}`;
         // 发帖人自己有机会搭理——现在统一改成 maybeCharsReactToNpcComments，四个板块（推文/小报/匿名论坛/论坛）
         // 都覆盖，而且除了发帖人，其它角色也各自有机会判断要不要主动插一嘴（受"全局角色互动"开关控制）。
         // 🆕 路人随手点赞/转发 + 路人之间互相接话，让评论区不只是"各说各的一句"
-        if (arr.length > 0 && !postType) {
+        // 🆕 论坛也放开"路人互相接话 + 随手点赞"：原来这里的条件是 !postType，
+        // 等于只有推文能享受到，论坛永远是"几个路人各说一句然后就死了"。
+        // 匿名论坛本来就该比推文更吵，没道理反而更冷清。
+        if (arr.length > 0 && (!postType || postType === 'anon')) {
             const justAdded = post.replies.filter(r => arr.some(c => c._replyId && c._replyId === r.id));
             npcCasualLikes(post, justAdded);
             npcArgueWithEachOther(post, arr, opts).then(did => {
@@ -871,6 +966,7 @@ function npcCasualLikes(post, replies) {
 // 从刚生成的这批路人里挑一个去回另一个，用它自己的固定人格。
 // 只挑一对、一轮一句，不然评论区会被路人吵架刷屏、把角色的话淹掉。
 async function npcArgueWithEachOther(post, npcComments, opts) {
+    if (typeof isAutoOn === 'function' && !isAutoOn('npcArgue')) return false;   // 🔌 设置里关掉了「NPC 路人互掐」
     if (!post || !npcComments || npcComments.length < 2) return false;
     if (Math.random() > (typeof npcArgueProb !== 'undefined' ? npcArgueProb : 0.5)) return false;
     const api = getApiConfig(true); if (!api.key) return false;
@@ -898,13 +994,25 @@ ${getFinalAnswerMarkerPromptNote()}`;
         rep = stripUndelimitedReasoningIfOverLength(rep, commentWordLimit);
         rep = rep.replace(/^["“]|["”]$/g, '').trim();
         if (!rep || rep.toUpperCase().startsWith('NO')) return false;
-        post.replies.push({
-            id: 'r_' + Date.now() + Math.floor(Math.random() * 100),
+        // ⚠️ 推文和论坛的"回帖"数据结构不一样：推文用 { char: {...} }，
+        // 论坛用 { anonName, anonId }（渲染时读的就是 anonName）。
+        // 这个函数现在两种帖子都会跑，所以必须按帖子类型推对应的结构，
+        // 否则往论坛里塞一条推文格式的回帖，界面上就是一条没有名字的空评论。
+        const isAnonPost = String(post.id || '').startsWith('anon_');
+        const npcIdent = getNpcIdentity(speakerName);
+        const base = {
+            id: (isAnonPost ? 'ar_' : 'r_') + Date.now() + Math.floor(Math.random() * 100),
             parentId: target._replyId,
-            char: getNpcIdentity(speakerName),
             text: rep, timestamp: Date.now(),
             likes: 0, liked: false, likedBy: [], replyTo: targetName,
-        });
+        };
+        post.replies.push(isAnonPost
+            ? Object.assign(base, {
+                charId: 'npc',
+                anonName: speakerName || '匿名者',
+                anonId: (npcIdent && npcIdent.handle ? String(npcIdent.handle).replace(/^@/, '') : Math.random().toString(36).slice(2, 8)).toUpperCase().slice(0, 6),
+            })
+            : Object.assign(base, { char: npcIdent }));
         post.stats.comments = (post.stats.comments || 0) + 1;
         saveAllData();
         return true;
@@ -973,6 +1081,7 @@ ${getFinalAnswerMarkerPromptNote()}`;
 
 const NPC_COMMENT_OTHER_CHARS_MAX = 2;
 async function maybeCharsReactToNpcComments(npcComments, target) {
+    if (typeof isAutoOn === 'function' && !isAutoOn('charReactNpc')) return;   // 🔌 设置里关掉了「角色回应 NPC 评论」
     if (!npcComments || npcComments.length === 0) return;
     const api = getApiConfig(true); if (!api.key) return;
     // 编号交给角色，它才有办法指明"我回的是哪一条"
@@ -1445,8 +1554,8 @@ function renderCenterCharList() {
                 ${getAvatarHTML(char, 40)}
                 <div style="flex:1; min-width:0;">
                     <div style="font-weight:bold; font-size:15px; display:flex; align-items:center; gap:6px;">
-                        ${char.name} ${char.verified ? verifiedSVG : ''} 
-                        ${char.group ? `<span class="group-tag" onclick="event.stopPropagation(); filterByGroup('${char.group}')">${char.group}</span>` : ''}
+                        ${escapeHtml(char.name)} ${char.verified ? verifiedSVG : ''}
+                        ${char.group ? `<span class="group-tag" onclick="event.stopPropagation(); filterByGroup('${escapeJsArg(char.group)}')">${escapeHtml(char.group)}</span>` : ''}
                     </div>
                     <div style="color:#536471; font-size:13px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${char.persona}</div>
                     ${char.lifeState && char.lifeState.activity ? `<div style="color:#8b98a5; font-size:12px; font-style:italic; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">💭 ${char.lifeState.activity}</div>` : ''}
@@ -1538,12 +1647,167 @@ async function deleteCharacter(charId) {
     if (currentChatSessionId == charId && document.getElementById('view-chat').style.display !== 'none') switchChatSession(myCharacters.length > 0 ? myCharacters[0].id : null);
 }
 
+// ===== 角色资料自动补全 =====
+// 需求：除了"人设"以外，用户名 / 账号ID / 简介 / 生日这些字段留空的时候，应该能像简介那样
+// 由AI照着人设自己生成，不用一个个手填。生日则优先直接从人设文本里认——人设里常常
+// 明写着"生日：3月14日"，能白捡的就别浪费一次API调用。
+
+// 从人设文本里认生日。认得出就返回 yyyy-mm-dd（<input type="date"> 只收这个格式），认不出返回 ''。
+// 支持这几种常见写法：1998年3月14日 / 生日3月14日 / 生日：1998-03-14 / 出生于 1998/3/14
+function extractBirthdateFromPersona(persona) {
+    if (!persona) return '';
+    const text = String(persona);
+    // 优先找"生日/出生"附近的日期，避免把人设里别的年份（入学、出道时间等）当成生日
+    const near = text.match(/(?:生日|出生日期|出生于|生于)[^\n]{0,12}?((?:\d{4}\s*[年\-\/\.]\s*)?\d{1,2}\s*[月\-\/\.]\s*\d{1,2}\s*日?)/);
+    const raw = near ? near[1] : null;
+    if (!raw) return '';
+    const nums = raw.match(/\d+/g);
+    if (!nums) return '';
+    let y, mo, d;
+    if (nums.length >= 3) { [y, mo, d] = nums.map(Number); }
+    else if (nums.length === 2) {
+        // 人设里只写了月日（"生日3月14日"）。<input type="date"> 必须有年份，
+        // 这里填一个中性的 2000 年占位，并在提示里告诉用户可以自己改——
+        // 总比因为缺年份就整个不填要好。
+        y = 2000; mo = Number(nums[0]); d = Number(nums[1]);
+    } else return '';
+    if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && y >= 1900 && y <= 2100)) return '';
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+// 让AI照着人设，把表单里还空着的资料字段补出来。只补空的，用户已经填过的一律不动。
+// 返回一个对象，键就是字段名；失败返回 null（调用方自己决定要不要拦下保存）。
+async function aiCompleteCharProfile(persona, blanks) {
+    if (!myApiKey || blanks.length === 0) return null;
+    const fieldDesc = {
+        name: '用户名（社交平台上显示的名字，中文短名，别带@）',
+        handle: '账号ID（英文小写字母/数字/下划线，别带@，要像真人会取的ID，不要用拼音全拼堆砌）',
+        bio: '个人简介（一到两句，第一人称或中性描述，符合人设气质，40字以内）',
+        location: '所在地（一个地名，虚构世界就用人设里的地名）',
+        website: '个人网站或主页链接（没有合适的就返回空字符串）',
+        birthdate: '出生日期，格式必须是 yyyy-mm-dd。人设里没提到生日就返回空字符串，不要瞎编',
+        // ⚠️ 这两个对应的是 <input type="number">，塞"1.2万"这种带单位的字符串进去会被浏览器
+        // 静默丢弃（值仍然是空），所以这里必须要求纯整数。展示的时候 formatStat() 自己会
+        // 把 12000 显示成"1.2万"，不需要 AI 来凑这个格式。
+        followers: '粉丝数，只要纯阿拉伯数字整数，不要带"万""k"等单位（例如 12000）',
+        following: '关注数，只要纯阿拉伯数字整数（例如 180）'
+    };
+    const want = blanks.filter(k => fieldDesc[k]);
+    if (want.length === 0) return null;
+
+    const prompt = `下面是一个虚拟角色的人设。请根据人设，为TA补全社交平台的资料字段。
+
+【人设】
+${persona}
+
+需要补全的字段：
+${want.map(k => `- ${k}：${fieldDesc[k]}`).join('\n')}
+
+严格只返回一个JSON对象，不要有任何其它文字、不要Markdown代码块。键名就用上面的英文字段名。
+拿不准或人设里没依据的字段，返回空字符串，不要硬编。
+示例：{${want.map(k => `"${k}": "..."`).join(', ')}}`;
+
+    try {
+        const data = await sendChatRequest({ url: myApiUrl, key: myApiKey, model: myModel }, prompt);
+        if (data.error) return null;
+        const parsed = extractJsonObject(data.choices?.[0]?.message?.content || '');
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (e) {
+        console.warn('[角色资料自动补全] 失败：', e);
+        return null;
+    }
+}
+
+// 把表单里空着的字段补上。manual=true 表示是用户手动点了"自动补全"按钮（会给出提示反馈）。
+async function autoFillCharProfile(manual = false) {
+    const $ = id => document.getElementById(id);
+    const persona = ($('charPersona')?.value || '').trim();
+    if (!persona) { if (manual) alert('请先填写「角色人设」，自动补全是照着人设来的。'); return false; }
+
+    // 先白捡：生日能直接从人设里认出来就不劳烦AI了
+    const filledLocally = [];
+    if ($('charBirthdate') && !$('charBirthdate').value) {
+        const bd = extractBirthdateFromPersona(persona);
+        if (bd) { $('charBirthdate').value = bd; filledLocally.push('生日'); }
+    }
+
+    const map = { charName: 'name', charHandle: 'handle', charBio: 'bio', charLocation: 'location',
+                  charWebsite: 'website', charBirthdate: 'birthdate', charFollowers: 'followers', charFollowing: 'following' };
+    const blanks = Object.keys(map).filter(id => $(id) && !String($(id).value).trim());
+    if (blanks.length === 0) {
+        if (manual) alert(filledLocally.length ? `已从人设里认出：${filledLocally.join('、')}` : '资料都填好了，没有需要补全的空白项。');
+        return true;
+    }
+
+    const btn = $('autoFillCharBtn');
+    const oldText = btn ? btn.innerText : '';
+    if (btn) { btn.innerText = '正在照着人设补全...'; btn.disabled = true; }
+
+    const result = await aiCompleteCharProfile(persona, blanks.map(id => map[id]));
+
+    if (btn) { btn.innerText = oldText; btn.disabled = false; }
+
+    if (!result) {
+        if (manual) alert('自动补全失败了，可能是API没配好或这次请求出错。可以手动填，或者稍后再试。');
+        return false;
+    }
+
+    const filled = [];
+    blanks.forEach(id => {
+        const key = map[id];
+        let v = result[key];
+        if (v === undefined || v === null) return;
+        v = String(v).trim();
+        if (!v) return;
+        if (key === 'handle') v = v.replace(/^@+/, ''); // 保存时会统一加@，这里先去掉免得变成@@
+        if (key === 'birthdate' && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return; // 格式不对就不填，免得日期控件报错
+        // 保险：AI 仍然返回"1.2万"这类写法时，用项目里现成的 parseStat 换算成整数，
+        // 否则 number 输入框会静默吃掉这个值，最后落到默认的"1万"。
+        if ((key === 'followers' || key === 'following') && $(id).type === 'number' && !/^\d+$/.test(v)) {
+            const n = typeof parseStat === 'function' ? parseStat(v) : parseInt(v);
+            if (!n || isNaN(n)) return;
+            v = String(Math.round(n));
+        }
+        $(id).value = v;
+        filled.push(id);
+    });
+
+    if (manual) {
+        const label = { charName: '用户名', charHandle: '账号ID', charBio: '简介', charLocation: '所在地',
+                        charWebsite: '网站', charBirthdate: '生日', charFollowers: '粉丝数', charFollowing: '关注数' };
+        const all = filledLocally.concat(filled.map(id => label[id]));
+        alert(all.length ? `已补全：${all.join('、')}\n\n都可以再手动改。` : '这次没能补出什么，可以手动填一下。');
+    }
+    return true;
+}
+
 async function saveCharacter() {
-    let name = document.getElementById('charName').value; let handle = document.getElementById('charHandle').value; let persona = document.getElementById('charPersona').value;
-    if (!name || !handle || !persona) return alert('角色名字、ID和人设为必填项！');
+    let persona = document.getElementById('charPersona').value;
+    // 现在只有「人设」是必填的。用户名/账号ID/简介/生日这些留空的话，下面会照着人设自动补全，
+    // 不用再逼着用户把表单填满才能保存。
+    if (!persona.trim()) return alert('「角色人设」是必填项——其它资料留空的话，会照着人设自动补全。');
+
+    const btn = document.getElementById('saveCharBtn');
+
+    // 空白项自动补全（用户已经填过的一律不动）
+    const needAuto = ['charName', 'charHandle', 'charBio', 'charBirthdate']
+        .some(id => document.getElementById(id) && !document.getElementById(id).value.trim());
+    if (needAuto) {
+        btn.innerText = "照着人设补全资料..."; btn.disabled = true;
+        try { await autoFillCharProfile(false); } catch (e) { console.warn('[保存角色] 自动补全出错，继续保存：', e); }
+    }
+
+    let name = document.getElementById('charName').value.trim();
+    let handle = document.getElementById('charHandle').value.trim();
+    // 补全也可能没补出来（没配API、请求失败、AI返回空）——这时候给个能用的兜底，
+    // 而不是把用户卡在这里不让保存。
+    if (!name) name = persona.trim().slice(0, 6).replace(/[\s\n]/g, '') || '新角色';
+    if (!handle) handle = 'user_' + Math.random().toString(36).slice(2, 8);
     if (!handle.startsWith('@')) handle = '@' + handle;
-    
-    const btn = document.getElementById('saveCharBtn'); btn.innerText = "保存中..."; btn.disabled = true;
+    document.getElementById('charName').value = name;
+    document.getElementById('charHandle').value = handle;
+
+    btn.innerText = "保存中..."; btn.disabled = true;
 
     let selectedWbs = Array.from(charFormWbPendingSelection);
 

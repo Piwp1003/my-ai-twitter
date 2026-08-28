@@ -357,7 +357,10 @@ function getRecentChatContext(charId) {
 // 功能也是靠临时抓取当前这条消息的{name,text}快照实现的，不依赖id），这里用同样的思路：编号只在
 // 这一次生成的prompt里临时有效，AI选完号，代码从同一份list数组里按下标精确取出对应的{name,text}。
 function buildQuotableRecentMessages(sessionId, char, isGroup) {
-    const msgs = (globalChats[sessionId] || []).slice(-12).filter(m => m.sender !== 'system' && m.text && m.text.trim());
+    // 💰 这里原来取最近 12 条。但这 12 条**在同一个请求里已经作为独立的 user/assistant 轮次发过一遍了**，
+    // 在任务指令里再列一遍等于把聊天历史整份复制了一份，纯浪费（实测占单条聊天请求的 5~10%）。
+    // 引用功能真正会用到的基本只有最近几句，取 5 条足够，编号也更短、模型更不容易选错。
+    const msgs = (globalChats[sessionId] || []).slice(-5).filter(m => m.sender !== 'system' && m.text && m.text.trim());
     const list = msgs.map(m => ({
         name: m.sender === 'me' ? currentUser.name : (isGroup ? (myCharacters.find(c => c.id == m.sender)?.name || '未知') : char.name),
         text: m.text
@@ -503,36 +506,70 @@ function parseGreetingMeta(text) {
 // （标题带"目录"，正文是 <greetings>0. xxx\n1. xxx...</greetings> 这种编号列表，
 // 真正能用的正文其实都在 alternateGreetings 里）。这种候选选中了就是一整段索引文字糊脸上，
 // 所以挑选框里要能认出它、单独标红提醒，并且排在候选列表最后面，避免用户顺手点了第一张卡就中招。
-function isMenuLikeGreeting(text) {
+//
+// 🆕 第三条判据（覆盖面最广的一条）：看**渲染出来的成品页面**是不是一份"开场白导航"。
+// 起因是实测 27 张卡 478 条开场白时发现的：靠标签名穷举根本追不完——江执写 <CardIntro>、
+// 蔚野写 <播客开场白>、霍司爵写 <card_info>、沉沦法则写 <encounter>，每个作者一个写法，
+// 上面那两条判据只认得出 2 条，剩下的目录页全部漏网、还顶在候选列表第一个。
+//
+// 但这类页面有一个跨卡片通用的行为特征：它的每一个可点条目都调
+// setChatMessages([{message_id:0, swipe_id:N}]) 跳到第 N 条开场白。
+// 干扰项是——几乎每张卡的**正式**开场白底部也都挂了一个"回到首页"按钮，调的是同一个接口。
+// 区别在于：回到首页的目标恒定是第 0 条（目录页自己），而目录页会指向一堆**别的**编号
+// （厉承修 1~17、闻述 1~40），或者干脆是个变量（江执 parseInt(data-index)、谢云霄 sid）。
+// 所以判据写成：把所有 swipe_id:0 剔掉之后还剩任何一个 swipe_id 目标 → 这是目录页。
+function hasGreetingNavTargets(html) {
+    if (!html || typeof html !== 'string') return false;
+    if (html.indexOf('setChatMessages') === -1) return false;
+    // 只剔掉写死的 0（回到首页），变量/表达式/非 0 的字面量都留下
+    const rest = html.replace(/swipe_id\s*:\s*0\s*(?=[,}\)\s])/g, '');
+    return /swipe_id\s*:/.test(rest);
+}
+function isMenuLikeGreeting(text, charId) {
     if (!text) return false;
     const meta = parseGreetingMeta(text);
     const title = meta ? meta.title : (text.match(/^\s*<!--\s*title:\s*([\s\S]*?)\s*-->/i) || [])[1] || '';
     const body = meta ? meta.body : text;
     if (/目录|索引/.test(title)) return true;
     if (/<greetings>[\s\S]*<\/greetings>/i.test(body)) return true;
-    return false;
+    // 拿不到 charId 就没法跑角色专属的显示正则，只能退回上面两条纯文本判据（保持老行为，不会更差）
+    if (charId === null || charId === undefined || charId === '') return false;
+    if (typeof applyDisplayOnlyRegex !== 'function') return false;
+    try { return hasGreetingNavTargets(applyDisplayOnlyRegex(text, charId, 0)); }
+    catch (e) { return false; }
 }
 
 // 把"候选开场白列表"渲染成挑选框里的卡片列表——聊天和续写两处挑选框长得一样、复用同一份渲染逻辑，
 // labelFn(idx, item) 可以给每张卡片加一个额外的前缀标签（比如续写模式下要标出"这是哪个角色的开场白"）。
 // 注意：这里的 idx 是渲染出来卡片的顺序，点击时会通过 onclick 里的 idx 去 window.__greetingPickerOptions 找原始数据，
 // 所以排序（把目录页类选项放最后）必须在传进来之前就排好，这个函数本身只管渲染、不做排序。
-function renderGreetingOptionCards(options, labelFn) {
+//
+// opts.menuAsEntry：目录页当"正式入口"看待（续写工作台用）。续写那边点开目录页是真的能用的——
+// 挑选框会把它整页渲染出来、点里面的场景卡就直接开局，所以那里不该再红字警告"请谨慎选择"，
+// 反过来要标成推荐入口。聊天/小说那边渲染不了这一页（聊天气泡是纯文本），维持原来的红字警告。
+// opts.charId：跑角色专属显示正则用，没有就退回纯文本判据。
+function renderGreetingOptionCards(options, labelFn, opts) {
+    opts = opts || {};
     return options.map((item, idx) => {
         const g = typeof item === 'string' ? item : item.text;
         const meta = parseGreetingMeta(g);
-        const isMenu = isMenuLikeGreeting(g);
+        const cid = (typeof item === 'object' && item && item.charId !== undefined) ? item.charId : opts.charId;
+        const isMenu = isMenuLikeGreeting(g, cid);
+        const asEntry = isMenu && !!opts.menuAsEntry;
         const esc = s => (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const bodyForPreview = meta ? meta.body : g;
         const preview = bodyForPreview.length > 200 ? bodyForPreview.slice(0, 200) + '……' : bodyForPreview;
         const extraLabel = labelFn ? labelFn(idx, item) : '';
-        const warnHtml = isMenu ? `<div style="font-size:12px; font-weight:bold; color:#e0245e; margin-bottom:2px;">⚠️ 疑似目录/索引页，可能不是正式开场白，请谨慎选择</div>` : '';
-        const titleColor = isMenu ? '#e0245e' : '#1d9bf0';
+        const warnHtml = !isMenu ? ''
+            : (asEntry
+                ? `<div style="font-size:12px; font-weight:bold; color:#1d9bf0; margin-bottom:2px;">📖 作者做的开场目录页 · 点进去挑分支</div>`
+                : `<div style="font-size:12px; font-weight:bold; color:#e0245e; margin-bottom:2px;">⚠️ 疑似目录/索引页，可能不是正式开场白，请谨慎选择</div>`);
+        const titleColor = (isMenu && !asEntry) ? '#e0245e' : '#1d9bf0';
         const headerHtml = meta
             ? `<div style="font-size:14px; font-weight:bold; color:${titleColor}; margin-bottom:2px;">${extraLabel}${esc(meta.title) || `候选 ${idx + 1}`}</div>${meta.desc ? `<div style="font-size:12px; color:#536471; margin-bottom:6px;">${esc(meta.desc)}</div>` : ''}`
             : `${extraLabel ? `<div style="font-size:12px; font-weight:bold; color:${titleColor}; margin-bottom:2px;">${extraLabel}</div>` : ''}`;
         return `
-        <div class="wb-card" style="min-width:0; max-width:none; width:100%; cursor:pointer; margin-bottom:8px; ${isMenu ? 'border:1px solid #e0245e;' : ''}" onclick="selectGreeting(${idx})">
+        <div class="wb-card" style="min-width:0; max-width:none; width:100%; cursor:pointer; margin-bottom:8px; ${isMenu ? (asEntry ? 'border:1px solid #1d9bf0;' : 'border:1px solid #e0245e;') : ''}" onclick="selectGreeting(${idx})">
             ${warnHtml}
             ${headerHtml}
             <div style="font-size:13px; color:#0f1419; white-space:pre-wrap; max-height:${meta ? '80px' : '150px'}; overflow-y:auto;">${esc(preview)}</div>
@@ -540,19 +577,142 @@ function renderGreetingOptionCards(options, labelFn) {
     }).join('');
 }
 
-// 把候选开场白列表排序：目录页/索引类的排到最后面，避免顶在第一张卡被顺手点中；
-// 其余选项保持原有的相对顺序（稳定排序）。item 可能是字符串，也可能是 {text, ...} 结构（续写模式）。
-function sortGreetingOptionsMenuLast(options) {
+// 把候选开场白列表按"目录页排哪边"重排，其余选项保持原有相对顺序（稳定排序）。
+// item 可能是字符串，也可能是 {text, charId, ...} 结构（续写/小说模式）。
+//   · menuFirst=false（聊天/小说，默认）：目录页排最后。这两处渲染不了作者做的那一页
+//     （聊天气泡是纯文本，小说是把开场白当一章正文插进去），选中目录页只会得到一坨裸标记，
+//     所以要把它挪开、别顶在第一张卡被顺手点中。
+//   · menuFirst=true（续写工作台）：目录页排最前，当成正式入口。那边点开它是真能用的。
+function sortGreetingOptions(options, opts) {
+    opts = opts || {};
     const getText = item => typeof item === 'string' ? item : item.text;
-    return options.map((item, idx) => ({ item, idx, isMenu: isMenuLikeGreeting(getText(item)) }))
-        .sort((a, b) => (a.isMenu === b.isMenu) ? (a.idx - b.idx) : (a.isMenu ? 1 : -1))
+    const getCid = item => (typeof item === 'object' && item && item.charId !== undefined) ? item.charId : opts.charId;
+    const first = !!opts.menuFirst;
+    return options.map((item, idx) => ({ item, idx, isMenu: isMenuLikeGreeting(getText(item), getCid(item)) }))
+        .sort((a, b) => (a.isMenu === b.isMenu) ? (a.idx - b.idx) : ((a.isMenu ? 1 : -1) * (first ? -1 : 1)))
         .map(x => x.item);
+}
+// 老名字保留：调用点不少，而且语义就是"目录页排最后"，直接转发过去
+function sortGreetingOptionsMenuLast(options, charId) {
+    return sortGreetingOptions(options, { menuFirst: false, charId });
+}
+
+// ===== 🎲 随机生成开场白 =====
+// 三个场景共用一个入口，但**按各自的格式**生成，不是一份文案套三处：
+//   chat        → 微信式的第一条消息（短、口语、直接开口，不写旁白）
+//   storyStudio → 互动续写的第一轮（场景+人物状态，末尾留出让用户接话的余地）
+//   novelOutline→ 小说第一章的开篇段落（叙述体，篇幅更长）
+// 生成时走 buildBasePrompt，所以人设/世界书/预设/关系网这些都会带上，
+// 不是凭空编一个跟角色无关的开头。
+function getRandomGreetingSpec(mode, char) {
+    const base = {
+        chat: {
+            label: '聊天开场白',
+            rule: `写一条${char ? char.name : '这个角色'}主动发给${userDisplayName()}的**第一条聊天消息**。
+要求：像真人发微信那样，口语、简短（不超过${typeof chatWordLimit !== 'undefined' ? chatWordLimit : 50}字）；
+直接开口说话，不要写场景旁白、不要写"（他推开门）"这类描写以外的舞台说明；
+内容要贴合人设和你们当前的关系，不要写成客服式的问候。`
+        },
+        storyStudio: {
+            label: '续写开场',
+            rule: `写一段**互动续写的开场**：先用两三句话把场景、时间、${char ? char.name : '角色'}此刻在做什么交代清楚，
+再落到一句人物的动作或台词上，把话头留给${userDisplayName()}接。
+要求：叙述体，200字以内，有画面感，结尾是开放的（不要把事情写完）。`
+        },
+        novelOutline: {
+            label: '小说开篇',
+            rule: `写一段**小说的开篇**：叙述体，400字以内，交代时间地点与${char ? char.name : '主角'}的处境，
+建立起可以往下写的氛围和悬念。不要写成大纲或提要，直接就是正文第一段。`
+        }
+    };
+    return base[mode] || base.chat;
+}
+
+async function generateRandomGreeting() {
+    const mode = window.__greetingPickerMode || 'chat';
+    if (!myApiKey) return alert('请先在【设置】里配置主 API Key，随机开场白需要调用 AI 生成。');
+
+    // 找出这次要以谁的身份生成
+    let char = null;
+    if (mode === 'chat') char = myCharacters.find(c => c.id == window.__greetingPickerCharId);
+    else if (mode === 'storyStudio') char = (window.__ssGreetChars || [])[Math.floor(Math.random() * (window.__ssGreetChars || []).length)] || null;
+    else {
+        const sel = Array.from(document.querySelectorAll('.novel-char-check:checked')).map(cb => cb.value).filter(v => v !== 'me');
+        char = myCharacters.find(c => c.id == sel[Math.floor(Math.random() * sel.length)]) || null;
+    }
+    if (!char) return alert('没有找到可用的角色，先选一个角色再生成。');
+
+    const btn = document.getElementById('randomGreetingBtn');
+    const old = btn ? btn.innerHTML : '';
+    if (btn) { btn.innerHTML = `🎲 正在为「${escapeHtml(char.name)}」生成…`; btn.style.pointerEvents = 'none'; btn.style.opacity = '0.7'; }
+
+    try {
+        const spec = getRandomGreetingSpec(mode, char);
+        // 已有的开场白一并给它看，明确要求"别跟这些重样"——不然多点几次会一直给同一个味道
+        const existing = (typeof getGreetingOptions === 'function' ? getGreetingOptions(char) : [])
+            .map(g => (typeof g === 'string' ? g : g.text) || '').filter(Boolean).slice(0, 6)
+            .map((g, i) => `${i + 1}. ${g.replace(/<[^>]+>/g, '').slice(0, 80)}`).join('\n');
+
+        const prompt = `${buildBasePrompt(char, true, '')}
+
+【任务】${spec.rule}
+
+${existing ? `【这个角色已有的开场白（只是让你避开，不要模仿它们的写法和切入点）】\n${existing}\n` : ''}
+【输出要求】只输出开场白正文本身，不要任何前言、解释、标题、引号包裹，也不要输出"好的，这是……"之类的话。`;
+
+        const data = await sendChatRequest({ url: myApiUrl, key: myApiKey, model: myModel }, prompt);
+        if (data.error) throw new Error(data.error.message || '生成失败');
+        let text = (data.choices?.[0]?.message?.content || '').trim();
+        text = extractAfterFinalMarker(text).trim();
+        if (typeof processReasoningInText === 'function') {
+            const r = processReasoningInText(text);
+            text = (typeof r === 'string') ? r : (r && r.text) || text;
+        }
+        text = text.replace(/^["'“”「『]+|["'“”」』]+$/g, '').trim(); // 模型爱把整段用引号裹起来
+        if (!text) throw new Error('生成结果是空的');
+
+        closeModal('greetingPickerModal');
+        if (mode === 'chat') {
+            const charId = window.__greetingPickerCharId;
+            applyGreetingAsFirstMessage(charId, text);
+            if (currentChatSessionId !== charId) switchChatSession(charId);
+        } else if (mode === 'storyStudio') {
+            if (typeof applySsGreeting === 'function') applySsGreeting({ charId: char.id, text });
+        } else {
+            // 一键生成模式：跟选中已有开场白一样，丢进预览区走"保留/重新生成/放弃"
+            const novel = globalNovels.find(n => n.id === currentEditingNovelId);
+            const chapterNum = (novel && novel.chapters ? novel.chapters.length : 0) + 1;
+            tempNovelChapter = { id: 'c_' + Date.now(), index: chapterNum, content: text, timestamp: Date.now() };
+            const tempArea = document.getElementById('novelTempArea'), tempContentEl = document.getElementById('novelTempContent');
+            if (tempContentEl) tempContentEl.value = text;
+            if (tempArea) { tempArea.style.display = 'block'; tempArea.scrollIntoView({ behavior: 'smooth' }); }
+        }
+    } catch (e) {
+        console.error('[随机开场白] 生成失败：', e);
+        alert('随机开场白生成失败：' + (e.message || e) + '\n\n可以再试一次，或者直接从上面的候选里挑一个。');
+    } finally {
+        if (btn) { btn.innerHTML = old; btn.style.pointerEvents = ''; btn.style.opacity = ''; }
+    }
+}
+
+// 「🎲 随机生成一条」卡片。三个场景的挑选框都挂它，文案按场景走。
+function randomGreetingCardHtml(mode) {
+    const desc = {
+        chat: '让 AI 照着人设现编一条聊天开场白，跟已有的不重样',
+        storyStudio: '让 AI 照着人设现编一段续写开场（场景+留给你接话的话头）',
+        novelOutline: '让 AI 照着人设现编一段小说开篇，会先进预览区'
+    }[mode] || '';
+    return `
+        <div class="wb-card" id="randomGreetingBtn" style="min-width:0; max-width:none; width:100%; cursor:pointer; margin-bottom:8px; border:1px dashed #1d9bf0; background:rgba(29,155,240,0.04);" onclick="generateRandomGreeting()">
+            <div style="font-size:14px; font-weight:bold; color:#1d9bf0; margin-bottom:2px;">🎲 随机生成一条</div>
+            <div style="font-size:13px; color:#536471;">${desc}</div>
+        </div>`;
 }
 
 function showGreetingPicker(charId) {
     const char = myCharacters.find(c => c.id == charId);
     if (!char) return;
-    const options = sortGreetingOptionsMenuLast(getGreetingOptions(char));
+    const options = sortGreetingOptionsMenuLast(getGreetingOptions(char), char.id);
     if (options.length === 0) return;
     window.__greetingPickerMode = 'chat';
     window.__greetingPickerCharId = charId;
@@ -566,7 +726,7 @@ function showGreetingPicker(charId) {
             <div style="font-size:14px; font-weight:bold; color:#536471; margin-bottom:2px;">🚫 不使用开场白</div>
             <div style="font-size:13px; color:#536471;">直接开始聊天，自己先开口说第一句</div>
         </div>`;
-    document.getElementById('greetingPickerList').innerHTML = skipCardHtml + renderGreetingOptionCards(options);
+    document.getElementById('greetingPickerList').innerHTML = randomGreetingCardHtml('chat') + skipCardHtml + renderGreetingOptionCards(options, null, { charId: char.id });
     openModal('greetingPickerModal');
 }
 
@@ -612,7 +772,7 @@ function showNovelGreetingPicker(forOutlineMode) {
     // 涉及多个角色时才需要在每张卡片上标注"这是谁的开场白"，只有一个角色就不用啰嗦重复标注
     const uniqueCharCount = new Set(combined.map(o => o.charId)).size;
     document.getElementById('greetingPickerTitle').innerText = `💬 选择开场白（作为一章内容）`;
-    document.getElementById('greetingPickerList').innerHTML = renderGreetingOptionCards(sortedCombined, uniqueCharCount > 1 ? (idx, item) => `【${item.charName}】` : null);
+    document.getElementById('greetingPickerList').innerHTML = randomGreetingCardHtml('novelOutline') + renderGreetingOptionCards(sortedCombined, uniqueCharCount > 1 ? (idx, item) => `【${item.charName}】` : null);
     openModal('greetingPickerModal');
 }
 
@@ -662,6 +822,7 @@ function selectGreeting(idx) {
 // 每次点进角色的聊天界面，就结合ta的日程和当前真实时间，刷新一次状态气泡（char.lifeState）
 let lastScheduleBubbleRefresh = {};
 async function refreshLifeStateOnChatEnter(charId) {
+    if (typeof isAutoOn === 'function' && !isAutoOn('lifeStateEnter')) return;   // 🔌 设置里关掉了「进聊天页刷新角色状态」
     if (!charId || charId.startsWith('g_')) return; // 群聊暂不处理
     const char = myCharacters.find(c => c.id == charId);
     if (!char || !char.schedule || !char.schedule.text) return; // 没有日程就没有可结合的信息
@@ -738,7 +899,7 @@ async function triggerNudge(sessionId, targetId) {
     if (targetId !== 'me' && api.key) {
         let targetChar = myCharacters.find(c => c.id == targetId);
         let prompt = buildStructuredMessages(buildBasePrompt(targetChar, false, sysText), [],
-            `刚刚用户在聊天中双击头像"拍了拍"你。\n系统提示：${sysText}\n你可以选择回复或者输出 [NUDGE] 来反击。字数${chatWordLimit}字以内。${WORD_LIMIT_PRIORITY_NOTE}`);
+            `刚刚用户在聊天中双击头像"拍了拍"你。\n系统提示：${sysText}\n你可以选择回复，或者输出 [NUDGE] 来反击。\n【格式铁律】"XX 拍了拍 YY"这句话由系统自动生成并显示，你绝对不要自己写这句话、也不要模仿它的写法——想反击就只输出 [NUDGE] 这个标记本身，其余部分正常说你要说的话。（照抄那句话会导致引号错乱、内容重复两遍。）字数${chatWordLimit}字以内。${WORD_LIMIT_PRIORITY_NOTE}`);
         try {
             if (currentChatSessionId === sessionId && document.getElementById('view-chat').style.display !== 'none') { currentlyTypingChars.add(targetChar.name); updateTypingIndicator(); }
             let data = await callChatCompletionAPI(api, prompt);
@@ -746,6 +907,12 @@ async function triggerNudge(sessionId, targetId) {
             currentlyTypingChars.delete(targetChar.name); updateTypingIndicator();
             
             if (repText.toUpperCase().startsWith("NO") && repText.length < 5) return;
+            // 兜底清洗：模型偶尔还是会照着历史里的系统消息，自己写一句「X"拍了拍"Y的手背」当开场。
+            // 这句本来就由系统生成并单独显示，气泡里再来一遍就是重复，而且引号常常是错乱的。
+            // 只清洗"照抄系统消息"那一种：系统消息一定带引号（"林" 拍了拍 "Elias" 的肩膀），
+            // 模型照抄时引号会错位但仍然带着（林"拍了拍"Elias的手背）。
+            // 加上"这一行里必须出现引号"这个前提，普通句子（我今天拍了拍照片）就不会被误删。
+            repText = repText.replace(/^(?=[^\n]*["“”'])[^\n]{0,14}拍了拍[^\n]{0,30}(?:\n+|$)/, '').trim();
             if (repText.includes("[NUDGE]")) { repText = repText.replace(/\[NUDGE\]/ig, '').trim(); globalChats[sessionId].push({ sender: 'system', text: `"${targetChar.name}" 拍了拍 "${currentUser.name}" ${currentUser.nudgeText || '的脑袋'}`, timestamp: Date.now() }); }
             repText = applyRegexScripts(repText, 'ai_output', targetChar.id);
             if (repText) globalChats[sessionId].push({ sender: targetChar.id, text: repText, timestamp: Date.now(), readBy: [] });
@@ -1264,7 +1431,9 @@ window.contextActionRegenerateChat = async function() {
         : `\n【重要格式要求】：绝对不要有任何动作、神态或心理描写，不要使用括号()或【】，只输出你直接说出的话。\n`;
         
     // 💡 修复：让重新生成的提示词也严格遵守 JSON 格式
-    let multiReplyBlock = `\n【回复指令】\n回复字数不超过${chatWordLimit}字（这是硬性上限，不是必须写满）。${WORD_LIMIT_PRIORITY_NOTE}输出格式【必须严格遵守JSON】，不要包含任何 Markdown 语法。格式示例：\n{\n  "replies": [\n    {"text": "你想回复的对话或动作"}\n  ],\n  "stateUpdate": "你的内部状态", "statusTypeLabel": "闲"\n}`;
+    // 💡 再修复：这段文案原来把"不超过chatWordLimit字"写死了，不看"聊天回复条数/长度模式"，
+    //    导致经典模式下一侧滑重新生成就变回可控字数模式的短回复。现在统一走 getChatRegenReplyBlock()。
+    let multiReplyBlock = getChatRegenReplyBlock();
 
     // 结构化消息改造：历史记录改成独立的user/assistant轮次，不再拼进正文文本里
     let systemText = `${buildBasePrompt(char, true, recentHistory)}${getRecentPostsAwarenessText(char)}${getTimeAwarenessPrompt(sessionId, char)}${getChatNaturalnessPrompt()}`;

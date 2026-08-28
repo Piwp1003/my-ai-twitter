@@ -169,7 +169,13 @@ window.submitCustomCharReply = async function() {
         
         // 修复：这三条"代打回复"prompt之前都只塞了人设，没带世界书/关系网/预设，容易OOC——统一换成buildBasePrompt
         if (t.type === 'anon') {
-            promptStr = `${buildBasePrompt(char, false, targetText)}你现在处于极端的匿名深渊论坛，ID是"${char.anonName || '匿名者'}"。\n刚刚看到网友"${targetName}"评论说："${targetText}"。\n请直接输出你要回怼或回复的话（不超过50字，不要带引号，符合你的隐藏性格和论坛恶劣环境）。`;
+            promptStr = `${buildBasePrompt(char, false, targetText)}你正在逛一个匿名论坛，你的匿名ID是"${char.anonName || '匿名者'}"。
+刚刚看到"${targetName}"说："${targetText}"，并且点名回复了你。
+
+【最重要的一条】匿名 = 不署真名，不等于换一个人格。
+你还是你——人设、说话习惯、在意的事，全都不变。匿名只是让你敢说平时不方便公开说的话，
+不是让你变成一个暴躁发癫的陌生人。该冷淡就冷淡，该懒得理就明说懒得理。
+直接输出你的回复内容（不超过${chatWordLimit}字），不要任何前言或解释。`;
         } else if (t.type === 'forum') {
             promptStr = `${buildBasePrompt(char, false, targetText)}你现在在逛中文论坛。\n刚刚看到楼主或层主"${targetName}"说："${targetText}"。\n请结合你的人设，直接输出你要回复的话（不超过50字，不要带引号）。`;
         } else {

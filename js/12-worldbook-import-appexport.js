@@ -14,7 +14,13 @@ async function handleWbFileUpload(event) {
     btn.disabled = true;
 
     const ext = file.name.split('.').pop().toLowerCase();
-    const defaultCategory = activeWbCategoryFilter || ''; // 如果当前正在某个标签组筛选下导入，条目默认带上这个分类
+    // 如果当前正在某个标签组筛选下导入，条目默认带上这个分类。
+    // ⚠️ 必须排除 '__uncategorized__'：那是"未分类"这个虚拟筛选项的哨兵值，不是真分类名
+    //（见 06 文件里 activeWbCategoryFilter 的注释）。漏掉它的话，在"未分类"筛选下导入的条目
+    // 会被打上字面量分类 "__uncategorized__"，这个内部字符串还会被 confirmWbImportAll()
+    // 当成真分类塞进 worldbookCategories 显示在分类栏里；而且这些条目因为 category 非空，
+    // 反而从"未分类"里消失了，跟用户的直觉正好相反。
+    const defaultCategory = (activeWbCategoryFilter && activeWbCategoryFilter !== '__uncategorized__') ? activeWbCategoryFilter : '';
 
     try {
         let parsedList = [];

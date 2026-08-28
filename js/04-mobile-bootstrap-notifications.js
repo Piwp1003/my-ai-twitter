@@ -22,7 +22,9 @@ function closeDrawer() {
 function openMobileTrendsView() {
     hideAllViews();
     closeDrawer();
-    const mtEl = document.getElementById('mobileTopTitle'); if (mtEl) mtEl.innerText = '话题';
+    // 同 switchMainView：id 是 mtbCenterTitle，不是 mobileTopTitle（写错的那个恒为 null）
+    const mtEl = document.getElementById('mtbCenterTitle');
+    if (mtEl) { mtEl.innerText = '话题'; mtEl.style.display = 'flex'; }
     document.getElementById('view-mobile-trends').style.display = 'block';
     const m = document.getElementById('mnav-search'); if (m) m.className = 'mnav-item active';
     renderMobileTrends();
@@ -115,6 +117,7 @@ function updateAllRelativeTimes() { document.querySelectorAll('.time-updater').f
 
 // 角色状态自动流动的后台守护代码
 async function checkAndFlowSchedules() {
+    if (typeof isAutoOn === 'function' && !isAutoOn('scheduleFlow')) return;   // 🔌 设置里关掉了「角色状态跟日程流动」
     const api = getApiConfig(true); 
     if (!api.key) return;
     const now = Date.now();
@@ -147,6 +150,7 @@ function updateCharSelects() {
         if (oldVal && selRole.querySelector(`option[value="${oldVal}"]`)) selRole.value = oldVal;
         updateUserPostAvatar();
     }
+    if (typeof populateAnonPostRoleSelect === 'function') populateAnonPostRoleSelect(); // 论坛发帖身份下拉框
     const anonSel = document.getElementById('anonCharSelect');
     if(anonSel) {
         let oldVal = anonSel.value;
@@ -252,6 +256,8 @@ function toggleSettingsCollapse(id) {
     const isOpen = el.style.display === 'block';
     el.style.display = isOpen ? 'none' : 'block';
     if (arrow) arrow.innerText = isOpen ? '▶' : '▼';
+    // 自动功能开关那一块是 JS 动态生成的，展开的时候才画（也保证每次展开看到的都是最新状态）
+    if (!isOpen && id === 'collapse-auto-features' && typeof renderAutoFeatureList === 'function') renderAutoFeatureList();
 }
 
 // 打包成APK后"只能拍照、选不了相册/文件"的根本原因：Android 6.0+ 光在 manifest 里声明权限是不够的，
@@ -519,13 +525,14 @@ function getFullDataSnapshot() {
     return {
         myApiUrl, myApiKey, myModel, subApiUrl, subApiKey, subModel, vecApiUrl, vecApiKey, lastWorkingModel, lastWorkingSubModel, quietHoursEnabled, quietHoursStart, quietHoursEnd, samplerTemperature, samplerTopP, samplerFrequencyPenalty, samplerPresencePenalty, samplerTopK,
         myCharacters, globalPosts, anonPosts, characterGroups, factionColors, charRelationships, relationshipTypePresets, statusTypes, globalEmoticons, worldbooks, worldbookCategories, globalChats, groupChats, currentUser, tabloidAccount, trendingTags,
-        globalBgImage, globalBgOpacity, allowActionTags, humanFeelEnabled, tpesEnabled, autoRenderStatusChips, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, commentWordLimit, chatMsgCountMin, chatMsgCountMax, chatReplyStyleMode, chatSummaryInterval, groupSummaryInterval, postMemoryInterval, chatListViewMode, pinnedSessionIds,
+        globalBgImage, globalBgOpacity, allowActionTags, humanFeelEnabled, tpesEnabled, autoRenderStatusChips, showStatusInPosts, showStatusInComments, showStatusInDiary, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, commentWordLimit, chatMsgCountMin, chatMsgCountMax, chatReplyStyleMode, chatSummaryInterval, groupSummaryInterval, postMemoryInterval, chatListViewMode, pinnedSessionIds,
         letterReplyDelayMin, letterReplyDelayMax, globalUserDiaries,
         globalNovels, storySessions, novelCustomCSS, globalCustomCSS, tabloidPosts, siteLogoImg,
         forumThreads,
         npcReplyProb, npcReplyMaxCount,
         regexScripts, enableVectorMemory, enableChatScriptExecution, embeddingModel, dataBank, darkTheme, enableBrowserNotifications, enableCharMoveToChat, showNovelReasoning, showNovelFloorNumber, showNovelThinkingTime,
-        worldbookCharBudget, semanticCharBudget, chatHistoryTurns,
+        worldbookCharBudget, semanticCharBudget, chatHistoryTurns, charInteractMaxCount,
+        gyTokenStats, autoFeatureSwitches,
         plugins, aiPresets, userPersonas, npcIdentities,
         cloudSyncEnabled, cloudWorkerUrl, cloudAuthToken, ntfyTopic,
         clickEffectEnabled, clickEffectStyle, clickEffectCustomImage,
@@ -674,6 +681,9 @@ async function loadAllData() {
                 if (parsed.humanFeelEnabled !== undefined) humanFeelEnabled = parsed.humanFeelEnabled;
                 if (parsed.tpesEnabled !== undefined) tpesEnabled = parsed.tpesEnabled;
                 if (parsed.autoRenderStatusChips !== undefined) autoRenderStatusChips = parsed.autoRenderStatusChips;
+                if (parsed.showStatusInPosts !== undefined) showStatusInPosts = parsed.showStatusInPosts;
+                if (parsed.showStatusInComments !== undefined) showStatusInComments = parsed.showStatusInComments;
+                if (parsed.showStatusInDiary !== undefined) showStatusInDiary = parsed.showStatusInDiary;
                 if (parsed.enableScheduleAutoCheck !== undefined) enableScheduleAutoCheck = parsed.enableScheduleAutoCheck;
                 if (parsed.enableAffinitySystem !== undefined) enableAffinitySystem = parsed.enableAffinitySystem;
                 // 兼容旧版单开关
@@ -699,7 +709,10 @@ async function loadAllData() {
                 if (parsed.postMemoryInterval !== undefined) postMemoryInterval = parsed.postMemoryInterval;
                 if (parsed.npcReplyProb !== undefined) npcReplyProb = parsed.npcReplyProb;
                 if (parsed.npcReplyMaxCount !== undefined) npcReplyMaxCount = parsed.npcReplyMaxCount;
-                if (parsed.regexScripts) regexScripts = parsed.regexScripts;
+                // migrateRegexScriptTrueEnd 定义在 js/15，比这里晚加载，但读档是在 onload 之后跑的，
+                // 那时候所有模块都已经就位；万一顺序有变也不能让整个读档挂掉，所以加一层存在性判断。
+                if (parsed.regexScripts) regexScripts = (typeof migrateRegexScriptTrueEnd === 'function')
+                    ? migrateRegexScriptTrueEnd(parsed.regexScripts) : parsed.regexScripts;
                 if (parsed.enableVectorMemory !== undefined) enableVectorMemory = parsed.enableVectorMemory;
                 if (parsed.enableChatScriptExecution !== undefined) enableChatScriptExecution = parsed.enableChatScriptExecution;
                 if (parsed.embeddingModel) embeddingModel = parsed.embeddingModel;
@@ -709,6 +722,9 @@ async function loadAllData() {
                 if (parsed.worldbookCharBudget) worldbookCharBudget = parsed.worldbookCharBudget;
                 if (parsed.semanticCharBudget) semanticCharBudget = parsed.semanticCharBudget;
                 if (parsed.chatHistoryTurns) chatHistoryTurns = parsed.chatHistoryTurns;
+                if (parsed.charInteractMaxCount !== undefined) charInteractMaxCount = parsed.charInteractMaxCount;
+                if (parsed.gyTokenStats && parsed.gyTokenStats.total) gyTokenStats = parsed.gyTokenStats;
+                if (parsed.autoFeatureSwitches && typeof parsed.autoFeatureSwitches === 'object') autoFeatureSwitches = parsed.autoFeatureSwitches;
                 if (parsed.plugins) plugins = parsed.plugins;
                 if (parsed.aiPresets) aiPresets = parsed.aiPresets;
                 if (parsed.userPersonas) userPersonas = parsed.userPersonas;
@@ -732,6 +748,7 @@ async function loadAllData() {
                     letterReplyDelayMinInput: letterReplyDelayMin, letterReplyDelayMaxInput: letterReplyDelayMax,
                     globalBgOpacityInput: globalBgOpacity,
                     npcProbInput: npcReplyProb, npcMaxCountInput: npcReplyMaxCount,
+                    charInteractMaxInput: charInteractMaxCount,
                     samplerTemperature: samplerTemperature, samplerTopP: samplerTopP,
                     samplerFrequencyPenalty: samplerFrequencyPenalty, samplerPresencePenalty: samplerPresencePenalty,
                     samplerTopK: samplerTopK
@@ -748,6 +765,9 @@ async function loadAllData() {
                 if (document.getElementById('humanFeelEnabled')) document.getElementById('humanFeelEnabled').checked = humanFeelEnabled;
                 if (document.getElementById('tpesEnabled')) document.getElementById('tpesEnabled').checked = tpesEnabled;
                 if (document.getElementById('autoRenderStatusChips')) document.getElementById('autoRenderStatusChips').checked = autoRenderStatusChips;
+                if (document.getElementById('showStatusInPosts')) document.getElementById('showStatusInPosts').checked = showStatusInPosts;
+                if (document.getElementById('showStatusInComments')) document.getElementById('showStatusInComments').checked = showStatusInComments;
+                if (document.getElementById('showStatusInDiary')) document.getElementById('showStatusInDiary').checked = showStatusInDiary;
                 if (document.getElementById('enableScheduleAutoCheck')) document.getElementById('enableScheduleAutoCheck').checked = enableScheduleAutoCheck;
                 if (document.getElementById('enableAffinitySystem')) document.getElementById('enableAffinitySystem').checked = enableAffinitySystem;
                 if (document.getElementById('enableTypingIndicator')) document.getElementById('enableTypingIndicator').checked = enableTypingIndicator;
@@ -993,11 +1013,26 @@ function toggleCharReplyToUser(charId, checked) {
 
 // 切换"聊天回复条数/长度模式"时，经典模式下"最少~最多条数"这两个输入框不生效，直接隐藏掉，
 // 免得用户以为调了这两个数字就能影响经典模式的行为（经典模式条数是写死的随机1~4条，不受这两个设置控制）。
-function toggleChatReplyStyleFieldsVisibility() {
+// ⚠️ 这个函数同时被两种场景调用，行为必须分开：
+//   · 用户手动改下拉框（onchange）→ 要真正把模式应用下去
+//   · 读档后同步界面（loadAllData）→ 只调整显示，不要反过来去写变量
+// 之前它只管隐藏/显示那两个输入框，**没有把选中的模式写进 chatReplyStyleMode**。
+// 于是用户在下拉框里选了"经典模式"，界面看着已经切了、条数输入框也收起来了，
+// 但只要没去点"保存设置"，实际生成用的还是旧模式——界面和行为对不上，
+// 用户会以为"模式自己在变"。现在改选就立刻生效并存档，不再依赖那颗保存按钮。
+function toggleChatReplyStyleFieldsVisibility(applyToState = false) {
     const sel = document.getElementById('chatReplyStyleModeSelect');
     const fields = document.getElementById('chatReplyLimitedFields');
-    if (!sel || !fields) return;
-    fields.style.display = sel.value === 'classic' ? 'none' : '';
+    if (!sel) return;
+    if (fields) fields.style.display = sel.value === 'classic' ? 'none' : '';
+    if (applyToState) {
+        chatReplyStyleMode = sel.value === 'classic' ? 'classic' : 'limited';
+        saveAllData();
+        if (typeof showToast === 'function') {
+            showToast('<div class="avatar" style="width:40px;height:40px;">💬</div>', '回复模式已切换',
+                chatReplyStyleMode === 'classic' ? '经典模式：随机1~4条，不限字数' : '可控字数模式：按总字数封顶', null, null);
+        }
+    }
 }
 
 function saveSettings() {
@@ -1022,6 +1057,9 @@ function saveSettings() {
     humanFeelEnabled = document.getElementById('humanFeelEnabled').checked;
     tpesEnabled = document.getElementById('tpesEnabled').checked;
     autoRenderStatusChips = document.getElementById('autoRenderStatusChips') ? document.getElementById('autoRenderStatusChips').checked : true;
+    showStatusInPosts = document.getElementById('showStatusInPosts')?.checked ?? true;
+    showStatusInComments = document.getElementById('showStatusInComments')?.checked ?? true;
+    showStatusInDiary = document.getElementById('showStatusInDiary')?.checked ?? true;
     enableScheduleAutoCheck = document.getElementById('enableScheduleAutoCheck').checked;
     enableTypingIndicator = document.getElementById('enableTypingIndicator').checked;
     enableMiniGameCharSpeech = document.getElementById('enableMiniGameCharSpeech')?.checked ?? true;
@@ -1035,11 +1073,18 @@ function saveSettings() {
     worldbookCharBudget = Math.max(200, parseInt(document.getElementById('worldbookCharBudgetInput')?.value) || 2000);
     semanticCharBudget = Math.max(200, parseInt(document.getElementById('semanticCharBudgetInput')?.value) || 1200);
     chatHistoryTurns = Math.max(2, parseInt(document.getElementById('chatHistoryTurnsInput')?.value) || 20);
-    chatReplyStyleMode = document.getElementById('chatReplyStyleModeSelect')?.value === 'classic' ? 'classic' : 'limited';
+    // ⚠️ 必须先判断下拉框在不在。原来写的是 `getElementById(...)?.value === 'classic' ? 'classic' : 'limited'`，
+    // 元素一旦取不到（?.value 得到 undefined）就会静默地把模式重置成 'limited'——本来只想保存别的设置，
+    // 结果顺手把用户选的经典模式改掉了。取不到就保持现有值不动才对。
+    const chatModeSel = document.getElementById('chatReplyStyleModeSelect');
+    if (chatModeSel) chatReplyStyleMode = chatModeSel.value === 'classic' ? 'classic' : 'limited';
     npcReplyProb = parseFloat(document.getElementById('npcProbInput').value);
     if (isNaN(npcReplyProb)) npcReplyProb = 0.4; 
     npcReplyMaxCount = parseInt(document.getElementById('npcMaxCountInput').value); 
     if (isNaN(npcReplyMaxCount)) npcReplyMaxCount = 3;
+    // 💰 每条帖子最多几个角色来互动（0＝不限）。这个数字直接决定发一条推文要发几次 API 请求。
+    charInteractMaxCount = parseInt(document.getElementById('charInteractMaxInput').value);
+    if (isNaN(charInteractMaxCount) || charInteractMaxCount < 0) charInteractMaxCount = 5;
     
     globalCustomCSS = document.getElementById('globalCSSInput').value;
     applyGlobalCSS();
@@ -1551,6 +1596,13 @@ function gySetupInputWatchdog() {
             if (r.width === 0 || r.height === 0) return;
             const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
             if (!hit || hit === input || input.contains(hit) || hit.contains(input)) return;
+
+            // ⚠️ 先排除"本来就该盖住"的情况：抽屉菜单是用户自己点开的，它当然会盖住下面的输入框，
+            // 这不是 bug，不该刷警告（之前会报 <a class="mdrawer-item"> 挡住输入框，就是这个误报）。
+            // 同理还有正常打开的弹窗——只要它是可见的、有内容的，就是用户自己要看的东西。
+            const drawer = hit.closest ? hit.closest('.mobile-drawer, .mobile-drawer-overlay') : null;
+            if (drawer && drawer.classList.contains('open')) return;
+            if (drawer && parseFloat(getComputedStyle(drawer).left || '0') >= 0) return; // 抽屉已滑出（left 从负值变成 0）
 
             // 输入框被挡住了。先收掉已知的"忘了关"的残留浮层
             let fixed = '';

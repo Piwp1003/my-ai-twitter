@@ -79,13 +79,54 @@ function startDragResize(e, handleEl, minHeight, maxHeight) {
 // 所以这里改用JS实时量出"当前真正看得见的高度"(visualViewport优先，更准)，
 // 写成一个CSS变量--app-vh，样式表里用它代替写死的100vh。
 (function () {
+    var baseH = 0; // 记下"键盘没弹出来时"的可视高度，用来判断键盘是不是弹出来了
+
     function setAppVH() {
         var h = (window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : window.innerHeight;
         document.documentElement.style.setProperty('--app-vh', (h * 0.01) + 'px');
+
+        // 键盘检测：可视高度比"正常高度"矮了 15% 以上，就认为软键盘顶上来了。
+        // 用比例而不是固定像素，是因为各机型屏幕高度差很多；15% 这个阈值能躲开
+        // 浏览器地址栏收起/展开那种几十像素的小变化，只有真键盘才会让高度掉这么多。
+        if (h > baseH) baseH = h;
+        var kb = baseH > 0 && h < baseH * 0.85;
+        document.body.classList.toggle('keyboard-open', kb);
     }
+
+    // 顶栏上方的安全区高度。
+    // 🐛 修复"顶部栏上面白了一大条"：CSS 里原来直接吃 env(safe-area-inset-top)，
+    // 但打包成 App 之后，5+ 的 WebView 在**非沉浸式**状态栏下本来就已经从状态栏下面开始画了，
+    // 这时候 env() 有些机型还会照报一个状态栏高度，于是白边被算了两遍。
+    // 5+ 自己有准确答案：isImmersedStatusbar() 告诉我们要不要让位，getStatusbarHeight() 给出真实高度。
+    // 拿到就写进 --app-safe-top，CSS 优先用它；网页/PWA 环境没有 plus，回落到 env()，行为不变。
+    // 底部导航栏的真实高度。CSS 里它是 56px+安全区，但聊天页和 .main-content 一直按 68px 预留，
+    // 差的这 12px 就是"聊天页底下露出一条页面背景"的原因。与其到处写死数字、改一处忘一处，
+    // 不如直接量出来写进 --app-nav-h，样式里统一引用。
+    function setNavHeight() {
+        try {
+            const nav = document.getElementById('mobileBottomNav');
+            if (!nav) return;
+            const h = nav.getBoundingClientRect().height;
+            if (h > 0) document.documentElement.style.setProperty('--app-nav-h', h + 'px');
+        } catch (e) { /* 量不到就用 CSS 里的默认值 */ }
+    }
+
+    function setSafeTop() {
+        try {
+            if (!window.plus || !plus.navigator) return;
+            var immersed = plus.navigator.isImmersedStatusbar ? plus.navigator.isImmersedStatusbar() : false;
+            var top = immersed && plus.navigator.getStatusbarHeight ? plus.navigator.getStatusbarHeight() : 0;
+            document.documentElement.style.setProperty('--app-safe-top', top + 'px');
+        } catch (e) { /* 拿不到就维持 CSS 里 env() 的默认行为 */ }
+    }
+
     setAppVH();
+    setSafeTop();
+    setNavHeight();
+    window.addEventListener('load', setNavHeight); // 首屏样式还没算完时量出来是 0，load 之后再量一次
     window.addEventListener('resize', setAppVH);
-    window.addEventListener('orientationchange', setAppVH);
+    window.addEventListener('orientationchange', function () { setAppVH(); setSafeTop(); setNavHeight(); });
+    document.addEventListener('plusready', setSafeTop); // App 环境下 plus 是异步就绪的，这里再补一次
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', setAppVH);
         window.visualViewport.addEventListener('scroll', setAppVH);
@@ -222,11 +263,13 @@ function confirmCrop() {
 function updateSiteLogo() {
     const container = document.getElementById('siteLogoContainer');
     const signatureHTML = `<div class="app-signature" style="margin:0;">由 林 制作</div>`;
-    if (siteLogoImg) {
-        container.innerHTML = `<img src="${siteLogoImg}" style="height:126px; width:auto; display:block; object-fit:contain; cursor:pointer;">${signatureHTML}`;
-    } else {
-        container.innerHTML = `<img src="./icons/icon-192.png" alt="谷雨" style="height:126px; width:auto; display:block; object-fit:contain; cursor:pointer;">${signatureHTML}`;
-    }
+    // onerror：logo 图片取不到时把自己藏掉，只留下面那行署名。
+    // 打包进 App / 拷到别的目录时 icons/ 偶尔会漏带，少一张装饰图不该留个裂图占位，
+    // 也不该在控制台里反复刷"资源加载失败"。自定义 logo 同理（用户可能删了那张图）。
+    const imgStyle = `height:126px; width:auto; display:block; object-fit:contain; cursor:pointer;`;
+    const onErr = `this.style.display='none'`;
+    const src = siteLogoImg || './icons/icon-192.png';
+    container.innerHTML = `<img src="${src}" alt="谷雨" style="${imgStyle}" onerror="${onErr}">${signatureHTML}`;
 }
 
 
@@ -280,6 +323,12 @@ let novelSourceSelection = { continuation: new Set(), diary: new Set(), chat: ne
 let humanFeelEnabled = true; // 人味强化协议：反套路/反回声/情绪校准，注入所有角色生成的系统提示词最前面
 let tpesEnabled = true; // TPES 时间感知增强系统：让角色对真实时间流逝有感知
 let autoRenderStatusChips = true; // 通用方括号状态栏识别：把 [标签|值...] 格式的AI输出自动渲染成好看的状态行，不区分具体标签名
+// 状态栏分场景开关：总开关 autoRenderStatusChips 之下，再按「推文 / 评论」分别控制。
+// 有些角色卡的状态栏字段特别多（脑内、想舔哪、搜索记录……），刷在时间线上太挤，
+// 但在聊天/日记里又想留着，所以拆成三个开关而不是一刀切。
+let showStatusInPosts = true;     // 推文正文里是否渲染状态栏
+let showStatusInComments = true;  // 评论/跟帖里是否渲染状态栏
+let showStatusInDiary = true;     // 日记/信件里是否渲染状态栏
 // 故事功能 / 角色专属世界书选择列表：各自独立的"当前分类筛选值"+"待保存勾选集合"。
 // 用Set单独跟踪勾选状态而不是直接读DOM的:checked，是因为这两处列表现在也能像世界书主页一样按分类筛选，
 // 切换分类会重新渲染列表、把不在当前分类下的世界书从DOM里隐藏掉——如果还是保存时才去读DOM :checked，
@@ -319,6 +368,50 @@ const CLOUD_SYNC_MIN_INTERVAL = 3 * 60000; // 两次同步之间至少间隔3分
 let worldbookCharBudget = 2000;   // 世界书正文最多占用的字数（超过预算的低优先级条目会被自动跳过，不影响关键设定）
 let semanticCharBudget = 1200;    // 向量记忆 + 资料库检索结果最多占用的字数
 let chatHistoryTurns = 20;        // 每次请求带入的最近聊天轮数（原来10条太短，跟每20条自动总结一次的周期对不上，容易在10条左右出现"原始上下文刚断层、总结里的旧话题却还杵在prompt里"导致话题跳回旧内容的问题，调大到20缓解断层）
+// 💰 每条帖子最多让几个角色来互动。0 = 不限（改造前的行为）。
+// 这是整个app里最影响 API 花费的一个数字：发推/发论坛贴那条路以前是 `for (let char of myCharacters)`，
+// 角色库里有几个角色就发几次请求，每次都要带上那个角色的完整人设+世界书+预设（实测单次约 5900 字）。
+// 27 个角色时，发一条推文＝30 次调用、约 9 万 token，其中 98% 花在这个循环上，而且角色越多越贵、线性增长。
+let charInteractMaxCount = 5;
+
+// 从候选角色里按"跟这条内容的相关度"挑最多 n 个出来互动。
+// 排序思路是"谁最该出现在这条帖子的评论区"：
+//   1) 正文里点名/@到的（名字或handle出现在文本里）—— 明确被叫到的人绝对不能被挤掉
+//   2) 关系网里跟发帖人有连线的 —— 有关系的人才会关注彼此的动态
+//   3) 最近跟用户聊过天的 —— 正在热络的人自然更活跃
+//   4) 已关注的
+//   5) 其余随机（每次随机，保证冷门角色也轮得到，不会永远是同几个人刷屏）
+// 同一档次内部随机打散，避免每次都是角色列表里靠前的那几个。
+function pickInteractingChars(candidates, contextText, authorId) {
+    const list = (candidates || []).filter(Boolean);
+    const n = (typeof charInteractMaxCount === 'number') ? charInteractMaxCount : 0;
+    if (!n || n <= 0 || list.length <= n) return list;   // 0＝不限；本来就不超额也不用挑
+    const text = String(contextText || '');
+    const now = Date.now();
+    const scored = list.map(c => {
+        let score = 0;
+        try {
+            const handle = String(c.handle || '').replace('@', '');
+            if (c.name && text.indexOf(c.name) !== -1) score += 1000;
+            if (handle && text.toLowerCase().indexOf('@' + handle.toLowerCase()) !== -1) score += 1000;
+            if (typeof charRelationships !== 'undefined' && Array.isArray(charRelationships) && authorId !== undefined) {
+                if (charRelationships.some(r => (String(r.fromId) === String(c.id) && String(r.toId) === String(authorId))
+                                             || (String(r.toId) === String(c.id) && String(r.fromId) === String(authorId)))) score += 300;
+            }
+            const chat = (typeof globalChats !== 'undefined' && globalChats) ? globalChats[c.id] : null;
+            if (chat && chat.length) {
+                const last = chat[chat.length - 1].timestamp || 0;
+                const days = (now - last) / 86400000;
+                if (days < 1) score += 200; else if (days < 3) score += 120; else if (days < 7) score += 60;
+            }
+            if (c.isFollowing) score += 40;
+            if (c.isSpecialFollow) score += 30;
+        } catch (e) { /* 单个角色数据异常不影响整体挑选 */ }
+        return { c, score, r: Math.random() };
+    });
+    scored.sort((a, b) => (b.score - a.score) || (a.r - b.r));
+    return scored.slice(0, n).map(x => x.c);
+}
 let enableScheduleAutoCheck = true; // 日程每日自动检测过期并提醒续写
 let enableAffinitySystem = false; // 好感度数值系统（现在由"好感度系统"插件驱动，这个变量仍会被插件读写）
 let enableTypingIndicator = true; // 正在输入提示/已读状态
@@ -362,6 +455,15 @@ let postMemoryInterval = 20;    // 推文记忆：每N条帖子自动总结一�
 // 提示词后面，把"听谁的"直接挑明说给AI听，避免被预设自带的字数描述带偏。
 const WORD_LIMIT_PRIORITY_NOTE = '如果前文人设、世界书或预设内容里提到了不同的字数要求，一律以这里的字数要求为准。';
 
+// 🐛 经典模式专用的同款声明。
+// 上面那句只挂在"有字数上限"的场景后面，于是经典模式（本来就不设上限）反而成了唯一没人把话挑明的地方：
+// prompt 里前面还留着预设/世界书自带的"控制在xxx字"，后面只有一句"单条不限制字数"跟它对着干，
+// 模型每轮自己挑一个听——这轮听预设的写得又短又碎（看着就像切回了可控字数模式），下轮听经典的又放开写。
+// 用户的体感就是"正常聊天时模式自己在新旧之间来回跳"，而且因为世界书是按关键词触发的，
+// 有时候还真的是聊到某个话题才开始跳，更像"聊着聊着变了"。
+// 这里给经典模式补上对称的一句，把"谁说了算"同样挑明。
+const NO_WORD_LIMIT_PRIORITY_NOTE = '如果前文人设、世界书或预设内容里提到了任何字数要求或字数上限，在这里一律不适用、不要遵守——本条指令优先，这一轮回复不设任何字数上限。';
+
 // 聊天"多段回复指令"文案：主聊天(js/05 triggerAIBatchReply)和角色主动发消息(js/07 sendProactiveChatMessage)
 // 两处原来是各自复制一份几乎一样的长文案，现在收成这一个共享函数——顺便借这个机会实现"回复条数/长度模式"切换：
 // 'classic' 分支的文案是直接照搬旧版本script.js里 triggerAIBatchReply 的原文（条数固定随机1~4条、单条不限字数、
@@ -375,9 +477,24 @@ function getChatMultiReplyBlock() {
         // 误当成要"保留/复述"的那个"原文"，导致回复里混进别的角色人设（1对1和群聊都会中招，因为关系网/世界书
         // 描述其他角色这件事跟是不是群聊无关）。这里在旧版原文前面加一句身份锚点澄清，不改动原文一个字，
         // 只是明确"要保留意图的是你自己想说的话，不是别人的设定"。
-        return `【多段回复指令】\n你自始至终只以你自己的人设身份来回复，不要代入或复述聊天记录、世界书、人物关系网里提到的任何其他角色的人设/口吻/设定——下面这些关于"怎么把话写得自然"的要求，指的是把你自己要说的内容写得更真实自然，不是要你改写、复述或代入别的什么"原文"。\n回复条数随机不固定，单条不限制字数。动作描写必须真实详尽，回复贴近人类自然表达，并保留原文核心信息与核心意图，减少过于规整的完美句式，适当加入不规则表达；融入个性化语言风格，穿插少量口语化表述；打破机械化的段落结构，让整体读起来更真实自然。替换平淡词汇，选用更精准、生动的表达；调整句式结构，让行文更流畅自然，同时强化语言韵律感；统一语言风格并契合使用场景；修正语法、拼写等细节错误，全程保留原文核心信息与核心意图。模仿真实的微信聊天，通过多条消息（随机发送1到4条）和随机的时间间隔发送。\n输出格式【必须严格遵守JSON】，不要包含任何 Markdown 语法、不要带有 \`\`\`json 前缀，不要有任何其他的说明文字；text字段内部如果要出现双引号（比如引用/复述一句话），必须写成转义的 \\" ，不能直接写裸的 " ，否则JSON会解析失败、导致整段代码原样显示出来。如果决定不回复，请直接返回 {"replies": []}。\n格式示例：\n{\n  "replies": [\n    {"delay": 2, "text": "你要这么说的话..."},\n    {"delay": 3, "text": "我可就不困了啊[EMO:emo_123]"}\n  ],\n  "stateUpdate": "打算回去继续睡回笼觉", "statusTypeLabel": "睡觉"\n}`;
+        return `【多段回复指令】\n你自始至终只以你自己的人设身份来回复，不要代入或复述聊天记录、世界书、人物关系网里提到的任何其他角色的人设/口吻/设定——下面这些关于"怎么把话写得自然"的要求，指的是把你自己要说的内容写得更真实自然，不是要你改写、复述或代入别的什么"原文"。\n回复条数随机不固定，单条不限制字数。${NO_WORD_LIMIT_PRIORITY_NOTE}动作描写必须真实详尽，回复贴近人类自然表达，并保留原文核心信息与核心意图，减少过于规整的完美句式，适当加入不规则表达；融入个性化语言风格，穿插少量口语化表述；打破机械化的段落结构，让整体读起来更真实自然。替换平淡词汇，选用更精准、生动的表达；调整句式结构，让行文更流畅自然，同时强化语言韵律感；统一语言风格并契合使用场景；修正语法、拼写等细节错误，全程保留原文核心信息与核心意图。模仿真实的微信聊天，通过多条消息（随机发送1到4条）和随机的时间间隔发送。\n输出格式【必须严格遵守JSON】，不要包含任何 Markdown 语法、不要带有 \`\`\`json 前缀，不要有任何其他的说明文字；text字段内部如果要出现双引号（比如引用/复述一句话），必须写成转义的 \\" ，不能直接写裸的 " ，否则JSON会解析失败、导致整段代码原样显示出来。如果决定不回复，请直接返回 {"replies": []}。\n格式示例：\n{\n  "replies": [\n    {"delay": 2, "text": "你要这么说的话..."},\n    {"delay": 3, "text": "我可就不困了啊[EMO:emo_123]"}\n  ],\n  "stateUpdate": "打算回去继续睡回笼觉", "statusTypeLabel": "睡觉"\n}`;
     }
     return `【多段回复指令】\n回复条数在${chatMsgCountMin}到${chatMsgCountMax}条之间自己决定（不固定，别每次都卡最大值），这几条加起来的总字数不超过${chatWordLimit}字（这是硬性上限，不是必须写满）——自己按内容需要把这个总字数分配到每一条里，可以有长有短，不要求条条都写满。${WORD_LIMIT_PRIORITY_NOTE}模仿真实的微信聊天，通过多条简短消息和随机的时间间隔发送。\n输出格式【必须严格遵守JSON】，不要包含任何 Markdown 语法、不要带有 \`\`\`json 前缀，不要有任何其他的说明文字；text字段内部如果要出现双引号（比如引用/复述一句话），必须写成转义的 \\" ，不能直接写裸的 " ，否则JSON会解析失败、导致整段代码原样显示出来。如果决定不回复，请直接返回 {"replies": []}。\n格式示例：\n{\n  "replies": [\n    {"delay": 2, "text": "你要这么说的话..."},\n    {"delay": 3, "text": "我可就不困了啊[EMO:emo_123]"}\n  ],\n  "stateUpdate": "打算回去继续睡回笼觉", "statusTypeLabel": "睡觉"\n}`;
+}
+
+// 「🔄 侧滑重新生成」单条回复用的指令。它和 getChatMultiReplyBlock 一样，必须跟着
+// "聊天回复条数/长度模式"走。
+// 🐛 修复"聊着聊着模式自己在新旧之间来回跳"：这段文案以前不管什么模式都写死
+// "回复字数不超过 chatWordLimit 字"，于是选了经典模式的用户会看到——正常聊天是旧版那种
+// 想写多长写多长，一旦侧滑重新生成，这一条突然被砍成几十字的短回复，再发下一条又变回旧版。
+// 用户感受到的就是"模式自己在切换"，其实是这一条路径漏掉了模式判断。
+// 注意：重新生成替换的是**一条**气泡，所以这里不套用经典模式"随机发1~4条"的分条要求，
+// 只把"不限字数、写得自然"这部分对齐（真返回多条的话，调用处会用 \n 合并进同一条，不会出错）。
+function getChatRegenReplyBlock() {
+    const lengthRule = chatReplyStyleMode === 'classic'
+        ? NO_WORD_LIMIT_PRIORITY_NOTE + '这一条不限制字数，想写多长写多长；动作描写真实详尽，贴近人类自然表达，少用过于规整的完美句式，适当加入不规则表达和少量口语化表述。'
+        : `回复字数不超过${chatWordLimit}字（这是硬性上限，不是必须写满）。${WORD_LIMIT_PRIORITY_NOTE}`;
+    return `\n【回复指令】\n${lengthRule}输出格式【必须严格遵守JSON】，不要包含任何 Markdown 语法。格式示例：\n{\n  "replies": [\n    {"text": "你想回复的对话或动作"}\n  ],\n  "stateUpdate": "你的内部状态", "statusTypeLabel": "闲"\n}`;
 }
 
 let npcReplyProb = 0.4, npcReplyMaxCount = 3;
@@ -792,8 +909,142 @@ function enhanceNetworkErrorMessage(rawMessage) {
 function isStructuredMessages(content) {
     return Array.isArray(content) && content.length > 0 && content.every(m => m && typeof m === 'object' && typeof m.role === 'string');
 }
+
+// ===================== 📊 Token 用量统计 =====================
+// 记的是**服务商实际返回的 usage**（不是估算），所以跟账单能对得上。
+// 没返回 usage 的服务商（少数中转会吞掉这个字段）才退回按字数估算，并在界面上标出来。
+//
+// 归类靠调用栈：每个功能最终都汇聚到 sendChatRequestRaw / streamCompletionText 这两个出口，
+// 在出口处抓一次调用栈、从里面找出是哪个功能函数发起的。好处是不用去改那 50 多个调用点
+// （改漏一个就统计不到，而且以后新增功能还得记得加），坏处是压缩/内联可能让函数名对不上——
+// 对不上就归到「其它」，不会丢数据、也不会算错总量。
+const GY_FEATURE_MAP = {
+    // 聊天
+    triggerAIBatchReply: '聊天', retriggerLastReply: '聊天', contextActionEditCharMsg: '聊天',
+    triggerNudge: '聊天', sendProactiveChatMessage: '主动找你聊天',
+    refreshLifeStateOnChatEnter: '角色状态/日程', checkAndFlowSchedules: '角色状态/日程',
+    runScheduleGeneration: '角色状态/日程', generateCharAnniversaryNote: '纪念日',
+    checkAndAutoSummarizeChat: '聊天自动总结', checkAndAutoSummarizeGroupChat: '聊天自动总结',
+    // 推文 / 评论
+    userPost: '发推文', executeGenerationInner: '发推文', postCharacterTweet: '发推文',
+    triggerRelatedCharacterReactions: '推文连锁反应', updateCharMemoryAsync: '推文记忆总结',
+    runCharRepliesToComment: '评论区', submitInlineReply: '评论区', retriggerCharComments: '评论区',
+    maybeCharsReactToNpcComments: '评论区', pickInterestedChars: '评论区',
+    spawnNpcComments: 'NPC路人跟帖', npcArgueWithEachOther: 'NPC路人跟帖',
+    // 论坛 / 营销号
+    runCharRepliesToAnonPost: '匿名论坛', autoGenerateAnonPostForChar: '匿名论坛',
+    userAnonPost: '匿名论坛',
+    triggerForumCharReply: '小说论坛', generateNpcForumReplies: '小说论坛',
+    autoGenerateForumThreadForChar: '小说论坛',
+    generateTabloidPost: '营销号', rollTabloidAIParticipation: '营销号', triggerTabloidReactToQuote: '营销号',
+    // 长文本
+    generateNovelChapter: '小说', generateNovelFromSources: '小说',
+    sendSsTurn: '续写', regenSsTurn: '续写',
+    generateDiaryContent: '日记', generateTitledLetterContent: '信件', resolveDiaryReaction: '日记',
+    // 杂项
+    generateRandomGreeting: '随机开场白', aiCompleteCharProfile: '角色资料自动填写',
+    askCharGameInvite: '小游戏', askCharGameEndComment: '小游戏',
+    getSemanticContext: '向量记忆检索', embedMessageInBackground: '向量记忆检索'
+};
+let gyTokenStats = { total: { calls: 0, in: 0, out: 0, cached: 0, estimated: 0 }, byFeature: {}, byDay: {}, since: 0 };
+
+// ===================== 🔌 自动功能开关 =====================
+// 这个 app 里有一批功能是**不用你点任何按钮、自己就会去调 API** 的：定时器到点了、
+// 进某个页面了、发完帖之后连锁触发……好处是"活的"，坏处是钱在你不知道的时候就花出去了。
+// 这里把它们全部列出来，每一项一个独立开关，你想留哪个留哪个。
+//
+// 默认全开＝跟改造前的行为完全一致，不会因为升级就悄悄少了什么。
+// cost 那一栏是实测的量级，只作参考——真实花费还要看你的角色数量、人设长度和世界书大小。
+const AUTO_FEATURE_DEFS = [
+    { key: 'autoPost',        label: '角色自动发帖',         desc: '按每个角色设置的发帖频率，定时自己发推文 / 小说论坛帖 / 匿名论坛帖。', cost: '每次一条帖子一次调用，角色多、频率高就很可观' },
+    { key: 'proactiveChat',   label: '角色主动找你聊天',     desc: '按每个角色设置的主动频率，隔一段时间自己发消息过来。', cost: '每条主动消息一次调用' },
+    { key: 'proactiveLetter', label: '角色主动给你写信',     desc: '角色隔一段时间自己写一封信寄给你。', cost: '每封信一次调用，信件比聊天长很多' },
+    { key: 'letterReply',     label: '信件到点自动回信',     desc: '你寄出去的信，等设定的延迟时间到了自动生成回信。', cost: '每封回信一次调用，信件比聊天长很多' },
+    { key: 'diaryReaction',   label: '角色对你日记的反应',   desc: '你写了日记之后，角色到点自动看到并作出反应。', cost: '每次反应一次调用' },
+    { key: 'scheduleFlow',    label: '角色状态跟日程流动',   desc: '每 15 分钟检查一次，按今日日程更新每个角色"此刻在做什么"。', cost: '每个有日程的角色各一次调用，15 分钟一轮' },
+    { key: 'lifeStateEnter',  label: '进聊天页刷新角色状态', desc: '每次点进一个角色的聊天，自动更新一次 TA 此刻在做什么。', cost: '每次进聊天页一次调用' },
+    { key: 'charTheater',     label: '角色之间的后台小剧场', desc: '每 5 分钟有 30% 概率，让有关系的两个角色在背后自己演一段。', cost: '触发一次一次调用' },
+    { key: 'chatSummary',     label: '聊天自动总结',         desc: '聊天记录攒够设定条数后，自动总结一次存进记忆，防止聊久了失忆。', cost: '每次总结一次调用，但能省下后续每轮的历史长度' },
+    { key: 'postMemory',      label: '推文记忆自动总结',     desc: '角色发够设定条数的推文后，自动总结成"专属推文记忆"。', cost: '每次总结一次调用' },
+    { key: 'relatedReaction', label: '关联角色连锁反应',     desc: '一个角色发言后，关系网里跟 TA 有关的角色自动跟着有反应。', cost: '每个被牵动的角色各一次调用' },
+    { key: 'npcArgue',        label: 'NPC 路人互掐',         desc: 'NPC 路人跟帖之后，让他们之间再互相吵一轮。', cost: '每次一次调用' },
+    { key: 'charReactNpc',    label: '角色回应 NPC 评论',    desc: '路人评论出现后，角色自动下场回应路人。', cost: '挑人一次 + 每个下场的角色各一次' },
+    { key: 'tabloidAuto',     label: '营销号自动参与',       desc: '营销号（小报）账号自动跟进、转发、评论热闹事件。', cost: '每次参与一次调用' },
+    { key: 'postReactions',   label: '发帖后角色自动来互动', desc: '你发完推文/匿名论坛帖之后，角色自动过来评论或点赞。关掉之后帖子就只是安静地发出去，谁也不会自动出现。', cost: '按上面「每条帖子最多几个角色互动」的人数，每人一次调用——这是整个 app 里最贵的一项' }
+];
+let autoFeatureSwitches = {};   // { key: false } 才算关；没记录过的一律当开着（＝改造前行为）
+function isAutoOn(key) {
+    try { return autoFeatureSwitches && autoFeatureSwitches[key] === false ? false : true; }
+    catch (e) { return true; }   // 读取出错宁可让功能照常运行，也不要莫名其妙全哑掉
+}
+
+function gyDetectFeature() {
+    try {
+        const stack = (new Error()).stack || '';
+        const lines = stack.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            const m = lines[i].match(/at\s+(?:async\s+)?([A-Za-z_$][\w$]*)/);
+            if (!m) continue;
+            const label = GY_FEATURE_MAP[m[1]];
+            if (label) return label;
+        }
+    } catch (e) { /* 拿不到调用栈就归到其它，不影响统计总量 */ }
+    return '其它';
+}
+
+// data：服务商返回的原始响应；fallbackChars：拿不到 usage 时用来估算的 {inChars,outChars}
+// feature：功能名。**必须在发请求之前（同步地）用 gyDetectFeature() 取好再传进来**——
+// 等 await 回来之后再抓调用栈，栈已经被异步边界截断了，只会看到一堆 async 内部帧，全都归到「其它」。
+function recordTokenUsage(data, fallbackChars, feature) {
+    try {
+        if (!gyTokenStats || !gyTokenStats.total) gyTokenStats = { total: { calls: 0, in: 0, out: 0, cached: 0, estimated: 0 }, byFeature: {}, byDay: {}, since: 0 };
+        if (!gyTokenStats.since) gyTokenStats.since = Date.now();
+        const u = (data && data.usage) || {};
+        // OpenAI 兼容：prompt_tokens / completion_tokens，缓存命中在 prompt_tokens_details.cached_tokens
+        // Anthropic：input_tokens / output_tokens，缓存命中在 cache_read_input_tokens
+        let inTok = u.prompt_tokens != null ? u.prompt_tokens : (u.input_tokens != null ? u.input_tokens : null);
+        let outTok = u.completion_tokens != null ? u.completion_tokens : (u.output_tokens != null ? u.output_tokens : null);
+        let cached = (u.prompt_tokens_details && u.prompt_tokens_details.cached_tokens) || u.cache_read_input_tokens || 0;
+        // Anthropic 的 input_tokens 不含缓存命中的部分，要加回去才是"这次一共读了多少输入"
+        if (u.input_tokens != null && (u.cache_read_input_tokens || u.cache_creation_input_tokens)) {
+            inTok = u.input_tokens + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+        }
+        let estimated = 0;
+        if (inTok == null && outTok == null) {
+            if (!fallbackChars) return;   // 报错的请求既没 usage 也没内容，不记
+            inTok = Math.ceil((fallbackChars.inChars || 0) / 1.8);
+            outTok = Math.ceil((fallbackChars.outChars || 0) / 1.8);
+            estimated = 1;
+        }
+        if (!feature) feature = gyDetectFeature();
+        const day = new Date().toISOString().slice(0, 10);
+        const bump = (o) => { o.calls++; o.in += (inTok || 0); o.out += (outTok || 0); o.cached += cached; o.estimated += estimated; };
+        const blank = () => ({ calls: 0, in: 0, out: 0, cached: 0, estimated: 0 });
+        bump(gyTokenStats.total);
+        if (!gyTokenStats.byFeature[feature]) gyTokenStats.byFeature[feature] = blank();
+        bump(gyTokenStats.byFeature[feature]);
+        if (!gyTokenStats.byDay[day]) gyTokenStats.byDay[day] = blank();
+        bump(gyTokenStats.byDay[day]);
+        // 只留最近 60 天，不然存档会一直涨
+        const days = Object.keys(gyTokenStats.byDay).sort();
+        while (days.length > 60) delete gyTokenStats.byDay[days.shift()];
+        // 统计本身不值得为它单独写一次存档（saveAllData 是全量结构化克隆，很重），
+        // 攒够一批再落盘；真正的存档时机由各功能自己的 saveAllData 顺带带走。
+        gyTokenStats.__dirty = (gyTokenStats.__dirty || 0) + 1;
+        if (gyTokenStats.__dirty >= 10 && typeof saveAllData === 'function') { gyTokenStats.__dirty = 0; saveAllData(); }
+    } catch (e) { console.warn('[Token统计] 记录失败（不影响正常使用）：', e); }
+}
+function gyContentChars(content) {
+    try {
+        if (typeof content === 'string') return content.length;
+        if (Array.isArray(content)) return content.reduce((s, m) => s + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content || '').length), 0);
+        return 0;
+    } catch (e) { return 0; }
+}
 async function sendChatRequestRaw(api, content, extraBody) {
     extraBody = extraBody || {};
+    // 📊 功能归类必须在这里同步取——下面一 await，调用栈就断了（见 recordTokenUsage 的说明）
+    const __gyFeature = gyDetectFeature();
     const messages = isStructuredMessages(content) ? content : [{ role: "user", content: content }];
     if (isAnthropicApiUrl(api.url)) {
         try {
@@ -801,7 +1052,15 @@ async function sendChatRequestRaw(api, content, extraBody) {
             let restMsgs = messages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: convertContentForAnthropic(m.content) }));
             if (restMsgs.length === 0) restMsgs = [{ role: 'user', content: '（请继续。）' }];
             const anthropicBody = Object.assign({ model: api.model, max_tokens: 4096, messages: restMsgs }, getSamplerExtraBody(true), extraBody);
-            if (systemText) anthropicBody.system = systemText;
+            // 💰 提示词缓存：system 块（人设+世界书+预设，动辄五六千字）每次请求都一模一样地重发一遍。
+            // Anthropic 支持显式标记要缓存的部分，命中之后这一段的输入价格只要 1 折。
+            // 用数组形式的 system 才能挂 cache_control；纯字符串是挂不上的。
+            // 太短的内容不值得（也达不到服务商的最小缓存长度），所以只在够长时才标记。
+            if (systemText) {
+                anthropicBody.system = (systemText.length >= 2000)
+                    ? [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
+                    : systemText;
+            }
             const res = await smartFetch(`${api.url}/v1/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': api.key, 'anthropic-version': '2023-06-01' },
@@ -818,6 +1077,7 @@ async function sendChatRequestRaw(api, content, extraBody) {
             const thinkingText = blocks.filter(b => b && b.type === 'thinking' && b.thinking).map(b => b.thinking).join('\n\n');
             let text = textBlock.text || '';
             if (thinkingText) text = `<think>${thinkingText}</think>${text}`;
+            recordTokenUsage(data, { inChars: gyContentChars(content), outChars: text.length }, __gyFeature);
             return { choices: [{ message: { content: text } }] };
         } catch (e) {
             return { error: { message: enhanceNetworkErrorMessage(e.message) } };
@@ -839,6 +1099,10 @@ async function sendChatRequestRaw(api, content, extraBody) {
             const reasoningText = msg && (msg.reasoning_content || msg.reasoning);
             if (msg && reasoningText) msg.content = `<think>${reasoningText}</think>${msg.content || ''}`;
         } catch (e) { /* 拼接失败就算了，不影响正文本身的返回 */ }
+        try {
+            const outText = (raw && raw.choices && raw.choices[0] && raw.choices[0].message && raw.choices[0].message.content) || '';
+            if (!raw || !raw.error) recordTokenUsage(raw, { inChars: gyContentChars(content), outChars: String(outText).length }, __gyFeature);
+        } catch (e) { /* 统计失败不影响返回 */ }
         return raw;
     } catch (e) {
         return { error: { message: enhanceNetworkErrorMessage(e.message) } };
@@ -941,6 +1205,7 @@ async function callChatCompletionAPI(api, promptContent, maxRetries = 2, images 
 // signal：可选，传入 AbortController.signal 时支持中途取消（比如续写"取消"按钮）——原生App通道
 // (plus.net.XMLHttpRequest) 不支持真正中断，取消功能在那种环境下不生效，只在普通浏览器/webview里有效。
 async function streamCompletionText(api, promptContent, onDelta, images = null, signal = null) {
+    const __gyFeature = gyDetectFeature();   // 同上：必须在任何 await 之前取
     const isNativeApp = typeof window !== 'undefined' && window.plus && window.plus.net && window.plus.net.XMLHttpRequest;
     // 用户在设置里关掉了流式：走跟原生App壳子完全一样的那条路——发普通请求，
     // 拿到完整文字后一次性回调一次。所有调用方（续写工作台、酒馆桥接的 generate）
@@ -980,7 +1245,12 @@ async function streamCompletionText(api, promptContent, onDelta, images = null, 
             let restMsgs = messages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: convertContentForAnthropic(m.content) }));
             if (restMsgs.length === 0) restMsgs = [{ role: 'user', content: '（请继续。）' }];
             const anthropicBody = Object.assign({ model: api.model, max_tokens: 4096, messages: restMsgs, stream: true }, getSamplerExtraBody(true));
-            if (systemText) anthropicBody.system = systemText;
+            // 跟非流式那条分支保持一致：system 块够长就打上缓存标记，命中后这一段输入只按 1 折计费
+            if (systemText) {
+                anthropicBody.system = (systemText.length >= 2000)
+                    ? [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
+                    : systemText;
+            }
             res = await fetch(`${api.url}/v1/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': api.key, 'anthropic-version': '2023-06-01' },
@@ -991,7 +1261,10 @@ async function streamCompletionText(api, promptContent, onDelta, images = null, 
             res = await fetch(`${api.url}/chat/completions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${api.key}` },
-                body: JSON.stringify(Object.assign({ model: api.model, messages: messages, stream: true }, getSamplerExtraBody(false))),
+                // stream_options.include_usage：OpenAI 兼容接口在流式模式下**默认不返回 usage**，
+                // 加上这个才会在最后多推一个只带 usage 的分片，Token 统计才能拿到真实用量
+                // （不支持这个字段的中转会直接忽略它，不影响正常返回；拿不到就退回按字数估算）。
+                body: JSON.stringify(Object.assign({ model: api.model, messages: messages, stream: true, stream_options: { include_usage: true } }, getSamplerExtraBody(false))),
                 signal: signal || undefined
             });
         }
@@ -1008,6 +1281,7 @@ async function streamCompletionText(api, promptContent, onDelta, images = null, 
         const reader = res.body.getReader();
         const decoder = new TextDecoder('utf-8');
         let buffer = '', fullText = '', fullReasoning = '', rawAll = '';
+        let streamUsage = null;   // 流式的真实用量：OpenAI 在最后一个分片给，Anthropic 分两次给（message_start / message_delta）
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -1024,6 +1298,12 @@ async function streamCompletionText(api, promptContent, onDelta, images = null, 
                 let evt;
                 try { evt = JSON.parse(dataStr); } catch (e) { continue; } // 个别心跳/不完整行直接跳过，不影响后面正常的数据
                 let deltaText = '';
+                // 📊 用量分片：Anthropic 在 message_start 里给输入、message_delta 里给输出；
+                // OpenAI 兼容接口是在最后单独推一个 choices 为空、只带 usage 的分片。
+                if (evt.usage || (evt.message && evt.message.usage)) {
+                    const u = evt.usage || evt.message.usage;
+                    streamUsage = Object.assign({}, streamUsage || {}, u);
+                }
                 if (isAnthropic) {
                     if (evt.type === 'content_block_delta' && evt.delta && evt.delta.type === 'text_delta') deltaText = evt.delta.text || '';
                     // 扩展思考模式下，流式返回里思考内容是单独一种 delta（thinking_delta），跟正文的 text_delta 分开推送
@@ -1061,6 +1341,7 @@ async function streamCompletionText(api, promptContent, onDelta, images = null, 
         // 思维链拼进正文最前面（跟非流式的两个分支保持同样的<think>包裹格式），交给下游统一的
         // extractLeadingReasoning/processReasoningInText 处理，折叠展示/直接删除都按当前设置来。
         const finalText = fullReasoning ? `<think>${fullReasoning}</think>${fullText}` : fullText;
+        recordTokenUsage(streamUsage ? { usage: streamUsage } : null, { inChars: gyContentChars(messages), outChars: finalText.length }, __gyFeature);
         onDelta(finalText, true);
         return { choices: [{ message: { content: finalText } }] };
     } catch (e) {
@@ -1495,6 +1776,23 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// escapeHtml 只处理 < > &，够用来做"显示文本"，但拿去填 HTML【属性值】还不够——
+// 文本里一个引号就能把属性提前截断（value="老王's笔记" 会在撇号处断掉）。
+// 这个版本额外把双引号和单引号也转成实体，专门用于 value="..." / title="..." 这类地方。
+function escapeAttr(str) {
+    return escapeHtml(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// 最麻烦的一种：要把一段文本塞进 onclick="fn('这里')" 这种【属性里的 JS 字符串字面量】。
+// 得转两层，顺序不能反：
+//   1) 先按 JS 字符串转义（反斜杠和单引号加反斜杠），否则撇号会提前结束 JS 字符串；
+//   2) 再按 HTML 属性转义，否则引号会提前结束 HTML 属性。
+// 浏览器解析时正好反着来：先把实体解码回 \'，再交给 JS 解析成一个普通撇号。
+function escapeJsArg(str) {
+    if (str === null || str === undefined) return '';
+    return escapeAttr(String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+}
+
 // ===================== 聊天/匿名论坛专用：纯文本渲染 =====================
 // 需求背景：角色卡自带的HTML状态栏卡片、预设脚本/正则里写死的HTML代码，之前在聊天气泡和匿名论坛里
 // 会被当成真的HTML直接渲染出来（有时候正则没处理干净，甚至原始JSON都会糊一脸）。用户明确要求：
@@ -1728,11 +2026,38 @@ function stripUndelimitedReasoningIfOverLength(text, expectedMaxLen) {
     // 优先用"正式输出标记"精确切割（如果模型遵循了prompt里的要求），比长度启发式准得多。
     const marked = extractAfterFinalMarker(text);
     if (marked !== text) return marked.trim();
-    const t = String(text).trim();
+
+    // 🐛 修复"评论/推文里思维链跑出来"：这个函数原本只有一条"太长就取最后一段"的长度启发式，
+    // 完全没走项目里那套成熟的思维链格式识别（<think>/<thinking>/<details>/SECRET 等）。
+    // 于是模型只要用了这些标准写法，或者把整段思考写成**一整段不分段**的文字，
+    // 就会原封不动地糊在评论区里（一整段的情况连"取最后一段"都救不了，因为只有一段）。
+    // 这里先按已知格式精确剥一遍，再落到长度启发式兜底。
+    let pre = String(text);
+    if (typeof stripPairedReasoningAnywhere === 'function') {
+        try { pre = stripPairedReasoningAnywhere(pre); } catch (e) { /* 剥离失败就用原文 */ }
+    }
+    if (typeof stripLeadingReasoningBlocks === 'function') {
+        try {
+            const r = stripLeadingReasoningBlocks(pre);
+            // stripLeadingReasoningBlocks 在不同版本里可能返回字符串或 {text,...}，两种都兼容
+            const got = (typeof r === 'string') ? r : (r && typeof r.text === 'string' ? r.text : null);
+            if (got !== null && got.trim()) pre = got;
+        } catch (e) { /* 同上 */ }
+    }
+    // 常见的"没有闭合标签"的中文思考开场：思考过程：/分析：/我的思路：…… 后面跟一大段，
+    // 真正要说的话往往在最后一个空行之后。只在确实超长时才动手，避免误伤正常长评论。
+    const t0 = pre.trim();
+    const t = t0;
     const limit = (typeof expectedMaxLen === 'number' && expectedMaxLen > 0) ? expectedMaxLen : 100;
     if (t.length <= limit * 2.5) return t;
     const paragraphs = t.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
-    if (paragraphs.length <= 1) return t; // 没法按段落拆分，没有更好的办法，原样返回
+    if (paragraphs.length <= 1) {
+        // 只有一整段、又长得离谱：多半是模型把思考和结论写成了一坨。
+        // 试着按"思考类开场白"截断——找不到就只能原样返回（宁可多显示，也不敢乱切用户的正文）。
+        const m = t.match(/(?:^|\n)\s*(?:思考过程|思路|分析|推理|我的思考|Reasoning|Thinking)\s*[:：][\s\S]*?(?:\n\s*(?:回复|输出|正式回复|最终回复|Answer|Response)\s*[:：]\s*)([\s\S]+)$/i);
+        if (m && m[1] && m[1].trim()) return m[1].trim();
+        return t;
+    }
     return paragraphs[paragraphs.length - 1];
 }
 

@@ -17,6 +17,7 @@ function isInQuietHours() {
 }
 
 async function checkAndTriggerProactiveChats() {
+    if (typeof isAutoOn === 'function' && !isAutoOn('proactiveChat')) return;   // 🔌 设置里关掉了「角色主动找你聊天」
     if (isInQuietHours()) return; // 休息时间段内，本地这条主动消息定时器直接不触发
     const api = getApiConfig(true); 
     if (!api.key || isProactiveChatRunning) return;
@@ -72,6 +73,7 @@ async function checkAndTriggerProactiveChats() {
 // 不能拿来当作"最近写过信了"的凭据，不然设了主动写信频率也永远不会真正触发）。
 let isProactiveLetterRunning = false;
 async function checkAndTriggerProactiveLetters() {
+    if (typeof isAutoOn === 'function' && !isAutoOn('proactiveLetter')) return;   // 🔌 设置里关掉了「角色主动给你写信」
     if (isInQuietHours()) return;
     const api = getApiConfig(true);
     if (!api.key || isProactiveLetterRunning) return;
@@ -107,9 +109,11 @@ async function checkAndTriggerProactiveLetters() {
 // 🗒️ 用户写日记选角色偷看，角色决定要不要看、看了要不要批注，同样随机延迟一段时间再有反应。
 // 这两个都定义在 js/08，这里只是到点了负责调用它们的"扫描+触发"逻辑，跟上面主动写信共用同一套定时器节奏。
 async function checkAndTriggerLetterReplies() {
+    if (typeof isAutoOn === 'function' && !isAutoOn('letterReply')) return;   // 🔌 设置里关掉了「信件到点自动回信」
     if (typeof resolveDueLetterReplies === 'function') await resolveDueLetterReplies();
 }
 async function checkAndTriggerDiaryReactions() {
+    if (typeof isAutoOn === 'function' && !isAutoOn('diaryReaction')) return;   // 🔌 设置里关掉了「角色对你日记的反应」
     if (typeof resolveDueDiaryReactions === 'function') await resolveDueDiaryReactions();
 }
 
@@ -543,9 +547,16 @@ function switchMainView(viewId, param = null) {
     pushViewHistory(viewId);
     hideAllViews();
     closeDrawer();
-    const mtEl = document.getElementById('mobileTopTitle'); if (mtEl) mtEl.innerText = mobileViewTitles[viewId] || '谷雨';
+    // 手机顶栏中间显示当前页面名。这里的 id 以前写成 mobileTopTitle（元素其实叫 mtbCenterTitle），
+    // 拿到的永远是 null，加上有 if 判空所以不报错——顶栏标题就一直是空的，谁也没发现。
     const mSearchCenter = document.getElementById('mtbCenterSearch'), mTitleCenter = document.getElementById('mtbCenterTitle');
-    if (mSearchCenter && mSearchCenter.style.display !== 'none') { mSearchCenter.style.display = 'none'; if (mTitleCenter) mTitleCenter.style.display = 'flex'; }
+    if (mTitleCenter) mTitleCenter.innerText = mobileViewTitles[viewId] || '谷雨';
+    // 搜索框开着的时候让位给搜索框，否则把标题显示出来（它在 index.html 里初始是 display:none）
+    if (mSearchCenter && mSearchCenter.style.display !== 'none') { mSearchCenter.style.display = 'none'; }
+    if (mTitleCenter) mTitleCenter.style.display = 'flex';
+    // 手机端通用返回键：主页不需要（没有"上一页"可回），其它页面都显示
+    const mBack = document.getElementById('mtbBackBtn');
+    if (mBack) mBack.style.display = (viewId === 'home') ? 'none' : 'flex';
     if (viewId === 'home') { document.getElementById('view-home').style.display = 'block'; document.getElementById('nav-home').className = 'nav-item active'; const m=document.getElementById('mnav-home'); if(m) m.className='mnav-item active'; if(typeof renderPosts === 'function') renderPosts(); }
     else if (viewId === 'anonForum') { document.getElementById('view-anon-forum').style.display = 'block'; document.getElementById('nav-anon').className = 'nav-item active'; if(typeof renderAnonPosts === 'function') renderAnonPosts(); }
     else if (viewId === 'diary') { document.getElementById('view-diary').style.display = 'block'; document.getElementById('nav-diary').className = 'nav-item active'; renderDiaryCharList(); }
@@ -605,5 +616,16 @@ function switchMainView(viewId, param = null) {
         const groupIntEl = document.getElementById('memHubGroupSummaryInterval'); if (groupIntEl) groupIntEl.value = groupSummaryInterval;
         const postIntEl = document.getElementById('memHubPostMemoryInterval'); if (postIntEl) postIntEl.value = postMemoryInterval;
         if (typeof renderMemoryHubTargetOptions === 'function') renderMemoryHubTargetOptions();
+    }
+
+    // 右侧「你可能会喜欢」：除了聊天页，其它页面都显示。
+    // 聊天页排除掉是因为那一页右侧本来就被会话内容占着，再塞一块推荐会分散注意力，
+    // 而且正在跟人说话的时候不需要"再逛逛别人"。
+    // 每次切页都重新洗一批，逛起来才有"每页都不一样"的感觉。
+    const sug = document.getElementById('rightPanelSuggest');
+    if (sug) {
+        if (viewId === 'chat') sug.style.display = 'none';
+        else if (typeof renderSuggestedChars === 'function') renderSuggestedChars(true);
+        else sug.style.display = 'none';
     }
 }

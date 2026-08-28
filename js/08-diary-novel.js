@@ -147,7 +147,7 @@ ${getFinalAnswerMarkerPromptNote()}
             tempGeneratedDiary = { id: 'd_' + Date.now(), title: parsed.title || (currentDiaryTab === 'letter' ? '新信件' : '新日记'), content: parsed.content || raw, date: Date.now(), author: 'char' };
             document.getElementById('diaryListArea').style.display = 'none'; document.getElementById('diaryTempArea').style.display = 'block';
             document.getElementById('tempDiaryTitle').innerText = tempGeneratedDiary.title;
-            document.getElementById('tempDiaryContent').innerHTML = namespaceInjectedIds(formatPostText(tempGeneratedDiary.content, char.id), tempGeneratedDiary.id);
+            document.getElementById('tempDiaryContent').innerHTML = namespaceInjectedIds(formatPostText(tempGeneratedDiary.content, char.id, { statusContext: 'diary' }), tempGeneratedDiary.id);
             if (typeof enableChatScriptExecution !== 'undefined' && enableChatScriptExecution) { try { executeInjectedScripts(document.getElementById('tempDiaryContent')); } catch (e) { console.error('执行日记预览注入脚本时出错：', e); } }
         } else { throw new Error("生成返回为空"); }
     } catch(e) { alert("生成失败: " + e.message); } finally { btn.innerText = "好想对你说"; btn.disabled = false; }
@@ -182,7 +182,7 @@ function openDiaryDetail(id) {
     viewingDiaryId = id; document.getElementById('diaryDetailTitle').innerText = item.title || '无题'; document.getElementById('diaryDetailDate').innerText = new Date(item.date).toLocaleString();
     // 🐛 修复：跟上面 tempDiaryContent 同一个bug——详情页之前也是 innerText 纯文本展示，角色卡自带的HTML
     // （状态栏卡片等）显示不出来。改成跟推文/论坛/续写一致的 formatPostText+innerHTML 渲染路径。
-    document.getElementById('diaryDetailContent').innerHTML = namespaceInjectedIds(formatPostText(item.content, char.id), item.id);
+    document.getElementById('diaryDetailContent').innerHTML = namespaceInjectedIds(formatPostText(item.content, char.id, { statusContext: 'diary' }), item.id);
     if (typeof enableChatScriptExecution !== 'undefined' && enableChatScriptExecution) { try { executeInjectedScripts(document.getElementById('diaryDetailContent')); } catch (e) { console.error('执行日记详情注入脚本时出错：', e); } }
     // 🆕 只有"信件"tab里、且这封是角色寄来的（不是用户自己写的），回复才有意义——展示"↩️回复这封信"按钮
     const replyBtn = document.getElementById('btnReplyToThisLetter');
@@ -1079,7 +1079,7 @@ function renderProfileFeed() {
                                 <span>${timeAgo(item.timestamp)}</span>
                             </div>
                             <div style="font-size: 16px; color: #0f1419; margin-top: 4px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;">
-                                ${r.replyTo ? `<span style="color:#1d9bf0;">回复 @${r.replyTo} </span>` : ''}${formatPostText(r.text, r.charId || (r.char && r.char.id) || null)}
+                                ${r.replyTo ? `<span style="color:#1d9bf0;">回复 @${r.replyTo} </span>` : ''}${formatPostText(r.text, r.charId || (r.char && r.char.id, { statusContext: 'comment' }) || null)}
                             </div>
                             <div style="margin-top: 8px; font-size: 13px; color: #536471; background: rgba(0,0,0,0.03); padding: 8px 12px; border-radius: 8px; border-left: 3px solid #cfd9de; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
                                 来自 @${item.postChar.name} 的推文: "${item.postText.substring(0, 45)}..."
@@ -1121,6 +1121,167 @@ function renderFollowingList() {
         }
     }).join('');
     container.innerHTML = cardsHtml;
+}
+
+// ===== 右侧「你可能会喜欢」（仿 X 的推荐位）=====
+// 只在个人资料页出现，挂在「有什么新鲜事」下面，不占额外宽度，页面尺寸不变。
+// 挑的是**还没关注**的角色（关注完这一条就从列表里消失，跟 X 的行为一致）；
+// 没关注的都关完了，就退回从全部角色里随机挑，免得这块永远空着。
+// forceNew=true 是点「换一批」，会重新洗牌；否则同一次进页面保持稳定，不会每次重绘都跳来跳去。
+let suggestedCharIds = [];
+function pickSuggestedChars(n) {
+    // 正在看谁的主页，就不要再推荐谁了（X 也是这个行为）。
+    // 已关注的也照样进池子——这块现在更像"随机逛逛角色"，不只是"拉新关注"，
+    // 已关注的会显示成「已关注」按钮，点一下可以取消关注。
+    const pool = (myCharacters || []).filter(c => c && c.id && c.id !== 'me' && String(c.id) !== String(currentProfileId));
+    // Fisher–Yates 洗牌，取前 n 个
+    const arr = pool.slice();
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr.slice(0, n).map(c => c.id);
+}
+function renderSuggestedChars(forceNew) {
+    const card = document.getElementById('rightPanelSuggest');
+    const box = document.getElementById('suggestListContainer');
+    if (!card || !box) return;
+    if (forceNew || suggestedCharIds.length === 0) suggestedCharIds = pickSuggestedChars(3);
+    // 只剔掉"已经不存在"和"正在看他主页"的，关注状态不再影响去留——
+    // 关注完那一条会原地变成「已关注」，不会突然消失换一个人上来（那样点着很跳）
+    suggestedCharIds = suggestedCharIds.filter(id => {
+        const c = (myCharacters || []).find(x => x.id == id);
+        return c && String(c.id) !== String(currentProfileId);
+    });
+    if (suggestedCharIds.length < 3) {
+        pickSuggestedChars(6).forEach(id => {
+            if (suggestedCharIds.length < 3 && suggestedCharIds.indexOf(id) === -1) suggestedCharIds.push(id);
+        });
+    }
+    const list = suggestedCharIds.map(id => (myCharacters || []).find(c => c.id == id)).filter(Boolean);
+    if (list.length === 0) { card.style.display = 'none'; return; }
+    box.innerHTML = list.map(char => {
+        try {
+            const followed = !!char.isFollowing;
+            return `<div class="suggest-row" onclick="switchMainView('profile', '${char.id}')">
+                ${getAvatarHTML(char, 40)}
+                <div class="suggest-meta">
+                    <div class="suggest-name">${escapeHtml(char.name || '')}${char.verified ? verifiedSVG : ''}</div>
+                    <div class="suggest-handle">${escapeHtml(char.handle || '')}</div>
+                </div>
+                <button class="follow-btn${followed ? ' following' : ''} btn-follow-${char.id} suggest-follow"
+                        onclick="event.stopPropagation(); toggleFollow('${char.id}', event); renderSuggestedChars();">${followed ? '已关注' : '关注'}</button>
+            </div>`;
+        } catch (e) { console.error('渲染推荐角色某一条时出错，已跳过：', char && char.id, e); return ''; }
+    }).join('');
+    card.style.display = 'block';
+}
+
+// ===== 🔌 自动功能开关面板 =====
+// 定义在 js/01 的 AUTO_FEATURE_DEFS，这里只负责画出来 + 存开关状态。
+function renderAutoFeatureList() {
+    const box = document.getElementById('autoFeatureList');
+    if (!box || typeof AUTO_FEATURE_DEFS === 'undefined') return;
+    box.innerHTML = AUTO_FEATURE_DEFS.map(f => {
+        const on = (typeof isAutoOn === 'function') ? isAutoOn(f.key) : true;
+        return `<label class="auto-feat-row">
+            <input type="checkbox" ${on ? 'checked' : ''} onchange="setAutoFeature('${f.key}', this.checked)">
+            <div class="auto-feat-body">
+                <div class="auto-feat-title">${escapeHtml(f.label)}</div>
+                <div class="auto-feat-desc">${escapeHtml(f.desc)}</div>
+                <div class="auto-feat-cost">💰 ${escapeHtml(f.cost)}</div>
+            </div>
+        </label>`;
+    }).join('');
+}
+function setAutoFeature(key, on) {
+    if (typeof autoFeatureSwitches === 'undefined' || !autoFeatureSwitches) autoFeatureSwitches = {};
+    // 只把"关掉"记进存档，打开就是删掉这条记录——这样以后新增的自动功能默认都是开着的，
+    // 不会因为存档里存着一份老的全量快照而出现"新功能莫名其妙是关着的"
+    if (on) delete autoFeatureSwitches[key]; else autoFeatureSwitches[key] = false;
+    if (typeof saveAllData === 'function') saveAllData();
+    const def = (typeof AUTO_FEATURE_DEFS !== 'undefined') ? AUTO_FEATURE_DEFS.find(f => f.key === key) : null;
+    if (typeof showToast === 'function' && def) {
+        showToast('', on ? '✅ 已开启' : '🔌 已关闭', `${def.label}${on ? ' 恢复自动运行' : ' 不会再自动调用 API 了'}`, null, null, false);
+    }
+}
+
+// ===== 📊 Token 用量面板 =====
+// 数据来自 js/01 的 recordTokenUsage（服务商真实返回的 usage）。这里只负责把它摊开给人看。
+function gyFmtTok(n) {
+    n = n || 0;
+    if (n >= 100000000) return (n / 100000000).toFixed(2) + ' 亿';
+    if (n >= 10000) return (n / 10000).toFixed(1) + ' 万';
+    return String(n);
+}
+function showTokenStats() {
+    const box = document.getElementById('tokenStatsBody');
+    if (!box) return;
+    const st = (typeof gyTokenStats !== 'undefined' && gyTokenStats && gyTokenStats.total) ? gyTokenStats : null;
+    if (!st || !st.total.calls) {
+        box.innerHTML = `<div class="empty-state">还没有记录。开始用起来之后，这里会按功能列出每一项花了多少 token。</div>`;
+        openModal('tokenStatsModal');
+        return;
+    }
+    const t = st.total;
+    const sinceStr = st.since ? new Date(st.since).toLocaleString('zh-CN') : '—';
+    const cachePct = t.in > 0 ? Math.round(t.cached / t.in * 100) : 0;
+
+    const rows = Object.entries(st.byFeature)
+        .map(([name, v]) => ({ name, v, sum: (v.in || 0) + (v.out || 0) }))
+        .sort((a, b) => b.sum - a.sum);
+    const maxSum = rows.length ? rows[0].sum : 1;
+    const grand = rows.reduce((s, r) => s + r.sum, 0) || 1;
+
+    const featureHtml = rows.map(r => {
+        const pct = Math.round(r.sum / grand * 100);
+        const bar = Math.max(2, Math.round(r.sum / maxSum * 100));
+        const est = r.v.estimated ? `<span title="这部分是按字数估算的（服务商没返回用量）" style="color:#e0245e;">·估${r.v.estimated}</span>` : '';
+        return `<div style="margin-bottom:10px;">
+            <div style="display:flex; align-items:baseline; gap:8px; font-size:13px;">
+                <span style="font-weight:bold; color:#0f1419; flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.name)}</span>
+                <span style="color:#536471; flex:0 0 auto;">${r.v.calls} 次 · 入 ${gyFmtTok(r.v.in)} / 出 ${gyFmtTok(r.v.out)}${est}</span>
+                <span style="color:#1d9bf0; font-weight:bold; flex:0 0 auto; width:38px; text-align:right;">${pct}%</span>
+            </div>
+            <div style="height:6px; background:rgba(29,155,240,0.12); border-radius:3px; margin-top:3px; overflow:hidden;">
+                <div style="height:100%; width:${bar}%; background:#1d9bf0;"></div>
+            </div>
+            <div style="font-size:11px; color:#8b98a5; margin-top:2px;">平均每次 ${gyFmtTok(Math.round(r.sum / Math.max(1, r.v.calls)))} token</div>
+        </div>`;
+    }).join('');
+
+    const days = Object.keys(st.byDay).sort().slice(-7).reverse();
+    const dayHtml = days.map(d => {
+        const v = st.byDay[d];
+        return `<div style="display:flex; gap:10px; font-size:13px; padding:4px 0; border-bottom:1px dashed rgba(29,155,240,0.15);">
+            <span style="flex:0 0 92px; color:#536471;">${d}</span>
+            <span style="flex:0 0 70px; color:#536471;">${v.calls} 次</span>
+            <span style="flex:1 1 auto; color:#0f1419;">入 ${gyFmtTok(v.in)} · 出 ${gyFmtTok(v.out)}</span>
+        </div>`;
+    }).join('') || '<div class="empty-state">暂无</div>';
+
+    box.innerHTML = `
+        <div style="background:rgba(29,155,240,0.06); border:1px solid #1d9bf0; border-radius:10px; padding:12px; margin-bottom:16px;">
+            <div style="display:flex; flex-wrap:wrap; gap:14px 24px;">
+                <div><div style="font-size:11px; color:#536471;">总调用</div><div style="font-size:20px; font-weight:bold; color:#1d9bf0;">${t.calls} 次</div></div>
+                <div><div style="font-size:11px; color:#536471;">输入</div><div style="font-size:20px; font-weight:bold; color:#1d9bf0;">${gyFmtTok(t.in)}</div></div>
+                <div><div style="font-size:11px; color:#536471;">输出</div><div style="font-size:20px; font-weight:bold; color:#1d9bf0;">${gyFmtTok(t.out)}</div></div>
+                <div><div style="font-size:11px; color:#536471;">缓存命中</div><div style="font-size:20px; font-weight:bold; color:${cachePct > 0 ? '#00ba7c' : '#536471'};">${cachePct}%</div></div>
+            </div>
+            <div style="font-size:11px; color:#536471; margin-top:8px;">统计起点：${sinceStr}</div>
+            ${cachePct === 0 ? `<div style="font-size:12px; color:#536471; margin-top:6px;">💡 缓存命中还是 0：可能是这家服务商不返回缓存字段，也可能是每次请求间隔太久（缓存一般只保留几分钟）。输入里能被缓存的那部分越大越省钱。</div>` : ''}
+        </div>
+        <div style="font-size:15px; font-weight:bold; color:#1d9bf0; margin-bottom:10px;">按功能</div>
+        ${featureHtml}
+        <div style="font-size:15px; font-weight:bold; color:#1d9bf0; margin:18px 0 6px;">最近 7 天</div>
+        ${dayHtml}`;
+    openModal('tokenStatsModal');
+}
+async function resetTokenStats() {
+    if (typeof appConfirm === 'function' && !(await appConfirm('把 Token 统计清零重新开始记？已经花掉的钱不会因此退回来，只是这份记录归零。'))) return;
+    gyTokenStats = { total: { calls: 0, in: 0, out: 0, cached: 0, estimated: 0 }, byFeature: {}, byDay: {}, since: Date.now() };
+    if (typeof saveAllData === 'function') saveAllData();
+    showTokenStats();
 }
 
 function renderPosts(filterTag = null) {

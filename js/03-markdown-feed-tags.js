@@ -914,7 +914,15 @@ if (typeof MutationObserver === 'function') {
     if (document.body) __feStart(); else document.addEventListener('DOMContentLoaded', __feStart);
 }
 
-function renderMarkdownLite(text, charId, depth) {
+function renderMarkdownLite(text, charId, depth, opts) {
+    // opts.statusContext：'post' | 'comment' | undefined
+    // 状态栏在推文/评论里分别有独立开关（有些卡的状态栏又长又私密，刷在时间线上很挤）。
+    // 没传 context 的场景（日记、小说、续写等）沿用总开关，行为跟以前一样。
+    const _ctx = opts && opts.statusContext;
+    const _statusOn = (typeof autoRenderStatusChips === 'undefined' || autoRenderStatusChips)
+        && !(_ctx === 'post' && typeof showStatusInPosts !== 'undefined' && !showStatusInPosts)
+        && !(_ctx === 'comment' && typeof showStatusInComments !== 'undefined' && !showStatusInComments)
+        && !(_ctx === 'diary' && typeof showStatusInDiary !== 'undefined' && !showStatusInDiary);
     if (!text) return '';
     let t = String(text);
     // 仅影响界面显示的正则脚本（displayOnly）在这里生效：不改动传进来的原始文本/存档，只在渲染这一刻处理一次
@@ -1006,7 +1014,7 @@ function renderMarkdownLite(text, charId, depth) {
     // 统一样式的状态行——不管哪张卡、哪种字段命名，都能一致地显示成好看的状态栏，而不是原始方括号文本。
     // 要求标签是纯英文标识符（字母开头）是为了避免误伤普通的中文动作批注，比如"[叹气]""[歪头]"这种
     // 没有竖线分隔值的中文方括号批注，本来就该保留原样，不应该被当成状态栏处理。
-    if (typeof autoRenderStatusChips === 'undefined' || autoRenderStatusChips) {
+    if (_statusOn) {
         t = t.replace(/\[([A-Za-z][A-Za-z0-9_]{0,24})((?:\|[^\[\]]*){1,8})\]/g, (m, label, rest) => {
             const values = rest.slice(1).split('|').map(s => s.trim()).filter(Boolean);
             if (values.length === 0) return m; // 没有实际内容（比如"[Foo|]"）就不转换，原样保留，避免误伤
@@ -1020,7 +1028,7 @@ function renderMarkdownLite(text, charId, depth) {
     // 只做视觉上的加粗提示，不强行拆行（字段内容本身可能很长、也可能字段名恰好在句子里重复出现，硬拆行容易拆错，
     // 加粗是相对安全、出错也不影响阅读的做法）。纯数字开头的"标签"（比如时间"23:49"里的"23:"）不会被误加粗，
     // 因为要求标签必须以中文/字母开头。
-    if (typeof autoRenderStatusChips === 'undefined' || autoRenderStatusChips) {
+    if (_statusOn) {
         t = t.replace(/<([\u4e00-\u9fa5A-Za-z0-9_]{1,20})>([\s\S]*?)<\/\1>/g, (m, tagName, inner) => {
             const trimmedInner = inner.trim();
             if (!trimmedInner) return m; // 空标签内容不处理，原样保留
@@ -1039,6 +1047,32 @@ function renderMarkdownLite(text, charId, depth) {
         });
     }
 
+    // 第三种写法：【标签】换行 + 连续多行「字段：值」。
+    // 这是中文角色卡里最常见的一种（比如「【闻述状态】\n地点：主卧床上\n时间：凌晨两三点…」），
+    // 但它既不是方括号那种 [Eng|值|值]，也没有成对的开闭标签，所以上面两条规则都不认，
+    // 一直是当成大白话原样堆在推文里的——用户看到的就是"有的状态栏能显示成卡片、有的不能"。
+    // 这里补上：【中文/英文标签】后面紧跟着至少两行"字段：值"，就整段包成同一种状态卡。
+    // 要求至少两行，是为了不误伤正文里偶然出现的单句【某某】提示；
+    // 行首字段名限定在 12 字以内且不含标点，避免把普通对白（"他说：……"）当成字段。
+    if (_statusOn) {
+        t = t.replace(/【([^【】\n]{1,20})】[ \t]*(?:<br\s*\/?>|\n)+((?:[ \t]*[\u4e00-\u9fa5A-Za-z][^\n：:<>]{0,11}[：:][^\n]*(?:<br\s*\/?>|\n|$))+)/g,
+            (m, title, body) => {
+                // ⚠️ 关键守卫（跟上面 <标签> 那条同一个道理，这条当初漏写了，是回归的根源）：
+                // 角色卡自己输出的是一整块带样式的 HTML 状态卡，界面本来就能原生渲染成漂亮的样子。
+                // 一旦这里把它当成"纯文本+冒号字段"重新包一遍，卡片精心写的结构和配色就全没了，
+                // 退化成这里的通用蓝框。所以只要匹配到的内容里带着 <br> 以外的标签，一律不碰。
+                if (/<(?!br\b)[a-zA-Z\u4e00-\u9fa5\/][^<>]*>/.test(m)) return m;
+                const lines = body.split(/<br\s*\/?>|\n/).map(x => x.trim()).filter(Boolean);
+                if (lines.length < 2) return m; // 只有一行的不算状态栏，原样保留
+                const rows = lines.map(line => {
+                    const hit = line.match(/^([\u4e00-\u9fa5A-Za-z][^：:]{0,11})[：:]([\s\S]*)$/);
+                    if (!hit) return `<div>${line}</div>`;
+                    return `<div><b class="ai-status-field">${hit[1]}：</b>${hit[2].trim()}</div>`;
+                }).join('');
+                return `<div class="ai-status-block"><div class="ai-status-block-title">${escapeHtml(title)}</div><div class="ai-status-block-body">${rows}</div></div>`;
+            });
+    }
+
     // 💡 核心修复 2：Markdown 替换完成后，把之前保护起来的 <script> 和 <style> 标签毫发无损地放回去
     t = t.replace(new RegExp(PH + 'BLOCKPLACEHOLDER(\\d+)' + PH, 'g'), (match, idx) => {
         return protectedBlocks[idx];
@@ -1047,9 +1081,9 @@ function renderMarkdownLite(text, charId, depth) {
     return t;
 }
 
-function formatPostText(text, charId) {
+function formatPostText(text, charId, opts) {
 if (!text) return '';
-let html = renderMarkdownLite(text, charId);
+let html = renderMarkdownLite(text, charId, 0, opts);
 
 // 💡 修复：#话题标签 / @提及 高亮的正则之前是对整个渲染后的HTML字符串做全局替换，没有跳过HTML标签本身。
 // 角色卡自带的富文本状态栏卡片里到处是十六进制颜色值（style="...background:...#e8636f..."这种），
@@ -1070,7 +1104,10 @@ html = html.replace(/<[^>]+>/g, (m) => {
     return `___TAG_PLACEHOLDER_${protectedTags.length - 1}___`;
 });
 
-html = html.replace(/#(\S+)/g, '<span class="clickable-tag" onclick="event.stopPropagation(); switchMainView(\'tag\', \'#$1\')">#$1</span>')
+html = html.replace(/#(\S+)/g, (m, tag) =>
+        // 标签文本要转义两次：onclick 里那份是"属性里的 JS 字符串"，显示的那份是普通文本。
+        // 以前直接拼 $1，遇到 #can't、#老王's笔记 这种带撇号的标签属性会被提前截断。
+        `<span class="clickable-tag" onclick="event.stopPropagation(); switchMainView('tag', '#${escapeJsArg(tag)}')">#${escapeHtml(tag)}</span>`)
            .replace(/@(\S+)/g, '<span class="mention-tag" onclick="event.stopPropagation();">@$1</span>');
 
 html = html.replace(/___TAG_PLACEHOLDER_(\d+)___/g, (m, idx) => protectedTags[idx]);
@@ -1231,7 +1268,7 @@ function generatePostHTML(posts) {
                     </div>
                    ${isMe ? `<button class="post-delete-btn" onclick="deletePost('${post.id}', event)" title="删除帖子">🗑️</button>` : `<button class="btn-edit-small btn-follow-${char.id} ${char.isFollowing ? 'following' : ''}" style="margin-left:8px;" onclick="toggleFollow('${char.id}', event)">${char.isFollowing ? '已关注' : '关注'}</button>`}
                 </div>
-                <div class="post-body" ondblclick="editPost('${post.id}', this); event.stopPropagation();" title="双击可直接修改此帖子">${namespaceInjectedIds(formatPostText(post.text, char.id), post.id)}</div>
+                <div class="post-body" ondblclick="editPost('${post.id}', this); event.stopPropagation();" title="双击可直接修改此帖子">${namespaceInjectedIds(formatPostText(post.text, char.id, { statusContext: 'post' }), post.id)}</div>
                 ${locationHTML}
                 ${mediaHTML}
                 ${quotedHTML}
@@ -1301,7 +1338,7 @@ if (!c) return;
 c.innerHTML = trendingTags.map((t, i) => `
     <div class="trend-item" ondblclick="editTrend(${i}, this)">
         <div class="trend-meta">${i+1} · 趋势</div>
-        <div class="trend-title" onclick="switchMainView('tag', '${t}')">${t}</div>
+        <div class="trend-title" onclick="switchMainView('tag', '${escapeJsArg(t)}')">${escapeHtml(t)}</div>
         <div class="trend-meta">${getRandomStat(50000) + 1000} 帖子</div>
     </div>
 `).join('');
@@ -1387,7 +1424,8 @@ if(val) {
 
 function editTrend(idx, el) {
 const oldVal = trendingTags[idx];
-el.innerHTML = `<input type="text" class="trend-edit-input" value="${oldVal}" onblur="saveTrend(${idx}, this.value)" onkeypress="if(event.key==='Enter') this.blur()" autoFocus>`;
+// value 里含双引号的话属性会被提前截断，这里必须走属性转义
+el.innerHTML = `<input type="text" class="trend-edit-input" value="${escapeAttr(oldVal)}" onblur="saveTrend(${idx}, this.value)" onkeypress="if(event.key==='Enter') this.blur()" autoFocus>`;
 el.querySelector('input').focus();
 }
 
@@ -1404,25 +1442,37 @@ saveAllData();
 }
 
 window.onload = async function() {
-    registerServiceWorkerForNotifications();
-    await loadAllData();
-    updateGlobalBgStyles(); 
-    applyGlobalCSS();
-    updateCharSelects();
-    updateSiteLogo();
-    if (typeof renderPosts === "function") renderPosts(); 
-    if (typeof renderTrends === "function") renderTrends(); 
-    if (typeof renderCenterCharList === "function") renderCenterCharList(); 
-    updateUserMiniProfile();
-    startAutoPostTimer();
-    startProactiveChatTimer();
-    if (typeof fetchPendingFromCloud === 'function') fetchPendingFromCloud(); // 打开网页时先把云端攒的内容拉回来
-    if (typeof syncStateToCloud === 'function') { syncStateToCloud(true); setInterval(() => syncStateToCloud(false), CLOUD_SYNC_MIN_INTERVAL); }
-    setInterval(updateAllRelativeTimes, 60000);
-    initMobileUI();
-    initFAB(); // 初始化悬浮按钮拖拽逻辑
-    if (typeof runPluginOnLoadHooks === 'function') runPluginOnLoadHooks(); // 插件系统：网页一打开就自动跑一遍"启动钩子"插件
-    window.__guyuBooted = true;   // 给 index.html 里的启动自检看的：走到这里说明启动完成了
+    // ⚠️ 整段包在 try/finally 里，是为了保证最后那句 __guyuBooted = true 一定会执行。
+    // 踩过的坑：这个标志位原来是本函数的最后一行，只要上面二十多句初始化里任何一句抛异常，
+    // 它就永远置不上，后果有两层——
+    //   1) index.html 的启动自检 12 秒后必定弹「启动超时」，哪怕 app 其实已经能用了；
+    //   2) 更麻烦的是 bootDone() 会永远返回 false，于是此后每一个运行时错误（包括角色卡
+    //      自带脚本报的错）都会糊出一个全屏「启动失败」面板，而这恰恰是自检代码里
+    //      写明要避免的情况。
+    // 放进 finally 之后，出错时报错面板照样会弹（那是 window.onerror 干的，跟这个标志无关），
+    // 但不会再连累后面所有的错误。
+    try {
+        registerServiceWorkerForNotifications();
+        await loadAllData();
+        updateGlobalBgStyles();
+        applyGlobalCSS();
+        updateCharSelects();
+        updateSiteLogo();
+        if (typeof renderPosts === "function") renderPosts();
+        if (typeof renderTrends === "function") renderTrends();
+        if (typeof renderCenterCharList === "function") renderCenterCharList();
+        updateUserMiniProfile();
+        startAutoPostTimer();
+        startProactiveChatTimer();
+        if (typeof fetchPendingFromCloud === 'function') fetchPendingFromCloud(); // 打开网页时先把云端攒的内容拉回来
+        if (typeof syncStateToCloud === 'function') { syncStateToCloud(true); setInterval(() => syncStateToCloud(false), CLOUD_SYNC_MIN_INTERVAL); }
+        setInterval(updateAllRelativeTimes, 60000);
+        initMobileUI();
+        initFAB(); // 初始化悬浮按钮拖拽逻辑
+        if (typeof runPluginOnLoadHooks === 'function') runPluginOnLoadHooks(); // 插件系统：网页一打开就自动跑一遍"启动钩子"插件
+    } finally {
+        window.__guyuBooted = true;   // 给 index.html 里的启动自检看的：启动阶段到此结束（成功与否都算）
+    }
 };
 
 // 悬浮按钮的自由拖拽逻辑

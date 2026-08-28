@@ -7,18 +7,27 @@
 
 // ⚠️ 以后改了 index.html / style.css / js/*.js 这些核心文件后，记得把下面这个版本号 +1，
 // 不然有些用户的浏览器可能会因为命中旧版本的离线缓存，长期看不到最新更新内容。
-const CACHE_VERSION = 'v50';
+const CACHE_VERSION = 'v69';
 
 const CACHE_NAME = `guyu-app-cache-${CACHE_VERSION}`;
 
+// ⚠️ 这份清单必须和 index.html 里实际 <script src> / <link href> 的路径**逐字一致**
+// （包括 ./ 前缀和 ?v=3 这种查询参数），因为预缓存是按URL字符串存的，差一个字符就命中不了。
+// 加了新的 js 模块 / 第三方库之后，记得同步加到这里，否则离线时那个模块会加载失败。
 const CORE_ASSETS = [
     './',
     './index.html',
     './style.css?v=3',
-    './manifest.json',
+    './pwa-manifest.json', // 注意是 pwa-manifest.json，不是 manifest.json（后者是HBuilderX打包APK用的应用配置，见index.html开头的注释）
     './icons/icon-192.png',
     './icons/icon-512.png',
+    // 第三方库：localforage 是整个App的本地存储底座，没缓存到的话离线直接打不开，务必保留
+    './js/vendor/localforage.min.js',
+    './js/vendor/mammoth.browser.min.js',
     './js/vendor/ejs.min.js',
+    // 角色卡前端页面（开场白菜单/状态栏）里用到 $ 的那些，会由 js/03 往 iframe 里挂这个 <script src>；
+    // 不预缓存的话离线时那些卡片会报 "$ is not defined" 整张卡死掉
+    './js/vendor/jquery.min.js',
     './js/01-core-state-infra.js',
     './js/02-databank-plugins-minigames.js',
     './js/03-markdown-feed-tags.js',
@@ -33,7 +42,9 @@ const CORE_ASSETS = [
     './js/12-worldbook-import-appexport.js',
     './js/13-charreply-groupchat-faction-cardimport.js',
     './js/14-settings-archive.js',
-    './js/15-ai-presets.js'
+    './js/15-ai-presets.js',
+    './js/16-story-studio.js',
+    './js/17-tavern-bridge.js'
 ];
 
 self.addEventListener('install', (event) => {

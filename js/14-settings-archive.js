@@ -82,6 +82,7 @@ function isGlobalCharInteractionEnabled() {
 // 🌟 4. 核心：每5分钟触发的后台抽奖小剧场引擎 🌟
 setInterval(async () => {
     // 检查总开关是否开启
+    if (typeof isAutoOn === 'function' && !isAutoOn('charTheater')) return;   // 🔌 设置里关掉了「角色之间的后台小剧场」
     if (!isGlobalCharInteractionEnabled()) return;
 
     // 低概率触发机制（设定为 30% 概率触发，避免太频繁显得不真实，你可以自己改 0.3 的数字）

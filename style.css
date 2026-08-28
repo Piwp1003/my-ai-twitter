@@ -135,6 +135,35 @@ svg.blue-line-icon { fill: none !important; stroke: #1d9bf0 !important; stroke-w
 .add-trend-box input { flex-grow: 1; padding: 8px; border: 1px solid #1d9bf0; border-radius: 4px; font-size: 14px; background: transparent;}
 .add-trend-box button { background-color: rgba(255,255,255,0.8); color: #1d9bf0; border: 1px solid #1d9bf0; border-radius: 4px; padding: 0 15px; font-weight: bold; cursor: pointer; }
 
+/* ===== 右侧「你可能会喜欢」推荐位（仿 X）===== */
+/* 只在个人资料页显示。整块挂在趋势卡下面，宽度完全跟着 .info-card 走，不改变页面尺寸。
+   名字长了省略号截断，关注按钮固定不被挤压——这两点是这类"头像+两行文字+按钮"横排最容易翻车的地方。 */
+.suggest-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 8px;
+    margin: 0 -8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color .2s;
+}
+.suggest-row:hover { background-color: rgba(29, 155, 240, 0.05); }
+.suggest-meta { flex: 1 1 auto; min-width: 0; line-height: 1.25; }
+.suggest-name {
+    font-weight: bold; font-size: 15px; color: #0f1419;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: flex; align-items: center; gap: 4px;
+}
+.suggest-handle {
+    font-size: 13px; color: #536471; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.suggest-follow { flex: 0 0 auto; padding: 4px 14px; font-size: 13px; }
+body.dark-theme .suggest-name { color: #e7e9ea; }
+body.dark-theme .suggest-handle { color: #8b98a5; }
+body.dark-theme .suggest-row:hover { background-color: rgba(255,255,255,0.06); }
+
 /* Modals */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.6); z-index: 2500; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
 .modal-box { background: white; width: 500px; padding: 24px; border-radius: 16px; border: 2px solid #1d9bf0; box-shadow: 0 10px 30px rgba(29, 155, 240, 0.1); max-height: 85vh; overflow-y: auto; }
@@ -451,26 +480,43 @@ body.dark-theme .chat-quote-bubble.tweet-quote-card { background: rgba(29,155,24
     .layout-container { display: block; max-width: 100%; margin: 0; min-height: 100vh; }
     .sidebar-left { display: none !important; }
     .sidebar-right { display: none !important; }
-    .main-content { width: 100%; border-left: none; border-right: none; min-height: 100vh; padding-top: calc(52px + env(safe-area-inset-top, 0px)); padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
+    .main-content { width: 100%; border-left: none; border-right: none; min-height: 100vh; padding-top: calc(52px + var(--app-safe-top, env(safe-area-inset-top, 0px))); padding-bottom: var(--app-nav-h, calc(56px + env(safe-area-inset-bottom, 0px))); }
     .top-tabs, .header-title { top: 52px; }
 
     /* ---------- 顶部栏 ---------- */
-    .mobile-topbar { display: flex; align-items: center; justify-content: space-between; position: fixed; top: 0; left: 0; width: 100%; height: calc(52px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 12px 0; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid #eff3f4; z-index: 1600; box-sizing: border-box; }
+    .mobile-topbar { display: flex; align-items: center; justify-content: space-between; position: fixed; top: 0; left: 0; width: 100%; height: calc(52px + var(--app-safe-top, env(safe-area-inset-top, 0px))); padding: var(--app-safe-top, env(safe-area-inset-top, 0px)) 12px 0; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid #eff3f4; z-index: 1600; box-sizing: border-box; }
     .mtb-right {margin-left: auto !important;  }
     .mtb-icon-btn { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; color: #0f1419; transition: background-color 0.2s; }
     .mtb-icon-btn:active, .mtb-icon-btn:hover { background-color: rgba(29,155,240,0.1); }
     .mtb-icon-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; }
     .mtb-center { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; }
-    #mobileTopTitle { font-size: 17px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* 选择器以前写的是 #mobileTopTitle，页面上没有这个元素，所以这条样式一直没生效过 */
+    #mtbCenterTitle { font-size: 17px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .mtb-center input#mobileSearchInput { width: 100%; border: none; outline: none; background: #eff3f4; border-radius: 9999px; padding: 8px 14px; font-size: 14px; color: #0f1419; }
 
-    #view-chat { height: calc(100vh - 52px - 68px) !important; height: calc(var(--app-vh, 1vh) * 100 - 52px - 68px) !important; }
-    #view-worldbook { height: calc(100vh - 52px - 68px) !important; height: calc(var(--app-vh, 1vh) * 100 - 52px - 68px) !important; }
+    /* 🐛 修复"聊天页底部露出一条页面背景"：原来是 height: vh - 52px - 68px 硬算的，
+       但顶栏真实高度是 52px+安全区、底栏是 68px+安全区，而 --app-vh 在安卓 WebView 里
+       又常常比布局视口再小一点——三处误差叠起来，聊天页就比该有的高度矮一截，
+       下面那段空隙就把页面背景露了出来。
+       改成 fixed 直接钉在"顶栏下沿"和"底栏上沿"之间，不做任何算术，天然严丝合缝。 */
+    #view-chat, #view-worldbook {
+        position: fixed !important;
+        top: calc(52px + var(--app-safe-top, env(safe-area-inset-top, 0px))) !important;
+        bottom: var(--app-nav-h, calc(56px + env(safe-area-inset-bottom, 0px))) !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: auto !important;
+    }
+    /* 键盘弹出、底栏被藏起来时，下沿直接贴到键盘上沿 */
+    body.keyboard-open #view-chat,
+    body.keyboard-open #view-worldbook { bottom: 0 !important; height: auto !important; }
     .wb-edit-form-dock { padding-bottom: calc(15px + env(safe-area-inset-bottom, 0px)); }
 
-    #view-chat .header-title,
-    #mtbCenterTitle { 
-        display: none !important; 
+    /* 聊天页有自己的角色头像行当标题，就不用再显示一遍页面级标题了。
+       注意这里以前把 #mtbCenterTitle（手机顶栏中间的页面名）也一起 display:none 掉了——
+       当时它因为 id 写错永远是空的，藏起来正好；现在标题能正常填上了，就不该再按住它。 */
+    #view-chat .header-title {
+        display: none !important;
     }
 
     /* 3. 放大头像与名字，增加间距 */
@@ -789,10 +835,18 @@ body.dark-theme .chat-quote-bubble.tweet-quote-card { background: rgba(29,155,24
     min-width: 0;
 }
 
+/* 名字行：一行放下「名字 @handle · 时间」，绝不换行。
+   🐛 修复"名字被挤成竖着的三个字"：这一行是 flex，而 @handle 是一长串英文、
+   中间没有可断点，浏览器不会去拆它；中文名字却是每个字都能断的，于是所有挤压
+   全落到名字头上，「早八受害者」就被压成了三行。
+   解决办法是把三段的伸缩规则分开定：名字尽量占满自己需要的宽度、装不下用省略号；
+   handle 是第一个该让位的（flex-shrink 更大）；时间永远不许被压。 */
 .reply-header-row {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: baseline;
+    flex-wrap: nowrap;
+    gap: 5px;
+    min-width: 0;
     font-size: 14px;
     color: #536471; /* 灰色字 */
 }
@@ -801,14 +855,46 @@ body.dark-theme .chat-quote-bubble.tweet-quote-card { background: rgba(29,155,24
     font-weight: bold;
     color: #0f1419; /* 黑色加粗名字 */
     cursor: pointer;
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
+
+.reply-user-handle {
+    flex: 0 4 auto; /* 空间不够时优先牺牲 handle，名字尽量保住 */
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #536471;
+}
+
+/* 中间那个「·」和右边的时间都不参与压缩 */
+.reply-header-row > .reply-dot,
+.reply-header-row > .time-updater {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+/* 「回复给 @某某」单独占一行，跟截图一致 */
+.reply-to-line {
+    font-size: 14px;
+    color: #536471;
+    margin-top: 1px;
+}
+.reply-to-line b { color: #1d9bf0; font-weight: normal; }
 
 .reply-text-body {
     font-size: 15px;
     line-height: 1.5;
     color: #0f1419;
     margin-top: 4px; /* 名字和内容上下结构 */
-    word-break: break-all;
+    /* break-all 会把英文单词/链接从中间劈开，很难看；
+       改成只在没有更好断点时才断，中文照常逐字换行。 */
+    word-break: normal;
+    overflow-wrap: anywhere;
 }
 /* =========================================
    推文详情页统计条 (图一还原)
@@ -1406,12 +1492,24 @@ body.dark-theme .chat-quote-bubble.tweet-quote-card { background: rgba(29,155,24
         justify-content: flex-start !important;
         gap: 15px !important;
     }
+    /* 顶栏内容左对齐（不再居中）。
+       ⚠️ 这里原本写的是 .mtb-center { flex: 0 !important }，会把顶栏中间那两个容器
+       一起压成 0 宽：标题因为 overflow:hidden 一个字都露不出来，搜索框更惨——
+       输入框只剩 28px，根本没法打字。当时标题因为 id 写错一直是空的，所以只有搜索框
+       受影响，也没人发现。现在按两个容器各自的需要分开设：
+         · 标题：内容多宽就多宽，装不下时省略号，不去抢搜索框的地方
+         · 搜索框：撑满剩余空间 */
     .mtb-center {
-        flex: 0 !important;
         justify-content: flex-start !important;
     }
-    /* 移除原来的 center 逻辑，改为左侧对齐 */
-    #mtbCenterTitle { padding-left: 10px; }
+    #mtbCenterTitle {
+        flex: 0 1 auto !important;
+        min-width: 0;
+        padding-left: 10px;
+    }
+    #mtbCenterSearch {
+        flex: 1 !important;
+    }
 }
 /* 1. 移除“关注的人”卡片的蓝色边框 */
 .following-card {
@@ -1970,3 +2068,48 @@ body.dark-theme [contenteditable="true"] { caret-color: #4db3f5; }
 
 /* 聊天输入区永远在最上层，任何浮层都不许压住它 */
 .chat-input-area { position: relative; z-index: 20; }
+
+/* ===== 软键盘弹出时（body.keyboard-open，由 js/01 的 visualViewport 检测打上）=====
+   底部导航栏在打字时既用不到、又挤掉一整行输入区的位置，直接藏起来；
+   同时把 .main-content 给它预留的 68px 底部内边距一并收掉，输入框才能真正贴到键盘上沿。 */
+@media (max-width: 900px) {
+    body.keyboard-open .mobile-bottom-nav { display: none !important; }
+    body.keyboard-open .main-content { padding-bottom: 0 !important; }
+    body.keyboard-open .fab-btn { display: none !important; } /* 悬浮发帖按钮同理，打字时纯属挡路 */
+    /* 聊天页/世界书页的高度本来减掉了底部导航栏那 68px，导航栏藏起来之后要把这段还回去，
+       否则输入框上方会凭空多出一条空白（--app-vh 已经是键盘弹出后的真实可视高度了）。 */
+    /* （聊天页的键盘态已经在上面用 fixed + bottom:0 处理了，这里不再重复设高度）
+}
+
+/* ===== 楼中楼缩进：交给 CSS 按屏幕宽度决定，JS 只负责给出层级 --reply-depth =====
+   以前是 JS 里写死 35px/层，手机上三层就吃掉 105px，名字和正文都被挤没了。 */
+.reply-item[style*="--reply-depth"],
+.view-more-replies[style*="--reply-depth"] { margin-left: calc(var(--reply-depth, 0) * 32px); }
+@media (max-width: 900px) {
+    .reply-item[style*="--reply-depth"],
+    .view-more-replies[style*="--reply-depth"] { margin-left: calc(var(--reply-depth, 0) * 16px); }
+    /* 手机上评论区左右留白收一点，正文能多站几个字 */
+    .reply-item { padding-left: 12px; padding-right: 12px; gap: 10px; }
+}
+
+/* ===== 🔌 自动功能开关列表 ===== */
+.auto-feat-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: rgba(255,255,255,0.7);
+    border: 1px solid rgba(29,155,240,0.25);
+    border-radius: 8px;
+    cursor: pointer;
+}
+.auto-feat-row:hover { border-color: #1d9bf0; }
+.auto-feat-row > input[type="checkbox"] { width: 17px; height: 17px; margin-top: 2px; flex: 0 0 auto; cursor: pointer; }
+.auto-feat-body { flex: 1 1 auto; min-width: 0; }
+.auto-feat-title { font-size: 14px; font-weight: bold; color: #0f1419; }
+.auto-feat-desc { font-size: 12px; color: #536471; margin-top: 3px; line-height: 1.5; }
+.auto-feat-cost { font-size: 11px; color: #8b98a5; margin-top: 4px; }
+body.dark-theme .auto-feat-row { background: rgba(255,255,255,0.05); }
+body.dark-theme .auto-feat-title { color: #e7e9ea; }
+body.dark-theme .auto-feat-desc { color: #8b98a5; }

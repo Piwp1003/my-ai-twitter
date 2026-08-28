@@ -531,6 +531,31 @@ function exportPlugins() {
     saveTextFileForApp(`插件导出_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(plugins, null, 2), 'application/json');
 }
 
+// 刷新按钮：解决"导入/编辑插件（尤其是带自定义按钮/页面的脚本插件）之后，
+// 有时候要把App整个大退再重新打开才能看到效果"的问题。
+// 点一下等价于把网页整个重新打开一次：聊天记录、角色、插件等数据都存在 IndexedDB/localForage 里，
+// 跟"刷新页面"完全是两回事，不会因为这个操作丢失，可以放心点。
+async function refreshAppPage() {
+    if (!(await appConfirm('确定要刷新页面吗？聊天记录、角色、插件等数据都已自动保存，不会丢失。'))) return;
+
+    // 页面上所有刷新按钮（手机顶栏图标、电脑侧边栏、插件页那个）一起转起来，
+    // 让"已经点到了"这件事立刻可见——刷新本身有零点几秒的空窗期，没反馈的话很容易以为没点上。
+    document.querySelectorAll('[data-refresh-btn]').forEach(el => el.classList.add('is-refreshing'));
+
+    // 顺便让 Service Worker 检查一次有没有新版本，避免刷新后还是命中旧缓存。
+    // 加超时兜底：万一网络卡住，最多等1.5秒也照样刷新，不能让按钮一直转着不动。
+    try {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+            await Promise.race([
+                navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(reg => reg.update()))),
+                new Promise(resolve => setTimeout(resolve, 1500))
+            ]);
+        }
+    } catch (e) { console.warn('[刷新] 检查 Service Worker 更新失败（不影响刷新）：', e); }
+
+    location.reload();
+}
+
 function handlePluginImport(event) {
     const file = event.target.files[0];
     if (!file) return;

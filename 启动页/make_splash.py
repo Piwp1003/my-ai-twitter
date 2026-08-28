@@ -50,12 +50,12 @@ def load_and_trim(path):
     return im.crop(box)
 
 
-def compose(art, w, h, width_ratio=0.86, height_ratio=0.62, y_anchor=0.46):
+def compose(art, w, h, width_ratio=0.94, height_ratio=0.78, y_anchor=0.50):
     """把裁好的插画摆到 w×h 的白底画布上。
 
     width_ratio  横向最多占画布多宽
     height_ratio 纵向最多占画布多高（细长屏上防止画面顶天立地）
-    y_anchor     画面中心落在画布高度的百分之多少（0.44 = 略高于正中，视觉更稳）
+    y_anchor     画面中心落在画布高度的百分之多少（0.50 = 正中）
     """
     max_w = int(w * width_ratio)
     max_h = int(h * height_ratio)
@@ -84,7 +84,9 @@ def make_nine_patch(art, path):
     """
     base_w, base_h = 1080, 1500
     canvas, (ax, ay, aw, ah) = compose(art, base_w, base_h,
-                                       width_ratio=0.88, height_ratio=0.66, y_anchor=0.45)
+                                       # .9 这张的画布是 1080x1500（比手机屏矮），插画略收一点，
+                                       # 给左右白边留出足够宽的可拉伸区（拉伸线段必须落在纯白列上）
+                                       width_ratio=0.90, height_ratio=0.80, y_anchor=0.50)
 
     # 加 1px 边框
     w, h = base_w + 2, base_h + 2

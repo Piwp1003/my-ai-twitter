@@ -458,17 +458,47 @@ function updateSsBubbleLive(turnId, text, showCursor) {
 //
 // 以前谷雨的挑选框只按纯文本列，等于把作者做好的那一页完全浪费掉了。
 // 现在先跑一遍显示正则，只要结果是"完整前端页面"，就直接把那一页渲染出来给你用。
+// 🐛 实测 27 张卡后修正的一处选错：以前是"第一条能渲染成整页 HTML 的就用它"。
+// 可这类卡里**每一条**开场白都会被正则渲染成整页 HTML（蔚野是仿苹果播客播放器、
+// 沈映寒/闻述是聊天流截图），第一条命中的往往只是一段普通剧情，不是那份目录页。
+// 现在分两轮挑：先找真正的"开场白导航页"（hasGreetingNavTargets 认出来的那种，
+// 点里面的条目会跳到别的开场白），找不到再退回原来的"第一条整页 HTML"。
+// 「这一页 HTML 是不是这条开场白的全部内容」。
+// 🐛 修的是"美化开场白还是显示成纯文本"：很多卡会给**每一条普通开场白**的末尾挂一个
+// 【返回】按钮，正则把它换成一小段完整 HTML 页面（闻述、易云辞、时间病症都是这么写的）。
+// 只看 isFrontendHtml 的话，一条 1200 字的正常剧情 + 一个返回按钮也会被当成"美化开场白页"，
+// 挑选框于是把这条剧情当美化版摊出来——满屏都是正文，那个按钮 iframe 缩在最下面看不见，
+// 看起来就是"美化开场白没生效、还是纯文本"。
+// 判据：把成品里的 HTML 页面部分整个抠掉，剩下的可见文字如果还有一大段，
+// 那这就是"带装饰的普通开场白"，不是作者做的那一页。
+function ssFrontendDominates(out) {
+    let rest = String(out || '');
+    rest = rest.replace(/```[a-zA-Z0-9]*[\s\S]*?```/g, '');          // 围栏包起来的整页
+    rest = rest.replace(/<!DOCTYPE\s+html[\s\S]*?<\/html\s*>/gi, ''); // 裸的整份文档
+    rest = rest.replace(/<html[\s\S]*?<\/html\s*>/gi, '');
+    rest = rest.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '');
+    rest = rest.replace(/<[^>]*>/g, '');                              // 剩下的零散标签
+    rest = rest.replace(/\s|&nbsp;/g, '');
+    return rest.length <= 150;   // 150 字以内算"只是页面旁边的一两句话"，超了就是正文
+}
 function ssGreetingBeautified(char) {
     if (!char || typeof applyDisplayOnlyRegex !== 'function' || typeof isFrontendHtml !== 'function') return null;
     const list = (typeof getGreetingOptions === 'function') ? (getGreetingOptions(char) || []) : [];
+    let fallback = null;
     for (let i = 0; i < list.length; i++) {
         let out;
         try { out = applyDisplayOnlyRegex(list[i], char.id, 0); } catch (e) { continue; }
-        if (out === list[i]) continue;              // 正则没命中，不是美化版
-        if (!isFrontendHtml(out)) continue;         // 命中了但不是整页 HTML，按普通文本处理就行
-        return { greetingIndex: i, raw: list[i] };
+        // 🐛 这里以前还有一句 `if (out === list[i]) continue;`（"正则没命中就不是美化版"），
+        // 结果把**作者直接把整页 HTML 写死在开场白正文里、压根不需要正则**的那一类漏掉了
+        // （沉沦法则的 first_mes 就是这样，59982 字符的完整页面）。判据只看成品是不是整页 HTML 就够了。
+        if (!isFrontendHtml(out)) continue;         // 不是整页 HTML，按普通文本处理就行
+        if (typeof hasGreetingNavTargets === 'function' && hasGreetingNavTargets(out)) {
+            return { greetingIndex: i, raw: list[i], isMenu: true };
+        }
+        if (!ssFrontendDominates(out)) continue;    // 正文压倒性地多 → 这是带装饰的普通开场白，不当美化页
+        if (!fallback) fallback = { greetingIndex: i, raw: list[i], isMenu: false };
     }
-    return null;
+    return fallback;
 }
 
 // 「用角色开场白开个头」——挑选框。
@@ -550,8 +580,16 @@ function renderSsGreetingPicker() {
         // 所以卡片里的 setChatMessages 照样能用，点一下就开局。
         const html = (typeof renderMarkdownLite === 'function')
             ? renderMarkdownLite(beautified.raw, char.id, 0) : '';
-        box.innerHTML = tabs + toggle + `<div class="ss-greet-pretty">${html}</div>`;
+        box.innerHTML = (typeof randomGreetingCardHtml === 'function' ? randomGreetingCardHtml('storyStudio') : '') + tabs + toggle + `<div class="ss-greet-pretty">${html}</div>`;
         if (typeof mountFrontendFrames === 'function') mountFrontendFrames(box);
+        // 兜底：ssGreetingBeautified 判定"这是整页 HTML"，但真正渲染出来一个 iframe 都没有——
+        // 说明这一页在渲染链路上被别的规则吃掉了（历史上出过好几次）。这种时候宁可退回纯文本列表，
+        // 也不能给用户留一块空白/一坨裸文字，那样连开场白都选不了。
+        if (!box.querySelector('iframe.gy-frontend-frame')) {
+            console.warn('[开场白] 这条美化开场白没能渲染出 iframe，已自动退回纯文本列表。角色：', char.name);
+            window.__ssGreetForceList = true;
+            return renderSsGreetingPicker();
+        }
         return;
     }
 
@@ -559,10 +597,15 @@ function renderSsGreetingPicker() {
     const options = getGreetingOptions(char).map((text, gi) => ({
         charId: char.id, charName: char.name, text, greetingIndex: gi,
     }));
-    const sorted = (typeof sortGreetingOptionsMenuLast === 'function')
-        ? sortGreetingOptionsMenuLast(options) : options;
+    // 续写这边跟聊天/小说相反：目录页排最前、当正式入口标出来。
+    // 因为在这里点开目录页是真能用的——上面那条美化分支会把作者做的整页渲染出来，
+    // 点里面的场景卡就直接开局（实测江执那页点"温柔的入侵"确实把第一轮换成了对应开场白）。
+    const sorted = (typeof sortGreetingOptions === 'function')
+        ? sortGreetingOptions(options, { menuFirst: true, charId: char.id })
+        : options;
     window.__greetingPickerOptions = sorted;
-    box.innerHTML = tabs + toggle + renderGreetingOptionCards(sorted, null);
+    box.innerHTML = (typeof randomGreetingCardHtml === 'function' ? randomGreetingCardHtml('storyStudio') : '') + tabs + toggle
+        + renderGreetingOptionCards(sorted, null, { charId: char.id, menuAsEntry: true });
 }
 
 // 选中某条开场白之后真正落地成第一轮。由 js/05 的 selectGreeting 在 mode==='storyStudio' 时调过来。

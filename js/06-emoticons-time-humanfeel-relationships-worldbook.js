@@ -792,12 +792,28 @@ function getSleepWindowPromptLine() {
     }
     return `- 你的睡眠时段是 ${quietHoursStart}-${quietHoursEnd}，这段时间被找会自然表现出刚睡醒的状态（前提是这之前没有一直在聊天）。`;
 }
-function getTpesPromptText() {
+// 💰 省钱改造（把"每分钟都在变的那一句"从提示词开头挪到最末尾）：
+//
+// 各家 API 的输入缓存都是**按前缀逐字比对**命中的——前缀相同的那一段可以按 1~2 折计费，
+// 一旦某个字符对不上，从那里往后全部按全价重算。
+// 改造前，当前时间就写在 TPES 这一段的第一行，位置在整份系统提示词的第 894 个字符：
+// 它后面那 5,363 字（人设、世界书、预设、关系网……占系统提示词的 85%）每过一分钟就整体失效一次，
+// 能稳定命中的只剩前面那 894 字 ≈ 497 token，连 OpenAI 自动缓存 1024 token 的门槛都够不着，
+// 等于每条消息都在按全价重付那 5000 多字。
+//
+// 现在把这一行拆出来（getTpesNowLine），由 buildBasePrompt 放到整份系统提示词的**最后**，
+// 前面几千字就成了逐字稳定的前缀，缓存能正常命中。对模型没有影响——时间信息还在，只是位置换了，
+// 而且放在最后离"这一轮要干什么"更近，反而更不容易被忽略。
+function getTpesNowLine() {
     if (!tpesEnabled) return '';
     const now = new Date();
     const nowStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0') + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const weekdayNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-    return `【时间感知协议 TPES】：当前真实时间是 ${nowStr}（${weekdayNames[now.getDay()]}），生成时以这个时间为准。
+    return `\n【当前真实时间】：${nowStr}（${weekdayNames[now.getDay()]}），生成时以这个时间为准（对应上面的时间感知协议 TPES）。\n`;
+}
+function getTpesPromptText() {
+    if (!tpesEnabled) return '';
+    return `【时间感知协议 TPES】（具体的当前时间写在这份设定的最后一行）：
 - 时间流速：线上聊天时间随对话内容/动作自然推进，不是一问一答就等于一瞬间；线下场景（约会/外出等）按场景动作估算耗时，比如吃饭1-2小时、看电影2小时；用户不在线时角色按人设过自己的生活，时间等同现实流逝，期间可能发生的无关紧要小事不用主动汇报，自然带出即可。
 - 时间要和环境绑定：光线天色、疲惫和饥饿感、街上人多不多、当前季节天气都要跟这个时间对得上，工作日/周末/节日的活动安排也不一样。
 ${getSleepWindowPromptLine()}
@@ -891,6 +907,10 @@ function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", o
     prompt += getActivePresetPromptText(char, !!opts.excludeDepthPresetEntries, opts.sessionId, 'end');
     let actionRule = allowActionTags ? "你可以使用括号(如()或【】)来进行动作描写和心理描写。" : "不要有多余的动作描写或心理描写，直接输出说话或正文内容。";
     prompt += `\n【格式规则】：${actionRule}\n`;
+    // 💰 当前时间必须是这份系统提示词里的**最后一段**——它每分钟都在变，放在前面会让它后面
+    //    所有内容的输入缓存全部失效（详见 getTpesNowLine 上面的说明）。往这后面再加任何东西之前，
+    //    先确认那段内容是不是也会每次都变；固定不变的内容一律加在这一行**之前**。
+    if (typeof getTpesNowLine === 'function') prompt += getTpesNowLine();
     return applyPluginMacros(applyMacros(prompt, char, opts.sessionId), char);
 }
 
@@ -1023,6 +1043,7 @@ function getRelationshipContextPrompt(char) {
 
 // ===== 关系网驱动的角色互动：推文/爆料/论坛提及时，让有关系的角色自己决定要不要来 =====
 async function triggerRelatedCharacterReactions(sourceChar, contextText, target) {
+    if (typeof isAutoOn === 'function' && !isAutoOn('relatedReaction')) return;   // 🔌 设置里关掉了「关联角色连锁反应」
     if (!isGlobalCharInteractionEnabled()) return; // 未开启互动开关时，不主动触发关系网联动
     if (!sourceChar || sourceChar.id === 'me' || !charRelationships || charRelationships.length === 0) return;
     const edges = charRelationships.filter(r => r.fromId == sourceChar.id || r.toId == sourceChar.id);
@@ -1668,6 +1689,7 @@ function renderMemoryHubMvuSnapshot(sessionId) {
 
 
 async function checkAndAutoSummarizeChat(sessionId) {
+    if (typeof isAutoOn === 'function' && !isAutoOn('chatSummary')) return;   // 🔌 设置里关掉了「聊天自动总结」
     if (sessionId.toString().startsWith('g_')) { checkAndAutoSummarizeGroupChat(sessionId); return; }
     let session = globalChats[sessionId]; if (!session || session.length === 0) return;
     
@@ -1702,6 +1724,7 @@ async function checkAndAutoSummarizeChat(sessionId) {
 // 区别只是触发频率改成每50条消息一次（群聊人多话多，20条太频繁），总结存在群聊对象自己的 summary 字段上，
 // 不属于任何单个角色，这样群里每个成员发推文时都能读到同一份"群聊话题"。
 async function checkAndAutoSummarizeGroupChat(sessionId) {
+    if (typeof isAutoOn === 'function' && !isAutoOn('chatSummary')) return;   // 🔌 跟单聊共用「聊天自动总结」这一个开关
     let group = groupChats.find(g => g.id === sessionId); if (!group) return;
     let session = globalChats[sessionId]; if (!session || session.length === 0) return;
 
@@ -1749,6 +1772,7 @@ function getCharGroupChatTopics(char) {
 }
 
 async function updateCharMemoryAsync(char) {
+    if (typeof isAutoOn === 'function' && !isAutoOn('postMemory')) return;   // 🔌 设置里关掉了「推文记忆自动总结」
     const api = getApiConfig(false); if (!api.key) return;
     const interval = postMemoryInterval || 20;
     const posts = getCharRecentPosts(char.id, interval); if (posts.length === 0) return;
@@ -1781,6 +1805,7 @@ function calcDynamicFreqMs(freq) {
 function startAutoPostTimer() {
     setInterval(async () => {
         if (!myApiKey || isGenerating) return;
+        if (typeof isAutoOn === 'function' && !isAutoOn('autoPost')) return;   // 🔌 设置里关掉了「角色自动发帖」
         let now = Date.now(), charsToPost = [], charsToForumPost = [], charsToAnonPost = [];
 
         for (let char of myCharacters) {

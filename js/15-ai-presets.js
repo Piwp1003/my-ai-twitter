@@ -477,6 +477,34 @@ function looksLikeFieldExtractionPattern(pattern) {
     return !!pattern && /\(\.\*\??\)|\(\[\\s\\S\]\*\??\)/.test(pattern);
 }
 
+// 🐛🐛 关键修复（这一个坑影响面极大，几乎所有酒馆正则都中招）：
+// 下面三处"宽松收尾"改写都是把 `收尾标签` 换成 `(?:收尾标签|$)`——意思是"标签写了就在标签处停，
+// 标签没写就一直吃到末尾"。问题在于：酒馆导出的 findRegex 绝大多数带 **m 标志**（`/.../gm`），
+// 而在 m 模式下 `$` 匹配的是**每一行的行尾**，不是整段文本的末尾。
+// 于是 `([\s\S]*?)\s*(?:</Tag>|$)` 里那个**惰性**捕获组，在第一个换行处就能用 `$` 收工——
+// 结果只捕获到第一行，标签块剩下的内容全部漏在外面。
+//
+// 症状就是谢云霄那张卡：<Theater> 里整段私信对话本该被塞进「卷宗纪要」那个折叠框里，
+// 实际只吃进了第一行，剩下的对话全露在折叠框外面，看起来就是"状态栏没完全收起来"。
+// 多字段状态栏更普遍——最后一个字段永远只剩第一行。
+//
+// 用 `(?![\s\S])`（后面再没有任何字符了）代替 `$`：这是无歧义的"整段真末尾"断言，
+// 不受 m 标志影响，也不需要去猜/改调用方的 flags。
+const RX_TRUE_END = '(?![\\s\\S])';
+
+// 存档里已经存着一批用旧写法（`...|$)`）改写过的脚本——它们是在导入那一刻就被改写并存下来的，
+// 光改上面的函数只对"以后新导入的"生效，已经导入的卡照样是坏的。启动读档时原地修一遍。
+// 只动"整条 pattern 正好以 |$) 结尾"这一种形态——那是上面那三处改写唯一会产出的形状，
+// 作者自己手写的 $ 不会长这样（会在别的位置、或者不带这个收尾括号），不会误伤。
+function migrateRegexScriptTrueEnd(list) {
+    if (!Array.isArray(list)) return list;
+    list.forEach(s => {
+        if (!s || typeof s.find !== 'string' || !s.isRegex) return;
+        if (!s.find.endsWith('|$)')) return;
+        s.find = s.find.slice(0, -3) + '|' + RX_TRUE_END + ')';
+    });
+    return list;
+}
 function relaxTrailingClosingTagInPattern(pattern) {
     if (!pattern || typeof pattern !== 'string') return pattern;
     if (!looksLikeFieldExtractionPattern(pattern)) return pattern; // 没有"字段捕获组"特征，大概率不是状态栏类模板，跳过
@@ -486,7 +514,7 @@ function relaxTrailingClosingTagInPattern(pattern) {
     // 后面还接着写一段话题标签（比如#见面前夜）之类的内容，只要标签后面还跟了别的文字，$就永远够不着，
     // 这条正则又会变回"整体作废"。已经是这种旧写法的脚本，这里先原地升级成新写法，不用等重新导入才生效。
     let m = pattern.match(/^([\s\S]*?)\(\?:([\s\S]+?)\)\?\$$/);
-    if (m) return `${m[1]}(?:${m[2]}|$)`;
+    if (m) return `${m[1]}(?:${m[2]}|${RX_TRUE_END})`;
 
     if (pattern.endsWith('$')) return pattern; // 除了上面那种旧写法，其它自己带$收尾的一律不动，避免误伤
 
@@ -495,11 +523,11 @@ function relaxTrailingClosingTagInPattern(pattern) {
     // 用"标签命中就在那停，标签压根没写就退到字符串末尾"这种两选一写法，而不是"标签可选、然后必须正好是末尾"——
     // 这样即使标签后面还跟着别的文字（话题标签、AI多说的几句话等），也只影响标签之外的部分，不会连累前面
     // 已经正常捕获到的字段内容，也不会导致整条替换因为凑不齐"贴着末尾"这个条件而彻底失效。
-    if (m) return `${m[1]}(?:${m[2]}|$)`;
+    if (m) return `${m[1]}(?:${m[2]}|${RX_TRUE_END})`;
 
     // 情况2：[/XXX] 或 [XXX_END] 风格的收尾标记（方括号可能被转义成 \[...\]），前面可能带一个换行转义 \n
     m = pattern.match(/^([\s\S]*?)((?:\\n)?\\?\[\\?\/?[A-Za-z_][A-Za-z0-9_]*\\?\])$/);
-    if (m) return `${m[1]}(?:${m[2]}|$)`;
+    if (m) return `${m[1]}(?:${m[2]}|${RX_TRUE_END})`;
 
     return pattern;
 }

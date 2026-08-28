@@ -70,6 +70,7 @@ function manualTabloidPost() {
 
 
 async function rollTabloidAIParticipation(postId, contextText, contextName) {
+    if (typeof isAutoOn === 'function' && !isAutoOn('tabloidAuto')) return;   // 🔌 设置里关掉了「营销号自动参与」
     if (Math.random() >= 0.5) return;
     const post = tabloidPosts.find(p => p.id === postId); if (!post) return;
     const api = getApiConfig(true); if (!api.key) return;
@@ -130,7 +131,7 @@ function renderTabloidPosts() {
                     <div class="post-header-info"><div class="post-name">${post.char.name}</div><div class="post-handle">@tabloid_news</div></div>
                     <span style="background:#1d9bf0; color:white; font-size:10px; padding:2px 6px; border-radius:4px;">小报爆料</span>
                 </div>
-                <div class="post-body">${namespaceInjectedIds(formatPostText(post.text), post.id)}</div>
+                <div class="post-body">${namespaceInjectedIds(formatPostText(post.text, null, { statusContext: 'post' }), post.id)}</div>
                 <div class="post-footer"><div class="post-stats-group" style="gap:40px;"><div>${commentSVG} ${post.stats.comments}</div><div class="like-stat-item" style="cursor:pointer; color:${post.userLiked ? '#f91880' : 'inherit'}; display:flex; align-items:center; gap:4px;" onclick="event.stopPropagation(); toggleMainPostLike('${post.id}', event)"><span class="like-icon-wrap">${post.userLiked ? likeSVGFilled.replace(/#1d9bf0/g, '#f91880').replace('blue-line-icon', '') : likeSVG}</span> <span class="like-count">${post.stats.likes}</span></div></div></div>
             </div>
         </div>`).join('');
@@ -170,7 +171,7 @@ function getActionIconsHTML(likes, isLiked, replyIdx, postId, isSubReply, isFavo
     const favorSVG = isFavorited ? '<svg style="width:18.75px; height:18.75px; fill:#ffad1f;" viewBox="0 0 24 24"><polygon points="12 2 15.09 10.26 23.77 11.25 17.88 17.15 19.54 25.88 12 21.77 4.46 25.88 6.12 17.15 0.23 11.25 8.91 10.26 12 2"/></svg>' : '<svg style="width:18.75px; height:18.75px; fill:none; stroke:currentColor; stroke-width:1.5;" viewBox="0 0 24 24"><polygon points="12 2 15.09 10.26 23.77 11.25 17.88 17.15 19.54 25.88 12 21.77 4.46 25.88 6.12 17.15 0.23 11.25 8.91 10.26 12 2"/></svg>';
 
     return `
-        <div style="display:flex; justify-content:flex-start; max-width:425px; margin-top:8px; gap:32px;">
+        <div class="reply-action-row" style="display:flex; justify-content:space-between; max-width:340px; margin-top:8px;">
             <div style="${itemStyle}" onclick="event.stopPropagation(); toggleInlineReply(${replyIdx}, '${postId}')" onmouseover="this.style.color='#1d9bf0'" onmouseout="this.style.color='#536471'">
                 ${commentSVG}
                 <span>回复</span>
@@ -377,6 +378,13 @@ function renderNovelListBase() {
 // 7. 渲染论坛帖子列表
 function renderForumList() {
     let wrapper = document.getElementById('novelForumWrapper');
+    // ⚠️ 判空：这个容器只有在"故事→论坛"这个 Tab 打开时才存在。
+    // 角色后台自动发帖、或者用户在别的页面上让角色代笔发帖时，页面上根本没有这个元素，
+    // 之前会直接在最后 wrapper.innerHTML = html 那一行抛
+    // "Cannot set properties of null"——帖子其实已经存进 forumThreads 了，
+    // 但调用方收到的是"失败"，于是给用户弹一个假的失败提示。
+    // 没这个容器就说明用户压根没在看论坛，不用渲染，安静返回即可。
+    if (!wrapper) return;
     let html = `
     <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 16px; background:#f7f9f9; border-bottom:1px solid #eff3f4;">
         <span style="font-size:14px; font-weight:bold; color:#536471;">热点讨论</span>
@@ -735,6 +743,9 @@ async function generateNpcForumReplies(thread, targetFloor, userText) {
     要求：
     1. 语气贴近真实论坛网民（使用吃瓜、离谱、楼主等口癖），每条不超过${typeof commentWordLimit !== 'undefined' ? commentWordLimit : 30}字。
     2. 可以引用之前的楼层（quoteFloor填数字，如不引用填null）。
+    3. **重要**：这几条跟帖里至少要有一条是在回复上面某位网友（不是回复楼主）——网友之间互相抬杠、附和、
+       纠正对方是论坛最常见的样子。回谁就把 quoteFloor 填成那一楼的楼层号，内容里也自然地带上对方的观点。
+       不要几个人各说各的、都只对着楼主说话，那样看起来像一堆机器人排队发言。
     必须且只能返回纯 JSON 数组格式：
     [{"author": "网友ID", "content": "回复文本", "quoteFloor": null, "likes": 23}]
     ${getFinalAnswerMarkerPromptNote()}`;
@@ -806,6 +817,16 @@ function openCreateForumModal() {
         modal.innerHTML = `
         <div class="modal-box" style="width: 550px;">
             <h2 style="color:#1d9bf0; margin-top:0;">📝 发布新帖</h2>
+            <!-- 发帖身份：跟推文/匿名论坛一个思路。选角色时，标题和正文都由 AI 照着那个角色的
+                 人设+最近经历写，格式跟你自己发的完全一样，发完同样会被路人和其他角色围观互动。 -->
+            <div class="input-group full-width">
+                <label>👤 以谁的身份发</label>
+                <select id="newForumRoleSelect" onchange="onForumRoleChange()">
+                    <option value="me">我（自己写标题和正文）</option>
+                    <option value="random">🎲 随机角色（AI 代笔）</option>
+                </select>
+                <div class="form-hint" id="newForumRoleHint" style="margin-top:6px;">标题和正文自己填。</div>
+            </div>
             <div class="input-group full-width">
                 <label>帖子标题</label>
                 <input type="text" id="newForumTitle" placeholder="输入吸引人的标题...">
@@ -835,6 +856,17 @@ function openCreateForumModal() {
         document.body.appendChild(modal);
     }
     
+    // 填充"以谁的身份发"
+    const roleSel = document.getElementById('newForumRoleSelect');
+    if (roleSel && typeof myCharacters !== 'undefined') {
+        const old = roleSel.value;
+        roleSel.innerHTML = '<option value="me">我（自己写标题和正文）</option>'
+            + '<option value="random">🎲 随机角色（AI 代笔）</option>'
+            + myCharacters.map(c => `<option value="${c.id}">${c.name}（AI 代笔）</option>`).join('');
+        if (old && roleSel.querySelector(`option[value="${old}"]`)) roleSel.value = old;
+        onForumRoleChange();
+    }
+
     const charBox = document.getElementById('newForumChars');
     if (typeof myCharacters !== 'undefined') {
         charBox.innerHTML = myCharacters.map(c => `
@@ -855,14 +887,14 @@ function openCreateForumModal() {
 // 角色自主发新帖到论坛（forumThreads）：跟用户手动发帖(submitCreateForumModal)是同一个板块，唯一的区别是
 // 标题+正文由AI以这个角色的口吻生成，发布者身份也是这个角色（不是currentUser）。发完之后同样召唤路人跟帖，
 // 体验跟用户自己发帖后的连锁反应保持一致。返回 {success, error?, thread?}，静默失败交给调用方自己决定要不要提示。
-async function autoGenerateForumThreadForChar(char) {
+async function autoGenerateForumThreadForChar(char, topicHint) {
     if (!char) return { success: false, error: '没有指定角色' };
     const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
     if (!api || !api.key) return { success: false, error: '未配置API Key' };
 
     try {
         const actionStrictRule = (typeof allowActionTags !== 'undefined' && allowActionTags) ? "" : "\n【严格禁止】：绝对不要包含任何动作、神态或心理描写（不要用括号()或【】），只输出你直接想说的文字内容。";
-        const prompt = `${buildBasePrompt(char, false)}你现在想去论坛发一个新帖子（用你自己真实的身份/网名发，不是匿名），聊聊最近想聊的话题、吐槽、分享、求助、安利都行，具体聊什么、语气怎么样完全由你的人设决定。
+        const prompt = `${buildBasePrompt(char, false)}${typeof getRecentPostsAwarenessText === 'function' ? getRecentPostsAwarenessText(char) : ''}${typeof getTimeAwarenessPrompt === 'function' ? getTimeAwarenessPrompt(String(char.id), char) : ''}${topicHint ? `\n【这次想聊的方向】：${topicHint}（照这个方向写，但要用你自己的语气和视角，不要照抄这句话）\n` : ''}你现在想去论坛发一个新帖子（用你自己真实的身份/网名发，不是匿名），聊聊最近想聊的话题、吐槽、分享、求助、安利都行，具体聊什么、语气怎么样完全由你的人设决定。
 请直接输出一个JSON对象：{"title":"帖子标题（不超过20字，符合论坛标题的风格）","content":"帖子正文（不超过${typeof postWordLimit !== 'undefined' ? postWordLimit : 150}字）"}${typeof WORD_LIMIT_PRIORITY_NOTE !== 'undefined' ? WORD_LIMIT_PRIORITY_NOTE : ''}
 即使这次发的是论坛帖子而不是对话，如果你的世界观设定/正则脚本里要求每次输出固定附带某种格式标签或HTML（比如状态栏、卡片等），也请照常写进content字段里（换行用\\n转义），不要因为是论坛帖子就省略，这也不违反"只返回JSON"的要求。
 ${getFinalAnswerMarkerPromptNote()}
@@ -901,12 +933,56 @@ ${getFinalAnswerMarkerPromptNote()}
     }
 }
 
+// 选了角色代笔时，标题/正文不再必填——它们变成"给角色的方向"，留空就完全由角色自己发挥。
+function onForumRoleChange() {
+    const sel = document.getElementById('newForumRoleSelect');
+    const hint = document.getElementById('newForumRoleHint');
+    const titleEl = document.getElementById('newForumTitle');
+    const contentEl = document.getElementById('newForumContent');
+    if (!sel) return;
+    const isMe = sel.value === 'me';
+    if (hint) hint.innerText = isMe
+        ? '标题和正文自己填。'
+        : '标题和正文交给 AI 按角色的人设写。下面两栏可以留空，也可以填一个大概方向（比如"想吐槽今天的会"）。';
+    if (titleEl) titleEl.placeholder = isMe ? '输入吸引人的标题...' : '（可留空）想让 TA 聊什么方向';
+    if (contentEl) contentEl.placeholder = isMe ? '说点什么吧...' : '（可留空）补充一点方向或情境';
+}
+
 async function submitCreateForumModal(event) {
     let title = document.getElementById('newForumTitle').value.trim();
     let content = document.getElementById('newForumContent').value.trim();
     let outline = document.getElementById('newForumOutline').value.trim();
     let fileInput = document.getElementById('newForumTxt');
-    
+
+    // 🆕 角色代笔：整条帖子交给 autoGenerateForumThreadForChar 按人设写，
+    // 走的是跟"角色自主发帖"完全同一套逻辑和格式，发完一样会被路人和其他角色围观互动。
+    const roleSel = document.getElementById('newForumRoleSelect');
+    const roleId = roleSel ? roleSel.value : 'me';
+    if (roleId !== 'me') {
+        let char = null;
+        if (roleId === 'random') {
+            const pool = (myCharacters || []).filter(c => c.replyToUser !== false);
+            char = pool[Math.floor(Math.random() * pool.length)] || null;
+        } else {
+            char = (myCharacters || []).find(c => c.id == roleId) || null;
+        }
+        if (!char) return alert('没有可用的角色，先去【角色中心】建一个。');
+
+        const b = event.target;
+        b.innerText = `「${char.name}」正在写…`; b.disabled = true;
+        try {
+            const hint = [title, content].filter(Boolean).join('；');
+            const r = await autoGenerateForumThreadForChar(char, hint || null);
+            if (!r || !r.success) alert('角色发帖失败：' + ((r && r.error) || '未知原因'));
+            else {
+                document.getElementById('createForumModal').style.display = 'none';
+                document.getElementById('newForumTitle').value = '';
+                document.getElementById('newForumContent').value = '';
+            }
+        } finally { b.innerText = '发布帖子'; b.disabled = false; }
+        return;
+    }
+
     if(!title || !content) return alert("标题和正文为必填项！");
     
     let btn = event.target;

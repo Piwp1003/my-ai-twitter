@@ -131,7 +131,7 @@ function renderSearchPosts(keyword) {
         html += `<div class="search-section-title">📰 营销号爆料 (${tabloidRes.length})</div>` + tabloidRes.map(p => `
             <div class="post-placeholder" onclick="switchMainView('postDetail', '${p.id}')">
                 <div class="post-content" style="min-width:0; flex:1;">
-                    <div class="post-body">${namespaceInjectedIds(formatPostText(p.text, p.char && p.char.id), p.id)}</div>
+                    <div class="post-body">${namespaceInjectedIds(formatPostText(p.text, p.char && p.char.id, { statusContext: 'post' }), p.id)}</div>
                 </div>
             </div>`).join('');
     }
@@ -146,7 +146,7 @@ function renderSearchPosts(keyword) {
     if (diaryRes.length > 0) {
         html += `<div class="search-section-title">📔 日记与信件 (${diaryRes.length})</div>` + diaryRes.map(r => `
             <div class="search-result-card" onclick="openDiaryFromSearch('${r.charId}', '${r.kind}', '${r.id}')">
-                <div style="font-weight:bold; font-size:13px;">${r.charName} · ${r.kind === 'letter' ? '信件' : '日记'}：${r.title}</div>
+                <div style="font-weight:bold; font-size:13px;">${r.charName} · ${r.kind === 'letters' ? '信件' : '日记'}：${r.title}</div>
                 <div style="font-size:13px; color:#536471; margin-top:2px; max-height:3em; overflow:hidden;">${r.content}</div>
             </div>`).join('');
     }
@@ -225,7 +225,9 @@ function renderSinglePostDetail(postId) {
 
             let indentClass = depth > 0 ? 'reply-nested' : '';
             // 嵌套左侧缩进计算：前3层正常缩进，超过3层后不再继续向右无限缩进缩短空间
-            let depthStyle = depth > 0 ? `margin-left: ${Math.min(depth, 3) * 35}px;` : '';
+            // 缩进改成用 CSS 变量给出层级，具体每层缩多少交给 style.css 按屏幕宽度决定
+            // （手机上 35px/层太狠，三层就吃掉 105px，名字和内容都没地方站了）
+            let depthStyle = depth > 0 ? `--reply-depth: ${Math.min(depth, 3)};` : '';
             
             // 获取用户当前对该条评论的点赞和收藏状态
             let isLiked = r.likedBy ? r.likedBy.includes('me') : (r.liked || false);
@@ -239,13 +241,14 @@ function renderSinglePostDetail(postId) {
                 </div>
                 <div class="reply-content-box" style="flex: 1; min-width: 0;">
                     <div class="reply-header-row">
-                        <span class="reply-user-name" onclick="switchMainView('profile', '${rChar.id}')">${rChar.name}</span>
-                        <span class="reply-user-handle">${rChar.handle || ''}</span>
-                        <span>·</span>
+                        <span class="reply-user-name" onclick="switchMainView('profile', '${rChar.id}')">${escapeHtml(rChar.name)}</span>
+                        <span class="reply-user-handle">${escapeHtml(rChar.handle || '')}</span>
+                        <span class="reply-dot">·</span>
                         <span class="time-updater" data-timestamp="${r.timestamp}">${timeAgo(r.timestamp)}</span>
                     </div>
+                    ${r.replyTo ? `<div class="reply-to-line">回复给 <b>@${escapeHtml(r.replyTo)}</b></div>` : ''}
                     <div class="reply-text-body">
-                        ${r.replyTo ? `<span style="color:#1d9bf0;">回复 @${r.replyTo} </span>` : ''}${namespaceInjectedIds(formatPostText(r.text, r.charId || (r.char && r.char.id) || null), r.id || (postId + '_' + idx))}
+                        ${namespaceInjectedIds(formatPostText(r.text, r.charId || (r.char && r.char.id) || null, { statusContext: 'comment' }), r.id || (postId + '_' + idx))}
                     </div>
                     ${r.mediaUrl ? `<div class="post-media" style="margin-top:8px;"><img src="${r.mediaUrl}" style="max-height:200px; border-radius:8px;"></div>` : ''}
                     ${getActionIconsHTML(r.likes || 0, isLiked, idx, postId, depth > 0, isFavorited)}
@@ -263,7 +266,7 @@ function renderSinglePostDetail(postId) {
                 visibleChildren.forEach(child => { html += buildReplyHTML(child, depth + 1); });
                 if (hiddenChildren.length > 0) {
                     html += `
-                    <div class="view-more-replies" data-count="${hiddenChildren.length}" style="margin-left: ${Math.min(depth + 1, 3) * 35}px;" onclick="toggleExpandHiddenReplies(this)">
+                    <div class="view-more-replies" data-count="${hiddenChildren.length}" style="--reply-depth: ${Math.min(depth + 1, 3)};" onclick="toggleExpandHiddenReplies(this)">
                         显示更多回复 (${hiddenChildren.length}条)
                     </div>
                     <div class="hidden-replies-container" style="display:none;">
@@ -308,7 +311,7 @@ function renderSinglePostDetail(postId) {
                 </div>
                 ${followBtnHTML}
             </div>
-            <div class="post-body detail-post-body" ${actionAttr}>${namespaceInjectedIds(formatPostText(post.text, isTabloid ? null : char.id), post.id)}</div>
+            <div class="post-body detail-post-body" ${actionAttr}>${namespaceInjectedIds(formatPostText(post.text, isTabloid ? null : char.id, { statusContext: 'post' }), post.id)}</div>
             ${locationHTML}
             ${mediaHTML}
             ${quotedHTML}
@@ -445,16 +448,20 @@ async function userPost() {
         } catch(e) { }
     } else {
         postLoc = locVal || postLoc;
-        postStats.retweets = parseInt(rtVal) || getRandomStat(100);
-        postStats.views = parseInt(viewsVal) || getRandomStat(5000);
-        postStats.comments = parseInt(commentsVal) || getRandomStat(50);
-        postStats.likes = parseInt(likesVal) || getRandomStat(500);
+        // 用 `parseInt(x) || 随机数` 判空会把用户明确填的 0 当成"没填"（0 是假值）而换成随机数，
+        // 于是"0赞0评论"的推文根本发不出来。改成显式判空字符串，跟上面 AI 分支的写法保持一致。
+        postStats.retweets = rtVal !== '' ? parseInt(rtVal) : getRandomStat(100);
+        postStats.views = viewsVal !== '' ? parseInt(viewsVal) : getRandomStat(5000);
+        postStats.comments = commentsVal !== '' ? parseInt(commentsVal) : getRandomStat(50);
+        postStats.likes = likesVal !== '' ? parseInt(likesVal) : getRandomStat(500);
     }
-    
-    postStats.retweets = postStats.retweets || getRandomStat(100);
-    postStats.views = postStats.views || getRandomStat(5000);
-    postStats.comments = postStats.comments || getRandomStat(50);
-    postStats.likes = postStats.likes || getRandomStat(500);
+
+    // 最终兜底：只有"真的没算出数来"（undefined/null/NaN）才补随机数，合法的 0 必须原样保留
+    const fillStat = (v, max) => (typeof v === 'number' && !isNaN(v)) ? v : getRandomStat(max);
+    postStats.retweets = fillStat(postStats.retweets, 100);
+    postStats.views = fillStat(postStats.views, 5000);
+    postStats.comments = fillStat(postStats.comments, 50);
+    postStats.likes = fillStat(postStats.likes, 500);
 
     let newPostId = 'u_' + Date.now();
     let newPost = { 
@@ -494,10 +501,18 @@ async function userPost() {
     
     let emoPrompt = getEmoticonPrompt();
     
-    for (let char of myCharacters) {
-        if (char.id === postChar.id) continue;
-        if (char.replyToUser === false) continue; // 新增：设置里关闭了"回复用户"的角色，直接跳过不参与互动
-        
+    // 💰 以前这里是 `for (let char of myCharacters)`——角色库里有几个角色就发几次请求，
+    // 每次都带着那个角色的完整人设+世界书+预设。27 个角色实测一条推文要 30 次调用、约 9 万 token，
+    // 其中 98% 花在这个循环上，而且角色越多越贵。现在先按相关度挑出最多 charInteractMaxCount 个
+    // （设置里可调，填 0 恢复"全都来"的老行为），评论区照样热闹，请求次数固定住了。
+    // 🔌 设置里关掉了「发帖后角色自动来互动」：帖子照常发出去，只是没人自动来评论
+    const interactPool = (typeof isAutoOn === 'function' && !isAutoOn('postReactions'))
+        ? []
+        : myCharacters.filter(c => c.id !== postChar.id && c.replyToUser !== false);
+    const interactChars = (typeof pickInteractingChars === 'function')
+        ? pickInteractingChars(interactPool, text, postChar.id) : interactPool;
+    for (let char of interactChars) {
+
         const isCool = isCoolTowardUser(char);   // 跟用户有关系的角色不再被锁进"只能点赞"
         let actionStrictRule = allowActionTags ? "" : "\n【严格禁止】：绝对不要包含任何动作、神态或心理描写（不要用括号()或【】），只输出你直接说的话。";
 
