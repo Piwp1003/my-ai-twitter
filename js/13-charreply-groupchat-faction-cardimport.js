@@ -430,21 +430,32 @@ window.openInviteGroupModal = function() {
 window.confirmInviteToGroup = async function() {
     const select = document.getElementById('inviteGroupCharSelect');
     const charId = select ? parseInt(select.value) : null;
-    if (!charId) return;
+    // 静默 return 是"点了没反应"的头号来源，一律改成把原因说出来
+    if (!charId) {
+        const msg = select ? '还没选要请谁进来。' : '邀请框没打开好，关掉重新点一次试试。';
+        if (typeof appAlert === 'function') appAlert(msg); else alert(msg);
+        return;
+    }
     
     const group = groupChats.find(g => g.id === currentSummaryCharId);
     const newChar = myCharacters.find(c => c.id === charId);
-    if (!group || !newChar) return;
+    if (!group || !newChar) {
+        const msg = !group ? '没找到这个群聊，关掉重新进一次。' : '没找到这个角色（可能刚被删了）。';
+        if (typeof appAlert === 'function') appAlert(msg); else alert(msg);
+        return;
+    }
     
+    // ⚠️ 这里以前是裸的 btn.innerText，元素不在就直接 TypeError 把整个邀请流程炸掉，
+    // 而用户看到的只是"点了没反应"。
     const btn = document.getElementById('btnConfirmInvite');
-    btn.innerText = "成员拉取中..."; btn.disabled = true;
+    if (btn) { btn.innerText = "成员拉取中..."; btn.disabled = true; }
     
     // 将角色加入群数据
     group.members.push(charId);
     saveAllData();
     
     closeModal('inviteGroupModal');
-    btn.innerText = "立即邀请"; btn.disabled = false;
+    if (btn) { btn.innerText = "立即邀请"; btn.disabled = false; }
     
     // 写入系统消息
     if (!globalChats[group.id]) globalChats[group.id] = [];
@@ -530,13 +541,16 @@ window.triggerGroupWelcomeSequence = async function(groupId, newCharId) {
 let currentRelationsFactionName = null; // 记录当前正在浏览的势力，供角色关系页返回时使用
 let currentRelationCharId = null;
 
+// 单值版：只在"必须给一个代表色/代表标签"的地方用（比如关系网连线的颜色），取主势力。
+// 要判断"属不属于某个势力"一律用 charInFaction，别再拿 c.group === 名字 去比——
+// 那样多势力角色只有主势力那一条能命中，其它势力页里会凭空少人。
 function getCharFaction(c) { return c.group && c.group.trim() ? c.group : '势力不明'; }
 
 function renderFactionNetworkGrid() {
     const grid = document.getElementById('factionNetworkGrid');
-    const unknownCount = myCharacters.filter(c => !c.group || !c.group.trim()).length;
+    const unknownCount = myCharacters.filter(c => getCharFactions(c).length === 0).length;
     const cards = characterGroups.map(g => {
-        const count = myCharacters.filter(c => c.group === g).length;
+        const count = myCharacters.filter(c => charInFaction(c, g)).length;
         return { name: g, count, color: getFactionColor(g), deletable: true };
     });
     cards.push({ name: '势力不明', count: unknownCount, color: getFactionColor(null), deletable: false });
@@ -557,7 +571,10 @@ function renderFactionMembersGrid(factionName) {
     currentRelationsFactionName = factionName;
     document.getElementById('factionMembersTitle').innerText = factionName;
     document.getElementById('factionMembersColorDot').style.background = getFactionColor(factionName === '势力不明' ? null : factionName);
-    const members = myCharacters.filter(c => getCharFaction(c) === factionName);
+    // 「势力不明」＝一个势力都没加入的；其余按"是否属于这个势力"算（多势力角色会同时出现在几个势力页里）
+    const members = (factionName === '势力不明')
+        ? myCharacters.filter(c => getCharFactions(c).length === 0)
+        : myCharacters.filter(c => charInFaction(c, factionName));
     const grid = document.getElementById('factionMembersGrid');
     if (members.length === 0) { grid.innerHTML = '<div class="empty-state">该势力暂无角色。</div>'; return; }
     grid.innerHTML = members.map(c => `
@@ -678,11 +695,29 @@ async function deleteRelationship(relId) {
     renderCharRelationsView(currentRelationCharId);
 }
 
+// 👤 势力级的用户人设绑定：这个势力里的所有角色，默认都按这份人设认识你。
+// 角色自己单独绑了的话，角色那条优先（见 js/01 resolveUserPersonaFor 的优先级说明）。
+function factionPersonaOptions(selectedId) {
+    const list = (typeof userPersonas !== 'undefined' && Array.isArray(userPersonas)) ? userPersonas : [];
+    return '<option value="">跟随当前资料</option>'
+        + list.map(p => `<option value="${p.id}"${p.id === selectedId ? ' selected' : ''}>${escapeHtml(p.label || '未命名人设')}</option>`).join('');
+}
+function setFactionUserPersona(factionName, personaId) {
+    if (!factionName) return;
+    if (personaId) factionUserPersona[factionName] = personaId;
+    else delete factionUserPersona[factionName];
+    if (typeof saveAllData === 'function') saveAllData();
+    if (typeof appToast === 'function') {
+        const p = (userPersonas || []).find(x => x && x.id === personaId);
+        appToast(personaId ? `「${factionName}」里你是「${p ? (p.label || '未命名人设') : ''}」` : `「${factionName}」改回跟随当前资料`);
+    }
+}
+
 // ---- 势力总览（CRUD 管理页）----
 function renderFactionOverviewList() {
     const container = document.getElementById('factionOverviewList');
     let html = characterGroups.map(g => {
-        const members = myCharacters.filter(c => c.group === g);
+        const members = myCharacters.filter(c => charInFaction(c, g));
         return `
         <div class="faction-overview-row">
             <div class="faction-overview-row-head">
@@ -691,15 +726,25 @@ function renderFactionOverviewList() {
                     onblur="renameFactionOverview('${g.replace(/'/g,"\\'")}', this.value)">
                 <span style="font-size:12px; color:#536471;">${members.length} 人</span>
             </div>
+            <div class="faction-persona-row">
+                <span>👤 在这个势力里，我是</span>
+                <select onchange="setFactionUserPersona(${JSON.stringify(g).replace(/"/g, '&quot;')}, this.value)">
+                    ${factionPersonaOptions(factionUserPersona[g] || '')}
+                </select>
+            </div>
             <div class="faction-overview-members">
-                ${members.map(c => `<div class="faction-overview-member" title="点击移出该势力" onclick="removeCharFromFaction('${c.id}')">${getAvatarHTML(c, 48)}<div class="faction-overview-member-name">${c.name}</div></div>`).join('')}
+                ${members.map(c => {
+                    const others = getCharFactions(c).filter(x => x !== g);
+                    const tip = others.length ? `点击移出「${g}」（还属于：${others.join('、')}）` : '点击移出该势力';
+                    return `<div class="faction-overview-member" title="${escapeHtml(tip)}" onclick="removeCharFromFaction('${c.id}', ${JSON.stringify(g).replace(/"/g, '&quot;')})">${getAvatarHTML(c, 48)}<div class="faction-overview-member-name">${c.name}${others.length ? `<span style="color:#8b98a5;"> +${others.length}</span>` : ''}</div></div>`;
+                }).join('')}
                 <div class="faction-overview-add" onclick="openFactionCharPicker('${g.replace(/'/g,"\\'")}')">＋</div>
             </div>
         </div>`;
     }).join('');
 
     // 势力不明：不可删除
-    const unknownMembers = myCharacters.filter(c => !c.group || !c.group.trim());
+    const unknownMembers = myCharacters.filter(c => getCharFactions(c).length === 0);
     html += `
         <div class="faction-overview-row">
             <div class="faction-overview-row-head">
@@ -728,37 +773,42 @@ function renameFactionOverview(oldName, newVal) {
     const idx = characterGroups.indexOf(oldName); if (idx === -1) return;
     characterGroups[idx] = newVal;
     if (factionColors[oldName]) { factionColors[newVal] = factionColors[oldName]; delete factionColors[oldName]; }
-    myCharacters.forEach(c => { if (c.group === oldName) c.group = newVal; });
+    renameFactionEverywhere(oldName, newVal);
     saveAllData(); renderFactionOverviewList();
 }
 async function deleteFactionOverview(name) {
     if (!(await appConfirm(`确定删除势力"${name}"吗？该势力下的角色将归入"势力不明"，角色本身不会被删除。`))) return;
-    myCharacters.forEach(c => { if (c.group === name) c.group = ''; });
+    removeFactionEverywhere(name);
     characterGroups = characterGroups.filter(g => g !== name);
     delete factionColors[name];
     saveAllData(); renderFactionOverviewList();
 }
-function removeCharFromFaction(charId) {
+// 🏴 只把这个角色移出**这一个**势力，它属于的其它势力不受影响。
+// （以前是 c.group='' 一刀切清空，多势力之后那样会把别的势力也一起抹掉。）
+function removeCharFromFaction(charId, factionName) {
     const c = myCharacters.find(x => x.id == charId); if (!c) return;
-    c.group = ''; saveAllData(); renderFactionOverviewList();
+    if (factionName) setCharFactions(c, getCharFactions(c).filter(g => g !== factionName));
+    else setCharFactions(c, []);
+    saveAllData(); renderFactionOverviewList();
 }
 let factionPickerTarget = null;
 function openFactionCharPicker(factionName) {
     factionPickerTarget = factionName;
     const list = document.getElementById('factionCharPickerList');
-    const candidates = myCharacters.filter(c => c.group !== factionName);
+    const candidates = myCharacters.filter(c => !charInFaction(c, factionName));
     if (candidates.length === 0) { list.innerHTML = '<div style="color:#536471; font-size:13px;">已经没有其他角色可以添加了。</div>'; }
     else {
         list.innerHTML = candidates.map(c => `
             <div style="display:flex; align-items:center; gap:10px; padding:8px; border-radius:8px; cursor:pointer;" onmouseover="this.style.background='#f7f9f9'" onmouseout="this.style.background='transparent'" onclick="assignCharToFaction('${c.id}')">
-                ${getAvatarHTML(c, 36)}<span>${c.name}</span><span style="margin-left:auto; font-size:12px; color:#536471;">${getCharFaction(c)}</span>
+                ${getAvatarHTML(c, 36)}<span>${c.name}</span><span style="margin-left:auto; font-size:12px; color:#536471;">${getCharFactions(c).join('、') || '势力不明'}</span>
             </div>`).join('');
     }
     openModal('factionCharPickerModal');
 }
 function assignCharToFaction(charId) {
     const c = myCharacters.find(x => x.id == charId); if (!c || !factionPickerTarget) return;
-    c.group = factionPickerTarget;
+    // 🏴 追加而不是覆盖：加进新势力不会把它原来的势力挤掉
+    setCharFactions(c, getCharFactions(c).concat([factionPickerTarget]));
     saveAllData(); closeModal('factionCharPickerModal'); renderFactionOverviewList();
 }
 // ====== 手机端长按呼出菜单专用代码 ======
@@ -881,32 +931,13 @@ function renderCharCalendarModalContent(charId) {
         });
     }
 
-    // --- 修复版天数计算引擎（绝对对齐日历天数） ---
-    let baseTs = null;
-    let baseLabel = "我们相识";
-
-    const meetEvent = allAnniversaries.find(a => !a.isAiMemory && (a.event.includes('相识') || a.event.includes('认识') || a.event.includes('相遇') || a.event.includes('见面') || a.event.includes('初见')));
-    
-    if (meetEvent) {
-        baseTs = new Date(meetEvent.date).getTime();
-        baseLabel = meetEvent.event;
-    } else {
-        baseTs = char.createTime;
-        if (!baseTs && !isNaN(char.id) && char.id.toString().length >= 13) baseTs = parseInt(char.id);
-        if (!baseTs) baseTs = Date.now();
-    }
-
-    // 强行把时分秒清零，只比对“日期”
-    let baseDateObj = new Date(baseTs);
-    baseDateObj.setHours(0, 0, 0, 0);
-    let todayObj = new Date();
-    todayObj.setHours(0, 0, 0, 0);
-    
-    // (今天的毫秒 - 起点的毫秒) 除以一天的毫秒，再 +1 (代表认识的当天就是第 1 天)
-    let displayDays = Math.floor((todayObj.getTime() - baseDateObj.getTime()) / 86400000) + 1;
-    if (displayDays < 1) displayDays = 1; 
-
-    const baseDateStr = `${baseDateObj.getFullYear()}-${String(baseDateObj.getMonth()+1).padStart(2,'0')}-${String(baseDateObj.getDate()).padStart(2,'0')}`;
+    // --- 天数一律走 annBaseInfo（js/05）---
+    // 以前这里自己算一套、checkAndAnnounceAnniversary 又自己算一套（从聊天记录第一条起算），
+    // 同一天两个数对不上。现在两边共用一个函数。
+    const _ann = (typeof annBaseInfo === 'function') ? annBaseInfo(char) : null;
+    const displayDays = _ann ? _ann.days : 1;
+    const baseLabel = _ann ? _ann.label : '我们相识';
+    const baseDateStr = _ann ? _ann.dateStr : '';
 
     let htmlStr = `
     <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-radius:6px; background:linear-gradient(to right, #e8f5fd, #f0f8ff); color:#0f1419; margin-bottom:8px; border-left:4px solid #1d9bf0;">

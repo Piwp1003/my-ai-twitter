@@ -1037,7 +1037,6 @@ function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", o
     if (typeof getAnniversaryAwarenessPrompt === 'function') prompt += getAnniversaryAwarenessPrompt(char);   // 🗓️ 用户手记在日历里的纪念日
     if (typeof getReadingNotesPrompt === 'function') prompt += getReadingNotesPrompt(char);   // 📖 一起读过的书（js/20）
     if (typeof getFilmPrompt === 'function') prompt += getFilmPrompt(char);   // 🎬 一起看过的电影 + 观后感（js/21）
-    prompt += getBoxPrompt(char);   // 🧩 内置小功能（js/22~25）各自的注入
     prompt += getProfileSelfPrompt(char);       // 🪪 资料页上的简介/所在地/网站/生日
     prompt += getFactionSelfPrompt(char);       // 🏳️ 自己属于哪个势力、同一边还有谁
     prompt += getRelationshipContextPrompt(char);
@@ -2563,33 +2562,4 @@ function getDiaryAwarenessPrompt(char, maxN = 3, perChars = 70) {
         return `\n【你自己写过的日记（只有你自己看得到）】\n${lines.join('\n')}
 日记是你私下写给自己的，里面那些话你没跟任何人说过。它影响你此刻的心境，但**不要当成聊天素材主动端出来**——除非对方已经知道、或者你确实想说了。\n`;
     } catch (e) { return ''; }
-}
-
-
-// ===================== 🧩 内置小功能的 prompt 注入 =====================
-// 音乐盒、行程与天气、关系账本、八卦网、随身物、日子这几个原来是插件，
-// 各自有一个 `code` 钩子（每次拼 prompt 都跑一遍，返回的字符串直接进 prompt）。
-// 内置之后钩子没了，改成它们各自往 window 上挂一个 __gyXxxCtxFor(charId)，
-// 这里统一调一遍。写法跟原来的钩子一模一样，只是换了个调用的地方。
-//
-// 哪个没加载（或者出错）就跳过哪个，不会连累别的——原来插件系统也是这么兜底的。
-const GY_BOX_CTX = [
-    ['__gymMemoryFor',   '音乐盒'],
-    ['__gyMapCtxFor',    '行程与天气'],
-    ['__gyRelCtxFor',    '关系账本'],
-    ['__gyGossipCtxFor', '八卦网'],
-    ['__gyKitCtxFor',    '随身物'],
-    ['__gyDaysCtxFor',   '日子']
-];
-function getBoxPrompt(char) {
-    if (!char) return '';
-    let out = '';
-    GY_BOX_CTX.forEach(([fn, name]) => {
-        try {
-            if (typeof window[fn] !== 'function') return;
-            const t = window[fn](char.id);
-            if (typeof t === 'string' && t.trim()) out += '\n' + t;
-        } catch (e) { console.warn('[小功能] ' + name + ' 注入出错，已跳过：', e); }
-    });
-    return out;
 }

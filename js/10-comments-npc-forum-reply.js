@@ -202,7 +202,8 @@ async function runCharRepliesToComment(post, postId, newReply, text, opts) {
             if (!pickList && isPostAuthor && repText.toUpperCase().startsWith("NO") && repText.length < 5) repText = "LIKE";
             if (pickList && repText.toUpperCase().startsWith('NO') && repText.length < 5) continue;   // 这一轮它选择不出声
 
-            if (repText.toUpperCase() === 'LIKE') {
+            // 宽松识别"这条其实只是想点个赞"（见 js/01 looksLikeALikeOnly 的说明）
+            if ((typeof looksLikeALikeOnly === 'function') ? looksLikeALikeOnly(repText) : (repText.toUpperCase() === 'LIKE')) {
                 replyTarget.likes = (replyTarget.likes || 0) + 1;
                 if (!replyTarget.likedBy) replyTarget.likedBy = [];
                 if (!replyTarget.likedBy.includes(char.id)) replyTarget.likedBy.push(char.id); // 记录AI点赞
@@ -784,7 +785,7 @@ const count = Math.floor(Math.random() * npcReplyMaxCount) + 1;
     const prompt = `你现在要模拟${count}个路人NPC网友进行网络评论。
 【重要设定上下文】：
 ${postCharContext}
-${getUserContextPrompt()}
+${getUserContextPrompt(post.char && post.char.id !== 'me' ? myCharacters.find(c => c.id == post.char.id) : null)}
 生成NPC言论时，你必须严格记忆、区分并遵循上述博主和用户的性别与人设特征，绝不能搞错代词！
 ${forumHint}
 ${context}
@@ -1358,22 +1359,35 @@ function toggleMainPostLike(postId, event) {
     if (!post) return;
     if (!post.likedBy) post.likedBy = [];
     const pinkLikeSVG = likeSVGFilled.replace(/#1d9bf0/g, '#f91880').replace('blue-line-icon', '');
-    const el = event.currentTarget;
+    // event.currentTarget 只在事件真正派发的过程中才有值：从 setTimeout 里、
+    // 或者别的代码直接调这个函数时它是 null，接着 el.style 就抛
+    // "Cannot read properties of null"，界面上表现为"点了没反应"。
+    // 这里退一步用 target 往上找那个按钮；再找不到就只更新数据、不动样式，
+    // 至少点赞这件事本身要成功。
+    const el = (event && (event.currentTarget
+        || (event.target && event.target.closest && event.target.closest('[onclick*="toggleMainPostLike"]')))) || null;
+    const paint = (color, svg) => {
+        if (!el) return;
+        el.style.color = color;
+        const wrap = el.querySelector('.like-icon-wrap');
+        if (wrap) wrap.innerHTML = svg;
+    };
 
     if (post.userLiked) {
         post.userLiked = false;
         post.stats.likes = Math.max(0, parseStat(post.stats.likes) - 1);
         post.likedBy = post.likedBy.filter(id => id !== 'me');
-        el.style.color = 'inherit';
-        el.querySelector('.like-icon-wrap').innerHTML = likeSVG;
+        paint('inherit', likeSVG);
     } else {
         post.userLiked = true;
         post.stats.likes = parseStat(post.stats.likes) + 1;
         if (!post.likedBy.includes('me')) post.likedBy.push('me');
-        el.style.color = '#f91880';
-        el.querySelector('.like-icon-wrap').innerHTML = pinkLikeSVG;
+        paint('#f91880', pinkLikeSVG);
     }
-    el.querySelector('.like-count').innerText = formatStat(post.stats.likes);
+    if (el) {
+        const cnt = el.querySelector('.like-count');
+        if (cnt) cnt.innerText = formatStat(post.stats.likes);
+    }
 
     let statsLikeEl = document.getElementById(`detail-stats-likes-${postId}`);
     if (statsLikeEl) statsLikeEl.innerText = formatStat(post.stats.likes);
@@ -1545,7 +1559,7 @@ ${getFinalAnswerMarkerPromptNote()}
 function renderCenterCharList() {
     const container = document.getElementById('centerCharListContainer');
     if(myCharacters.length === 0) { container.innerHTML = '<div class="empty-state">目前还没有创建任何角色。</div>'; return; }
-    let charsToShow = activeGroupFilter ? myCharacters.filter(c => c.group === activeGroupFilter) : myCharacters;
+    let charsToShow = activeGroupFilter ? myCharacters.filter(c => charInFaction(c, activeGroupFilter)) : myCharacters;
     if(charsToShow.length === 0) { container.innerHTML = '<div class="empty-state">该分组下没有角色。</div>'; return; }
 
     container.innerHTML = charsToShow.map(char => `
@@ -1583,8 +1597,14 @@ function clearForm() {
     document.getElementById('charBgPreview').style.display = 'none';
     tempCropResults.charAvatar = null; tempCropResults.charBg = null;
 
-    document.getElementById('charGroup').value = '';
+    if (typeof refreshGroupSelect === 'function') refreshGroupSelect([]);   // 新建角色：一个势力都不勾
+    if (typeof refreshCharUserPersonaSelect === 'function') refreshCharUserPersonaSelect('');
     document.getElementById('freqInterval').value = 1; document.getElementById('freqUnit').value = 'day'; document.getElementById('freqCount').value = 1;
+    // 新建角色默认走"固定频率"：自主模式是要用户主动选的，不能默认替 TA 做主
+    const nActMode = document.getElementById('charActMode'); if (nActMode) nActMode.value = 'fixed';
+    const nAmin = document.getElementById('autonomyMinMinutes'); if (nAmin) nAmin.value = 30;
+    const nAmax = document.getElementById('autonomyMaxHours'); if (nAmax) nAmax.value = 8;
+    if (typeof onCharActModeChange === 'function') onCharActModeChange();
     document.getElementById('chatFreqInterval').value = 0; document.getElementById('chatFreqUnit').value = 'hour';
     document.getElementById('letterFreqInterval').value = 0; document.getElementById('letterFreqUnit').value = 'day';
     document.getElementById('forumFreqInterval').value = 0; document.getElementById('forumFreqUnit').value = 'hour';
@@ -1606,7 +1626,8 @@ function openFormForEdit(charId) {
     document.getElementById('charBio').value = char.bio; document.getElementById('charFollowers').value = char.followers; document.getElementById('charFollowing').value = char.following;
     document.getElementById('charLocation').value = char.location || ''; document.getElementById('charWebsite').value = char.website || ''; document.getElementById('charBirthdate').value = char.birthdate || '';
     document.getElementById('charVerified').checked = char.verified || false;
-    document.getElementById('charGroup').value = char.group || '';
+    if (typeof refreshGroupSelect === 'function') refreshGroupSelect(getCharFactions(char));
+    if (typeof refreshCharUserPersonaSelect === 'function') refreshCharUserPersonaSelect(charUserPersona[String(char.id)] || '');
     document.getElementById('charAutoReply').value = char.autoReplyText || '';
     document.getElementById('charBusyAutoReply').value = char.busyAutoReplyText || '';
     document.getElementById('charAnonName').value = char.anonName || '';
@@ -1631,6 +1652,16 @@ function openFormForEdit(charId) {
     if (char.letterFreq) { document.getElementById('letterFreqInterval').value = char.letterFreq.interval || 0; document.getElementById('letterFreqUnit').value = char.letterFreq.unit || 'day'; } else { document.getElementById('letterFreqInterval').value = 0; document.getElementById('letterFreqUnit').value = 'day'; }
     if (char.forumPostFreq) { document.getElementById('forumFreqInterval').value = char.forumPostFreq.interval || 0; document.getElementById('forumFreqUnit').value = char.forumPostFreq.unit || 'hour'; } else { document.getElementById('forumFreqInterval').value = 0; document.getElementById('forumFreqUnit').value = 'hour'; }
     if (char.anonPostFreq) { document.getElementById('anonFreqInterval').value = char.anonPostFreq.interval || 0; document.getElementById('anonFreqUnit').value = char.anonPostFreq.unit || 'hour'; } else { document.getElementById('anonFreqInterval').value = 0; document.getElementById('anonFreqUnit').value = 'hour'; }
+    // 🎲 行为模式：老存档没有 actMode 字段，一律回落到"按固定频率"，
+    //    不能让升级一下所有角色突然都开始自作主张。
+    const actModeEl = document.getElementById('charActMode');
+    if (actModeEl) {
+        actModeEl.value = (char.actMode === 'auto') ? 'auto' : 'fixed';
+        // 自主模式的节奏是 TA 自己定的，这两个框只是给那个随机数划范围
+        const amin = document.getElementById('autonomyMinMinutes'); if (amin) amin.value = char.autonomyMinMinutes || 30;
+        const amax = document.getElementById('autonomyMaxHours'); if (amax) amax.value = char.autonomyMaxHours || 8;
+        if (typeof onCharActModeChange === 'function') onCharActModeChange();
+    }
 
     document.getElementById('characterListView').style.display = 'none'; document.getElementById('characterFormView').style.display = 'block';
 }
@@ -1677,44 +1708,90 @@ function extractBirthdateFromPersona(persona) {
 
 // 让AI照着人设，把表单里还空着的资料字段补出来。只补空的，用户已经填过的一律不动。
 // 返回一个对象，键就是字段名；失败返回 null（调用方自己决定要不要拦下保存）。
+// 返回值：成功时是解析好的对象；失败时是 { __error: '给用户看的原因' }，
+// 让调用方能说清楚到底哪儿不行，而不是笼统一句"失败了"。
 async function aiCompleteCharProfile(persona, blanks) {
-    if (!myApiKey || blanks.length === 0) return null;
+    if (blanks.length === 0) return null;
+    // ⚠️ 以前这里只认主 API（!myApiKey 就直接返回 null），只配了副 API 的用户
+    // 点补全永远是"失败了，可能是API没配好"——但他明明配了。改成走 getApiConfig，
+    // 跟 app 里其它功能一致：主 API 没配就用副 API。
+    // getApiConfig(false) 只会给主 API，主 API 空着时不会自动退到副 API，
+    // 所以这里显式地退一步：补全资料这种小活儿用哪个都行，没道理因为主 API 没填就不给用。
+    let api = { url: myApiUrl, key: myApiKey, model: myModel };
+    if (!api.key && typeof getApiConfig === 'function') api = getApiConfig(true);
+    if (!api || !api.key) return { __error: '还没配置 API，去「设置 → 🌟 API 与模型」填一个（主 API 或副 API 都行）。' };
     const fieldDesc = {
-        name: '用户名（社交平台上显示的名字，中文短名，别带@）',
+        // 🆕 名字不再要求"就叫本名"：社交平台上大家用的是网名。让 AI 按人设想一个"这个人会给自己起的名字"——
+        // 高冷的人可能就用本名或一个字，中二的会起花名，公众人物会用本名+身份。原名只是可选项之一。
+        name: '这个角色在社交平台上会给自己起的显示名（网名）。不一定要用本名——按ta的性格、身份、审美来想：内敛的人可能就用本名或本名里的一个字，跳脱的会起个花名/梗名，公众人物一般用本名。10个字以内，别带@',
         handle: '账号ID（英文小写字母/数字/下划线，别带@，要像真人会取的ID，不要用拼音全拼堆砌）',
         bio: '个人简介（一到两句，第一人称或中性描述，符合人设气质，40字以内）',
         location: '所在地（一个地名，虚构世界就用人设里的地名）',
-        website: '个人网站或主页链接（没有合适的就返回空字符串）',
+        // ⚠️ 这一条原来写的是"没有合适的就返回空字符串"，配上下面那句"拿不准就留空"，
+        // 结果模型对绝大多数角色都判断成"一个医生哪来的个人网站"，于是网站这一栏永远是空的。
+        // 真实的社交主页上这一栏其实很少空着——挂的多半是科室页、专栏、音乐主页、店铺、社交小号。
+        // 所以改成"默认要给一个"，只有世界观里根本没有互联网时才留空。
+        website: '主页上挂的那个链接。按ta的身份想一个ta真的会往这儿放的东西：医生可能是科室主页或科普专栏，乐手是音乐主页，写东西的是连载页/博客，做生意的是店铺页，学生或普通人放个人社交小号也很正常。写成常见的网址样子即可（不需要真实可访问），虚构世界就用那个世界里的站点名。除非这个世界观里压根没有互联网（古代/修真/架空低魔那种），否则都要给一个，不要留空',
         birthdate: '出生日期，格式必须是 yyyy-mm-dd。人设里没提到生日就返回空字符串，不要瞎编',
         // ⚠️ 这两个对应的是 <input type="number">，塞"1.2万"这种带单位的字符串进去会被浏览器
         // 静默丢弃（值仍然是空），所以这里必须要求纯整数。展示的时候 formatStat() 自己会
         // 把 12000 显示成"1.2万"，不需要 AI 来凑这个格式。
         followers: '粉丝数，只要纯阿拉伯数字整数，不要带"万""k"等单位（例如 12000）',
-        following: '关注数，只要纯阿拉伯数字整数（例如 180）'
+        following: '关注数，只要纯阿拉伯数字整数（例如 180）',
+        // 蓝V：只看人设本身够不够"公众人物"。写死成 true/false 两个值，方便代码直接用。
+        verified: '是否有官方认证蓝V标志。只有当人设明显是公众人物（明星/名人/大企业高管/官方账号/知名从业者等）时才给 true，普通人一律 false。只返回 true 或 false 这两个词之一',
+        // 🆕 下面这几个以前只能手填，现在一起让 AI 按人设生成
+        autoReply: '自动回复文案：ta没空细看消息时会随手回的那一句，要像ta本人的说话方式（例如"嗯。"/"在忙，晚点找你"/"说。"）。15字以内，不要引号',
+        busyAutoReply: '忙碌时的自动回复文案：明确表示现在抽不开身、稍后再聊的一句话，同样要像ta本人的语气。20字以内，不要引号',
+        nudgeText: '被"拍一拍"时显示的后缀，会拼成「XX 拍了拍 YY ___」。要贴合这个角色的身份/特征（例如"的肩膀"/"的白大褂口袋"/"的猫耳"）。必须以"的"开头，8个字以内',
+        anonName: '这个角色在匿名论坛上会用的马甲昵称，跟上面的网名要不一样，更随意、更藏得住身份。10个字以内',
+        anonId: '匿名论坛的短ID，4到6位大写字母数字混合（例如 K7F2Q）'
     };
     const want = blanks.filter(k => fieldDesc[k]);
     if (want.length === 0) return null;
 
+    // 💰⏱️ 修"角色简介生成特别慢"：导入的角色卡人设动辄四五千字，整份发过去既慢又贵，
+    // 而补全这几个字段（名字/ID/简介/所在地/生日/粉丝数）只需要知道这个人大概是谁，
+    // 开头那一段就足够了。超长的截断到 1200 字，实测生成时间大幅缩短、结果质量没有可感知的下降。
+    const personaForFill = String(persona || '').length > 1200
+        ? String(persona).slice(0, 1200) + '\n（人设后面还有更多内容，这里只截取开头用于补全资料）'
+        : persona;
     const prompt = `下面是一个虚拟角色的人设。请根据人设，为TA补全社交平台的资料字段。
 
 【人设】
-${persona}
+${personaForFill}
 
 需要补全的字段：
 ${want.map(k => `- ${k}：${fieldDesc[k]}`).join('\n')}
 
 严格只返回一个JSON对象，不要有任何其它文字、不要Markdown代码块。键名就用上面的英文字段名。
-拿不准或人设里没依据的字段，返回空字符串，不要硬编。
-示例：{${want.map(k => `"${k}": "..."`).join(', ')}}`;
+【填写原则】这些字段是这个人社交主页上会公开展示的东西，正常人不会大片留空。人设里没直说的，就按ta的身份、职业、生活环境合理推断一个——这不算瞎编，这叫补全。
+唯一例外是 birthdate：生日是硬事实，人设里没提到就必须留空，绝对不要编一个日期。
+示例：{${want.map(k => `"${k}": "..."`).join(', ')}}
+不要写任何思考过程、解释或前后缀，第一个字符就是 { ，最后一个字符就是 }。`;
 
     try {
-        const data = await sendChatRequest({ url: myApiUrl, key: myApiKey, model: myModel }, prompt);
-        if (data.error) return null;
-        const parsed = extractJsonObject(data.choices?.[0]?.message?.content || '');
-        return parsed && typeof parsed === 'object' ? parsed : null;
+        // ⚠️ max_tokens 曾经是 400，本意是"只要一小段 JSON，别让模型长篇大论"。
+        // 但碰上推理模型（deepseek-reasoner / QwQ / 各种带 thinking 的中转）就是灾难：
+        // 400 个 token 全被 <think> 吃掉，正文一个字都没输出，于是每次点补全都失败，
+        // 而且报的是"可能是API没配好"，跟真实原因八竿子打不着。
+        // 现在给到 1500：够思考几句，也够把这十来个字段的 JSON 写完；非推理模型本来就用不到这么多，
+        // 按实际输出计费，不会平白变贵。
+        const data = await sendChatRequest(api, prompt, { max_tokens: 1500 });
+        if (data && data.error) return { __error: 'API 返回了错误：' + (data.error.message || data.error) };
+        const raw = data.choices?.[0]?.message?.content || '';
+        if (!raw.trim()) return { __error: '模型这次什么都没返回（可能是被服务商截断了）。' };
+        const parsed = (typeof parseModelJson === 'function') ? parseModelJson(raw) : extractJsonObject(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+        // 只吐了思考过程、没给结果：这是推理模型最典型的失败，要单独说清楚，
+        // 不然用户只会觉得"这个按钮是坏的"。
+        if (/<(think|thinking|reasoning|thought)\b/i.test(raw)) {
+            return { __error: '模型只输出了思考过程就被截断了，没给出结果。换一个非推理模型（或在服务商那边关掉 thinking）再试。' };
+        }
+        return { __error: '模型返回的内容不是 JSON，没法用：' + raw.replace(/\s+/g, ' ').slice(0, 60) + '…' };
     } catch (e) {
         console.warn('[角色资料自动补全] 失败：', e);
-        return null;
+        return { __error: '请求出错了：' + (e.message || e) };
     }
 }
 
@@ -1732,8 +1809,14 @@ async function autoFillCharProfile(manual = false) {
     }
 
     const map = { charName: 'name', charHandle: 'handle', charBio: 'bio', charLocation: 'location',
-                  charWebsite: 'website', charBirthdate: 'birthdate', charFollowers: 'followers', charFollowing: 'following' };
+                  charWebsite: 'website', charBirthdate: 'birthdate', charFollowers: 'followers', charFollowing: 'following',
+                  charAutoReply: 'autoReply', charBusyAutoReply: 'busyAutoReply', charNudgeText: 'nudgeText',
+                  charAnonName: 'anonName', charAnonId: 'anonId' };
     const blanks = Object.keys(map).filter(id => $(id) && !String($(id).value).trim());
+    // 蓝V是个复选框，没有"空/非空"的概念，所以单独处理：只要这次要请求 AI，就顺带让它判断一下
+    // （不额外多花一次调用）。用户自己已经勾上了就尊重用户的选择，不去动它。
+    const verifiedEl = $('charVerified');
+    const wantVerified = !!(verifiedEl && !verifiedEl.checked);
     if (blanks.length === 0) {
         if (manual) alert(filledLocally.length ? `已从人设里认出：${filledLocally.join('、')}` : '资料都填好了，没有需要补全的空白项。');
         return true;
@@ -1743,12 +1826,17 @@ async function autoFillCharProfile(manual = false) {
     const oldText = btn ? btn.innerText : '';
     if (btn) { btn.innerText = '正在照着人设补全...'; btn.disabled = true; }
 
-    const result = await aiCompleteCharProfile(persona, blanks.map(id => map[id]));
+    const askFields = blanks.map(id => map[id]);
+    if (wantVerified) askFields.push('verified');
+    const result = await aiCompleteCharProfile(persona, askFields);
 
     if (btn) { btn.innerText = oldText; btn.disabled = false; }
 
-    if (!result) {
-        if (manual) alert('自动补全失败了，可能是API没配好或这次请求出错。可以手动填，或者稍后再试。');
+    if (!result || result.__error) {
+        const why = (result && result.__error) || '这次请求没成功。';
+        // 手动点的一定要告诉用户为什么；自动触发的（保存角色时顺带补全）只记日志，不打断保存
+        if (manual) { if (typeof appAlert === 'function') appAlert('没能补全：' + why); else alert('没能补全：' + why); }
+        else console.warn('[角色资料自动补全] ' + why);
         return false;
     }
 
@@ -1761,6 +1849,13 @@ async function autoFillCharProfile(manual = false) {
         if (!v) return;
         if (key === 'handle') v = v.replace(/^@+/, ''); // 保存时会统一加@，这里先去掉免得变成@@
         if (key === 'birthdate' && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return; // 格式不对就不填，免得日期控件报错
+        // 拍一拍后缀会被直接拼进「A 拍了拍 B ___」这句话里，不以"的"开头会读不通（"拍了拍 肩膀"）。
+        // AI 偶尔会漏掉这个字，这里补上；补完还是不像后缀（太长/带标点）就宁可不填。
+        if (key === 'nudgeText') {
+            v = v.replace(/^[的]?/, '的');
+            if (v.length > 9 || /[。！？!?,，、\n]/.test(v)) return;
+        }
+        if (key === 'anonId') v = v.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
         // 保险：AI 仍然返回"1.2万"这类写法时，用项目里现成的 parseStat 换算成整数，
         // 否则 number 输入框会静默吃掉这个值，最后落到默认的"1万"。
         if ((key === 'followers' || key === 'following') && $(id).type === 'number' && !/^\d+$/.test(v)) {
@@ -1771,10 +1866,18 @@ async function autoFillCharProfile(manual = false) {
         $(id).value = v;
         filled.push(id);
     });
+    // 蓝V：AI 认为这个人设是公众人物才勾上
+    if (wantVerified && verifiedEl) {
+        const vv = result.verified;
+        const on = (vv === true) || (typeof vv === 'string' && /^(true|是|yes|1)$/i.test(vv.trim()));
+        if (on) { verifiedEl.checked = true; filled.push('charVerified'); }
+    }
 
     if (manual) {
         const label = { charName: '用户名', charHandle: '账号ID', charBio: '简介', charLocation: '所在地',
-                        charWebsite: '网站', charBirthdate: '生日', charFollowers: '粉丝数', charFollowing: '关注数' };
+                        charWebsite: '网站', charBirthdate: '生日', charFollowers: '粉丝数', charFollowing: '关注数',
+                        charVerified: '官方认证标志', charAutoReply: '自动回复', charBusyAutoReply: '忙碌自动回复',
+                        charNudgeText: '拍一拍后缀', charAnonName: '匿名昵称', charAnonId: '匿名ID' };
         const all = filledLocally.concat(filled.map(id => label[id]));
         alert(all.length ? `已补全：${all.join('、')}\n\n都可以再手动改。` : '这次没能补出什么，可以手动填一下。');
     }
@@ -1830,7 +1933,12 @@ async function saveCharacter() {
             char.bio = document.getElementById('charBio').value; char.followers = document.getElementById('charFollowers').value || char.followers;
             char.following = document.getElementById('charFollowing').value || char.following; char.location = document.getElementById('charLocation').value;
             char.website = document.getElementById('charWebsite').value; char.birthdate = document.getElementById('charBirthdate').value;
-            char.verified = document.getElementById('charVerified').checked; char.group = document.getElementById('charGroup').value;
+            char.verified = document.getElementById('charVerified').checked; setCharFactions(char, readCharFormFactions());
+            // 👤 绑定表存在 charUserPersona 里（不写进角色对象），选"跟随当前资料"就删掉这条绑定
+            {
+                const pv = document.getElementById('charUserPersonaSelect')?.value || '';
+                if (pv) charUserPersona[String(char.id)] = pv; else delete charUserPersona[String(char.id)];
+            }
             
             if (tempCropResults.charAvatar) char.avatarImg = tempCropResults.charAvatar;
             if (tempCropResults.charBg) char.bgImg = tempCropResults.charBg;
@@ -1840,6 +1948,13 @@ async function saveCharacter() {
             char.letterFreq = { interval: letterFreqInterval, unit: letterFreqUnit };
             char.forumPostFreq = { interval: forumFreqInterval, unit: forumFreqUnit };
             char.anonPostFreq = { interval: anonFreqInterval, unit: anonFreqUnit };
+            char.actMode = (document.getElementById('charActMode')?.value === 'auto') ? 'auto' : 'fixed';
+            char.autonomyMinMinutes = Math.max(5, parseInt(document.getElementById('autonomyMinMinutes')?.value) || 30);
+            char.autonomyMaxHours = Math.max(1, parseInt(document.getElementById('autonomyMaxHours')?.value) || 8);
+            // 刚切到自主模式：现在就给 TA 掷一个"下次什么时候"，而不是立刻就动
+            if (char.actMode === 'auto' && !char.nextAutonomyAt && typeof gyRollAutonomyGap === 'function') {
+                char.nextAutonomyAt = Date.now() + gyRollAutonomyGap(char);
+            }
             char.autoReplyText = document.getElementById('charAutoReply').value;
             char.busyAutoReplyText = document.getElementById('charBusyAutoReply').value;
             char.anonName = document.getElementById('charAnonName').value || '匿名者';
@@ -1859,12 +1974,16 @@ async function saveCharacter() {
             location: document.getElementById('charLocation').value, website: document.getElementById('charWebsite').value, birthdate: document.getElementById('charBirthdate').value,
             isFollowing: true, isSpecialFollow: false, verified: document.getElementById('charVerified').checked, avatarEmoji: name[0] || 'A', themeColor: "#1d9bf0",
             avatarImg: tempCropResults.charAvatar || null, bgImg: tempCropResults.charBg || null,
-            group: document.getElementById('charGroup').value,
+            group: readCharFormFactions()[0] || '', groups: readCharFormFactions(),
             postFreq: { interval: freqInterval, unit: freqUnit, count: freqCount }, lastPostTime: Date.now(),
             chatFreq: { interval: chatFreqInterval, unit: chatFreqUnit }, lastChatProactiveTime: Date.now(),
             letterFreq: { interval: letterFreqInterval, unit: letterFreqUnit }, lastLetterProactiveTime: Date.now(),
             forumPostFreq: { interval: forumFreqInterval, unit: forumFreqUnit }, lastForumPostTime: Date.now(),
             anonPostFreq: { interval: anonFreqInterval, unit: anonFreqUnit }, lastAnonPostTime: Date.now(),
+            actMode: (document.getElementById('charActMode')?.value === 'auto') ? 'auto' : 'fixed',
+            autonomyMinMinutes: Math.max(5, parseInt(document.getElementById('autonomyMinMinutes')?.value) || 30),
+            autonomyMaxHours: Math.max(1, parseInt(document.getElementById('autonomyMaxHours')?.value) || 8),
+            lastAutonomyTime: Date.now(), nextAutonomyAt: 0, autonomyLog: [], todos: [],
             autoReplyText: document.getElementById('charAutoReply').value, busyAutoReplyText: document.getElementById('charBusyAutoReply').value,
             memorySummary: "", chatSummary: "", diaryData: { letters: [], diaries: [] }, pendingLetterReplies: [],
             anonName: document.getElementById('charAnonName').value || '匿名者', anonId: document.getElementById('charAnonId').value || Math.random().toString(36).substr(2,6).toUpperCase(), nudgeText: document.getElementById('charNudgeText').value,
@@ -1874,6 +1993,11 @@ async function saveCharacter() {
         };
         pendingImportedGreetings = null;
         myCharacters.push(newChar);
+        // 👤 新建角色时选的"在这个角色面前我是谁"
+        {
+            const pv = document.getElementById('charUserPersonaSelect')?.value || '';
+            if (pv) charUserPersona[String(newChar.id)] = pv;
+        }
     }
 
     // 🆕 角色卡导入时顺带识别到的正则脚本，此时角色id才刚确定下来，回头把charScope绑定成这个角色专属

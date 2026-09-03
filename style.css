@@ -172,6 +172,13 @@ body.dark-theme .suggest-row:hover { background-color: rgba(255,255,255,0.06); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .input-group { margin-bottom: 12px; }
 .input-group.full-width { grid-column: 1 / -1; }
+/* ☑️ .checkbox-group 这个类名全 app 用了 20 多处，但一直没有任何对应规则——
+   于是它继承了 .input-group label{display:block}，勾选框被挤到标签上面单独占一行，
+   看起来像坏了。这里补上它本该有的样子：勾选框和标签一行、垂直居中、标签可换行。 */
+.input-group.checkbox-group { display: flex; align-items: flex-start; gap: 8px; }
+.input-group.checkbox-group > input[type="checkbox"],
+.input-group.checkbox-group > input[type="radio"] { flex: 0 0 auto; width: 16px; height: 16px; margin: 2px 0 0; cursor: pointer; }
+.input-group.checkbox-group > label { display: block; margin: 0; flex: 1 1 auto; min-width: 0; line-height: 1.5; cursor: pointer; word-break: break-word; }
 .input-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 13px; color: #1d9bf0; }
 .input-group input:not([type="checkbox"]):not([type="radio"]), .input-group select, .input-group textarea { width: 100%; padding: 8px 10px; border: 1px solid #1d9bf0; border-radius: 4px; box-sizing: border-box; font-size: 14px; color: #0f1419; outline: none; background: transparent;}
 .freq-group { display: flex; align-items: center; gap: 5px; }
@@ -2078,7 +2085,7 @@ body.dark-theme [contenteditable="true"] { caret-color: #4db3f5; }
     body.keyboard-open .fab-btn { display: none !important; } /* 悬浮发帖按钮同理，打字时纯属挡路 */
     /* 聊天页/世界书页的高度本来减掉了底部导航栏那 68px，导航栏藏起来之后要把这段还回去，
        否则输入框上方会凭空多出一条空白（--app-vh 已经是键盘弹出后的真实可视高度了）。 */
-    /* （聊天页的键盘态已经在上面用 fixed + bottom:0 处理了，这里不再重复设高度）
+    /* （聊天页的键盘态已经在上面用 fixed + bottom:0 处理了，这里不再重复设高度） */
 }
 
 /* ===== 楼中楼缩进：交给 CSS 按屏幕宽度决定，JS 只负责给出层级 --reply-depth =====
@@ -2110,6 +2117,299 @@ body.dark-theme [contenteditable="true"] { caret-color: #4db3f5; }
 .auto-feat-title { font-size: 14px; font-weight: bold; color: #0f1419; }
 .auto-feat-desc { font-size: 12px; color: #536471; margin-top: 3px; line-height: 1.5; }
 .auto-feat-cost { font-size: 11px; color: #8b98a5; margin-top: 4px; }
+/* 📍 这个开关管的是哪儿的功能、在哪能看到效果——以前一条列表看下来根本不知道某一项对应界面上的什么 */
+.auto-feat-where { font-size: 11px; color: #1d9bf0; margin-top: 4px; line-height: 1.5; opacity: .85; }
 body.dark-theme .auto-feat-row { background: rgba(255,255,255,0.05); }
 body.dark-theme .auto-feat-title { color: #e7e9ea; }
 body.dark-theme .auto-feat-desc { color: #8b98a5; }
+body.dark-theme .auto-feat-where { color: #6fbdf5; }
+
+/* ===== 📅 角色日历（仿系统日历：格子里直接列出当天的事）+ ✅ 待办清单 ===== */
+.gy-cal-modal { width:760px; }
+.gy-cal-toolbar { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.gy-cal-range { display:flex; border:1px solid #1d9bf0; border-radius:8px; overflow:hidden; flex:0 0 auto; }
+.gy-cal-range button {
+    background:transparent; border:none; border-right:1px solid rgba(29,155,240,0.35);
+    color:#1d9bf0; font-size:13px; padding:5px 14px; cursor:pointer;
+}
+.gy-cal-range button:last-child { border-right:none; }
+.gy-cal-range button.active { background:#1d9bf0; color:#fff; }
+.gy-cal-add {
+    margin-left:auto; flex:0 0 auto; background:#1d9bf0; color:#fff; border:none;
+    border-radius:9999px; padding:6px 16px; font-size:13px; font-weight:bold; cursor:pointer;
+}
+.gy-cal-head { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.gy-cal-head > span { font-weight:bold; color:#0f1419; font-size:17px; flex:1 1 auto; }
+.gy-cal-nav, .gy-cal-today {
+    background:rgba(255,255,255,0.8); color:#1d9bf0; border:1px solid #1d9bf0;
+    border-radius:6px; cursor:pointer; padding:2px 10px; font-size:14px; flex:0 0 auto;
+}
+.gy-cal-today { font-size:12px; padding:3px 10px; }
+
+.gy-cal-addbox { border:1px solid #1d9bf0; border-radius:8px; padding:10px; margin-bottom:10px; background:rgba(29,155,240,0.04); }
+.gy-cal-addrow { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.gy-cal-addrow select, .gy-cal-addrow input[type="date"] {
+    flex:1 1 140px; min-width:0; padding:6px; border:1px solid #1d9bf0; border-radius:6px; background:transparent;
+}
+.gy-cal-addbox textarea {
+    width:100%; padding:8px; border:1px solid #1d9bf0; border-radius:6px;
+    background:transparent; font-family:inherit; font-size:13px; margin-bottom:8px; outline:none;
+}
+
+.gy-cal-week { display:grid; grid-template-columns:repeat(7,1fr); font-size:12px; color:#8b98a5; text-align:center; padding-bottom:4px; border-bottom:1px solid #eff3f4; }
+.gy-cal-grid { display:grid; grid-template-columns:repeat(7,1fr); }
+/* 月视图：格子高一点，直接把当天的事写在里面（这才是图二那种样子） */
+.gy-cal-cell {
+    position:relative; min-height:88px; padding:4px 5px 6px;
+    border-right:1px solid #eff3f4; border-bottom:1px solid #eff3f4;
+    cursor:pointer; font-size:13px; color:#0f1419; overflow:hidden;
+    display:flex; flex-direction:column; gap:2px;
+}
+.gy-cal-cell:nth-child(7n) { border-right:none; }
+.gy-cal-cell:hover { background:rgba(29,155,240,0.05); }
+.gy-cal-cell.other-month { color:#c4cfd6; background:rgba(0,0,0,0.015); cursor:default; }
+.gy-cal-cell.other-month:hover { background:rgba(0,0,0,0.015); }
+.gy-cal-daynum { font-size:13px; line-height:1.4; align-self:flex-start; padding:0 5px; border-radius:9999px; flex:0 0 auto; }
+.gy-cal-cell.today .gy-cal-daynum { background:#f91880; color:#fff; font-weight:bold; }
+.gy-cal-cell.selected { background:rgba(29,155,240,0.12); }
+.gy-cal-cell.selected .gy-cal-daynum { outline:2px solid #1d9bf0; }
+.gy-cal-ev {
+    display:flex; align-items:center; gap:3px; font-size:11px; line-height:1.35;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:0 0 auto;
+}
+.gy-cal-ev.done { color:#8b98a5; text-decoration:line-through; }
+.gy-cal-more { font-size:10px; color:#8b98a5; }
+.gy-dot { display:inline-block; width:6px; height:6px; border-radius:50%; flex:0 0 auto; }
+.gy-dot-sch { background:#1d9bf0; }
+.gy-dot-ann { background:#f91880; }
+.gy-dot-todo { background:#ffad1f; }
+.gy-cal-legend { display:flex; gap:14px; justify-content:center; font-size:11px; color:#8b98a5; margin-top:10px; }
+.gy-cal-legend span { display:flex; align-items:center; gap:4px; }
+
+/* 日 / 周视图：不用格子，直接一天一段列出来 */
+.gy-cal-grid.list-mode { display:block; }
+.gy-cal-daybox { border-bottom:1px solid #eff3f4; padding:10px 4px; cursor:pointer; }
+.gy-cal-daybox:hover { background:rgba(29,155,240,0.04); }
+.gy-cal-daybox.selected { background:rgba(29,155,240,0.1); }
+.gy-cal-daybox-title { font-size:14px; font-weight:bold; color:#0f1419; margin-bottom:4px; }
+.gy-cal-daybox-title .gy-cal-today-tag { background:#f91880; color:#fff; font-size:11px; border-radius:9999px; padding:1px 8px; margin-left:6px; }
+.gy-cal-daybox-empty { font-size:12px; color:#8b98a5; }
+/* 年视图：12 个小月份，点一个跳过去 */
+.gy-cal-grid.year-mode { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+.gy-cal-mini { border:1px solid #eff3f4; border-radius:8px; padding:8px; cursor:pointer; text-align:center; }
+.gy-cal-mini:hover { border-color:#1d9bf0; background:rgba(29,155,240,0.04); }
+.gy-cal-mini-name { font-size:14px; font-weight:bold; color:#0f1419; margin-bottom:4px; }
+.gy-cal-mini-count { font-size:11px; color:#8b98a5; }
+.gy-cal-mini-dots { display:flex; gap:3px; justify-content:center; margin-top:4px; height:6px; }
+
+.gy-cal-detail { margin-top:12px; font-size:13px; line-height:1.6; }
+.gy-cal-detail .gy-cal-sec { margin-bottom:10px; padding:10px; background:#f7f9f9; border-radius:8px; border-left:3px solid #1d9bf0; }
+.gy-cal-detail .gy-cal-sec.ann { border-left-color:#f91880; }
+.gy-cal-detail .gy-cal-sec.todo { border-left-color:#ffad1f; }
+.gy-cal-detail .gy-cal-sec h5 { margin:0 0 6px; font-size:13px; color:#1d9bf0; }
+.gy-cal-detail .gy-cal-sec.ann h5 { color:#f91880; }
+.gy-cal-detail .gy-cal-sec.todo h5 { color:#e8900c; }
+.gy-cal-detail pre { margin:0; font-family:inherit; white-space:pre-wrap; word-break:break-word; font-size:12px; color:#0f1419; }
+
+.gy-todo-box { margin-top:14px; padding:12px; background:rgba(255,173,31,0.06); border:1px solid #ffad1f; border-radius:8px; }
+.gy-todo-title { font-size:14px; font-weight:bold; color:#e8900c; margin-bottom:4px; }
+.gy-todo-hint { font-size:12px; color:#536471; margin-bottom:10px; line-height:1.5; }
+.gy-todo-add { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+.gy-todo-add input[type="date"] { flex:0 0 auto; width:130px; padding:6px; border:1px solid #ffad1f; border-radius:4px; background:transparent; }
+.gy-todo-add input[type="text"] { flex:1 1 140px; min-width:0; padding:6px; border:1px solid #ffad1f; border-radius:4px; background:transparent; }
+.gy-todo-add button { margin-top:0; padding:6px 14px; flex:0 0 auto; }
+.gy-todo-row { display:flex; align-items:flex-start; gap:8px; padding:6px 0; border-bottom:1px dashed rgba(255,173,31,0.3); }
+.gy-todo-row:last-child { border-bottom:none; }
+.gy-todo-row input[type="checkbox"] { width:16px; height:16px; margin-top:2px; flex:0 0 auto; cursor:pointer; }
+.gy-todo-main { flex:1 1 auto; min-width:0; }
+.gy-todo-text { font-size:13px; color:#0f1419; word-break:break-word; }
+.gy-todo-row.done .gy-todo-text { text-decoration:line-through; color:#8b98a5; }
+.gy-todo-meta { font-size:11px; color:#8b98a5; margin-top:2px; }
+.gy-todo-del { color:#f91880; cursor:pointer; font-size:16px; flex:0 0 auto; line-height:1; }
+/* 让 TA 自己写待办 */
+.gy-todo-aibar { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+.gy-todo-aibtn { margin:0; padding:5px 12px; font-size:12px; border-radius:14px; cursor:pointer;
+    border:1px solid #ffad1f; background:#ffad1f; color:#fff; flex:0 0 auto; }
+.gy-todo-aibtn.ghost { background:transparent; color:#e8900c; }
+.gy-todo-aibtn:disabled { opacity:0.55; cursor:default; }
+.gy-todo-aihint { font-size:11px; color:#8b98a5; flex:1 1 160px; min-width:0; line-height:1.5; }
+/* 双击编辑态 */
+.gy-todo-main { cursor:text; }
+.gy-todo-edit { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.gy-todo-edit input[type="text"] { flex:1 1 130px; min-width:0; padding:5px 7px; font-size:13px;
+    border:1px solid #ffad1f; border-radius:4px; background:#fff; color:#0f1419; }
+.gy-todo-edit input[type="date"] { flex:0 0 auto; width:132px; padding:4px 6px; font-size:12px;
+    border:1px solid #ffad1f; border-radius:4px; background:#fff; color:#0f1419; }
+.gy-todo-edit button { margin:0; padding:4px 10px; font-size:12px; border-radius:4px; cursor:pointer;
+    border:1px solid #ffad1f; background:#ffad1f; color:#fff; flex:0 0 auto; }
+.gy-todo-edit button.cancel { background:transparent; color:#8b98a5; border-color:#cfd9de; }
+.gy-todo-edit-hint { font-size:11px; color:#8b98a5; flex:1 1 100%; }
+.gy-todo-badge-ai { display:inline-block; padding:0 5px; border-radius:8px; font-size:10px;
+    background:rgba(29,155,240,0.12); color:#1d9bf0; margin-left:4px; }
+body.dark-theme .gy-todo-edit input[type="text"],
+body.dark-theme .gy-todo-edit input[type="date"] { background:#16181c; color:#e7e9ea; }
+
+body.dark-theme .gy-cal-cell { color:#e7e9ea; border-color:rgba(255,255,255,0.08); }
+body.dark-theme .gy-cal-week { border-color:rgba(255,255,255,0.08); }
+body.dark-theme .gy-cal-head > span, body.dark-theme .gy-cal-daybox-title, body.dark-theme .gy-cal-mini-name { color:#e7e9ea; }
+body.dark-theme .gy-cal-detail .gy-cal-sec { background:rgba(255,255,255,0.05); }
+body.dark-theme .gy-cal-detail pre, body.dark-theme .gy-todo-text { color:#e7e9ea; }
+body.dark-theme .gy-cal-cell.other-month { background:rgba(255,255,255,0.03); }
+
+/* 手机端：格子矮一点、每格最多显示一条，够看出"这天有事"就行 */
+@media (max-width: 900px) {
+    .gy-cal-modal { width:96vw; }
+    .gy-cal-cell { min-height:56px; padding:3px; font-size:12px; }
+    .gy-cal-ev { font-size:10px; }
+    .gy-cal-week span { font-size:11px; }
+    .gy-cal-range button { padding:5px 10px; }
+    .gy-cal-grid.year-mode { grid-template-columns:repeat(3,1fr); }
+    .gy-todo-add input[type="date"] { width:100%; flex:1 1 100%; }
+}
+
+/* ===== 🏴 角色表单里的多选势力 ===== */
+.gy-faction-checks { display:flex; flex-wrap:wrap; gap:8px; }
+.gy-faction-check {
+    display:flex; align-items:center; gap:6px; margin:0;
+    padding:5px 12px; border:1px solid #1d9bf0; border-radius:9999px;
+    font-size:13px; color:#1d9bf0; cursor:pointer; user-select:none;
+    background:rgba(255,255,255,0.6);
+}
+.gy-faction-check input { width:15px; height:15px; margin:0; cursor:pointer; flex:0 0 auto; }
+.gy-faction-check:has(input:checked) { background:#1d9bf0; color:#fff; }
+body.dark-theme .gy-faction-check { background:rgba(255,255,255,0.05); }
+
+/* ===== 👤 势力总览里的"在这个势力里我是谁" ===== */
+.faction-persona-row {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: #536471;
+    padding: 6px 0 8px; margin-bottom: 4px;
+    border-bottom: 1px dashed rgba(29,155,240,0.2);
+}
+.faction-persona-row select {
+    flex: 1 1 auto; min-width: 0; max-width: 260px;
+    padding: 4px 8px; font-size: 12px;
+    border: 1px solid #1d9bf0; border-radius: 6px; background: transparent; color: #1d9bf0;
+}
+body.dark-theme .faction-persona-row { color: #8b98a5; }
+
+/* ===== 🎭 「背着你发生的事」页面 ===== */
+.theater-memo {
+    background: rgba(120,86,255,0.06); border: 1px solid #7856ff; border-radius: 10px;
+    padding: 12px; margin-bottom: 14px; font-size: 13px; line-height: 1.6; color: #0f1419;
+}
+.theater-memo-title { font-weight: bold; color: #7856ff; margin-bottom: 6px; }
+.theater-memo-hint { font-size: 11px; color: #8b98a5; margin-top: 6px; }
+/* 开关关闭时的提示条：这个功能默认关，页面顶部要一眼看得出来「不会偷偷调API」 */
+/* 🎲 自主行动记录 */
+.autonomy-card { border-left-color:#ffad1f; }
+.autonomy-card.quiet { opacity:0.65; border-left-color:#cfd9de; }
+.autonomy-reason { font-size:12px; color:#8b98a5; margin-top:5px; line-height:1.6; }
+.autonomy-who { font-size:12.5px; color:#536471; margin-bottom:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.autonomy-who-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 6px 4px 10px;
+    border:1px solid #ffad1f; border-radius:14px; background:rgba(255,173,31,0.08); color:#a56a00; font-size:12px; }
+.autonomy-next { font-size:11px; color:#8b98a5; padding:0 2px; }
+.autonomy-who-chip button { margin:0; padding:3px 9px; font-size:11px; border-radius:11px; cursor:pointer;
+    border:none; background:#ffad1f; color:#fff; }
+.autonomy-who-chip button:disabled { opacity:0.55; cursor:default; }
+body.dark-theme .autonomy-card.quiet { border-left-color:#38444d; }
+.theater-off-banner {
+    border: 1px solid #e0245e; background: rgba(224,36,94,0.06); color: #a01340;
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 12px;
+    font-size: 12.5px; line-height: 1.7;
+}
+.theater-card {
+    border: 1px solid #eff3f4; border-left: 3px solid #1d9bf0; border-radius: 10px;
+    padding: 12px; margin-bottom: 10px; background: rgba(255,255,255,0.7);
+}
+.theater-card-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.theater-who { font-size: 14px; font-weight: bold; color: #0f1419; }
+.theater-rel { color: #8b98a5; font-weight: normal; }
+.theater-time { font-size: 11px; color: #8b98a5; margin-left: auto; }
+.theater-summary { font-size: 14px; color: #1d9bf0; font-weight: bold; margin-bottom: 6px; }
+.theater-rel-tag {
+    display: inline-block; margin-left: 8px; font-size: 11px; font-weight: normal;
+    background: rgba(29,155,240,0.1); color: #1d9bf0; border-radius: 9999px; padding: 1px 8px;
+}
+.theater-scene { font-size: 13px; line-height: 1.7; color: #0f1419; white-space: pre-wrap; margin-bottom: 8px; }
+.theater-status { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #536471; }
+.theater-status span { display: flex; align-items: center; gap: 5px; }
+body.dark-theme .theater-card { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); border-left-color: #1d9bf0; }
+body.dark-theme .theater-who, body.dark-theme .theater-scene, body.dark-theme .theater-memo { color: #e7e9ea; }
+
+/* ===================== ⚙️ 设置页：目录 + 分页 ===================== */
+/* 第一层只列目录，点一项进一张分页；分页仍在 DOM 里（只是隐藏），
+   所以 saveSettings() 那种一次读几十个 getElementById 的老函数不用改。 */
+.set-menu { display:flex; flex-direction:column; gap:10px; }
+.set-menu-sep { font-size:12px; color:#8b98a5; margin:12px 2px 2px; line-height:1.6; }
+.set-entry {
+    display:flex; align-items:center; gap:12px; width:100%; margin:0;
+    padding:14px 16px; text-align:left; cursor:pointer;
+    background:rgba(29,155,240,0.05); border:1px solid #1d9bf0; border-radius:12px;
+    color:#0f1419; font-size:15px; font-family:inherit;
+    transition:background .15s, transform .1s;
+}
+.set-entry:hover { background:rgba(29,155,240,0.12); }
+.set-entry:active { transform:scale(0.995); }
+.set-entry-ico { font-size:20px; flex:0 0 auto; line-height:1; }
+.set-entry-main { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.set-entry-title { font-size:15px; font-weight:bold; color:#1d9bf0; }
+.set-entry-desc { font-size:12px; color:#536471; line-height:1.5; word-break:break-word; }
+.set-entry-arrow { flex:0 0 auto; color:#1d9bf0; font-size:20px; line-height:1; }
+/* 分页里第一块不需要再顶一条分隔线——它上面已经没有别的东西了 */
+.set-panel > div:first-child { margin-top:0 !important; border-top:none !important; padding-top:0 !important; }
+body.dark-theme .set-entry { color:#e7e9ea; background:rgba(29,155,240,0.08); }
+body.dark-theme .set-entry:hover { background:rgba(29,155,240,0.16); }
+body.dark-theme .set-entry-desc { color:#8b98a5; }
+@media (max-width: 600px) {
+    .set-entry { padding:13px 13px; gap:10px; }
+    .set-entry-title { font-size:14.5px; }
+    .set-entry-desc { font-size:11.5px; }
+}
+
+/* 设置目录页底部的版本号：改完代码看不到效果时，先看这个数字对不对 */
+.set-version { margin-top:18px; padding-top:14px; border-top:1px dashed #cfd9de;
+    font-size:12px; color:#8b98a5; line-height:1.7; }
+.set-version b { color:#1d9bf0; }
+.set-version-hint { display:block; margin-top:2px; }
+body.dark-theme .set-version { border-top-color:#38444d; }
+
+/* ===================== 🎮 小游戏 / 一起阅读（v92 起内置）===================== */
+/* 这几个游戏原来是插件，面板里有几处"深底信息框"写死了深色，浅色模式下
+   底是深的、字却跟着 body 是深的，等于看不见。统一成跟着主题翻的变量。 */
+:root {
+    --gy-game-box-bg: #eaf3fb;
+    --gy-game-box-fg: #0f1419;
+}
+body.dark-theme {
+    --gy-game-box-bg: #1a2a3a;
+    --gy-game-box-fg: #e7e9ea;
+}
+.gy-game-infobox {
+    text-align: center;
+    background: var(--gy-game-box-bg);
+    color: var(--gy-game-box-fg);
+    padding: 8px; border-radius: 6px; margin: 6px 0;
+}
+
+/* 📖 一起阅读：整套面板是按"纸张"设计的（白底黑字），深色模式下不跟着翻会白得刺眼。
+   这里只翻几个主要的面，正文仍然保持高对比度。 */
+body.dark-theme .rt-overlay,
+body.dark-theme .rt-discuss-dock { background: #15202b; }
+body.dark-theme .rt-chapter-title,
+body.dark-theme .rt-chapter-text,
+body.dark-theme .rt-comment-text,
+body.dark-theme .rt-inline-comment-text,
+body.dark-theme .rt-discuss-bubble { color: #e7e9ea; }
+body.dark-theme .rt-comment-text,
+body.dark-theme .rt-inline-comment,
+body.dark-theme .rt-discuss-bubble,
+body.dark-theme .rt-discuss-quote,
+body.dark-theme .rt-nav-row { background: #1e2732; }
+body.dark-theme .rt-nav-row button { background: #22303c; }
+body.dark-theme .rt-quote-preview { background: rgba(29,155,240,0.12); }
+body.dark-theme .rt-comment-list,
+body.dark-theme .rt-nav-row,
+body.dark-theme .rt-discuss-dock,
+body.dark-theme .rt-library-item { border-color: #38444d; }
+body.dark-theme .rt-input-row input { background: #22303c; color: #e7e9ea; border-color: #38444d; }

@@ -117,6 +117,8 @@ function updateAllRelativeTimes() { document.querySelectorAll('.time-updater').f
 
 // 角色状态自动流动的后台守护代码
 async function checkAndFlowSchedules() {
+    // 日程续期跟"状态流动"是两件事、两个开关，所以先无条件走一遍续期（它自己内部判断开关）
+    if (typeof checkAndRenewStaleSchedules === 'function') { try { await checkAndRenewStaleSchedules(); } catch (e) { /* 不影响下面的状态流动 */ } }
     if (typeof isAutoOn === 'function' && !isAutoOn('scheduleFlow')) return;   // 🔌 设置里关掉了「角色状态跟日程流动」
     const api = getApiConfig(true); 
     if (!api.key) return;
@@ -135,6 +137,8 @@ async function checkAndFlowSchedules() {
     saveAllData();
 }
 setInterval(checkAndFlowSchedules, 15 * 60000);
+// 🫀 活人感：每分钟看一眼有没有该"忙完补回"的消息。纯本地判断，开关关着的时候直接返回，一分钱不花。
+setInterval(function () { try { if (typeof aliveTick === 'function') aliveTick(); } catch (e) {} }, 60000);
 
 function updateCharSelects() {
     const sel = document.getElementById('aiPostCharSelect');
@@ -302,6 +306,8 @@ function requestAllAppPermissionsOnLaunch() {
 
 function applyDarkTheme() {
     document.body.classList.toggle('dark-theme', !!darkTheme);
+    // 正文区的底色是 updateGlobalBgStyles 用 JS 拼出来的，不重算一遍它会一直停在上一个模式的颜色
+    if (typeof updateGlobalBgStyles === 'function') updateGlobalBgStyles();
 }
 
 function toggleDarkTheme() {
@@ -405,13 +411,20 @@ function sendBrowserNotification(title, body) {
 function clearGlobalBg() { globalBgImage = null; document.getElementById('globalBgFileInput').value = ''; updateGlobalBgStyles(); saveAllData(); }
 function updateGlobalBgOpacity(val) { globalBgOpacity = parseFloat(val); updateGlobalBgStyles(); saveAllData(); }
 function updateGlobalBgStyles() {
-    if(globalBgImage) { document.body.style.backgroundImage = `url('${globalBgImage}')`; document.body.style.backgroundColor = 'transparent'; } 
-    else { document.body.style.backgroundImage = 'none'; document.body.style.backgroundColor = '#ffffff'; }
-    
+    // 🌙 这里以前把 255,255,255 写死了——不管深色模式开没开，正文区一律是纯白。
+    //    可是深色模式又把字色翻成了浅色（#e7e9ea），白底浅字＝整页看不见。
+    //    实测：开着深色模式进设置页，开关标题几乎是隐形的。现在跟着深色模式换底色。
+    const dark = (typeof darkTheme !== 'undefined') && !!darkTheme;
+    const base = dark ? '21, 32, 43' : '255, 255, 255';     // 主体面（跟 style.css 里的 #15202b 对齐）
+    const card = dark ? '25, 39, 52' : '255, 255, 255';     // 卡片面（#192734）
+
+    if (globalBgImage) { document.body.style.backgroundImage = `url('${globalBgImage}')`; document.body.style.backgroundColor = 'transparent'; }
+    else { document.body.style.backgroundImage = 'none'; document.body.style.backgroundColor = dark ? '#15202b' : '#ffffff'; }
+
     let styleTag = document.getElementById('dynamic-bg-style');
     if(!styleTag) { styleTag = document.createElement('style'); styleTag.id = 'dynamic-bg-style'; document.head.appendChild(styleTag); }
     let a = globalBgOpacity;
-    styleTag.innerHTML = `.layout-container { background-color: rgba(255, 255, 255, ${a}); } .top-tabs, .header-title { background-color: rgba(255, 255, 255, ${Math.min(a + 0.1, 1)}); } #view-anon-forum { background-color: rgba(44, 44, 44, ${a}); } #view-anon-forum .header-title { background-color: rgba(44, 44, 44, ${Math.min(a + 0.1, 1)}); } .info-card, .search-box { background-color: rgba(255, 255, 255, ${Math.min(a + 0.2, 1)}); }`;
+    styleTag.innerHTML = `.layout-container { background-color: rgba(${base}, ${a}); } .top-tabs, .header-title { background-color: rgba(${base}, ${Math.min(a + 0.1, 1)}); } #view-anon-forum { background-color: rgba(44, 44, 44, ${a}); } #view-anon-forum .header-title { background-color: rgba(44, 44, 44, ${Math.min(a + 0.1, 1)}); } .info-card, .search-box { background-color: rgba(${card}, ${Math.min(a + 0.2, 1)}); }`;
 }
 
 function toggleAdvancedPostOptions() { const el = document.getElementById('advancedPostOptions'); el.style.display = el.style.display === 'none' ? 'flex' : 'none'; }
@@ -523,7 +536,7 @@ function closeModal(id) {
 
 function getFullDataSnapshot() {
     return {
-        myApiUrl, myApiKey, myModel, subApiUrl, subApiKey, subModel, vecApiUrl, vecApiKey, lastWorkingModel, lastWorkingSubModel, quietHoursEnabled, quietHoursStart, quietHoursEnd, samplerTemperature, samplerTopP, samplerFrequencyPenalty, samplerPresencePenalty, samplerTopK,
+        myApiUrl, myApiKey, myModel, subApiUrl, subApiKey, subModel, vecApiUrl, vecApiKey, lastWorkingModel, lastWorkingSubModel, quietHoursEnabled, quietHoursStart, quietHoursEnd, samplerTemperature, samplerTopP, samplerFrequencyPenalty, samplerPresencePenalty, samplerTopK, samplerMaxTokens,
         myCharacters, globalPosts, anonPosts, characterGroups, factionColors, charRelationships, relationshipTypePresets, statusTypes, globalEmoticons, worldbooks, worldbookCategories, globalChats, groupChats, currentUser, tabloidAccount, trendingTags,
         globalBgImage, globalBgOpacity, allowActionTags, humanFeelEnabled, tpesEnabled, autoRenderStatusChips, showStatusInPosts, showStatusInComments, showStatusInDiary, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, commentWordLimit, chatMsgCountMin, chatMsgCountMax, chatReplyStyleMode, chatSummaryInterval, groupSummaryInterval, postMemoryInterval, chatListViewMode, pinnedSessionIds,
         letterReplyDelayMin, letterReplyDelayMax, globalUserDiaries,
@@ -531,9 +544,10 @@ function getFullDataSnapshot() {
         forumThreads,
         npcReplyProb, npcReplyMaxCount,
         regexScripts, enableVectorMemory, enableChatScriptExecution, embeddingModel, dataBank, darkTheme, enableBrowserNotifications, enableCharMoveToChat, showNovelReasoning, showNovelFloorNumber, showNovelThinkingTime,
-        worldbookCharBudget, semanticCharBudget, chatHistoryTurns, charInteractMaxCount,
-        gyTokenStats, autoFeatureSwitches,
-        plugins, aiPresets, userPersonas, npcIdentities,
+        worldbookCharBudget, semanticCharBudget, chatHistoryTurns, charInteractMaxCount, scheduleHistoryKeep,
+        gyTokenStats, autoFeatureSwitches, globalTheaterLogs, theaterLogKeep,
+        aliveSettings, aliveHeld,
+        plugins, aiPresets, userPersonas, npcIdentities, charUserPersona, factionUserPersona,
         cloudSyncEnabled, cloudWorkerUrl, cloudAuthToken, ntfyTopic,
         clickEffectEnabled, clickEffectStyle, clickEffectCustomImage,
         chatVariables, globalVariables,
@@ -673,6 +687,7 @@ async function loadAllData() {
                 if (parsed.samplerFrequencyPenalty !== undefined) samplerFrequencyPenalty = parsed.samplerFrequencyPenalty;
                 if (parsed.samplerPresencePenalty !== undefined) samplerPresencePenalty = parsed.samplerPresencePenalty;
                 if (parsed.samplerTopK !== undefined) samplerTopK = parsed.samplerTopK;
+                if (parsed.samplerMaxTokens !== undefined) samplerMaxTokens = parsed.samplerMaxTokens;
                 if (parsed.allowActionTags !== undefined) allowActionTags = parsed.allowActionTags;
                 if (parsed.enableCharMoveToChat !== undefined) enableCharMoveToChat = parsed.enableCharMoveToChat;
                 if (parsed.showNovelReasoning !== undefined) showNovelReasoning = parsed.showNovelReasoning;
@@ -723,11 +738,19 @@ async function loadAllData() {
                 if (parsed.semanticCharBudget) semanticCharBudget = parsed.semanticCharBudget;
                 if (parsed.chatHistoryTurns) chatHistoryTurns = parsed.chatHistoryTurns;
                 if (parsed.charInteractMaxCount !== undefined) charInteractMaxCount = parsed.charInteractMaxCount;
+                if (parsed.scheduleHistoryKeep !== undefined) scheduleHistoryKeep = parsed.scheduleHistoryKeep;
                 if (parsed.gyTokenStats && parsed.gyTokenStats.total) gyTokenStats = parsed.gyTokenStats;
                 if (parsed.autoFeatureSwitches && typeof parsed.autoFeatureSwitches === 'object') autoFeatureSwitches = parsed.autoFeatureSwitches;
                 if (parsed.plugins) plugins = parsed.plugins;
                 if (parsed.aiPresets) aiPresets = parsed.aiPresets;
                 if (parsed.userPersonas) userPersonas = parsed.userPersonas;
+                if (Array.isArray(parsed.globalTheaterLogs)) globalTheaterLogs = parsed.globalTheaterLogs;
+                if (typeof parsed.theaterLogKeep === 'number') theaterLogKeep = parsed.theaterLogKeep;
+                // 🫀 活人感：设置合并（老存档没有的字段保留默认值），挂起的消息原样恢复
+                if (parsed.aliveSettings && typeof parsed.aliveSettings === 'object') aliveSettings = Object.assign(aliveSettings, parsed.aliveSettings);
+                if (parsed.aliveHeld && typeof parsed.aliveHeld === 'object') aliveHeld = parsed.aliveHeld;
+                if (parsed.charUserPersona && typeof parsed.charUserPersona === 'object') charUserPersona = parsed.charUserPersona;
+                if (parsed.factionUserPersona && typeof parsed.factionUserPersona === 'object') factionUserPersona = parsed.factionUserPersona;
                 if (parsed.npcIdentities) npcIdentities = parsed.npcIdentities;
                 if (parsed.cloudSyncEnabled !== undefined) cloudSyncEnabled = parsed.cloudSyncEnabled;
                 if (parsed.cloudWorkerUrl !== undefined) cloudWorkerUrl = parsed.cloudWorkerUrl;
@@ -751,7 +774,8 @@ async function loadAllData() {
                     charInteractMaxInput: charInteractMaxCount,
                     samplerTemperature: samplerTemperature, samplerTopP: samplerTopP,
                     samplerFrequencyPenalty: samplerFrequencyPenalty, samplerPresencePenalty: samplerPresencePenalty,
-                    samplerTopK: samplerTopK
+                    samplerTopK: samplerTopK,
+                    samplerMaxTokens: samplerMaxTokens
                 };
                 Object.keys(uiSyncMap).forEach(id => {
                     const el = document.getElementById(id);
@@ -988,6 +1012,7 @@ function autoSaveApiSettings() {
     if (document.getElementById('samplerFrequencyPenalty')) samplerFrequencyPenalty = document.getElementById('samplerFrequencyPenalty').value.trim();
     if (document.getElementById('samplerPresencePenalty')) samplerPresencePenalty = document.getElementById('samplerPresencePenalty').value.trim();
     if (document.getElementById('samplerTopK')) samplerTopK = document.getElementById('samplerTopK').value.trim();
+    if (document.getElementById('samplerMaxTokens')) samplerMaxTokens = document.getElementById('samplerMaxTokens').value.trim();
 
     saveAllData();
 }
@@ -1094,6 +1119,7 @@ function saveSettings() {
     if (document.getElementById('samplerFrequencyPenalty')) samplerFrequencyPenalty = document.getElementById('samplerFrequencyPenalty').value.trim();
     if (document.getElementById('samplerPresencePenalty')) samplerPresencePenalty = document.getElementById('samplerPresencePenalty').value.trim();
     if (document.getElementById('samplerTopK')) samplerTopK = document.getElementById('samplerTopK').value.trim();
+    if (document.getElementById('samplerMaxTokens')) samplerMaxTokens = document.getElementById('samplerMaxTokens').value.trim();
 
     if(!myApiUrl || !myApiKey) return alert("请至少完整填写主 API 的接口地址和密钥！");
     saveAllData(); alert("设置保存成功！");
@@ -1173,6 +1199,16 @@ async function saveUserProfile() {
 // 设计：每个人设是一份 currentUser 的完整快照（名字/账号/头像/性别/人设简介等），随时可以另存/切换/删除。
 // 切换时直接把快照字段整体覆盖进 currentUser 这同一个对象（不新建对象、不改变引用），
 // 这样App里其它到处写死的 currentUser.xxx 用法完全不用改，天然兼容。
+// 👤 角色表单里的"在这个角色面前我是谁"下拉：选项＝所有已保存的人设 + 一个"跟随当前资料"
+function refreshCharUserPersonaSelect(selectedId) {
+    const sel = document.getElementById('charUserPersonaSelect');
+    if (!sel) return;
+    const list = (typeof userPersonas !== 'undefined' && Array.isArray(userPersonas)) ? userPersonas : [];
+    sel.innerHTML = '<option value="">跟随当前资料（不单独绑定）</option>'
+        + list.map(p => `<option value="${p.id}">${escapeHtml(p.label || '未命名人设')}</option>`).join('');
+    sel.value = (selectedId && list.some(p => p.id === selectedId)) ? selectedId : '';
+}
+
 function renderPersonaSwitchSelect() {
     const sel = document.getElementById('personaSwitchSelect');
     if (!sel) return;
@@ -1378,18 +1414,33 @@ function generateCharSchedule(charId) {
 }
 
 function regenerateSchedule() {
-    if (!pendingScheduleCharId) return;
-    runScheduleGeneration(pendingScheduleCharId);
+    const modal = document.getElementById('schedulePreviewModal');
+    const charId = (modal && modal.dataset.charId) ? modal.dataset.charId : pendingScheduleCharId;
+    if (!charId) {
+        if (typeof appAlert === 'function') appAlert('不知道要给谁重新生成，请从角色那里重新点一次。');
+        return;
+    }
+    runScheduleGeneration(charId);
 }
 
-async function runScheduleGeneration(charId) {
-    pendingScheduleCharId = charId; // 👇修复：加入这一句，让系统知道要把日程保存给哪个角色
+// silent=true：后台自动续期用，不弹任何窗、生成完直接存下来（见 checkAndRenewStaleSchedules）。
+async function runScheduleGeneration(charId, silent) {
+    // ⚠️ 只有"用户手动生成"这条路才动这两个共享变量。
+    // 之前静默续期（日程每天自动更新的定时器）也会写它们，于是出现过这个 bug：
+    // 你手动给 A 生成完、预览开着还没点保存，后台定时器刚好给 B 续了一份，
+    // 把 pendingScheduleCharId 改成了 B、又把 pendingScheduleResult 清成了 null，
+    // 你再点「满意，保存」时 confirmSaveSchedule 里那句 if (!char || !r) return 直接静默返回——
+    // 按钮看起来完全没反应，没有任何报错，A 的日程也没存上。
+    if (!silent) pendingScheduleCharId = charId;
     const char = myCharacters.find(c => c.id == charId); if (!char) return;
-    const api = getApiConfig(true); if (!api.key) { closeModal('schedulePreviewModal'); return alert('请先在设置中配置 API 密钥！'); }
+    const api = getApiConfig(true);
+    if (!api.key) { if (silent) return; closeModal('schedulePreviewModal'); return alert('请先在设置中配置 API 密钥！'); }
 
-    closeModal('schedulePreviewModal');
-    document.getElementById('scheduleLoadingText').innerText = `正在为 ${char.name} 生成/更新日程...`;
-    openModal('scheduleLoadingModal');
+    if (!silent) {
+        closeModal('schedulePreviewModal');
+        document.getElementById('scheduleLoadingText').innerText = `正在为 ${char.name} 生成/更新日程...`;
+        openModal('scheduleLoadingModal');
+    }
     // 日程要求AI一次性写完整一天的行程（比普通聊天回复长得多），生成本来就会比聊天慢一些，
     // 这里加个计时提示，至少能看出"还在生成中"而不是卡住了
     const scheduleLoadStart = Date.now();
@@ -1421,23 +1472,65 @@ ${recentChat || '（暂无）'}
         const data = await callChatCompletionAPI(api, prompt);
         if (data.error) throw new Error(data.error.message);
         let rawText = data.choices?.[0]?.message?.content?.trim() || "";
-        rawText = rawText.replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
-        const parsed = JSON.parse(rawText);
-        if (!parsed.schedule) throw new Error('生成内容为空');
+        // ⚠️ 不能裸调 JSON.parse：推理模型会先吐一段 <think>…</think>，
+        // 直接解析就是「Unexpected token '<', "<think>好的，"... is not valid JSON」。
+        // parseModelJson 会先剥掉思考过程和 ``` 围栏，再从最后一个 JSON 块往前试。
+        const parsed = (typeof parseModelJson === 'function') ? parseModelJson(rawText) : JSON.parse(rawText);
+        if (!parsed || !parsed.schedule) throw new Error('生成内容为空或格式不对（模型没按要求只输出 JSON）');
 
         clearInterval(scheduleLoadTimer);
-        pendingScheduleResult = { text: parsed.schedule, currentStatus: parsed.currentStatus || '', statusTypeLabel: parsed.statusTypeLabel || '' };
+        const result = { text: parsed.schedule, currentStatus: parsed.currentStatus || '', statusTypeLabel: parsed.statusTypeLabel || '' };
+        if (silent) {
+            // 自动续期：直接落地，不打断用户
+            // 覆盖之前先把旧的那一天归档，不然"昨天做了什么"就永远丢了（见 js/06 日程记忆那一段）
+            if (typeof archiveCharSchedule === 'function') archiveCharSchedule(char);
+            char.schedule = { text: parsed.schedule, generatedAt: Date.now() };
+            if (parsed.currentStatus && typeof saveCharLifeState === 'function') saveCharLifeState(char, parsed.currentStatus, parsed.statusTypeLabel || '');
+            if (typeof saveAllData === 'function') saveAllData();
+            console.info('[日程自动更新] 已为', char.name, '生成新的一天日程');
+            // 攒够几天就顺手总结一次生活轨迹（函数内部自己判断够不够、开关开没开）
+            if (typeof updateScheduleMemoryAsync === 'function') updateScheduleMemoryAsync(char);
+            // ✅ 新的一天了，顺便看看 TA 的待办是不是快见底——见底了就让 TA 结合新日程再记几件。
+            //    函数内部自己判断开关（autoTodoGen）、剩几条、今天补过没有，所以这里无脑调用即可。
+            if (typeof autoTopUpCharTodos === 'function') autoTopUpCharTodos(char);
+            return;
+        }
+        pendingScheduleResult = result;
         closeModal('scheduleLoadingModal');
-        showSchedulePreview();
+        showSchedulePreview(charId);
     } catch (e) {
         clearInterval(scheduleLoadTimer);
+        if (silent) { console.warn('[日程自动更新] 生成失败（下一轮再试）：', e.message); return; }
         closeModal('scheduleLoadingModal');
         alert('生成日程失败：' + e.message);
     }
 }
 
-function showSchedulePreview() {
+// 🗓️ 日程自动续期：到了第二天，把过期的日程自动重新生成一份。
+// 关掉这个开关就退回原来的行为——只在角色状态气泡里提示"日程可能过期了，右键头像可更新"，等你自己点。
+// 挂在 checkAndFlowSchedules 这同一个 15 分钟的定时器上，不额外多开一个循环。
+// 一轮最多续 2 个角色：角色多的时候一次性全生成会瞬间打出十几个长请求，又慢又贵，分几轮慢慢来完全够用。
+async function checkAndRenewStaleSchedules() {
+    if (typeof isAutoOn === 'function' && !isAutoOn('scheduleAutoRenew')) return;
+    const api = getApiConfig(true); if (!api.key) return;
+    if (typeof isScheduleStale !== 'function') return;
+    const due = (myCharacters || []).filter(c => c && c.schedule && c.schedule.text && isScheduleStale(c)).slice(0, 2);
+    for (const char of due) {
+        try { await runScheduleGeneration(char.id, true); }
+        catch (e) { console.warn('[日程自动更新] 出错，跳过这个角色：', char && char.name, e); }
+    }
+}
+
+function showSchedulePreview(charId) {
     const r = pendingScheduleResult; if (!r) return;
+    const modal = document.getElementById('schedulePreviewModal');
+    // 把"这份预览是谁的、内容是什么"直接钉在弹窗元素上。
+    // 全局变量随时可能被后台定时器改掉，弹窗自己身上的这份不会——
+    // 保存时以它为准，用户看到的是哪份就存哪份。
+    if (modal) {
+        modal.dataset.charId = String(charId != null ? charId : pendingScheduleCharId);
+        modal.dataset.payload = JSON.stringify(r);
+    }
     const typeColor = getStatusTypeColor(r.statusTypeLabel);
     const typeBadge = r.statusTypeLabel ? `<span style="background:${typeColor || '#1d9bf0'}; color:#fff; font-size:11px; padding:1px 8px; border-radius:8px; margin-right:6px;">${r.statusTypeLabel}</span>` : '';
     document.getElementById('schedulePreviewStatus').innerHTML = r.currentStatus ? `${typeBadge}💭 此刻状态：${r.currentStatus}` : '';
@@ -1446,13 +1539,48 @@ function showSchedulePreview() {
 }
 
 function confirmSaveSchedule() {
-    const char = myCharacters.find(c => c.id == pendingScheduleCharId); const r = pendingScheduleResult;
-    if (!char || !r) return;
-    char.schedule = { text: r.text, generatedAt: Date.now() };
-    if (r.currentStatus) saveCharLifeState(char, r.currentStatus, r.statusTypeLabel);
-    saveAllData();
+    // 一律以弹窗自己身上钉着的那份为准，全局变量只当兜底：
+    // 用户看到的是哪份预览就存哪份，中途后台跑过什么都不影响。
+    const modal = document.getElementById('schedulePreviewModal');
+    let charId = (modal && modal.dataset.charId) ? modal.dataset.charId : pendingScheduleCharId;
+    let r = null;
+    try { if (modal && modal.dataset.payload) r = JSON.parse(modal.dataset.payload); } catch (e) {}
+    if (!r) r = pendingScheduleResult;
+
+    const char = myCharacters.find(c => c.id == charId);
+    // ⚠️ 不能再静默 return 了：按钮点了没反应、也没有任何提示，是最难查的一类 bug。
+    if (!char || !r) {
+        const msg = !char ? '没找到这个角色（可能已经被删了）' : '这份预览的内容已经丢了，请重新生成一次';
+        if (typeof appAlert === 'function') appAlert('保存失败：' + msg); else alert('保存失败：' + msg);
+        return;
+    }
+    // 整段包起来：中间任何一步抛异常，都不能让按钮变成"点了没反应"
+    try {
+        // 手动生成的日程同样先归档旧的那份，跟自动续期保持一致
+        if (typeof archiveCharSchedule === 'function') archiveCharSchedule(char);
+        char.schedule = { text: r.text, generatedAt: Date.now() };
+        if (r.currentStatus && typeof saveCharLifeState === 'function') saveCharLifeState(char, r.currentStatus, r.statusTypeLabel);
+        if (typeof saveAllData === 'function') saveAllData();
+    } catch (e) {
+        console.error('保存日程失败：', e);
+        if (typeof appAlert === 'function') appAlert('保存失败：' + (e.message || e)); else alert('保存失败：' + (e.message || e));
+        return;
+    }
+    // 这两个是"存完之后顺带做的事"，失败了不该连累已经存好的日程
+    try { if (typeof updateScheduleMemoryAsync === 'function') updateScheduleMemoryAsync(char); } catch (e) { console.warn('日程记忆总结没跑起来：', e); }
+    try { if (typeof autoTopUpCharTodos === 'function') autoTopUpCharTodos(char); } catch (e) { console.warn('自动补待办没跑起来：', e); }
+
     closeModal('schedulePreviewModal');
+    if (modal) { delete modal.dataset.charId; delete modal.dataset.payload; }
     pendingScheduleResult = null;
+    if (typeof showToast === 'function') {
+        showToast(typeof getAvatarHTML === 'function' ? getAvatarHTML(char, 40) : '', '日程已保存',
+            `${char.name} 今天的安排已经更新。`, null, null, false);
+    }
+    // 资料页/日历正开着的话顺手刷新一下，不然还显示旧日程
+    if (typeof renderCharCalendarGrid === 'function' && document.getElementById('charCalendarGrid')) {
+        try { renderCharCalendarGrid(); } catch (e) {}
+    }
 }
 
 

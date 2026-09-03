@@ -51,14 +51,660 @@ let currentCalendarCharId = null; // 当前打开的纪念日弹窗对应的角�
 function openCharCalendarModal(charId) {
     const char = myCharacters.find(c => c.id == charId); if (!char) return;
     currentCalendarCharId = char.id;
-    document.getElementById('charCalendarTitle').innerText = `📅 ${char.name} 的纪念日与回忆`;
+    document.getElementById('charCalendarTitle').innerText = `📅 ${char.name} 的日历`;
     document.getElementById('charAnniversaryNoteText').style.display = 'none';
     document.getElementById('charAnniversaryNoteText').innerText = '';
 
     // 渲染真正的纪念日列表（含手动添加的纪念日 + AI记忆推断的纪念日），而不是只显示一句"认识天数"
     renderCharCalendarModalContent(char.id);
+    // 月历 + 待办：默认停在今天
+    gyCalYear = new Date().getFullYear();
+    gyCalMonth = new Date().getMonth();
+    gyCalSelected = gyDateKey(new Date());
+    gyCalRange = 'month';
+    setCalendarRange('month');   // 顺带把上面那排按钮的高亮也复位
+    closeCalendarAddBox();
+    renderCharTodoList();
 
     openModal('charCalendarModal');
+}
+
+// ===================== 📅 月历 =====================
+// 数据全是现成的，以前只是没地方看：
+//   · 日程   —— char.schedule（今天）+ char.scheduleHistory（自动归档的前几天）
+//   · 纪念日 —— char.anniversaries（原来的纪念日功能，直接融合进来，按"每年同月同日"复现）
+//   · 待办   —— char.todos（这一版新加的）
+let gyCalYear = new Date().getFullYear();
+let gyCalMonth = new Date().getMonth();
+let gyCalSelected = null;
+
+function gyDateKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function gyCalChar() {
+    return myCharacters.find(c => c.id == currentCalendarCharId) || null;
+}
+// 这一天有哪些东西。key 是 'yyyy-mm-dd'。
+function gyCalDayData(char, key) {
+    const out = { schedules: [], anniversaries: [], todos: [] };
+    if (!char) return out;
+    // 日程：归档的 + 今天这份
+    (char.scheduleHistory || []).forEach(h => {
+        if (h && h.at && gyDateKey(new Date(h.at)) === key) out.schedules.push({ at: h.at, text: h.text });
+    });
+    if (char.schedule && char.schedule.text && char.schedule.generatedAt
+        && gyDateKey(new Date(char.schedule.generatedAt)) === key
+        && !out.schedules.some(s => s.at === char.schedule.generatedAt)) {
+        out.schedules.push({ at: char.schedule.generatedAt, text: char.schedule.text, isToday: true });
+    }
+    // 纪念日：按"每年同一个月日"算，这样周年当天也会亮起来
+    const md = key.slice(5);
+    (char.anniversaries || []).forEach(a => {
+        if (!a || !a.date) return;
+        if (a.date === key) out.anniversaries.push({ ...a, years: 0 });
+        else if (String(a.date).slice(5) === md && String(a.date) < key) {
+            const years = parseInt(key.slice(0, 4)) - parseInt(String(a.date).slice(0, 4));
+            if (years > 0) out.anniversaries.push({ ...a, years });
+        }
+    });
+    (char.todos || []).forEach(t => { if (t && t.date === key) out.todos.push(t); });
+    return out;
+}
+
+// 🗓️ 「认识第几天」全 app 只能有一个算法
+// —— 以前有两套：日历页从"用户手记的相识日 / createTime"算，
+//    checkAndAnnounceAnniversary 却从"聊天记录第一条的时间戳"算。
+//    结果同一天日历显示第 100 天、角色嘴里说第 30 天（实测过）。
+//    而且从聊天记录算的那套，用户一清聊天记录天数就归零。
+//    现在统一走这里。优先级：用户手记的相识日 > createTime > 首条聊天 > id 里的时间戳。
+function annBaseInfo(char) {
+    if (!char) return null;
+    let baseTs = null, label = '我们相识', from = '';
+    const meet = (char.anniversaries || []).find(a => a && a.event &&
+        /相识|认识|相遇|见面|初见|在一起|确定关系/.test(a.event));
+    if (meet && meet.date) { baseTs = new Date(meet.date + 'T00:00:00').getTime(); label = meet.event; from = '手记'; }
+    if (!baseTs && char.createTime) { baseTs = char.createTime; from = 'createTime'; }
+    if (!baseTs) {
+        const h = (typeof globalChats !== 'undefined' && globalChats[char.id]) || null;
+        if (h && h.length && h[0].timestamp) { baseTs = h[0].timestamp; from = '首条聊天'; }
+    }
+    if (!baseTs && !isNaN(char.id) && String(char.id).length >= 13) { baseTs = parseInt(char.id); from = 'id'; }
+    if (!baseTs) { baseTs = Date.now(); from = '兜底'; }
+
+    const b = new Date(baseTs); b.setHours(0, 0, 0, 0);
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    let days = Math.floor((t.getTime() - b.getTime()) / 86400000) + 1;   // 认识当天算第 1 天
+    if (days < 1) days = 1;
+    return { baseTs: b.getTime(), label, days, from, dateStr: gyDateKey(b) };
+}
+
+// 🗓️ 今天该惦记的日子 —— 用户在日历里手记的纪念日，以前角色一个字都看不到。
+//    只放"今天"这一天的，不会把整张表倒进 prompt。
+function getAnniversaryAwarenessPrompt(char) {
+    try {
+        // 📅「日子」内置之后（js/25）它也读 char.anniversaries，而且做得更全——
+        //    带周年数、还会提前几天开始惦记、外加节气时令。两边都注入的话
+        //    prompt 里会出现两段几乎一样的【今天是什么日子】。让位给它。
+        if (typeof window.__gyDaysCtxFor === 'function') return '';
+        if (typeof aliveSettings !== 'undefined' && aliveSettings.knowAnniv === false) return '';
+        if (typeof enableAnniversary !== 'undefined' && !enableAnniversary) return '';
+        if (!char) return '';
+        const key = gyDateKey(new Date());
+        const d = gyCalDayData(char, key);
+        const lines = [];
+        (d.anniversaries || []).forEach(a => {
+            lines.push('· ' + a.event + (a.years ? `（${a.years} 周年）` : '（就是今天）'));
+        });
+        const info = annBaseInfo(char);
+        let head = '';
+        if (info && info.from === '手记') head = `今天是${info.label}的第 ${info.days} 天。\n`;
+        if (!lines.length && !head) return '';
+        return `\n\n【🗓️ 今天是个什么日子】\n${head}${lines.join('\n')}\n`
+            + `这些是对方记在日历上的。你心里清楚就行——要不要提、怎么提，看你的人设和你俩现在的关系；`
+            + `不是那种会把日子挂嘴边的人，就别提。千万别变成播报。\n`;
+    } catch (e) { return ''; }
+}
+
+let gyCalRange = 'month';   // 'day' | 'week' | 'month' | 'year'
+
+function setCalendarRange(r) {
+    gyCalRange = r;
+    document.querySelectorAll('#charCalendarRange button').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-range') === r);
+    });
+    // 切到日/周视图时，把"当前月"对齐到选中的那天，否则翻页会莫名其妙跳月
+    if ((r === 'day' || r === 'week') && gyCalSelected) {
+        const d = new Date(gyCalSelected + 'T00:00:00');
+        if (!isNaN(d)) { gyCalYear = d.getFullYear(); gyCalMonth = d.getMonth(); }
+    }
+    renderCharCalendarGrid();
+}
+
+// 上一格/下一格：翻的东西跟当前视图有关（日视图翻一天，周视图翻一周，月/年各自翻月和年）
+function charCalendarShiftMonth(delta) {
+    if (delta === 0) {
+        const n = new Date();
+        gyCalYear = n.getFullYear(); gyCalMonth = n.getMonth(); gyCalSelected = gyDateKey(n);
+        renderCharCalendarGrid();
+        return;
+    }
+    if (gyCalRange === 'day' || gyCalRange === 'week') {
+        const step = gyCalRange === 'day' ? 1 : 7;
+        const base = gyCalSelected ? new Date(gyCalSelected + 'T00:00:00') : new Date();
+        base.setDate(base.getDate() + delta * step);
+        gyCalSelected = gyDateKey(base);
+        gyCalYear = base.getFullYear(); gyCalMonth = base.getMonth();
+    } else if (gyCalRange === 'year') {
+        gyCalYear += delta;
+    } else {
+        gyCalMonth += delta;
+        if (gyCalMonth < 0) { gyCalMonth = 11; gyCalYear--; }
+        if (gyCalMonth > 11) { gyCalMonth = 0; gyCalYear++; }
+    }
+    renderCharCalendarGrid();
+}
+function charCalendarPickDay(key) {
+    gyCalSelected = key;
+    renderCharCalendarGrid();
+}
+
+// 把某一天的东西压成"一行一条"的事件列表，格子里直接显示（这才是系统日历的样子，
+// 原来只画三个小圆点，等于把信息全藏起来了，还得点进去才知道是什么）
+function gyCalDayEvents(char, key) {
+    const d = gyCalDayData(char, key);
+    const evs = [];
+    d.anniversaries.forEach(a => evs.push({ cls: 'gy-dot-ann', text: a.event + (a.years ? ` · ${a.years}周年` : '') }));
+    d.schedules.forEach(sc => {
+        // 日程是一整天的多行文本，格子里放不下，取前几行的"时间 + 事"当摘要
+        String(sc.text).split(/\r?\n/).map(x => x.trim()).filter(Boolean).slice(0, 4)
+            .forEach(line => evs.push({ cls: 'gy-dot-sch', text: line }));
+    });
+    d.todos.forEach(t => evs.push({ cls: 'gy-dot-todo', text: t.text, done: !!t.done }));
+    return evs;
+}
+
+function renderCharCalendarGrid() {
+    const grid = document.getElementById('charCalendarGrid');
+    const label = document.getElementById('charCalendarMonthLabel');
+    const weekBar = document.getElementById('charCalendarWeekBar');
+    if (!grid || !label) return;
+    const char = gyCalChar();
+    const todayKey = gyDateKey(new Date());
+    const esc = s2 => (typeof escapeHtml === 'function') ? escapeHtml(s2 || '') : String(s2 || '');
+    grid.className = 'gy-cal-grid';
+    if (weekBar) weekBar.style.display = '';
+
+    // ---------- 年视图：12 个小月份，点一个跳进那个月 ----------
+    if (gyCalRange === 'year') {
+        label.innerText = `${gyCalYear} 年`;
+        if (weekBar) weekBar.style.display = 'none';
+        grid.classList.add('year-mode');
+        let html = '';
+        for (let m = 0; m < 12; m++) {
+            const days = new Date(gyCalYear, m + 1, 0).getDate();
+            let n = 0, kinds = { sch: 0, ann: 0, todo: 0 };
+            for (let d = 1; d <= days; d++) {
+                const k = `${gyCalYear}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const dd = gyCalDayData(char, k);
+                if (dd.schedules.length) { kinds.sch++; n++; }
+                if (dd.anniversaries.length) { kinds.ann++; n++; }
+                if (dd.todos.length) { kinds.todo++; n++; }
+            }
+            const dots = (kinds.sch ? '<i class="gy-dot gy-dot-sch"></i>' : '')
+                       + (kinds.ann ? '<i class="gy-dot gy-dot-ann"></i>' : '')
+                       + (kinds.todo ? '<i class="gy-dot gy-dot-todo"></i>' : '');
+            html += `<div class="gy-cal-mini" onclick="gyCalJumpMonth(${m})">
+                <div class="gy-cal-mini-name">${m + 1} 月</div>
+                <div class="gy-cal-mini-count">${n ? n + ' 项' : '—'}</div>
+                <div class="gy-cal-mini-dots">${dots}</div></div>`;
+        }
+        grid.innerHTML = html;
+        renderCharCalendarDayDetail();
+        return;
+    }
+
+    // ---------- 日 / 周视图：一天一段，全文列出来，不省略 ----------
+    if (gyCalRange === 'day' || gyCalRange === 'week') {
+        if (weekBar) weekBar.style.display = 'none';
+        grid.classList.add('list-mode');
+        const base = gyCalSelected ? new Date(gyCalSelected + 'T00:00:00') : new Date();
+        let days = [];
+        if (gyCalRange === 'day') days = [new Date(base)];
+        else {
+            const start = new Date(base); start.setDate(start.getDate() - start.getDay());   // 从周日起
+            for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); days.push(d); }
+        }
+        label.innerText = gyCalRange === 'day'
+            ? `${gyDateKey(days[0])}`
+            : `${gyDateKey(days[0])} ～ ${gyDateKey(days[6])}`;
+        const wk = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        grid.innerHTML = days.map(d => {
+            const k = gyDateKey(d);
+            const evs = gyCalDayEvents(char, k);
+            return `<div class="gy-cal-daybox${k === gyCalSelected ? ' selected' : ''}" onclick="charCalendarPickDay('${k}')">
+                <div class="gy-cal-daybox-title">${k} ${wk[d.getDay()]}${k === todayKey ? '<span class="gy-cal-today-tag">今天</span>' : ''}</div>
+                ${evs.length
+                    ? evs.map(e => `<div class="gy-cal-ev${e.done ? ' done' : ''}"><i class="gy-dot ${e.cls}"></i>${esc(e.text)}</div>`).join('')
+                    : '<div class="gy-cal-daybox-empty">这天没有记录</div>'}
+            </div>`;
+        }).join('');
+        renderCharCalendarDayDetail();
+        return;
+    }
+
+    // ---------- 月视图：格子里直接列出当天的事 ----------
+    label.innerText = `${gyCalYear} 年 ${gyCalMonth + 1} 月`;
+    const first = new Date(gyCalYear, gyCalMonth, 1);
+    const startPad = first.getDay();
+    const daysInMonth = new Date(gyCalYear, gyCalMonth + 1, 0).getDate();
+    const maxLines = (window.innerWidth <= 900) ? 1 : 3;   // 手机格子矮，只显示一条
+
+    let cells = '';
+    for (let i = 0; i < startPad; i++) cells += `<div class="gy-cal-cell other-month"></div>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+        const key = `${gyCalYear}-${String(gyCalMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const evs = gyCalDayEvents(char, key);
+        const shown = evs.slice(0, maxLines).map(e =>
+            `<div class="gy-cal-ev${e.done ? ' done' : ''}" title="${esc(e.text)}"><i class="gy-dot ${e.cls}"></i>${esc(e.text)}</div>`).join('');
+        const more = evs.length > maxLines ? `<div class="gy-cal-more">还有 ${evs.length - maxLines} 项</div>` : '';
+        const cls = ['gy-cal-cell'];
+        if (key === todayKey) cls.push('today');
+        if (key === gyCalSelected) cls.push('selected');
+        cells += `<div class="${cls.join(' ')}" onclick="charCalendarPickDay('${key}')">
+            <span class="gy-cal-daynum">${d}</span>${shown}${more}</div>`;
+    }
+    // 补满最后一行，不然最后几格没有边框看着缺一块
+    const total = startPad + daysInMonth;
+    for (let i = total; i % 7 !== 0; i++) cells += `<div class="gy-cal-cell other-month"></div>`;
+    grid.innerHTML = cells;
+    renderCharCalendarDayDetail();
+}
+function gyCalJumpMonth(m) {
+    gyCalMonth = m;
+    setCalendarRange('month');
+}
+
+// 选中那天的详情：日程全文 + 纪念日 + 待办。格子里只放得下摘要，完整内容看这里。
+function renderCharCalendarDayDetail() {
+    const box = document.getElementById('charCalendarDayDetail');
+    if (!box) return;
+    const char = gyCalChar();
+    if (!char || !gyCalSelected) { box.innerHTML = ''; return; }
+    const data = gyCalDayData(char, gyCalSelected);
+    const esc = s2 => (typeof escapeHtml === 'function') ? escapeHtml(s2 || '') : String(s2 || '');
+    let html = `<div style="font-size:14px; font-weight:bold; color:#0f1419; margin-bottom:6px;">${gyCalSelected}</div>`;
+
+    if (data.anniversaries.length) {
+        html += `<div class="gy-cal-sec ann"><h5>💗 纪念日</h5>` + data.anniversaries.map(a =>
+            `<div>${esc(a.event)}${a.years ? `　<span style="color:#8b98a5;">· ${a.years} 周年</span>` : ''}</div>`).join('') + `</div>`;
+    }
+    if (data.schedules.length) {
+        html += `<div class="gy-cal-sec"><h5>🗓️ 当天日程${data.schedules.some(x => x.isToday) ? '（当前生效的这一份）' : ''}</h5>`
+            + data.schedules.map(x => `<pre>${esc(x.text)}</pre>`).join('<hr style="border:none;border-top:1px dashed #cfd9de;margin:6px 0;">') + `</div>`;
+    }
+    if (data.todos.length) {
+        html += `<div class="gy-cal-sec todo"><h5>✅ 这天的待办</h5>` + data.todos.map(t =>
+            `<div${t.done ? ' style="text-decoration:line-through;color:#8b98a5;"' : ''}>${esc(t.text)}</div>`).join('') + `</div>`;
+    }
+    if (!data.anniversaries.length && !data.schedules.length && !data.todos.length) {
+        const future = gyCalSelected > gyDateKey(new Date());
+        html += `<div style="color:#8b98a5; font-size:12px; padding:8px 0;">${future ? '这天还没到，也还没安排什么。' : '这天没有留下日程/纪念日/待办。日程是每天自动更新时才归档的，更早的日子可能没有记录。'}</div>`;
+    }
+    box.innerHTML = html;
+}
+
+// ---------- ＋添加：日程 / 纪念日 / 待办，加在选中的那一天 ----------
+function openCalendarAddBox() {
+    const box = document.getElementById('charCalendarAddBox');
+    if (!box) return;
+    box.style.display = 'block';
+    const dateEl = document.getElementById('calAddDate');
+    if (dateEl) dateEl.value = gyCalSelected || gyDateKey(new Date());
+    const textEl = document.getElementById('calAddText');
+    if (textEl) { textEl.value = ''; textEl.focus(); }
+}
+function closeCalendarAddBox() {
+    const box = document.getElementById('charCalendarAddBox');
+    if (box) box.style.display = 'none';
+}
+function submitCalendarAdd() {
+    const char = gyCalChar();
+    if (!char) return (typeof appAlert === 'function' ? appAlert('没找到当前角色。') : alert('没找到当前角色'));
+    const type = document.getElementById('calAddType')?.value || 'todo';
+    const date = document.getElementById('calAddDate')?.value || '';
+    const text = (document.getElementById('calAddText')?.value || '').trim();
+    if (!text) return (typeof appAlert === 'function' ? appAlert('先写点内容。') : alert('先写点内容。'));
+
+    if (type === 'todo') {
+        getCharTodos(char).push({
+            id: 'todo_' + Date.now() + Math.floor(Math.random() * 1000),
+            text, date: date || null, done: false, createdAt: Date.now(), doneAt: null, source: 'user'
+        });
+    } else if (type === 'anniversary') {
+        if (!date) return (typeof appAlert === 'function' ? appAlert('纪念日要选一个日期。') : alert('纪念日要选一个日期。'));
+        if (!Array.isArray(char.anniversaries)) char.anniversaries = [];
+        char.anniversaries.push({ id: 'anniv_' + Date.now(), date, event: text });
+    } else {
+        if (!date) return (typeof appAlert === 'function' ? appAlert('日程要选一个日期。') : alert('日程要选一个日期。'));
+        // 手动加的日程直接写进归档里（跟自动归档同一个结构），这样月历和"生活轨迹总结"都能读到。
+        // 选的是今天的话，同时也更新"当前生效的那份日程"，不然角色自己还不知道。
+        if (!Array.isArray(char.scheduleHistory)) char.scheduleHistory = [];
+        const at = new Date(date + 'T12:00:00').getTime();
+        const day = new Date(at).toDateString();
+        const exist = char.scheduleHistory.find(h => h && h.day === day);
+        if (exist) exist.text = (exist.text ? exist.text + '\n' : '') + text;
+        else char.scheduleHistory.push({ day, at, text });
+        char.scheduleHistory.sort((a, b) => (a.at || 0) - (b.at || 0));
+        if (date === gyDateKey(new Date())) {
+            char.schedule = { text: (char.schedule && char.schedule.text ? char.schedule.text + '\n' : '') + text, generatedAt: Date.now() };
+        }
+    }
+    if (typeof saveAllData === 'function') saveAllData();
+    gyCalSelected = date || gyCalSelected;
+    closeCalendarAddBox();
+    renderCharCalendarGrid();
+    renderCharTodoList();
+}
+
+// ===================== ✅ 待办清单 =====================
+// 跟日程是两回事：日程是"今天几点做什么"，一天一换；待办是"还没办的事"，跨天存在、办完才消失。
+// 日期可以留空——"不定哪天，但一直记着"这类事（答应过的、惦记着的）才是待办的主力。
+// 以后角色"自己决定要做什么"的时候，这份清单就是它的依据（比如桂花糕买到了 → 发条推文）。
+function getCharTodos(char) {
+    if (!char) return [];
+    if (!Array.isArray(char.todos)) char.todos = [];
+    return char.todos;
+}
+function addCharTodo() {
+    const char = gyCalChar();
+    if (!char) return (typeof appAlert === 'function' ? appAlert('没找到当前角色，重新打开一下资料页。') : alert('没找到当前角色'));
+    const textEl = document.getElementById('newTodoText');
+    const dateEl = document.getElementById('newTodoDate');
+    const text = (textEl?.value || '').trim();
+    if (!text) return (typeof appAlert === 'function' ? appAlert('先写一下要办什么事。') : alert('先写一下要办什么事。'));
+    getCharTodos(char).push({
+        id: 'todo_' + Date.now() + Math.floor(Math.random() * 1000),
+        text, date: (dateEl?.value || '') || null,
+        done: false, createdAt: Date.now(), doneAt: null, source: 'user'
+    });
+    if (textEl) textEl.value = '';
+    if (dateEl) dateEl.value = '';
+    if (typeof saveAllData === 'function') saveAllData();
+    renderCharTodoList();
+    renderCharCalendarGrid();
+}
+function toggleCharTodo(id, done) {
+    const char = gyCalChar(); if (!char) return;
+    const t = getCharTodos(char).find(x => x.id === id); if (!t) return;
+    t.done = !!done; t.doneAt = done ? Date.now() : null;
+    if (typeof saveAllData === 'function') saveAllData();
+    renderCharTodoList();
+}
+async function deleteCharTodo(id) {
+    const char = gyCalChar(); if (!char) return;
+    const t = getCharTodos(char).find(x => x.id === id);
+    if (t && typeof appConfirm === 'function' && !(await appConfirm(`删掉这条待办？\n\n${t.text}`))) return;
+    char.todos = getCharTodos(char).filter(x => x.id !== id);
+    if (typeof saveAllData === 'function') saveAllData();
+    renderCharTodoList();
+    renderCharCalendarGrid();
+}
+function renderCharTodoList() {
+    const box = document.getElementById('charTodoList');
+    if (!box) return;
+    const char = gyCalChar();
+    const list = getCharTodos(char).slice().sort((a, b) => {
+        if (!!a.done !== !!b.done) return a.done ? 1 : -1;       // 没办的排前面
+        const ad = a.date || '9999-99-99', bd = b.date || '9999-99-99';
+        if (ad !== bd) return ad < bd ? -1 : 1;                   // 有日期的按日期，没日期的垫底
+        return (a.createdAt || 0) - (b.createdAt || 0);
+    });
+    if (list.length === 0) { box.innerHTML = `<div style="font-size:12px; color:#8b98a5;">还没有待办。</div>`; return; }
+    const esc = s => (typeof escapeHtml === 'function') ? escapeHtml(s || '') : String(s || '');
+    const todayKey = gyDateKey(new Date());
+    box.innerHTML = list.map(t => {
+        const overdue = !t.done && t.date && t.date < todayKey;
+        const meta = [
+            t.date ? (overdue ? `<span style="color:#f91880;">${t.date} · 已过期</span>` : t.date) : '不定哪天',
+            t.source === 'ai' ? '角色自己记下的' : ''
+        ].filter(Boolean).join(' · ');
+        return `<div class="gy-todo-row${t.done ? ' done' : ''}" data-todo-id="${t.id}">
+            <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleCharTodo('${t.id}', this.checked)">
+            <div class="gy-todo-main" ondblclick="startEditCharTodo('${t.id}')" title="双击可以改">
+                <div class="gy-todo-text">${esc(t.text)}</div>
+                <div class="gy-todo-meta">${meta}</div>
+            </div>
+            <span class="gy-todo-del" onclick="deleteCharTodo('${t.id}')">×</span>
+        </div>`;
+    }).join('');
+}
+
+// ✏️ 双击改一条待办：就地把这一行换成输入框，回车保存 / Esc 取消 / 点别处也保存。
+// 不做弹窗是因为待办改起来通常只是顺手挪个日期、改两个字，弹窗反而重。
+function startEditCharTodo(id) {
+    const char = gyCalChar(); if (!char) return;
+    const t = getCharTodos(char).find(x => x.id === id); if (!t) return;
+    const row = document.querySelector(`.gy-todo-row[data-todo-id="${id}"] .gy-todo-main`);
+    if (!row || row.dataset.editing === '1') return;
+    row.dataset.editing = '1';
+    const esc = s => (typeof escapeHtml === 'function') ? escapeHtml(s || '') : String(s || '');
+    row.innerHTML = `<div class="gy-todo-edit">
+        <input type="text" class="gy-todo-edit-text" value="${esc(t.text)}">
+        <input type="date" class="gy-todo-edit-date" value="${t.date || ''}">
+        <button type="button" onclick="commitEditCharTodo('${id}')">保存</button>
+        <button type="button" class="cancel" onclick="renderCharTodoList()">取消</button>
+        <div class="gy-todo-edit-hint">回车保存，Esc 取消。日期留空 ＝ 不定哪天。</div>
+    </div>`;
+    const textEl = row.querySelector('.gy-todo-edit-text');
+    const dateEl = row.querySelector('.gy-todo-edit-date');
+    if (textEl) {
+        textEl.focus();
+        textEl.setSelectionRange(textEl.value.length, textEl.value.length);
+        textEl.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); commitEditCharTodo(id); }
+            else if (e.key === 'Escape') { e.preventDefault(); renderCharTodoList(); }
+        });
+    }
+    if (dateEl) dateEl.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); commitEditCharTodo(id); }
+        else if (e.key === 'Escape') { e.preventDefault(); renderCharTodoList(); }
+    });
+}
+function commitEditCharTodo(id) {
+    const char = gyCalChar(); if (!char) return;
+    const t = getCharTodos(char).find(x => x.id === id); if (!t) return renderCharTodoList();
+    const row = document.querySelector(`.gy-todo-row[data-todo-id="${id}"] .gy-todo-main`);
+    if (!row) return renderCharTodoList();
+    const text = (row.querySelector('.gy-todo-edit-text')?.value || '').trim();
+    const date = (row.querySelector('.gy-todo-edit-date')?.value || '') || null;
+    // 内容清空 ＝ 用户想删掉这条，但删是不可逆的，所以问一句而不是直接删
+    if (!text) { renderCharTodoList(); return; }
+    t.text = text;
+    t.date = date;
+    t.editedAt = Date.now();
+    if (typeof saveAllData === 'function') saveAllData();
+    renderCharTodoList();
+    if (typeof renderCharCalendarGrid === 'function') renderCharCalendarGrid();
+}
+
+// 🤖 让角色自己写待办：结合人设 + 今天的日程 + 你们最近的聊天 + TA 最近发的推文 + 已有的待办，
+// 让 TA 自己想几件"还惦记着没办"的事。除了跟你有关的，也允许写纯属 TA 自己的兴趣（练琴、追的剧、
+// 想去的店），因为一个人的待办本来就不会全是关于另一个人的——全是的话反而假。
+// regenerate=true：只换掉"TA 自己记下的、还没办完的"，你手写的和已经打勾的一律保留。
+async function generateCharTodosAI(regenerate) {
+    const char = gyCalChar();
+    if (!char) return (typeof appAlert === 'function' ? appAlert('没找到当前角色，重新打开一下资料页。') : alert('没找到当前角色'));
+    if (typeof getApiConfig !== 'function') return;
+    const api = getApiConfig(true);
+    if (!api.key) return (typeof appAlert === 'function' ? appAlert('请先在设置里配置 API Key。') : alert('请先配置 API Key'));
+    if (generateCharTodosAI._busy) return;
+
+    const btns = Array.from(document.querySelectorAll('.gy-todo-aibtn'));
+    const olds = btns.map(b => b.innerText);
+    generateCharTodosAI._busy = true;
+    btns.forEach(b => { b.disabled = true; });
+    if (btns[0]) btns[0].innerText = '正在想…';
+
+    try {
+        const all = getCharTodos(char);
+        // 重新生成时先把"AI 写的、还没办完的"挑出来待删——但要等生成成功了再真删，
+        // 不然请求失败就白白把原来的清单弄没了。
+        const keep = regenerate ? all.filter(t => t.done || t.source !== 'ai') : all.slice();
+        const existingText = keep.map(t => t.text).filter(Boolean);
+
+        const recentChat = (typeof getRecentChatContext === 'function') ? (getRecentChatContext(char.id) || '') : '';
+        const recentPosts = (typeof getCharRecentPosts === 'function')
+            ? getCharRecentPosts(char.id, 8).map(p => p.text).join('\n') : '';
+        const scheduleText = (char.schedule && char.schedule.text) ? char.schedule.text : '';
+        const doneRecently = all.filter(t => t.done).slice(-6).map(t => t.text);
+        const todayKey = gyDateKey(new Date());
+
+        const ask = `现在的真实时间：${new Date().toLocaleString('zh-CN', { hour12: false, weekday: 'long' })}（今天是 ${todayKey}）。
+
+请以你自己的身份，列出你现在"还惦记着、但还没办"的事，也就是你的待办清单。
+
+【今天的日程】：
+${scheduleText || '（还没安排）'}
+
+【你最近发过的动态】：
+${recentPosts || '（暂无）'}
+
+【你和${(typeof userDisplayName === 'function') ? userDisplayName(char) : '用户'}最近的聊天】：
+${recentChat || '（暂无）'}
+
+【清单上已经有的（不要重复，也不要换个说法再写一遍）】：
+${existingText.length ? existingText.map(t => '· ' + t).join('\n') : '（空）'}
+
+【你最近已经办完的（说明这些别再写了）】：
+${doneRecently.length ? doneRecently.map(t => '· ' + t).join('\n') : '（暂无）'}
+
+要求：
+1. 写 3～5 条，每条 20 字以内，就是一句"要做的事"，不要解释、不要加编号。
+2. 必须真的像你会惦记的事：跟你的身份、职业、生活习惯、正在进行的剧情对得上。
+3. 不要全是关于${(typeof userDisplayName === 'function') ? userDisplayName(char) : '用户'}的——一个人的待办本来就有一多半是自己的事（工作上的、爱好上的、身体上的、想买想吃想去的）。请至少有一半是纯属你自己的事。
+4. 允许写只有你才会在意的小事，越具体越好（"把左手第三根弦换掉"好过"练琴"）。
+5. date 字段：明确有日子的才填 YYYY-MM-DD（比如日程里提到的、约好的），大部分应该留空字符串——"不定哪天但一直记着"才是待办的常态。
+6. 已经在日程里今天就会做完的事不要写进待办（那是日程不是待办）。
+
+请严格只返回 JSON 数组，不要用 \`\`\` 包裹，不要写任何别的话：
+[{"text":"要做的事","date":""}]`;
+
+        const messages = buildStructuredMessages(buildBasePrompt(char, true, recentChat), [], ask);
+        const data = await callChatCompletionAPI(api, messages);
+        let raw = (data.choices?.[0]?.message?.content || '').trim();
+        raw = raw.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+
+        // 同样走统一入口：模型带思考过程 / 带 ``` 围栏 / 前后多说了两句，都能兜住
+        let arr = (typeof parseModelJson === 'function') ? parseModelJson(raw) : null;
+        if (!Array.isArray(arr) || arr.length === 0) throw new Error('返回的内容看不懂，没能解析成清单');
+
+        // 生成成功了，这时候才动原来的数据
+        if (regenerate) char.todos = keep;
+        const list = getCharTodos(char);
+        const seen = new Set(list.map(t => String(t.text || '').trim()));
+        let added = 0;
+        arr.slice(0, 6).forEach((it, i) => {
+            const text = String((it && (it.text || it.title)) || '').trim().replace(/^[\d.、·\-\s]+/, '');
+            if (!text || seen.has(text)) return;
+            seen.add(text);
+            const d = String((it && it.date) || '').trim();
+            list.push({
+                id: 'todo_' + Date.now() + '_' + i + Math.floor(Math.random() * 1000),
+                text: text.slice(0, 60),
+                date: /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null,
+                done: false, createdAt: Date.now(), doneAt: null, source: 'ai'
+            });
+            added++;
+        });
+        if (typeof saveAllData === 'function') saveAllData();
+        renderCharTodoList();
+        if (typeof renderCharCalendarGrid === 'function') renderCharCalendarGrid();
+        if (typeof showToast === 'function') {
+            showToast((typeof getAvatarHTML === 'function') ? getAvatarHTML(char, 40) : '',
+                regenerate ? '重新写了一份' : 'TA 记下了几件事',
+                `${char.name} 往待办清单里加了 ${added} 条。`, null, null, false);
+        }
+    } catch (e) {
+        console.error('生成待办失败：', e);
+        if (typeof appAlert === 'function') appAlert('这次没生成出来：' + (e.message || e));
+    } finally {
+        generateCharTodosAI._busy = false;
+        btns.forEach((b, i) => { b.disabled = false; b.innerText = olds[i]; });
+    }
+}
+
+// 自动补待办：日程更新完、或者角色自主行动时调用。
+// 只有在"没剩几条没办的"时候才补，不然会越堆越多；而且走开关，关了就一次 API 都不调。
+async function autoTopUpCharTodos(char, opts) {
+    if (!char) return false;
+    if (typeof isAutoOn === 'function' && !isAutoOn('autoTodoGen')) return false;
+    const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+    if (!api || !api.key) return false;
+    const list = Array.isArray(char.todos) ? char.todos : [];
+    const openCount = list.filter(t => t && !t.done).length;
+    const threshold = (opts && typeof opts.threshold === 'number') ? opts.threshold : 2;
+    if (openCount > threshold) return false;
+    // 一天最多自动补一次，避免定时器每转一圈就来一发
+    const todayKey = gyDateKey(new Date());
+    if (char.lastTodoAutoGenDay === todayKey && !(opts && opts.force)) return false;
+    char.lastTodoAutoGenDay = todayKey;
+    try {
+        await generateCharTodosForChar(char, false);
+        return true;
+    } catch (e) { console.error('自动补待办失败：', e); return false; }
+}
+
+// generateCharTodosAI 是"资料页上点按钮"的版本（要读当前打开的是谁、要动按钮状态）；
+// 这个是纯数据版，给定时器和自主行动用，不碰任何界面元素。
+async function generateCharTodosForChar(char, regenerate) {
+    if (!char) return 0;
+    const api = getApiConfig(true);
+    if (!api.key) return 0;
+    const all = Array.isArray(char.todos) ? char.todos : (char.todos = []);
+    const keep = regenerate ? all.filter(t => t.done || t.source !== 'ai') : all.slice();
+    const existingText = keep.map(t => t.text).filter(Boolean);
+    const recentChat = (typeof getRecentChatContext === 'function') ? (getRecentChatContext(char.id) || '') : '';
+    const recentPosts = (typeof getCharRecentPosts === 'function')
+        ? getCharRecentPosts(char.id, 6).map(p => p.text).join('\n') : '';
+    const scheduleText = (char.schedule && char.schedule.text) ? char.schedule.text : '';
+    const who = (typeof userDisplayName === 'function') ? userDisplayName(char) : '用户';
+
+    const ask = `现在的真实时间：${new Date().toLocaleString('zh-CN', { hour12: false, weekday: 'long' })}。
+请以你自己的身份，列出你现在"还惦记着、但还没办"的事（待办清单）。
+
+【今天的日程】：\n${scheduleText || '（还没安排）'}
+【你最近发过的动态】：\n${recentPosts || '（暂无）'}
+【你和${who}最近的聊天】：\n${recentChat || '（暂无）'}
+【已经有的，别重复】：\n${existingText.length ? existingText.map(t => '· ' + t).join('\n') : '（空）'}
+
+要求：写 2～4 条，每条 20 字以内；必须符合你的身份和当前剧情；至少一半是纯属你自己的事（工作、爱好、身体、想买想吃想去的），不要全围着${who}转；越具体越好。date 只有明确有日子的才填 YYYY-MM-DD，其余留空字符串。
+严格只返回 JSON 数组，不要用 \`\`\` 包裹：[{"text":"要做的事","date":""}]`;
+
+    const messages = buildStructuredMessages(buildBasePrompt(char, true, recentChat), [], ask);
+    const data = await callChatCompletionAPI(api, messages);
+    let raw = (data.choices?.[0]?.message?.content || '').trim();
+    raw = raw.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+    let arr = (typeof parseModelJson === 'function') ? parseModelJson(raw) : null;
+    if (!Array.isArray(arr)) return 0;
+    if (regenerate) char.todos = keep;
+    const list = Array.isArray(char.todos) ? char.todos : (char.todos = []);
+    const seen = new Set(list.map(t => String(t.text || '').trim()));
+    let added = 0;
+    arr.slice(0, 4).forEach((it, i) => {
+        const text = String((it && (it.text || it.title)) || '').trim().replace(/^[\d.、·\-\s]+/, '');
+        if (!text || seen.has(text)) return;
+        seen.add(text);
+        const d = String((it && it.date) || '').trim();
+        list.push({
+            id: 'todo_' + Date.now() + '_a' + i + Math.floor(Math.random() * 1000),
+            text: text.slice(0, 60),
+            date: /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null,
+            done: false, createdAt: Date.now(), doneAt: null, source: 'ai'
+        });
+        added++;
+    });
+    if (added && typeof saveAllData === 'function') saveAllData();
+    return added;
 }
 
 async function generateCharAnniversaryNote() {
@@ -840,9 +1486,8 @@ async function refreshLifeStateOnChatEnter(charId) {
     try {
         const data = await sendChatRequest(api, prompt);
         let rawText = data.choices?.[0]?.message?.content?.trim() || "";
-        rawText = rawText.replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
-        const parsed = JSON.parse(rawText);
-        if (parsed.activity) {
+        const parsed = (typeof parseModelJson === 'function') ? parseModelJson(rawText) : JSON.parse(rawText);
+        if (parsed && parsed.activity) {
             saveCharLifeState(char, parsed.activity, parsed.statusTypeLabel || (char.lifeState && char.lifeState.statusTypeLabel));
             saveAllData();
         }
@@ -854,10 +1499,16 @@ function checkAndAnnounceAnniversary(sessionId) {
     const char = myCharacters.find(c => c.id == sessionId); if (!char) return;
     const history = globalChats[sessionId];
     if (!history || history.length === 0) return;
-    const firstTs = history[0].timestamp;
-    const daysSince = Math.floor((Date.now() - firstTs) / 86400000);
+    // 🔧 天数改走 annBaseInfo（跟日历页同一个算法）。以前这里是从聊天记录第一条算的，
+    //    跟日历上显示的数对不上，而且清一次聊天记录就归零。
+    const info = annBaseInfo(char);
+    const daysSince = info ? info.days : 0;
     if (daysSince < 1) return;
-    const isMilestone = [1, 7, 30, 100, 200].includes(daysSince) || (daysSince >= 365 && daysSince % 365 === 0) || (daysSince >= 100 && daysSince % 100 === 0 && daysSince < 365);
+    // 🔧 以前 365 天之后要等到 730 才再响一次，中间整整一年一声不吭（400/500/600 全落空）。
+    //    现在整百天一直有效。
+    const isMilestone = [1, 7, 30, 100].includes(daysSince)
+        || (daysSince >= 100 && daysSince % 100 === 0)
+        || (daysSince >= 365 && daysSince % 365 === 0);
     if (!isMilestone) return;
     const todayKey = new Date().toDateString();
     if (char.lastAnniversaryShownDate === todayKey) return; // 今天已经提示过，不重复刷屏
@@ -1024,6 +1675,8 @@ function getScheduleStatusType(schedule) {
 }
 
 function renderChatMessages() {
+    // 🫀 顶上那条"TA 这会儿在忙/在睡"的提示，跟着聊天一起刷
+    try { if (typeof renderAliveBar === 'function') renderAliveBar(); } catch (e) {}
     const container = document.getElementById('chatMessagesArea'); if (!currentChatSessionId) return;
     let history = globalChats[currentChatSessionId] || [], isGroup = currentChatSessionId.startsWith('g_');
     let groupData = isGroup ? groupChats.find(g => g.id === currentChatSessionId) : null, totalMembers = isGroup ? (groupData?.members.length || 1) : 1;
@@ -1456,6 +2109,7 @@ ${multiReplyBlock}`;
             if (parsed) {
                 runPluginResponseHooks(char, sessionId, parsed);
                 if (parsed.stateUpdate) saveCharLifeState(char, parsed.stateUpdate, parsed.statusTypeLabel);
+                if (typeof aliveCaptureMood === 'function') aliveCaptureMood(char, parsed);   // 🫀 情绪惯性
 
                 if (parsed.replies && Array.isArray(parsed.replies) && parsed.replies.length > 0) {
                     repText = parsed.replies.map(r => r.text).join('\n');
@@ -1577,7 +2231,16 @@ async function sendChatMessage() {
     }, CHAT_BATCH_REPLY_DELAY_MS);
 }
 
-async function triggerAIBatchReply(sessionId, triggerText) {
+async function triggerAIBatchReply(sessionId, triggerText, aliveCatchUp) {
+    // 🫀 TA 不总是在线：睡着/在忙的时候先把消息挂起来，等 TA 那段过去了再一次性回（见 js/06）
+    //    aliveCatchUp 有值＝这一轮就是"补回"，门卫直接放行，不要再挂一次。
+    let aliveCatch = aliveCatchUp || null;
+    if (!aliveCatchUp && typeof aliveGate === 'function') {
+        const g = aliveGate(sessionId, triggerText);
+        if (g && g.hold) return;
+        if (g && g.text) triggerText = g.text;
+        if (g && g.catchUp) aliveCatch = g.catchUp;
+    }
     const api = getApiConfig(true); 
     if (!api.key) return alert("请先配置 API Key！");
     
@@ -1714,7 +2377,7 @@ ${anPrompt}
 ${latestEmphasis}
 ${groupMoveToChatOption}
 ${actionTagReminder}
-${multiReplyBlock}`;
+${multiReplyBlock}${(typeof aliveMoodFormatNote === 'function') ? aliveMoodFormatNote() : ''}${(typeof aliveCatchUpPrompt === 'function') ? aliveCatchUpPrompt(aliveCatch) : ''}`;
         let prompt = buildStructuredMessages(systemText, historyTurns, finalUserText);
 
         try {
@@ -1746,6 +2409,7 @@ ${multiReplyBlock}`;
 
                     runPluginResponseHooks(char, sessionId, parsed);
                     if (parsed.stateUpdate) saveCharLifeState(char, parsed.stateUpdate, parsed.statusTypeLabel);
+                    if (typeof aliveCaptureMood === 'function') aliveCaptureMood(char, parsed);   // 🫀 情绪惯性
 
                     if (parsed.replies && Array.isArray(parsed.replies) && parsed.replies.length > 0) {
                         replies = parsed.replies;

@@ -880,7 +880,8 @@ async function regenSsTurn(turnId) {
         const systemText = buildSsSystemPrompt(session, recentContextText);
         const finalUserText = '请换一个全新的角度或思路重新写这一轮的剧情发展（不要重复刚才那个版本的写法/走向），其它设定要求不变。';
         const messages = buildStructuredMessages(systemText, history, finalUserText);
-        const data = await callChatCompletionAPI(api, messages);
+        // keepReasoning：续写跟小说一样，把思考过程折叠成框展示，不在响应层剥掉
+        const data = await callChatCompletionAPI(api, messages, 2, null, { keepReasoning: true });
         if (data.error) throw new Error(data.error.message || '请求报错');
         const raw = data.choices?.[0]?.message?.content?.trim();
         if (!raw) throw new Error('生成返回为空，可能是模型拒绝了这段内容，换个说法试试');

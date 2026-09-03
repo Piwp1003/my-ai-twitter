@@ -1464,6 +1464,8 @@ window.onload = async function() {
         updateUserMiniProfile();
         startAutoPostTimer();
         startProactiveChatTimer();
+        // 🎲 自主模式的定时器：装上不等于会跑，里面第一件事就是查 charAutonomy 开关（默认关）
+        if (typeof startAutonomyTimer === 'function') startAutonomyTimer();
         if (typeof fetchPendingFromCloud === 'function') fetchPendingFromCloud(); // 打开网页时先把云端攒的内容拉回来
         if (typeof syncStateToCloud === 'function') { syncStateToCloud(true); setInterval(() => syncStateToCloud(false), CLOUD_SYNC_MIN_INTERVAL); }
         setInterval(updateAllRelativeTimes, 60000);

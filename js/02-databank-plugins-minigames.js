@@ -39,6 +39,7 @@ function runPluginScriptHooks(char, contextText) {
 // （比如 response.replies = [...]）会直接影响后续核心逻辑读到的内容，方便插件实现
 // "读取AI返回的自定义字段、并据此改写这轮回复"这类需求（好感度、日程忙碌打断回复等）。
 function runPluginResponseHooks(char, sessionId, response) {
+    runBoxResponseHooks(char, sessionId, response);   // 🧩 先跑内置小功能的（js/22~25）
     if (!plugins || plugins.length === 0) return;
     const applicable = plugins.filter(p => p.enabled !== false && p.type === 'script' && p.onResponse && pluginMatchesScope(p, char && char.id));
     applicable.forEach(p => {
@@ -587,13 +588,32 @@ function handlePluginImport(event) {
     event.target.value = '';
 }
 
-function getUserContextPrompt() {
+// 👤 char 传进来就按“在这个角色面前我是谁”取人设（见 js/01 resolveUserPersonaFor）；
+// 不传就是当前正在用的这份资料——老调用点一个字都不用改，行为完全不变。
+function getUserContextPrompt(char) {
+const u = (char && typeof resolveUserPersonaFor === 'function') ? resolveUserPersonaFor(char) : currentUser;
 let context = '';
-if (currentUser.gender && currentUser.gender !== '未知') {
-    context += `\n【重要设定】：用户的性别是“${currentUser.gender}”。你在回复、心理描写和称呼中，绝对不能搞错用户的性别，必须严格遵循。`;
+if (u.name && u.name !== '我') {
+    context += `\n【用户的名字】：${u.name}。`;
 }
-if (currentUser.persona) {
-    context += `\n【用户设定】：与你互动的用户人设为“${currentUser.persona}”。在进行互动、聊天、回复以及心理描写时，你必须知晓并严格结合用户的这个设定背景。`;
+if (u.gender && u.gender !== '未知') {
+    context += `\n【重要设定】：用户的性别是“${u.gender}”。你在回复、心理描写和称呼中，绝对不能搞错用户的性别，必须严格遵循。`;
+}
+if (u.persona) {
+    context += `\n【用户设定】：与你互动的用户人设为“${u.persona}”。在进行互动、聊天、回复以及心理描写时，你必须知晓并严格结合用户的这个设定背景。`;
 }
 return context;
+}
+
+
+// 🧩 内置小功能的"回复解析完之后"钩子。
+// 目前只有关系账本用得上：开了"让模型每轮单独给一个数"的时候，
+// 它要从 response 里把 rel / relWhy 捡出来记进账本。
+// 原来这是插件的 onResponse，内置之后由 runPluginResponseHooks 顺手带一下。
+function runBoxResponseHooks(char, sessionId, response) {
+    try {
+        if (char && response && typeof window.__gyRelCapture === 'function') {
+            window.__gyRelCapture(char, response);
+        }
+    } catch (e) { console.warn('[小功能] 关系账本记账出错，已跳过：', e); }
 }

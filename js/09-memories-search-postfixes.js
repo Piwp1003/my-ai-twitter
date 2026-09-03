@@ -528,13 +528,28 @@ async function userPost() {
         // 后一种情况下发帖人其实是 postChar 这个角色，不是"用户"本人，之前无论哪种都写死成"用户XXX发了推文"，
         // 容易让其它角色搞混"这到底是用户亲口说的，还是某个角色账号发的"。这里跟评论区那个修复用同一个思路。
         let postAuthorLabel = postChar.id === 'me' ? `用户（${userDisplayName()}）本人` : `角色"${postChar.name}"`;
+        // 🐛 这条链路以前既没要求"状态栏照常带上"，也没给"正式输出标记"——
+        //   · 前者导致：用户在设置里打开了「评论显示状态栏」，角色评论里却压根没生成状态栏标签，开关看着像坏的；
+        //   · 后者导致：模型把"我该怎么回应"那一大段思考原样当成评论发出来（用户截图里那种"好的，林发了一条动态说……"）。
+        // 状态栏那句只在开关真的打开时才加，关着就别白白多花这些 token。
+        const wantStatusInComment = (typeof showStatusInComments === 'undefined') ? false : !!showStatusInComments;
+        const statusNote = wantStatusInComment
+            ? '即使这只是一条评论而不是完整对话，如果你的世界观设定/正则脚本里要求每次输出固定附带某种格式标签、状态栏或HTML卡片，也请照常带上，不要因为是评论场景就省略。\n'
+            : '';
+        const markerNote = (typeof getFinalAnswerMarkerPromptNote === 'function') ? ('\n' + getFinalAnswerMarkerPromptNote()) : '';
         let prompt = isCool
-            ? `${buildBasePrompt(char, true, text)}${moveToChatOption}${postAuthorLabel}发了推文："${text}"。你性格高冷，通常只点赞、很少主动多说话，但这条动态你必须看到并作出反应，绝对不能完全无视。请输出"LIKE"，或者直接输出一句简短的话（不超过${chatWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}）。只能二选一，不允许输出其他内容（包括"NO"）。${actionStrictRule}`
-            : `${buildBasePrompt(char, true, text)}${emoPrompt}${moveToChatOption}${postAuthorLabel}发了推文："${text}"。你必须对这条动态作出反应，绝对不能完全无视。如果想认真回复，直接输出内容（不超过${chatWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}），若要在回复中带表情包，请在文本最后附上 [EMO:对应ID]；如果只是随手点个赞，输出"LIKE"。只能二选一，不允许输出"NO"或保持沉默。${actionStrictRule}`;
+            ? `${buildBasePrompt(char, true, text)}${moveToChatOption}${postAuthorLabel}发了推文："${text}"。你性格高冷，通常只点赞、很少主动多说话，但这条动态你必须看到并作出反应，绝对不能完全无视。请输出"LIKE"，或者直接输出一句简短的话（不超过${chatWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}）。只能二选一，不允许输出其他内容（包括"NO"）。${actionStrictRule}\n${statusNote}${markerNote}`
+            : `${buildBasePrompt(char, true, text)}${emoPrompt}${moveToChatOption}${postAuthorLabel}发了推文："${text}"。你必须对这条动态作出反应，绝对不能完全无视。如果想认真回复，直接输出内容（不超过${chatWordLimit}字。${WORD_LIMIT_PRIORITY_NOTE}），若要在回复中带表情包，请在文本最后附上 [EMO:对应ID]；如果只是随手点个赞，输出"LIKE"。只能二选一，不允许输出"NO"或保持沉默。${actionStrictRule}\n${statusNote}${markerNote}`;
         try {
             let data = await sendChatRequest({ url: myApiUrl, key: myApiKey, model: myModel }, prompt);
             if (data.error) { console.error(`角色"${char.name}"回复推文失败：`, data.error); continue; }
+            // 🐛 思维链跑进评论区的修复：先按"正式输出标记"精确切一刀，标记没写就退回长度启发式剥离。
+            // 这两步是项目里其它评论链路早就在做的（js/10、js/11 都有），只有这条推文回复链路一直漏着。
             let repText = data.choices?.[0]?.message?.content?.trim() || "";
+            if (typeof extractAfterFinalMarker === 'function') repText = extractAfterFinalMarker(repText).trim();
+            if (typeof stripUndelimitedReasoningIfOverLength === 'function') {
+                repText = stripUndelimitedReasoningIfOverLength(repText, typeof chatWordLimit !== 'undefined' ? chatWordLimit : 50);
+            }
 
             let moveToChatMatch = repText.match(/^\[MOVETOCHAT\]\s*/i);
             if (moveToChatMatch) {
@@ -550,9 +565,10 @@ async function userPost() {
             if (emoMatch) { let emo = globalEmoticons.find(e => e.id === emoMatch[1]); if (emo) repMediaUrl = emo.url; repText = repText.replace(emoMatch[0], '').trim(); }
             repText = stripLeftoverMarkers(repText); // 上面几种标记都解析完了，漏网的不许显示给用户（见 js/01）
             // 评论不需要状态栏HTML卡片，只去掉AI偶尔自己加的首尾引号
-            if (repText.toUpperCase() !== 'LIKE') repText = repText.replace(/^["“]|["”]$/g, '').trim();
+            const isLikeOnly = (typeof looksLikeALikeOnly === 'function') ? looksLikeALikeOnly(repText) : (repText.toUpperCase() === 'LIKE');
+            if (!isLikeOnly) repText = repText.replace(/^["“]|["”]$/g, '').trim();
 
-            if (repText.toUpperCase() === 'LIKE') {
+            if (isLikeOnly) {
                 newPost.stats.likes = parseStat(newPost.stats.likes) + 1;
                 if (!newPost.likedBy) newPost.likedBy = [];
                 if (!newPost.likedBy.includes(char.id)) newPost.likedBy.push(char.id); // 记录AI点赞

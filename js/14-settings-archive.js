@@ -79,76 +79,107 @@ function isGlobalCharInteractionEnabled() {
     return cb ? cb.checked : (localStorage.getItem('settingEnableCharInteraction') !== 'false');
 }
 
-// 🌟 4. 核心：每5分钟触发的后台抽奖小剧场引擎 🌟
-setInterval(async () => {
-    // 检查总开关是否开启
-    if (typeof isAutoOn === 'function' && !isAutoOn('charTheater')) return;   // 🔌 设置里关掉了「角色之间的后台小剧场」
-    if (!isGlobalCharInteractionEnabled()) return;
+// ===================== 🎭 小剧场 =====================
+// 有关系的两个角色，会在后台自己发生点小事。
+// 改造前：演完只更新一下状态气泡、弹个 toast，内容当场蒸发——你永远看不到"到底发生了什么"，
+// 角色自己也不记得，等于白花了一次 API。
+// 现在：存进 globalTheaterLogs（能在「我们的故事 → Ta们在做什么」里翻），
+// 攒够几场就总结成 char.theaterMemory 喂回各功能，所以角色会自然提起一件你不在场的事。
+// 保留多少场在「记忆总览」页里自己定：**默认 0 ＝ 不限**（一场都不丢）。
+// 觉得存档太大了再去设个上限，超出的从最早的开始丢。
+function addTheaterLog(entry) {
+    if (typeof globalTheaterLogs === 'undefined' || !Array.isArray(globalTheaterLogs)) globalTheaterLogs = [];
+    globalTheaterLogs.push(entry);
+    const keep = (typeof theaterLogKeep === 'number' && theaterLogKeep > 0) ? Math.round(theaterLogKeep) : 0;
+    if (keep > 0) { while (globalTheaterLogs.length > keep) globalTheaterLogs.shift(); }
+}
 
-    // 低概率触发机制（设定为 30% 概率触发，避免太频繁显得不真实，你可以自己改 0.3 的数字）
-    if (Math.random() > 0.3) return;
-
-    const api = getApiConfig(true); 
-    if (!api.key) return;
+// 真正跑一场。manual=true 是用户在页面上点「现在演一场」，会跳过概率抽签、也不受开关限制。
+async function runTheaterScene(manual) {
+    // 🔌 这个功能**默认是关的**：不主动打开开关，它一次 API 都不会调。
+    // 手动点「现在演一场」也一样要先打开——不然等于绕过开关偷偷花钱，那正是这个开关要防的事。
+    if (typeof isAutoOn === 'function' && !isAutoOn('charTheater')) return { blocked: 'switch' };
+    if (!isGlobalCharInteractionEnabled()) return { blocked: 'interaction' };
+    if (!manual) {
+        if (Math.random() > 0.3) return null;   // 低概率触发，避免太频繁显得不真实
+    }
+    const api = getApiConfig(true);
+    if (!api.key) return null;
 
     // 寻找存在人物关系的角色对
-    // ⚠️ 修复：关系数据实际存在全局 charRelationships 数组里（fromId/toId/label），
-    // 之前这里错读了一个从没被赋值过的 char.relations 字段，导致这个功能条件永远为空、从没真正触发过。
+    // ⚠️ 关系数据在全局 charRelationships 数组里（fromId/toId/label）
     let relatedPairs = [];
     for (let rel of charRelationships) {
         let charA = myCharacters.find(c => c.id == rel.fromId);
         let charB = myCharacters.find(c => c.id == rel.toId);
-        if (charA && charB && charA.id !== charB.id) {
-            relatedPairs.push({ charA, charB, relation: rel.label || '认识' });
-        }
+        if (charA && charB && charA.id !== charB.id) relatedPairs.push({ charA, charB, relation: rel.label || '认识' });
     }
+    if (relatedPairs.length === 0) return null;
 
-    if (relatedPairs.length === 0) return;
-
-    // 随机抽一对幸运儿
     const pair = relatedPairs[Math.floor(Math.random() * relatedPairs.length)];
-    const charA = pair.charA;
-    const charB = pair.charB;
+    const charA = pair.charA, charB = pair.charB;
 
-    // 构建给 AI 的剧本要求
+    // 最近他俩已经演过什么，别老演同一出
+    const recent = (typeof globalTheaterLogs !== 'undefined' ? globalTheaterLogs : [])
+        .filter(l => l && ((String(l.charAId) === String(charA.id) && String(l.charBId) === String(charB.id))
+                        || (String(l.charAId) === String(charB.id) && String(l.charBId) === String(charA.id))))
+        .slice(-5).map(l => '- ' + (l.summary || '')).join('\n');
+
     const prompt = `现在的真实时间是 ${new Date().toLocaleString('zh-CN', { hour12: false })}。
-系统中设定这两个角色有如下关系：
-${charA.name} 的人设：${charA.persona}
-${charB.name} 的人设：${charB.persona}
+这两个角色有如下关系：
+${charA.name} 的人设：${String(charA.persona || '').slice(0, 800)}
+${charB.name} 的人设：${String(charB.persona || '').slice(0, 800)}
 他们之间的关系是：${pair.relation}。
+${recent ? `\n【他们最近已经发生过这些事，这次换点别的，别重复】：\n${recent}\n` : ''}
+他们现在背着用户正在私下发生一件小事（一起吃饭、线上拌嘴、讨论工作、意外偶遇、互相吐槽某个人等等）。
+请根据他们的性格和关系写出来。注意：用户不在场，这是他们两个人之间的事。
 
-他们现在背着用户正在私下发生一件小事（比如一起喝奶茶、线上拌嘴、讨论工作、意外偶遇等）。
-请根据他们的性格和关系，生成他们此刻各自的状态（正在做什么、心情如何）。
-请直接输出 JSON 格式，不要有任何多余字符，严格遵循：
-{"charA_status": "20字以内，${charA.name}的状态", "charB_status": "20字以内，${charB.name}的状态", "event_summary": "15字以内，概括发生了什么事"}`;
+严格输出 JSON，不要有任何多余字符：
+{"scene": "这件事的经过，120字以内，有画面感，可以带一两句对话", "charA_status": "20字以内，${charA.name}此刻的状态", "charB_status": "20字以内，${charB.name}此刻的状态", "event_summary": "15字以内，一句话概括"}`;
 
     try {
-        let data = await sendChatRequest(api, prompt);
+        // 2500 而不是 900：同上，推理模型的思考被中转塞进正文时会把额度吃光
+        let data = await sendChatRequest(api, prompt, { max_tokens: 2500 });
+        if (data.error) return null;
         let text = data.choices?.[0]?.message?.content?.trim() || "";
+        if (typeof extractAfterFinalMarker === 'function') text = extractAfterFinalMarker(text).trim();
         text = text.replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
-        let parsed = JSON.parse(text);
+        let parsed = (typeof extractJsonObject === 'function') ? extractJsonObject(text) : JSON.parse(text);
+        if (!parsed || !parsed.charA_status || !parsed.charB_status) return null;
 
-        if (parsed.charA_status && parsed.charB_status) {
-            // 自动更新到角色的状态气泡里
-            if (typeof saveCharLifeState === 'function') {
-                saveCharLifeState(charA, parsed.charA_status, '私下互动');
-                saveCharLifeState(charB, parsed.charB_status, '私下互动');
-            }
-
-            // 如果开启了弹窗提醒，就通知用户
-            const cbNotify = document.getElementById('settingNotifyCharInteraction');
-            if (cbNotify && cbNotify.checked) {
-                // 假设你有 showToast 提示框功能，如果没有会降级为 alert
-                if (typeof showToast === 'function') {
-                    showToast(`👀 发现私下互动：${charA.name} 和 ${charB.name} ${parsed.event_summary || '正在互动'}！`);
-                } else {
-                    alert(`👀 发现私下互动：${charA.name} 和 ${charB.name} ${parsed.event_summary || '正在互动'}！`);
-                }
-            }
+        if (typeof saveCharLifeState === 'function') {
+            saveCharLifeState(charA, parsed.charA_status, '私下互动');
+            saveCharLifeState(charB, parsed.charB_status, '私下互动');
         }
-    } catch(e) { console.log("后台自动互动生成跳过：", e); }
+        const entry = {
+            id: 'th_' + Date.now() + Math.floor(Math.random() * 1000),
+            at: Date.now(),
+            charAId: charA.id, charBId: charB.id,
+            charAName: charA.name, charBName: charB.name,
+            relation: pair.relation,
+            summary: parsed.event_summary || '两个人碰上了',
+            scene: parsed.scene || '',
+            statusA: parsed.charA_status, statusB: parsed.charB_status
+        };
+        addTheaterLog(entry);
+        if (typeof saveAllData === 'function') saveAllData();
 
-}, 5 * 60000); // 5分钟 = 300,000毫秒
+        // 攒够了就把各自那份记忆更新一下（函数内部判断够不够、开关开没开）
+        if (typeof updateTheaterMemoryAsync === 'function') { updateTheaterMemoryAsync(charA); updateTheaterMemoryAsync(charB); }
+
+        const cbNotify = document.getElementById('settingNotifyCharInteraction');
+        if (!manual && cbNotify && cbNotify.checked) {
+            const msg = `👀 ${charA.name} 和 ${charB.name} ${entry.summary}`;
+            if (typeof showToast === 'function') showToast('', '🎭 Ta们在做什么', msg, null, null, false);
+        }
+        // 页面开着就顺手刷新
+        const view = document.getElementById('view-theater');
+        if (view && view.style.display !== 'none' && typeof renderTheaterPage === 'function') renderTheaterPage();
+        return entry;
+    } catch (e) { console.log("后台自动互动生成跳过：", e); return null; }
+}
+
+setInterval(() => { runTheaterScene(false); }, 5 * 60000); // 5分钟 = 300,000毫秒
 // ===================== 旧聊天归档弹窗与阅览功能（含一键复活线功能） =====================
 function ensureArchivedChatsModals() {
     if (!document.getElementById('archivedChatsListModal')) {
@@ -188,7 +219,13 @@ function ensureArchivedChatsModals() {
 function openArchivedChatsListModal(charId) {
     ensureArchivedChatsModals();
     const char = myCharacters.find(c => c.id == charId);
-    if (!char || !char.archivedChats || char.archivedChats.length === 0) return;
+    // 一条存档都没有的时候原来是直接 return——点了完全没反应，用户只会以为按钮坏了。
+    if (!char) { if (typeof appAlert === 'function') appAlert('没找到这个角色。'); return; }
+    if (!char.archivedChats || char.archivedChats.length === 0) {
+        const msg = `${char.name} 还没有历史聊天存档。\n\n存档是在你「归档当前聊天」之后才产生的：归档会把现在这段聊天收起来存好、聊天框清空重新开始，之后就能在这里翻回去看，也能一键恢复。`;
+        if (typeof appAlert === 'function') appAlert(msg); else alert(msg);
+        return;
+    }
     
     document.getElementById('archivedChatsListTitle').innerText = `📜 ${char.name} 的历史聊天`;
     const listHtml = [...char.archivedChats].reverse().map((arc, rIdx) => {
@@ -207,6 +244,7 @@ function openArchivedChatsListModal(charId) {
 }
 
 function viewArchivedChat(charId, idx) {
+    ensureArchivedChatsModals();   // 正常流程是从列表弹窗点进来的（那边已经 ensure 过），但被直接调用时也不能白屏
     const char = myCharacters.find(c => c.id == charId);
     if (!char || !char.archivedChats || !char.archivedChats[idx]) return;
     const arc = char.archivedChats[idx];
@@ -289,4 +327,492 @@ async function deleteArchivedChat(charId, idx, e) {
     } else {
         openArchivedChatsListModal(charId);
     }
+}
+// ============================================================================
+// 🎲 自主模式：由角色自己决定要做什么
+// ----------------------------------------------------------------------------
+// 跟原来那一堆"固定频率"最大的区别：原来是每个动作各自有一个闹钟，到点就机械地做那一件事
+// （发帖闹钟响了就发帖，写信闹钟响了就写信），角色本人没有"选择"这回事。
+// 这里改成先花一次调用问 TA："现在这个点、你今天这个日程、清单上这些还没办的事、
+// 前几天跟别人发生的那些、跟用户最近聊到哪儿了——你现在想干嘛？"，TA 从下面这张动作表里挑一个，
+// 然后才真的去做那件事。所以最贵的情况是两次调用（决定 + 动作本身），而"什么都不做"只花一次。
+//
+// ⚠️ 这个功能整体默认关（AUTO_FEATURE_DEFS 里 charAutonomy 带 defaultOff），
+// 而且还要在角色的「行为模式」里单独把这个角色切到「由 TA 自己决定」才算数——两道门都开了才会跑。
+// ============================================================================
+
+// 动作表。每一项：key（模型要返回的标识）、label（给人看的）、need（这个动作要具备什么条件才轮得到它）、
+// run（真正去做那件事）。想加新动作就往这个数组里加一项，决策提示词和派发都会自动带上它。
+const GY_AUTONOMY_ACTIONS = [
+    {
+        key: 'post', label: '发一条推文', hint: '想说点什么、想记录一下、想阴阳怪气一句，都算',
+        need: () => typeof executeGeneration === 'function',
+        run: async (char) => { await executeGeneration([char]); return '发了条推文'; }
+    },
+    {
+        key: 'chat', label: '私聊用户', hint: '直接给用户发条消息',
+        need: () => typeof sendProactiveChatMessage === 'function',
+        run: async (char) => { await sendProactiveChatMessage(char); return '给你发了条消息'; }
+    },
+    {
+        key: 'letter', label: '写一封信寄给用户', hint: '有些话不适合发消息说，适合写信',
+        need: () => typeof generateProactiveLetter === 'function',
+        run: async (char) => { await generateProactiveLetter(char); return '给你写了封信'; }
+    },
+    {
+        key: 'diary', label: '写一篇自己的日记', hint: '不给任何人看的那种，只写给自己',
+        need: () => typeof autonomyWriteDiary === 'function',
+        run: async (char) => { await autonomyWriteDiary(char); return '写了篇日记'; }
+    },
+    {
+        key: 'forum', label: '在小说论坛发个帖', hint: '实名，跟兴趣/正事有关的长一点的帖子',
+        need: () => typeof autoGenerateForumThreadForChar === 'function',
+        run: async (char) => { await autoGenerateForumThreadForChar(char); return '在论坛发了个帖'; }
+    },
+    {
+        key: 'anon', label: '去匿名论坛发一条', hint: '实名说不出口的话，匿名说',
+        need: () => typeof autoGenerateAnonPostForChar === 'function',
+        run: async (char, param) => { await autoGenerateAnonPostForChar(char, param || ''); return '在匿名区发了一条'; }
+    },
+    {
+        key: 'comment', label: '去评论别人的帖子', hint: '刷到了别人的推文，忍不住说两句',
+        need: () => typeof autonomyCommentOnSomePost === 'function' && Array.isArray(globalPosts) && globalPosts.length > 0,
+        run: async (char) => await autonomyCommentOnSomePost(char)
+    },
+    {
+        key: 'like', label: '默默点个赞', hint: '看到了，但不想说话，只点个赞',
+        need: () => Array.isArray(globalPosts) && globalPosts.length > 0,
+        run: async (char) => await autonomyLikeSomePost(char)
+    },
+    {
+        key: 'nudge', label: '拍一拍用户', hint: '没什么正事，就是想戳一下',
+        need: () => true,
+        run: async (char) => await autonomyNudgeUser(char)
+    },
+    {
+        key: 'status', label: '换一下自己此刻的状态', hint: '手头的事换了、心情变了',
+        need: () => typeof saveCharLifeState === 'function',
+        run: async (char, param) => {
+            const txt = String(param || '').trim().slice(0, 30);
+            if (!txt) return null;
+            saveCharLifeState(char, txt, null);
+            if (typeof saveAllData === 'function') saveAllData();
+            return '状态变成了「' + txt + '」';
+        }
+    },
+    {
+        key: 'todo_done', label: '把待办里的一条办掉', hint: '终于把那件事办了',
+        need: (char) => (char.todos || []).some(t => t && !t.done),
+        run: async (char, param) => await autonomyFinishTodo(char, param)
+    },
+    {
+        key: 'todo_add', label: '往待办里记一件新的事', hint: '刚想起来 / 刚答应了别人 / 突然想做',
+        need: () => true,
+        run: async (char, param) => await autonomyAddTodo(char, param)
+    },
+    {
+        key: 'theater', label: '去找关系网里的某个人', hint: '约人、堵人、偶遇，会记进「Ta们在做什么」',
+        // 小剧场有自己的开关，那边关着就不该出现在选项里——不然模型选了它，
+        // 结果被拦下来，白白浪费一次决策调用。
+        need: () => typeof runTheaterScene === 'function'
+            && (typeof isAutoOn !== 'function' || isAutoOn('charTheater'))
+            && (typeof isGlobalCharInteractionEnabled !== 'function' || isGlobalCharInteractionEnabled())
+            && Array.isArray(charRelationships) && charRelationships.length > 0,
+        run: async (char) => {
+            const r = await runTheaterScene(true);
+            if (!r || r.blocked) return null;
+            return '跟人碰了个面';
+        }
+    },
+    {
+        key: 'tabloid', label: '给营销号递个料', hint: '把某件事捅出去，让八卦号去写',
+        need: () => typeof autonomyFeedTabloid === 'function' && Array.isArray(myCharacters) && myCharacters.length > 1,
+        run: async (char, param) => await autonomyFeedTabloid(char, param)
+    },
+    {
+        key: 'nothing', label: '什么都不做', hint: '就是没什么想做的，或者正忙着抽不开身',
+        need: () => true,
+        run: async () => null
+    }
+];
+
+function gyAutonomyLog(char, entry) {
+    if (!char) return;
+    if (!Array.isArray(char.autonomyLog)) char.autonomyLog = [];
+    char.autonomyLog.push(entry);
+    // 这份日志只是给用户翻"TA 最近都自己干了啥"用的，留最近 50 条足够，再多没人翻
+    while (char.autonomyLog.length > 50) char.autonomyLog.shift();
+}
+
+// 核心：让一个角色自己拿一次主意
+// manual=true 是用户在界面上手动点的（跳过随机概率，但开关照样拦）
+async function runAutonomyTurn(char, manual) {
+    if (!char) return { blocked: 'nochar' };
+    if (typeof isAutoOn === 'function' && !isAutoOn('charAutonomy')) return { blocked: 'switch' };
+    if (getCharActMode(char) !== 'auto') return { blocked: 'mode' };
+    if (typeof isInQuietHours === 'function' && isInQuietHours() && !manual) return { blocked: 'quiet' };
+    const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+    if (!api || !api.key) return { blocked: 'api' };
+    if (runAutonomyTurn._busy) return { blocked: 'busy' };
+    runAutonomyTurn._busy = true;
+
+    try {
+        // 只把此刻真的做得成的动作摆上桌：条件不满足的（比如没有待办可划、小剧场开关关着）
+        // 直接不出现在选项里，省得模型选了个做不了的，白花一次调用。
+        const avail = GY_AUTONOMY_ACTIONS.filter(a => { try { return a.need(char); } catch (e) { return false; } });
+        if (avail.length === 0) return { blocked: 'noaction' };
+
+        const openTodos = (char.todos || []).filter(t => t && !t.done).slice(0, 10);
+        const recentActs = (char.autonomyLog || []).slice(-6).map(l => l.label).filter(Boolean);
+        const nowStr = new Date().toLocaleString('zh-CN', { hour12: false, weekday: 'long' });
+        const who = (typeof userDisplayName === 'function') ? userDisplayName(char) : '用户';
+        const recentChat = (typeof getRecentChatContext === 'function') ? (getRecentChatContext(char.id) || '') : '';
+
+        // 别人最近发了什么——"去评论别人的帖"得知道有什么可评的
+        let othersFeed = '';
+        if (Array.isArray(globalPosts)) {
+            othersFeed = globalPosts.filter(p => p && p.char && String(p.char.id) !== String(char.id))
+                .slice(0, 6)
+                .map(p => `· ${p.char.name}：${String(p.text || '').replace(/<[^>]+>/g, '').slice(0, 50)}`)
+                .join('\n');
+        }
+
+        const menu = avail.map(a => `- ${a.key}：${a.label}（${a.hint}）`).join('\n');
+
+        const { minM, maxM } = gyAutonomyBounds(char);
+        const ask = `现在的真实时间：${nowStr}。
+
+停一下，想想你自己：这个点，你手头在忙什么，心里搁着什么事，有没有什么想说、想做、想找谁。
+然后从下面这张表里挑**一件**你现在真的会去做的事。
+
+【你现在可以做的事】
+${menu}
+
+【你还没办完的事】
+${openTodos.length ? openTodos.map(t => `· ${t.text}${t.date ? `（${t.date}）` : ''}`).join('\n') : '（清单是空的）'}
+
+【你和${who}最近聊到哪儿了】
+${recentChat ? recentChat.slice(-800) : '（最近没怎么说话）'}
+
+【首页上别人刚发的】
+${othersFeed || '（没什么新东西）'}
+
+${recentActs.length ? `【你刚做过这些，别一直重复同一件】\n${recentActs.map(a => '· ' + a).join('\n')}\n` : ''}
+挑选原则：
+1. 按你的性格和此刻的处境来，不要因为"该轮到发推文了"就发推文——真人不是这样的。
+2. 大部分时候人是不做什么的。如果这个点你正忙、或者确实没什么想说的，就老实选 nothing，这不丢人。
+3. 别老找${who}。一个人一天里绝大多数时间跟另一个人无关。
+4. 选了什么就当真去做，理由要具体到"因为刚才/因为待办上那件/因为日程里这一段"，不要写"因为我很在意ta"这种空话。
+
+还有一件事：做完这件之后，你大概隔多久才会再想起来做点什么？按你的性格和今天的安排自己定，别定成一个整齐的固定值——
+正忙着/心情不好/没什么事发生，就隔久一点（几个小时甚至更久）；刚跟人吵完、正等着谁回话、手头这事没完，就隔短一点。
+填在 nextIn 里，单位是分钟，范围 ${minM} 到 ${maxM} 分钟。
+
+请严格只返回 JSON，不要用 \`\`\` 包裹，不要写别的：
+{"action":"上表里的 key","reason":"一句话，你为什么现在要做这个（20字内）","param":"看情况填：换状态就填新状态；办掉待办就填那条待办的原文；记新待办就填要记的事；匿名发帖/递料可以填个话题；其余留空字符串","nextIn":${minM} 到 ${maxM} 之间的一个数字}`;
+
+        const messages = buildStructuredMessages(buildBasePrompt(char, true, recentChat), [], ask);
+        const data = await callChatCompletionAPI(api, messages);
+        let raw = (data.choices?.[0]?.message?.content || '').trim();
+        raw = raw.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+        const decision = (typeof parseModelJson === 'function') ? parseModelJson(raw) : null;
+        if (!decision || !decision.action) return { blocked: 'parse', raw: raw.slice(0, 120) };
+
+        const picked = avail.find(a => a.key === String(decision.action).trim());
+        if (!picked) return { blocked: 'unknown', raw: String(decision.action).slice(0, 40) };
+
+        const entry = {
+            at: Date.now(), charId: char.id, charName: char.name,
+            action: picked.key, label: picked.label,
+            reason: String(decision.reason || '').slice(0, 60),
+            result: '', ok: false
+        };
+
+        // 🎲 节奏也由 TA 自己定：TA 说多久之后再想起来，就多久之后。
+        // 说得离谱或者干脆没说，gyClampAutonomyGap 会回落到那个偏短的随机分布。
+        const gap = gyClampAutonomyGap(char, decision.nextIn);
+        char.nextAutonomyAt = Date.now() + gap;
+        entry.nextIn = Math.round(gap / 60000);
+
+        if (picked.key === 'nothing') {
+            entry.result = '什么都没做';
+            entry.ok = true;
+            gyAutonomyLog(char, entry);
+            if (typeof saveAllData === 'function') saveAllData();
+            return { ok: true, entry };
+        }
+
+        try {
+            const res = await picked.run(char, decision.param);
+            entry.result = res || picked.label;
+            entry.ok = !!res || res === undefined;
+        } catch (e) {
+            console.error(`自主行动「${picked.label}」执行失败：`, e);
+            entry.result = '想做但没做成（' + (e.message || e) + '）';
+            entry.ok = false;
+        }
+        gyAutonomyLog(char, entry);
+        char.lastAutonomyTime = Date.now();
+        if (typeof saveAllData === 'function') saveAllData();
+        return { ok: entry.ok, entry };
+    } finally {
+        runAutonomyTurn._busy = false;
+    }
+}
+
+// 🎲 掷一个"下次什么时候再想起来做点什么"的间隔（毫秒）。
+// 这是兜底用的随机值——正常情况下这个间隔是 TA 自己在决策时说的（见 runAutonomyTurn 的 nextIn），
+// 只有在 TA 没说、说得不合理、或者这次请求直接失败的时候才用它。
+// 分布故意做成"偏短但偶尔很长"：真人也不是均匀地每隔固定时间做一件事，
+// 大多数时候隔不久，偶尔一忙就是大半天没动静。
+function gyAutonomyBounds(char) {
+    const minM = Math.max(5, parseInt(char && char.autonomyMinMinutes) || 30);          // 最快多久一次（分钟）
+    const maxM = Math.max(minM + 5, (parseInt(char && char.autonomyMaxHours) || 8) * 60); // 最慢多久一次（小时→分钟）
+    return { minM, maxM };
+}
+function gyRollAutonomyGap(char) {
+    const { minM, maxM } = gyAutonomyBounds(char);
+    // 三次方偏置：r^3 让结果大部分落在靠近下限的一侧，偶尔才蹦到上限附近
+    const r = Math.pow(Math.random(), 3);
+    return Math.round((minM + (maxM - minM) * r) * 60000);
+}
+// 把 TA 自己说的"多少分钟之后"夹到范围内。说得离谱（负数、几秒、好几天）就当没说，回落到随机。
+function gyClampAutonomyGap(char, minutes) {
+    const n = parseFloat(minutes);
+    if (!isFinite(n) || n <= 0) return gyRollAutonomyGap(char);
+    const { minM, maxM } = gyAutonomyBounds(char);
+    return Math.round(Math.min(maxM, Math.max(minM, n)) * 60000);
+}
+
+function getCharActMode(char) {
+    // 老存档里没有这个字段，一律当"按固定频率"——不能让升级一下所有角色突然都自作主张了
+    return (char && char.actMode === 'auto') ? 'auto' : 'fixed';
+}
+
+// ---------- 各个动作的具体做法（能复用现成函数的就复用，不能的在这写一个不碰界面的版本） ----------
+
+// 📔 写一篇自己的日记：generateDiaryContent 那个是绑在日记页界面上的（要读当前选中角色、要改按钮文字），
+// 后台跑不能用它，所以这里单独写一份只动数据的。
+async function autonomyWriteDiary(char) {
+    const api = getApiConfig(true);
+    if (!api.key) return null;
+    if (!char.diaryData) char.diaryData = { letters: [], diaries: [] };
+    if (!Array.isArray(char.diaryData.diaries)) char.diaryData.diaries = [];
+    const recentChat = (typeof getRecentChatContext === 'function') ? (getRecentChatContext(char.id) || '') : '';
+    const limit = (typeof diaryWordLimit !== 'undefined') ? diaryWordLimit : 300;
+    const ask = `现在是 ${new Date().toLocaleString('zh-CN', { hour12: false, weekday: 'long' })}。
+你现在想写点东西给自己看——一篇不打算给任何人看的日记。写今天真实发生的、心里过不去的、或者忽然想明白的那一点事。
+字数 ${limit} 字左右。${typeof WORD_LIMIT_PRIORITY_NOTE !== 'undefined' ? WORD_LIMIT_PRIORITY_NOTE : ''}
+不要写成给人看的文章，日记就该有点没头没尾。
+${typeof getFinalAnswerMarkerPromptNote === 'function' ? getFinalAnswerMarkerPromptNote() : ''}
+严格只返回 JSON，不要用 \`\`\` 包裹：{"title":"标题","content":"正文，换行用\\n"}`;
+    const messages = buildStructuredMessages(buildBasePrompt(char, true, recentChat), [], ask);
+    const data = await callChatCompletionAPI(api, messages);
+    let raw = (data.choices?.[0]?.message?.content || '').trim();
+    raw = raw.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+    let parsed = (typeof parseModelJson === 'function') ? parseModelJson(raw) : null;
+    // 实在解析不出来就当成"整段都是正文"——写了一篇日记总比丢掉强
+    if (!parsed || !parsed.content) parsed = { title: '没有标题', content: (typeof stripReasoningBlocks === 'function' ? stripReasoningBlocks(raw) : raw) };
+    const content = (typeof applyRegexScripts === 'function')
+        ? applyRegexScripts(parsed.content || raw, 'ai_output', char.id) : (parsed.content || raw);
+    if (!content) return null;
+    char.diaryData.diaries.unshift({
+        id: 'd_' + Date.now(), title: parsed.title || '没有标题',
+        content, date: Date.now(), author: 'char'
+    });
+    if (typeof saveAllData === 'function') saveAllData();
+    return '写了篇日记：' + (parsed.title || '无题');
+}
+
+// 💬 去评论别人的推文：挑一条最近的、不是自己发的、自己还没评论过的
+async function autonomyCommentOnSomePost(char) {
+    const api = getApiConfig(true);
+    if (!api.key) return null;
+    const cands = (globalPosts || []).filter(p => {
+        if (!p || !p.char) return false;
+        if (String(p.char.id) === String(char.id)) return false;
+        if (Date.now() - (p.timestamp || 0) > 3 * 86400000) return false;   // 太老的帖子不去挖坟
+        return !(p.replies || []).some(r => r && r.char && String(r.char.id) === String(char.id));
+    }).slice(0, 8);
+    if (cands.length === 0) return null;
+    const post = cands[Math.floor(Math.random() * cands.length)];
+    const plain = String(post.text || '').replace(/<[^>]+>/g, '').slice(0, 300);
+    const limit = (typeof commentWordLimit !== 'undefined') ? commentWordLimit : 50;
+    const ask = `你刷到了 ${post.char.name} 发的这条：\n「${plain}」\n\n你想在下面说一句。按你跟 ${post.char.name} 的关系和你的性格来说话，${limit} 字以内，就一句，不要加引号、不要解释、不要写"评论："这种前缀。实在不想说就只输出 NO。`;
+    const messages = buildStructuredMessages(buildBasePrompt(char, false, plain), [], ask);
+    const data = await callChatCompletionAPI(api, messages);
+    let text = (data.choices?.[0]?.message?.content || '').trim();
+    if (!text || (text.toUpperCase().startsWith('NO') && text.length < 5)) return null;
+    if (typeof applyRegexScripts === 'function') text = applyRegexScripts(text, 'ai_output', char.id);
+    // 只输出了个"点赞"的，就当真的只是点了个赞，别把"LIKE"两个字发出去
+    if (typeof looksLikeALikeOnly === 'function' && looksLikeALikeOnly(text)) {
+        post.stats = post.stats || { likes: 0, comments: 0 };
+        post.stats.likes = (parseInt(post.stats.likes) || 0) + 1;
+        if (!Array.isArray(post.likedBy)) post.likedBy = [];
+        if (!post.likedBy.includes(char.id)) post.likedBy.push(char.id);
+        if (typeof saveAllData === 'function') saveAllData();
+        if (typeof renderPosts === 'function' && document.getElementById('view-home')?.style.display !== 'none') renderPosts();
+        return '给 ' + post.char.name + ' 的帖子点了个赞';
+    }
+    if (!Array.isArray(post.replies)) post.replies = [];
+    post.replies.push({
+        id: 'r_' + Date.now() + Math.floor(Math.random() * 100),
+        parentId: null, char, text, timestamp: Date.now(),
+        likes: 0, liked: false, likedBy: []
+    });
+    post.stats = post.stats || { likes: 0, comments: 0 };
+    post.stats.comments = (parseInt(post.stats.comments) || 0) + 1;
+    // 评论到用户自己的帖子上时，得发通知，不然用户根本不知道
+    if (String(post.char.id) === 'me' && typeof addNotification === 'function') {
+        addNotification(`<b>${char.name}</b> 评论了您的帖子`, post.id, null, char, text);
+    }
+    if (typeof saveAllData === 'function') saveAllData();
+    if (typeof renderPosts === 'function' && document.getElementById('view-home')?.style.display !== 'none') renderPosts();
+    return '评论了 ' + post.char.name + ' 的帖子';
+}
+
+// ❤️ 只点个赞：不花 API，纯本地动作（决策那一次已经花过了）
+async function autonomyLikeSomePost(char) {
+    const cands = (globalPosts || []).filter(p => p && p.char
+        && String(p.char.id) !== String(char.id)
+        && !(Array.isArray(p.likedBy) && p.likedBy.includes(char.id))).slice(0, 10);
+    if (cands.length === 0) return null;
+    const post = cands[Math.floor(Math.random() * cands.length)];
+    post.stats = post.stats || { likes: 0, comments: 0 };
+    post.stats.likes = (parseInt(post.stats.likes) || 0) + 1;
+    if (!Array.isArray(post.likedBy)) post.likedBy = [];
+    post.likedBy.push(char.id);
+    if (String(post.char.id) === 'me' && typeof addNotification === 'function') {
+        addNotification(`<b>${char.name}</b> 赞了您的帖子 ❤️`, post.id, null, char, '');
+    }
+    if (typeof saveAllData === 'function') saveAllData();
+    if (typeof renderPosts === 'function' && document.getElementById('view-home')?.style.display !== 'none') renderPosts();
+    return '赞了 ' + post.char.name + ' 的帖子';
+}
+
+// 👋 角色拍用户：triggerNudge 是"用户拍角色"那个方向的，这里是反过来，
+// 所以不能复用——直接往聊天里塞一条系统消息就行，不花 API。
+async function autonomyNudgeUser(char) {
+    const sessionId = String(char.id);
+    if (!globalChats[sessionId]) globalChats[sessionId] = [];
+    const target = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : { name: '你', nudgeText: '' };
+    const text = `"${char.name}" 拍了拍 "${(typeof userDisplayName === 'function') ? userDisplayName(char) : target.name}" ${target.nudgeText || '的脑袋'}`;
+    globalChats[sessionId].push({ sender: 'system', text, timestamp: Date.now() });
+    if (typeof addNotification === 'function') addNotification(`<b>${char.name}</b> 拍了拍你 👋`, null, char.id, char, '');
+    if (typeof saveAllData === 'function') saveAllData();
+    if (typeof currentChatSessionId !== 'undefined' && currentChatSessionId === sessionId
+        && document.getElementById('view-chat')?.style.display !== 'none'
+        && typeof renderChatMessages === 'function') renderChatMessages();
+    else if (typeof renderChatCharList === 'function') renderChatCharList();
+    return '拍了拍你';
+}
+
+// ✅ 办掉一条待办：param 是待办原文，模糊匹配（模型很少一字不差地抄回来）
+async function autonomyFinishTodo(char, param) {
+    const list = (char.todos || []).filter(t => t && !t.done);
+    if (list.length === 0) return null;
+    const key = String(param || '').trim();
+    let hit = null;
+    if (key) {
+        hit = list.find(t => t.text === key)
+           || list.find(t => t.text.includes(key) || key.includes(t.text));
+    }
+    if (!hit) hit = list[0];
+    hit.done = true;
+    hit.doneAt = Date.now();
+    if (typeof saveAllData === 'function') saveAllData();
+    if (typeof renderCharTodoList === 'function'
+        && document.getElementById('charTodoList')) renderCharTodoList();
+    return '把「' + hit.text + '」办掉了';
+}
+
+// 📝 记一条新待办
+async function autonomyAddTodo(char, param) {
+    const text = String(param || '').trim().slice(0, 60);
+    if (!text) return null;
+    if (!Array.isArray(char.todos)) char.todos = [];
+    if (char.todos.some(t => t && t.text === text)) return null;   // 已经记过了就别重复
+    char.todos.push({
+        id: 'todo_' + Date.now() + Math.floor(Math.random() * 1000),
+        text, date: null, done: false, createdAt: Date.now(), doneAt: null, source: 'ai'
+    });
+    if (typeof saveAllData === 'function') saveAllData();
+    if (typeof renderCharTodoList === 'function'
+        && document.getElementById('charTodoList')) renderCharTodoList();
+    return '记下了「' + text + '」';
+}
+
+// 📰 给营销号递料：生成一条爆料贴进 tabloidPosts，跟手动那个「AI 智能爆料」进的是同一个池子
+async function autonomyFeedTabloid(char, param) {
+    const api = getApiConfig(true);
+    if (!api.key) return null;
+    if (typeof tabloidPosts === 'undefined' || !Array.isArray(tabloidPosts)) return null;
+    // 挑一个跟 TA 有关系的人当爆料对象，没关系网就随便挑一个别人
+    let others = [];
+    if (Array.isArray(charRelationships)) {
+        charRelationships.forEach(r => {
+            if (String(r.fromId) === String(char.id)) others.push(r.toId);
+            else if (String(r.toId) === String(char.id)) others.push(r.fromId);
+        });
+    }
+    let target = myCharacters.find(c => others.some(id => String(id) === String(c.id)));
+    if (!target) target = myCharacters.find(c => String(c.id) !== String(char.id));
+    if (!target) return null;
+    const topic = String(param || '').trim();
+    const messages = buildStructuredMessages('你是一个唯恐天下不乱的娱乐营销号。', [],
+        `有人给你递了一条料，关于 ${target.name}（人设：${String(target.persona || '').slice(0, 300)}）。递料的人是 ${char.name}。
+${topic ? `料的内容大概是：${topic}。` : ''}
+请写成一条震惊体的爆料推文，150 字左右，直接输出正文，不要加前缀说明、不要用引号包裹。`);
+    const data = await callChatCompletionAPI(api, messages);
+    const text = (data.choices?.[0]?.message?.content || '').trim();
+    if (!text) return null;
+    const post = {
+        id: 'tb_' + Date.now(),
+        char: { ...(typeof tabloidAccount !== 'undefined' ? tabloidAccount : { name: '吃瓜前线' }) },
+        text, timestamp: Date.now(), replies: [],
+        stats: { likes: Math.floor(Math.random() * 8000) + 500, comments: 0 }
+    };
+    tabloidPosts.unshift(post);
+    if (typeof saveAllData === 'function') saveAllData();
+    if (typeof renderTabloidPosts === 'function') renderTabloidPosts();
+    if (typeof showToast === 'function') {
+        showToast(`<div class="avatar" style="background:#1d9bf0;color:white;font-size:20px;">📰</div>`,
+            '新的八卦爆料！', text, post.id, null);
+    }
+    return '给营销号递了一条关于 ' + target.name + ' 的料';
+}
+
+// ---------- 定时器 ----------
+// 每 3 分钟看一眼有没有到点的角色。真正花不花钱由三件事共同决定：
+// 开关开着 + 这个角色切到了自主模式 + 距离上次拿主意超过了 TA 自己的间隔。
+function startAutonomyTimer() {
+    setInterval(async () => {
+        try {
+            if (typeof isAutoOn === 'function' && !isAutoOn('charAutonomy')) return;
+            if (typeof isGenerating !== 'undefined' && isGenerating) return;
+            if (typeof isInQuietHours === 'function' && isInQuietHours()) return;
+            const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+            if (!api || !api.key) return;
+
+            const now = Date.now();
+            const due = (myCharacters || []).filter(c => {
+                if (getCharActMode(c) !== 'auto') return false;
+                // 没有下次时间的（刚切到自主模式、或者老存档）：现在给 TA 掷一个，这一轮先不动。
+                // 不立刻就动是故意的——刚勾上开关就"叮"地跳出来一条，太像机器人了。
+                if (!c.nextAutonomyAt) { c.nextAutonomyAt = now + gyRollAutonomyGap(c); return false; }
+                return now >= c.nextAutonomyAt;
+            });
+            if (due.length === 0) return;
+
+            // 一轮最多让一个角色行动：这功能一次可能连着两次调用，一次放行好几个角色太凶了
+            const char = due[Math.floor(Math.random() * due.length)];
+            // 先把下次时间掷出来占上位：万一这次请求失败/超时，也不会下一轮立刻又来一发。
+            // 真跑完之后 runAutonomyTurn 里会用 TA 自己说的时间覆盖掉这个随机值。
+            char.nextAutonomyAt = now + gyRollAutonomyGap(char);
+            char.lastAutonomyTime = now;
+            await runAutonomyTurn(char, false);
+            // 顺手看看 TA 的待办是不是快见底了（走 autoTodoGen 开关，一天最多一次）
+            if (typeof autoTopUpCharTodos === 'function') await autoTopUpCharTodos(char);
+        } catch (e) { console.error('自主行动定时器出错：', e); }
+    }, 3 * 60000);
 }
