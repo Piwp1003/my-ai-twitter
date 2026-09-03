@@ -511,6 +511,11 @@ async function deleteUserDiaryEntry(id) {
 let isResolvingDiaryReactions = false;
 async function resolveDueDiaryReactions() {
     if (isResolvingDiaryReactions) return;
+    // 🔌 这是**后台定时**跑的：你写一篇日记，挂上的每个角色到点都会自己去看一眼并生成反应，
+    //    一篇 × 几个角色就是几次调用，以前一直没有开关，谁也不知道它在背后花钱。
+    //    关掉之后日记照写、角色照挂，只是不会自动来看——章节页/日记页上的
+    //    「立即回复」按钮不受影响，那是你主动点的。
+    if (typeof isAutoOn === 'function' && !isAutoOn('diaryReaction')) return;
     const api = getApiConfig(true);
     if (!api.key) return;
     const now = Date.now();
@@ -915,8 +920,71 @@ function keepNovelChapter() {
         globalNotifications.unshift({ text: `<b>系统</b> 已完成故事《${novelTitle}》的新章节生成`, postId: null, chatCharId: null, timestamp: Date.now() });
         unreadNotifs++;
         if (typeof updateNotifBadge === 'function') updateNotifBadge();
+        // 💬 让参与这个故事的角色读一读这一章（开关：novelReview，默认关）
+        try { runNovelReviews(novel, novel.chapters.length - 1); } catch (e) { console.warn('[故事点评] 出错：', e); }
     }
 }
+
+// ===================== 💬 角色点评这一章 =====================
+// 故事一直是"生成出来给你一个人看"。参与故事的角色明明在里面演了一遍，
+// 读完却什么反应都没有——下一章生成时也不知道上一章他们怎么想。
+// 这里让每个被勾进这个故事的角色（不含"我"）读完这一章说几句：
+//   · 带上**前面章节的梗概**，所以 TA 说的话是接着上文的，不是就事论事评一段
+//   · 点评存在 chapter.reviews 里，跟着章节一起显示，也会在下一章的 prompt 里当上下文
+// 🔌 开关：novelReview（默认关，不打开一次 API 都不会调）
+// 💰 一章 × 参与角色数 次调用，所以还有一个"最多几个人点评"的上限（novelReviewMax，默认 3）
+async function runNovelReviews(novel, chapIdx, manual) {
+    if (!novel || !novel.chapters || !novel.chapters[chapIdx]) return;
+    if (!manual && typeof isAutoOn === 'function' && !isAutoOn('novelReview')) return;
+    const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+    if (!api || !api.key) return;
+    const chap = novel.chapters[chapIdx];
+    const max = Math.max(1, Math.min(8, parseInt(typeof novelReviewMax !== 'undefined' ? novelReviewMax : 3) || 3));
+    const ids = (novel.chars || []).filter(id => id !== 'me').slice(0, max);
+    if (!ids.length) return;
+
+    // 上文：前面每一章的开头一段，够 TA 记得"故事到这儿之前发生了什么"
+    const before = novel.chapters.slice(0, chapIdx).map((c, i) =>
+        `第 ${i + 1} 章：${String(c.content || '').replace(/\s+/g, ' ').slice(0, 180)}…`).join('\n');
+    const mine = String(chap.content || '').slice(0, 3000);
+    chap.reviews = Array.isArray(chap.reviews) ? chap.reviews : [];
+
+    for (const id of ids) {
+        const c = (typeof myCharacters !== 'undefined' ? myCharacters : []).find(x => String(x.id) == String(id));
+        if (!c) continue;
+        if (chap.reviews.some(r => String(r.charId) === String(c.id))) continue;   // 已经点评过就不重复花钱
+        try {
+            const ask = `下面是《${novel.title || '这个故事'}》的第 ${chapIdx + 1} 章，你是里面的角色之一。
+${before ? `【前面发生过什么】\n${before}\n` : ''}
+【这一章】
+${mine}
+
+读完之后说几句你自己的话。注意：
+· 你是**当事人**，不是读者也不是编辑——别评价"文笔""节奏""人物塑造"，说你在那件事里的感受、在意的点、想反驳的地方。
+· 可以接着前面章节说（"上次那件事我到现在还……"）。
+· 如果这一章里你根本没出场，就说你听说了这件事之后的反应。
+· 60 字以内，像人说话，不要引号不要旁白。`;
+            const messages = buildStructuredMessages(buildBasePrompt(c, false, ''), [], ask);
+            const data = await callChatCompletionAPI(api, messages);
+            let t = (data.choices?.[0]?.message?.content || '').trim().replace(/^["'“”「」]+|["'“”「」]+$/g, '');
+            if (typeof stripReasoningBlocks === 'function') t = stripReasoningBlocks(t);
+            if (typeof applyRegexScripts === 'function') { try { t = applyRegexScripts(t, 'ai_output', c.id); } catch (e) {} }
+            if (!t) continue;
+            chap.reviews.push({ charId: c.id, name: c.name, text: t.slice(0, 300), at: Date.now() });
+            if (typeof saveAllData === 'function') saveAllData();
+            if (typeof renderNovelChapters === 'function' && document.getElementById('novelChaptersContainer')) renderNovelChapters();
+        } catch (e) { console.warn('[故事点评] ' + c.name + ' 没说成：', e); }
+    }
+    if (chap.reviews.length && typeof addNotification === 'function') {
+        addNotification(`故事《${novel.title || '未命名'}》第 ${chapIdx + 1} 章，<b>${chap.reviews.length} 个人</b>说了点什么 💬`,
+            null, null, null, chap.reviews[0].text, { view: 'novel' });
+    }
+}
+window.gyNovelReviewNow = function (idx) {
+    const novel = globalNovels.find(n => n.id === currentEditingNovelId);
+    if (!novel) return;
+    runNovelReviews(novel, idx, true);
+};
 
 function discardNovelChapter() {
     document.getElementById('novelTempArea').style.display = 'none';
@@ -924,6 +992,19 @@ function discardNovelChapter() {
 }
 
 function renderNovelChapters() {
+    // 顺手把"角色点评"那个开关现在是开是关写在旁边，并给一个直接去改的入口。
+    // 不写的话最容易出的岔子是：生成完一章等半天没人说话，其实是开关根本没开。
+    try {
+        const hint = document.getElementById('novelReviewSwitchHint');
+        if (hint) {
+            const isOn = (typeof isAutoOn === 'function') ? isAutoOn('novelReview') : false;
+            hint.innerHTML = isOn
+                ? '· 自动点评<b style="color:#17bf63;">开着</b>　<a style="cursor:pointer;color:#1d9bf0;" onclick="gyJumpToSwitch(\'novelReview\')">去关</a>'
+                : '· 自动点评<b>关着</b>（可以点每章上的「💬 让 TA 们说说」手动来一次）　<a style="cursor:pointer;color:#1d9bf0;" onclick="gyJumpToSwitch(\'novelReview\')">去开</a>';
+        }
+        const mx = document.getElementById('novelReviewMaxInput');
+        if (mx && typeof novelReviewMax !== 'undefined') mx.value = novelReviewMax;
+    } catch (e) {}
     const container = document.getElementById('novelChaptersContainer');
     const novel = globalNovels.find(n => n.id === currentEditingNovelId);
     if(!novel || !novel.chapters || novel.chapters.length === 0) {
@@ -939,10 +1020,18 @@ function renderNovelChapters() {
         <div class="novel-chapter-item">
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div class="novel-chapter-title">第 ${idx + 1} 章</div>
-                <button class="btn-edit-small" style="color:#f91880; border-color:#f91880;" onclick="deleteChapter(${idx})">删除此章</button>
+                <div style="display:flex;gap:6px;">
+                    <button class="btn-edit-small" onclick="gyNovelReviewNow(${idx})" title="让参与这个故事的角色读完说几句（每人一次调用）">💬 让 TA 们说说</button>
+                    <button class="btn-edit-small" style="color:#f91880; border-color:#f91880;" onclick="deleteChapter(${idx})">删除此章</button>
+                </div>
             </div>
             <div style="font-size:15px; color:#536471; margin-bottom:10px;">生成于 ${new Date(chap.timestamp).toLocaleString()} · 共 ${chap.content.length} 字${(typeof showNovelThinkingTime !== 'undefined' && showNovelThinkingTime && chap.genTimeMs) ? ` · 🕐 耗时 ${(chap.genTimeMs / 1000).toFixed(1)}s` : ''}</div>
             <div style="font-size:15px; line-height:1.8; white-space:pre-wrap; max-height:200px; overflow-y:auto; padding-right:10px; background:#f7f9f9; padding:15px; border-radius:8px;">${chap.reasoningHtml || ''}${chap.mvuSnapshot ? renderMvuStatusBarHtml(chap.mvuSnapshot) : ''}${chap.recallHtml || ''}${namespaceInjectedIds(renderMarkdownLite(chap.content, chap.charId || fallbackCharId, novel.chapters.length - 1 - idx), chap.id || ('c_idx_' + idx))}</div>
+            ${(Array.isArray(chap.reviews) && chap.reviews.length) ? `
+            <div class="novel-reviews">
+                <div class="novel-reviews-hd">💬 他们读完之后</div>
+                ${chap.reviews.map(r => `<div class="novel-review"><b>${escapeHtml(r.name || '')}</b><span>${escapeHtml(r.text || '')}</span></div>`).join('')}
+            </div>` : ''}
         </div>
     `).join('');
     if (typeof pruneCardWhitespace === 'function') {
@@ -1836,7 +1925,6 @@ const GY_SETTINGS_PANELS = {
     interaction: '💬 互动与描写',
     alive:       '🫀 活人感',
     auto:        '🔌 自动功能开关',
-    mini:        '🧩 小功能',
     appearance:  '🎨 外观与主题',
     notify:      '🔔 通知与云端',
     data:        '💾 数据备份与恢复'
@@ -1856,7 +1944,6 @@ function openSettingsPanel(key) {
     // 开关列表是空壳，进这一页才画（画一次不贵，但没必要在打开设置页时就画）
     if (key === 'auto' && typeof renderAutoFeatureList === 'function') renderAutoFeatureList();
     if (key === 'alive' && typeof renderAlivePanel === 'function') renderAlivePanel();
-    if (key === 'mini' && typeof renderMiniFeaturePanel === 'function') renderMiniFeaturePanel();
     // 手机顶栏中间的标题也跟着走，不然进了分页顶上还写着"系统设置"，分不清在哪一层
     const mt = document.getElementById('mtbCenterTitle');
     if (mt) mt.innerText = GY_SETTINGS_PANELS[key].replace(/^\S+\s*/, '');
@@ -2235,6 +2322,9 @@ function harvestMiniFeatureEntries() {
         let n = 0;
         menu.querySelectorAll('.set-entry').forEach(el => {
             if (el.dataset.core === '1') return;      // 核心那 13 项，留在目录页
+            // js/27 已经把这几个做成正式页面并自己注册进小功能了，
+            // 这里再认领一遍就会一个功能出现两次（一次是页面、一次是老弹窗）。
+            if (window.GY_MINI_TAKEOVER && el.id && window.GY_MINI_TAKEOVER.has(el.id)) { el.remove(); return; }
             el.remove();                               // 从目录页摘下来
             const key = el.id || el.innerText.trim();
             if (!GY_ADOPTED_ENTRIES.some(x => (x.id || x.innerText.trim()) === key)) {
@@ -2305,3 +2395,95 @@ function gyOpenMiniFeature(id) {
     else attach();
     setTimeout(attach, 1500);
 })();
+
+// ===================== 🔗 跳到某个开关 / 某个功能 =====================
+// 用在两个地方：
+//  ① 「此刻」页里列出来的那些开关，点一下直接跳过去开/关
+//  ② 某个功能需要先开别的开关才能用时，在它正下方给一句提醒 + 一个跳转
+// 跳过去之后会把那一行高亮两秒，否则 29 个开关里你还得自己找。
+function gyJumpToSwitch(key) {
+    try {
+        if (typeof switchMainView === 'function') switchMainView('settings');
+        if (typeof openSettingsPanel === 'function') openSettingsPanel('auto');
+        // 被跳转的那一项如果正好被"只看开着的/只看关着的"过滤掉了，就先切回全部
+        if (typeof setAutoFeatFilter === 'function') setAutoFeatFilter('all');
+        setTimeout(() => {
+            const def = (typeof AUTO_FEATURE_DEFS !== 'undefined') ? AUTO_FEATURE_DEFS.find(f => f.key === key) : null;
+            if (!def) return;
+            const row = [...document.querySelectorAll('#autoFeatureList .auto-feat-row')]
+                .find(r => r.innerText.includes(def.label));
+            if (!row) return;
+            row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            row.classList.add('gy-flash');
+            setTimeout(() => row.classList.remove('gy-flash'), 2200);
+        }, 60);
+    } catch (e) { console.warn('[跳转] 出错：', e); }
+}
+
+// 功能依赖提醒：某个功能得先打开别的开关才有用，就在它正下方挂一条。
+// 返回一段 HTML，直接塞进面板里。已经开着的话返回空字符串——不唠叨。
+function gyNeedSwitchHint(key, whatFor) {
+    try {
+        if (typeof isAutoOn === 'function' && isAutoOn(key)) return '';
+        const def = (typeof AUTO_FEATURE_DEFS !== 'undefined') ? AUTO_FEATURE_DEFS.find(f => f.key === key) : null;
+        if (!def) return '';
+        return `<div class="gy-need-switch" onclick="gyJumpToSwitch('${key}')">
+            ⚠️ ${escapeHtml(whatFor || '这个功能')}需要先打开「${escapeHtml(def.label)}」，现在是关着的。<b>点这里去开</b> ›
+        </div>`;
+    } catch (e) { return ''; }
+}
+
+// ===================== 🕸️ 日常：三合一（小剧场 / 八卦网 / 营销号）=====================
+// 这三件事本来就是一条链：小剧场演了什么 → 八卦网就传什么 → 营销号跟进什么。
+// 以前它们在侧边栏占三个位置，切来切去看不出是一回事。现在一个入口三个 tab。
+//
+// 实现上这一页只是个**壳**：真正的内容还是 #view-theater / #view-tabloid 这两块原来的
+// DOM（里面的 id、事件、渲染函数一个没动），进哪个 tab 就把哪块搬进壳里。
+// 八卦网本来就是个弹窗，暂时还开弹窗——它整套渲染都绑在 #gygsModal 上，
+// 硬拆成页面风险太大，等"所有小功能都做成页面"那一轮一起改。
+let gyGrapevineTab_ = 'theater';
+
+function gyGrapevineTab(t) {
+    gyGrapevineTab_ = t || 'theater';
+    const body = document.getElementById('grapevineBody');
+    if (!body) return;
+    document.querySelectorAll('#grapevineTabs .gy-tab').forEach(b =>
+        b.classList.toggle('on', b.dataset.tab === gyGrapevineTab_));
+
+    // 先把两块视图都收回 .main-content（并藏起来），再把要用的那块搬进来
+    const main = document.querySelector('.main-content') || document.body;
+    ['view-theater', 'view-tabloid'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.style.display = 'none';
+        if (el.parentElement !== main) main.appendChild(el);
+    });
+
+    if (gyGrapevineTab_ === 'gossip') {
+        body.innerHTML = `<div style="padding:24px 20px;font-size:13px;color:#536471;line-height:1.9;">
+            八卦网现在还是个弹窗（它整套渲染都绑在弹窗上，硬拆成页面容易出事）。<br>
+            <button type="button" class="btn-edit-small" style="margin-top:10px;" onclick="if(typeof gygsOpen==='function')gygsOpen();else appAlert('八卦网还没加载好，刷新一下试试。')">🗣️ 打开八卦网</button>
+        </div>`;
+        return;
+    }
+
+    const id = gyGrapevineTab_ === 'tabloid' ? 'view-tabloid' : 'view-theater';
+    const el = document.getElementById(id);
+    if (!el) { body.innerHTML = '<div style="padding:24px;color:#8b98a5;">这一块还没加载好。</div>'; return; }
+    body.innerHTML = '';
+    body.appendChild(el);
+    el.style.display = 'block';
+    // 搬进来之后按各自原本的方式刷新一次内容
+    try {
+        if (id === 'view-theater') {
+            if (typeof renderTheaterPage === 'function') renderTheaterPage(true);
+            if (typeof switchTheaterTab === 'function') switchTheaterTab(typeof theaterTab !== 'undefined' ? theaterTab : 'scene');
+        } else {
+            // ⚠️ 这两个函数名别再写错了：营销号页的刷新入口是 renderTabloidCharPicker（它自己会调
+            //    renderTabloidPosts），没有 renderTabloidPage 这个函数。写错了也不会报错——
+            //    外面套着 typeof 判断，只是这一页永远不刷新，看起来像"内容没更新"。
+            if (typeof renderTabloidCharPicker === 'function') renderTabloidCharPicker();
+            else if (typeof renderTabloidPosts === 'function') renderTabloidPosts();
+        }
+    } catch (e) { console.warn('[日常] 刷新内容出错：', e); }
+}

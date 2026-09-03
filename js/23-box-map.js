@@ -56,7 +56,11 @@
         },
         curFaction: '',
         // 🪟 悬浮窗：跟音乐盒同一套视觉（白圆角卡 + 柔和投影 + 细线图标 + 黑色圆主键）
-        float: { on: false, skin: 'w-card', pos: null, faction: '' },
+        // src：这个悬浮窗显示谁那边的天气。'me' = 你自己（真实天气），
+        //      填角色 id 就是看那个角色所在地的天气（按 TA 站的点走，不是"属于的第一个势力"）。
+        //      以前写死只显示你自己的，角色在下雪你这儿大晴天，完全对不上。
+        // size：拖边缘改过的大小（{w,h}）。没改过就是 null，走皮肤自带的尺寸。
+        float: { on: false, skin: 'w-card', pos: null, faction: '', src: 'me', size: null },
         // 🤝 约着一起去某个地方
         date: {
             decide: 'ask',   // me 我说了算 | char TA说了算 | ask 每次问我
@@ -186,7 +190,8 @@
         refresh: SV('<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.6 4.2v4.4h-4.4"/>'),
         map: SV('<path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/>'),
         skin: SV('<rect x="3.2" y="4.2" width="17.6" height="15.6" rx="3"/><path d="M3.2 9.6h17.6M9 9.6v10.2"/>'),
-        list: SV('<path d="M8 6.5h12M8 12h12M8 17.5h12M4 6.5h.01M4 12h.01M4 17.5h.01"/>')
+        list: SV('<path d="M8 6.5h12M8 12h12M8 17.5h12M4 6.5h.01M4 12h.01M4 17.5h.01"/>'),
+        who: SV('<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><path d="M17 10.5h4M19 8.5v4"/>')
     };
     function fIcoKey(code) {
         if (code == null) return 'na';
@@ -563,6 +568,44 @@ body.dark-theme .gf-chip{background:#22252a;}
 .gf-half > *{flex:0 0 auto;}
 .gf-vline{width:1px;background:#eff3f4;}
 body.dark-theme .gf-vline{background:#2f3336;}
+/* —— 三种新的「你和TA」版式 —— */
+/* 上下叠卡：两张卡错开摞着 */
+.gf-box[data-skin="w-ip-card"]{width:260px;height:300px;display:flex;flex-direction:column;gap:8px;padding:26px 14px 12px;}
+.gf-box[data-skin="w-ip-card"] .gf-stack{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:10px;}
+.gf-pc{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.07);}
+.gf-pc.me{background:linear-gradient(135deg,#eaf4ff,#f7fbff);margin-right:16px;}
+.gf-pc.ta{background:linear-gradient(135deg,#fff2e8,#fffaf6);margin-left:16px;}
+.gf-pc-l{flex:1;min-width:0;}
+.gf-pc-big{font-size:22px;font-weight:800;line-height:1.2;}
+.gf-pc .gf-ico svg{width:30px;height:30px;}
+body.dark-theme .gf-pc.me{background:linear-gradient(135deg,#16283a,#101b26);}
+body.dark-theme .gf-pc.ta{background:linear-gradient(135deg,#3a2a1a,#241a10);}
+
+/* 温差对照：中间一条轴，两个点标在各自冷热的位置上 */
+.gf-box[data-skin="w-ip-vs"]{width:300px;height:170px;display:flex;flex-direction:column;justify-content:center;padding:24px 16px 12px;}
+.gf-vs{display:flex;flex-direction:column;gap:8px;}
+.gf-vs-row{display:flex;align-items:baseline;gap:8px;}
+.gf-vs-row b{font-size:19px;font-weight:800;}
+.gf-vs-row .gf-sub{flex:1;text-align:right;}
+.gf-axis{position:relative;height:6px;border-radius:3px;
+  background:linear-gradient(90deg,#7ec8ff,#cfe9d0,#ffd9a0,#ff9d7a);}
+.gf-pin{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;transform:translate(-50%,-50%);
+  border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3);}
+.gf-pin.me{background:#1d9bf0;}
+.gf-pin.ta{background:#f9a825;}
+
+/* 双胶囊：最省地方的一种。
+   ⚠️ 右上角那三个按钮会盖住第二个胶囊（截图里压得死死的），
+   所以这一款把按钮单独放一行，胶囊排在下面。 */
+.gf-box[data-skin="w-ip-mini"]{width:200px;height:72px;display:flex;align-items:flex-end;padding:0 6px 7px;}
+.gf-box[data-skin="w-ip-mini"] .gf-corner{top:4px;right:6px;}
+.gf-caps{display:flex;gap:6px;width:100%;}
+.gf-cap{flex:1;min-width:0;display:flex;align-items:center;gap:5px;padding:5px 8px;border-radius:999px;background:rgba(128,128,128,.1);}
+.gf-cap .gf-ico svg{width:18px;height:18px;}
+.gf-cap-t{display:flex;flex-direction:column;min-width:0;line-height:1.15;}
+.gf-cap-t b{font-size:13px;font-weight:800;}
+.gf-cap-t i{font-size:10px;font-style:normal;color:#8b98a5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
 .gf-box[data-skin="w-ip"]{width:300px;height:250px;display:flex;flex-direction:column;gap:10px;padding:24px 16px 14px;}
 .gf-box[data-skin="w-ip"] .gf-two{flex:1 1 auto;min-height:0;}
 .gf-box[data-skin="w-ip"] .gf-ico svg{width:34px;height:34px;}
@@ -775,9 +818,12 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
             { k: 't-hero', n: '大字钟', d: '340×132' },
             { k: 't-glass', n: '日历条', d: '336×92' },
             { k: 't-dark', n: '深色条', d: '350×92' } ] },
-        { cat: 'ip', icon: '📍', name: 'IP属地', variants: [
-            { k: 'w-ip', n: '你和TA', d: '300×250' },
+        { cat: 'ip', icon: '📍', name: '你和TA', variants: [
+            { k: 'w-ip', n: '左右分屏', d: '300×250' },
             { k: 'w-ip-bar', n: '对照条', d: '340×84' },
+            { k: 'w-ip-card', n: '上下叠卡', d: '260×300' },
+            { k: 'w-ip-vs', n: '温差对照', d: '300×170' },
+            { k: 'w-ip-mini', n: '双胶囊', d: '200×72' },
             { k: 'w-ips', n: '一群人', d: '300×320' } ] },
         { cat: 'capsule', icon: '⚪', name: '胶囊款', variants: [
             { k: 'w-dot', n: '圆点', d: '56×56' },
@@ -787,40 +833,118 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
     const fSkinInfo = k => FALL.find(v => v.k === k) || FALL[0];
 
     let fdragging = false;
+    // 拖窗 + 拖边缘改大小。
+    // ⚠️ 没有单独的"拖动条"——那玩意儿挂在角上很丑，而且这些窗小的才 56×56，
+    //    再挂个手柄基本没地方放。改成"鼠标靠近边缘 8px 就变成缩放"，
+    //    跟系统窗口一个手感；靠近哪条边就往哪个方向拉，四个角能同时改宽高。
+    const F_EDGE = 8;
+    // ⚠️ 外层 #gymapFloat 只是个定位壳，真正有宽高的是里面的 .gf-box。
+    //    边缘检测和改尺寸都得对准 box，对着壳算的话永远命中不到边（实测拖了没反应）。
+    const fBox = root => root.querySelector('.gf-box') || root;
+    function fEdgeOf(root, px, py) {
+        const r = fBox(root).getBoundingClientRect();
+        const l = px - r.left, t = py - r.top, rr = r.right - px, bb = r.bottom - py;
+        let e = '';
+        if (t <= F_EDGE) e += 'n'; else if (bb <= F_EDGE) e += 's';
+        if (l <= F_EDGE) e += 'w'; else if (rr <= F_EDGE) e += 'e';
+        return e;   // '' | 'n' | 'se' | ...
+    }
+    const F_CUR = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
+                    ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
+
     function bindFloatDrag(root) {
-        let sx = 0, sy = 0, ox = 0, oy = 0;
+        let sx = 0, sy = 0, ox = 0, oy = 0, ow = 0, oh = 0, edge = '';
         const down = e => {
             const p = e.touches ? e.touches[0] : e;
             if (e.target.closest('button,.gf-ico')) return;
+            edge = fEdgeOf(root, p.clientX, p.clientY);
             fdragging = true; root.classList.add('gf-drag');
-            const r = root.getBoundingClientRect();
-            ox = r.left; oy = r.top; sx = p.clientX; sy = p.clientY;
+            const r = fBox(root).getBoundingClientRect();
+            ox = r.left; oy = r.top; ow = r.width; oh = r.height;
+            sx = p.clientX; sy = p.clientY;
             root.style.left = ox + 'px'; root.style.top = oy + 'px';
             root.style.right = 'auto'; root.style.bottom = 'auto';
             e.preventDefault();
         };
+        // 没按下的时候，靠近边缘就把鼠标指针换掉——不然用户根本不知道这儿能拉
+        const hover = e => {
+            if (fdragging) return;
+            const p = e.touches ? e.touches[0] : e;
+            const ed = fEdgeOf(root, p.clientX, p.clientY);
+            fBox(root).style.cursor = ed ? F_CUR[ed] : 'move';
+        };
         const move = e => {
             if (!fdragging) return;
             const p = e.touches ? e.touches[0] : e;
-            const w = root.offsetWidth, h = root.offsetHeight;
-            let x = ox + p.clientX - sx, y = oy + p.clientY - sy;
-            x = Math.max(4, Math.min(window.innerWidth - w - 4, x));
-            y = Math.max(4, Math.min(window.innerHeight - h - 4, y));
-            root.style.left = x + 'px'; root.style.top = y + 'px';
+            const dx = p.clientX - sx, dy = p.clientY - sy;
+            if (edge) {
+                // 缩放。左/上边要一边改大小一边挪位置，否则会看着"往右下跑"
+                let w = ow, h = oh, x = ox, y = oy;
+                if (edge.includes('e')) w = ow + dx;
+                if (edge.includes('w')) { w = ow - dx; x = ox + dx; }
+                if (edge.includes('s')) h = oh + dy;
+                if (edge.includes('n')) { h = oh - dy; y = oy + dy; }
+                w = Math.max(56, Math.min(window.innerWidth - 8, w));
+                h = Math.max(48, Math.min(window.innerHeight - 8, h));
+                // 缩到最小之后再往回拉，位置不能继续跟着跑
+                if (edge.includes('w')) x = ox + (ow - w);
+                if (edge.includes('n')) y = oy + (oh - h);
+                const bx = fBox(root);
+                bx.style.width = w + 'px'; bx.style.height = h + 'px';
+                root.style.left = Math.max(4, x) + 'px'; root.style.top = Math.max(4, y) + 'px';
+            } else {
+                const bx0 = fBox(root);
+                const w = bx0.offsetWidth, h = bx0.offsetHeight;
+                let x = ox + dx, y = oy + dy;
+                x = Math.max(4, Math.min(window.innerWidth - w - 4, x));
+                y = Math.max(4, Math.min(window.innerHeight - h - 4, y));
+                root.style.left = x + 'px'; root.style.top = y + 'px';
+            }
         };
         const up = () => {
             if (!fdragging) return;
             fdragging = false; root.classList.remove('gf-drag');
             S.float.pos = { x: parseInt(root.style.left) || 0, y: parseInt(root.style.top) || 0 };
+            if (edge) { const bx = fBox(root); S.float.size = { w: Math.round(bx.offsetWidth), h: Math.round(bx.offsetHeight) }; }
+            edge = '';
             save();
         };
+        root.addEventListener('mousemove', hover);
         root.addEventListener('mousedown', down); root.addEventListener('touchstart', down, { passive: false });
         window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, { passive: false });
         window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
     }
 
+    // 换皮肤时把手动调过的大小清掉——每个皮肤的版式差很多，
+    // 拿"报纸卡"的尺寸套到"圆点"上会难看得离谱
+    function fResetSize() { S.float.size = null; const b = document.getElementById('gymapFBox'); if (b) { b.style.width = ''; b.style.height = ''; } }
+    function fApplySize() {
+        const b = document.getElementById('gymapFBox');
+        if (!b) return;
+        const z = S.float.size;
+        if (z && z.w && z.h) { b.style.width = z.w + 'px'; b.style.height = z.h + 'px'; }
+        else { b.style.width = ''; b.style.height = ''; }
+    }
+
     // 悬浮窗要显示的那份数据
     function fdata() {
+        // 🧭 先看这个窗被设成"看谁那边"。选了角色的话走角色所在地那一套（charIP 会按
+        //    TA 站着的点算势力，多势力角色不会再拿错另一边的天气）。
+        const src = S.float.src || 'me';
+        if (src !== 'me') {
+            const c = chars().find(x => String(x.id) === String(src));
+            if (c) {
+                const ip = charIP(c);
+                return {
+                    showReal: false, r: null, fac: ip.fac, fics: [],
+                    ficTxt: ip.wtxt, forChar: c, ip,
+                    ico: ip.ico,
+                    temp: ip.wshort,
+                    city: ip.place,
+                    sub: ip.wtxt || (ip.fac ? '这边今天还没设天气' : '还不知道 TA 在哪儿')
+                };
+            }
+        }
         const w = S.weather, r = w.real;
         const showReal = (w.mode !== 'fiction') && !!r;
         const fics = (w.mode !== 'real') ? Object.keys(w.fic).filter(f => w.fic[f] && w.fic[f].day === today()) : [];
@@ -857,7 +981,20 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
     function charIP(c) {
         const sp = spotById(S.charLoc[String(c.id)]);
         const facs = facOf(c);
-        const fac = sp ? sp.faction : (facs[0] || '');
+        // 🌦️ 天气按**角色当前所在地**算，不是"TA 属于的第一个势力"。
+        //    一个角色可以同时属于好几个势力（比如既是医院的也是某家族的），
+        //    以前直接取 facs[0]，结果人明明在临安，显示的却是另一边的天气。
+        //    优先级：站着的那个点所属势力 > 资料页 location 能对上的点 > 正在看的这张地图（前提是 TA 属于这一边）> facs[0]
+        let fac = sp ? sp.faction : '';
+        if (!fac) {
+            const loc = String(c.location || '').trim();
+            if (loc) {
+                const hit = allSpots().find(x => x.name && (loc.includes(x.name) || x.name.includes(loc)));
+                if (hit) fac = hit.faction;
+            }
+        }
+        if (!fac && S.curFaction && facs.indexOf(S.curFaction) >= 0) fac = S.curFaction;
+        if (!fac) fac = facs[0] || '';
         const fw = (fac && S.weather.fic[fac] && S.weather.fic[fac].day === today()) ? S.weather.fic[fac].text : '';
         return {
             fac, spot: sp ? sp.name : '',
@@ -894,7 +1031,14 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
         <button class="gf-b" onclick="gymapOpen()" title="打开行程与天气">${FI.map}</button>
         <button class="gf-b" onclick="gymapFloatNextSkin()" title="换个样式">${FI.skin}</button>
     </div>`;
-    const fHead = () => '<div class="gf-hd"></div><button class="gf-x" onclick="gymapFloatHide()" title="收起">×</button>';
+    // 🎛️ 头部那一排：每个皮肤都会渲染 fHead()，所以按钮放这儿等于 16 种皮肤全都有。
+    //    以前只有 5 个皮肤调了 fCtl()，剩下 11 个连"换个样式"都点不到，只能去设置页翻。
+    const fHead = () => `<div class="gf-hd"></div>
+        <div class="gf-corner">
+          <button class="gf-mini" onclick="event.stopPropagation();gymapFloatSrcCycle()" title="换成看谁那边的天气">${FI.who}</button>
+          <button class="gf-mini" onclick="event.stopPropagation();gymapFloatNextSkin()" title="换个样式">${FI.skin}</button>
+          <button class="gf-x" onclick="event.stopPropagation();gymapFloatHide()" title="收起">×</button>
+        </div>`;
 
     // ---- 时间款要的那点数据 ----
     const W_EN = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
@@ -1032,6 +1176,55 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
                          ip ? (((ip.fac || '') + (ip.wtxt ? '　' + ip.wshort : '')) || '不知道在哪儿') : '还没有角色', true)}
                 </div>
                 ${k === 'w-ip' ? fSayBlock() + fPickBlock() + fCtl() : fMainBtn('say')}`;
+        } else if (k === 'w-ip-card') {
+            // 上下叠卡：两张卡错开叠着，上面是你、下面是 TA，像两张明信片摞在一起
+            const c = cs.find(x => String(x.id) === saidBy) || cs[0];
+            const ip = c ? charIP(c) : null;
+            const card = (tag, ico, big, sub, cls) => `<div class="gf-pc ${cls}">
+                <div class="gf-pc-l"><div class="gf-tag">${esc(tag)}</div>
+                  <div class="gf-pc-big">${esc(big)}</div><div class="gf-sub">${esc(sub)}</div></div>
+                <div class="gf-ico">${ico}</div></div>`;
+            inner = `<div class="gf-stack">
+                  ${card('你', d.showReal ? d.ico : FSVG.na, d.showReal ? d.temp : '—',
+                         (S.user.city || '还没填城市').split('（')[0], 'me')}
+                  ${card(c ? c.name : '角色', ip ? ip.ico : FSVG.na, ip ? ip.wshort : '—',
+                         ip ? (ip.place || '不知道在哪儿') : '还没有角色', 'ta')}
+                </div>${fSayBlock()}${fCtl()}`;
+
+        } else if (k === 'w-ip-vs') {
+            // 温差对照：中间一条横轴，两个点标在各自温度的位置上，差多少一眼看出来
+            const c = cs.find(x => String(x.id) === saidBy) || cs[0];
+            const ip = c ? charIP(c) : null;
+            const meT = d.showReal && d.r ? (d.r.tnow != null ? d.r.tnow : d.r.tmax) : null;
+            // 虚构天气没有度数，用天气类型排个序当"冷热"：雪0 雨1 阴2 多云3 晴4
+            const ORD = { snow: 0, rain: 1, fog: 1, storm: 1, cloud: 2, part: 3, sun: 4, na: 2 };
+            const taOrd = ip && ip.wtxt ? ORD[ficIcoKey(ip.wtxt)] : null;
+            const mePct = meT == null ? 50 : Math.max(6, Math.min(94, (meT + 10) / 50 * 100));
+            const taPct = taOrd == null ? 50 : (10 + taOrd * 20);
+            inner = `<div class="gf-vs">
+                  <div class="gf-vs-row"><span class="gf-tag">你</span>
+                    <b>${d.showReal ? d.temp : '—'}</b>
+                    <span class="gf-sub">${esc((S.user.city || '还没填城市').split('（')[0])}</span></div>
+                  <div class="gf-axis">
+                    <i class="gf-pin me" style="left:${mePct}%" title="你"></i>
+                    <i class="gf-pin ta" style="left:${taPct}%" title="${esc(c ? c.name : '')}"></i>
+                  </div>
+                  <div class="gf-vs-row"><span class="gf-tag">${esc(c ? c.name : '角色')}</span>
+                    <b>${ip ? ip.wshort : '—'}</b>
+                    <span class="gf-sub">${esc(ip ? (ip.place || '不知道在哪儿') : '还没有角色')}</span></div>
+                </div>${fCtl('say')}`;
+
+        } else if (k === 'w-ip-mini') {
+            // 双胶囊：最省地方的一种，两个小胶囊并排
+            const c = cs.find(x => String(x.id) === saidBy) || cs[0];
+            const ip = c ? charIP(c) : null;
+            const pill = (ico, a2, b2) => `<div class="gf-cap"><span class="gf-ico">${ico}</span>
+                <span class="gf-cap-t"><b>${esc(a2)}</b><i>${esc(b2)}</i></span></div>`;
+            inner = `<div class="gf-caps">
+                  ${pill(d.showReal ? d.ico : FSVG.na, d.showReal ? d.temp : '—', (S.user.city || '你').split('（')[0])}
+                  ${pill(ip ? ip.ico : FSVG.na, ip ? ip.wshort : '—', c ? c.name : '角色')}
+                </div>`;
+
         } else if (k === 't-paper') {
             const t = clockData(), L = locData();
             inner = `<div class="gf-top gf-up">${t.wEn}<span>${esc(L.temp)} / ${esc(L.desc || L.place)}</span></div>
@@ -1096,6 +1289,7 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
                 ${fCtl()}`;
         }
         box.innerHTML = fHead() + inner;
+        fApplySize();   // 拖边缘调过大小的话，重画之后套回去
     }
 
     window.gymapFloatShow = function () {
@@ -1108,7 +1302,19 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
         if (typeof showToast === 'function') showToast('<div class="avatar" style="width:40px;height:40px;background:#1d9bf0;color:#fff;font-size:19px;">🗺️</div>', '悬浮窗收起来了', '想再打开：设置 → 行程与天气 → 天气 → 悬浮窗。', null, null, false);
     };
     window.gymapFloatToggle = function () { S.float.on ? gymapFloatHide() : gymapFloatShow(); };
-    window.gymapFloatSkin = function (k) { S.float.skin = fSkinInfo(k).k; save(); paintFloat(); renderPanel(); };
+    // 🧭 轮着换"看谁那边的天气"：你自己 → 挨个角色 → 转回你自己
+    window.gymapFloatSrcCycle = function () {
+        const list = ['me'].concat(chars().map(c => String(c.id)));
+        const i = list.indexOf(String(S.float.src || 'me'));
+        S.float.src = list[(i + 1) % list.length];
+        save(); paintFloat(); renderPanel();
+        const c = chars().find(x => String(x.id) === String(S.float.src));
+        if (typeof showToast === 'function')
+            showToast('', '现在看的是', c ? (c.name + ' 那边的天气') : '你自己这边的天气', null, null, false);
+    };
+    window.gymapFloatSrc = function (v) { S.float.src = v; save(); paintFloat(); renderPanel(); };
+
+    window.gymapFloatSkin = function (k) { S.float.skin = fSkinInfo(k).k; fResetSize(); save(); paintFloat(); renderPanel(); };
     window.gymapFloatCat = function (cat) {
         const c = FSKIN_CATS.find(x => x.cat === cat); if (!c) return;
         const cur = fSkinInfo(S.float.skin);
@@ -1905,7 +2111,8 @@ ${req.trim() ? '【我的要求（以这个为准）】\n' + req.trim() + '\n' :
             addNotification(`<b>${c.name}</b> 提醒你今天的天气 🌤️`, null, c.id, c, saidText);
         }
         if (saidText && typeof showToast === 'function') {
-            showToast(typeof getAvatarHTML === 'function' ? getAvatarHTML(c, 40) : '', c.name + ' 说', saidText, null, null, false);
+            if (typeof addNotification === 'function') addNotification(`<b>${c.name}</b> 说了句天气 🗺️`, null, null, c, saidText, { feature: 'map' });
+            else showToast(typeof getAvatarHTML === 'function' ? getAvatarHTML(c, 40) : '', c.name + ' 说', saidText, null, null, false);
         }
     }
 
@@ -2042,6 +2249,28 @@ ${(() => { const cur = activeDate(c.id); return cur ? `注意：你这会儿正�
         renderPanel();
         if (typeof addNotification === 'function') {
             addNotification(ok ? `你和 <b>${char.name}</b> 约在了「${sp.name}」🤝` : `<b>${char.name}</b> 婉拒了你的邀约`, null, char.id, char, line);
+        }
+        // 📨 你约 TA 的那一次，把邀请和回话都写进私聊并跳过去（js/28）。
+        //    TA 约你的那一次（by==='char'）本来就走私聊投递，不用再记一遍。
+        //    跳走了就不再弹那个结果框了——人已经在聊天页，背后弹一个看不见的框没意义；
+        //    约成了的细节改成聊天里的一条系统消息，跟邀请挨着，翻记录时是连着的。
+        if (by === 'me' && typeof window.gyInviteInChat === 'function') {
+            window.gyInviteInChat({ char, what: '约出去', ok,
+                myText: `[约你] 一起去「${sp.name}」？${act ? '　' + act : ''}${mins ? '　待 ' + fmtMin(mins) : ''}`,
+                reply: line });
+            if (ok) {
+                try {
+                    const sid = String(char.id);
+                    if (typeof globalChats !== 'undefined') {
+                        if (!globalChats[sid]) globalChats[sid] = [];
+                        globalChats[sid].push({ sender: 'system', timestamp: Date.now(),
+                            text: `说定了：${sp.name}${entry.faction ? '（' + entry.faction + '）' : ''}　待 ${fmtMin(entry.mins)}${entry.act ? '　' + entry.act : ''}` });
+                        if (typeof saveAllData === 'function') saveAllData();
+                        if (typeof renderChatMessages === 'function' && String(currentChatSessionId) === sid) renderChatMessages();
+                    }
+                } catch (e) {}
+            }
+            return;
         }
         openDatePop(`
             <div style="display:flex;align-items:center;">
@@ -2342,8 +2571,11 @@ ${letChar ? '待多久、去干什么，你自己定。' : '待多久和干什�
             if (AUTO_FEATURE_DEFS.some(f => f.key === 'gymapDate')) return;
             AUTO_FEATURE_DEFS.push({
                 key: 'gymapDate', label: '角色主动约你出去',
-                desc: '（行程与天气插件）角色会自己挑一个地方，开口把你约出来——弹窗给你一句话，你决定去不去。待多久、干什么由谁定，在插件的「🤝 约出去」页里选。默认关着，不打开一次 API 都不会调。',
-                cost: '开口约一次一次调用', defaultOff: true
+                desc: '角色会自己挑一个地方，开口把你约出来——邀请直接发在私聊里，你决定去不去。待多久、干什么由谁定，在 🧩 小功能 → 行程与天气 →「🤝 约出去」页里选。默认关着，不打开一次 API 都不会调。',
+                cost: '开口约一次一次调用', defaultOff: true,
+                // ⚠️ 这一条是运行时 push 进来的，以前**没写 group**——分组渲染时它掉进了"没有组"的那一堆，
+                //    在开关页里孤零零挂在最后，看不出跟什么有关。
+                group: '主动', where: '设置 → 🧩 小功能 → 行程与天气 → 🤝 约出去'
             });
             if (typeof renderAutoFeatureList === 'function') { try { renderAutoFeatureList(); } catch (e) {} }
         } catch (e) { console.warn('[行程] 挂开关失败：', e); }

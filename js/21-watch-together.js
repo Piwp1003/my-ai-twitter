@@ -400,7 +400,11 @@
         <button type="button" onclick="fbSend()">发送</button>
       </div>
       <div class="fb-chat-grip" id="fbChatGrip"></div>`;
-    document.body.appendChild(chat);
+    // ⚠️ 必须挂在 #fbWrap 里面，不能挂 body 上。
+    //    进全屏的是 #fbWrap，浏览器**只渲染全屏元素及其子树**——挂在 body 上的话，
+    //    全屏时这个聊天窗根本不显示，也点不到，看起来就是"X 点了没反应/关不掉"。
+    //    它是 position:fixed，放进 #fbWrap 里照样按视口定位，非全屏时行为不变。
+    (v.querySelector('.fb-wrap') || document.body).appendChild(chat);
     bindChatDragResize();
   }
 
@@ -416,6 +420,9 @@
 
     function down(m) {
       return function (e) {
+        // 关闭按钮在标题栏里，按下去不能算"开始拖窗"——
+        // 拖动逻辑里有 preventDefault，抢走 mousedown 之后那一下点击就可能不触发了。
+        if (e.target && e.target.closest && e.target.closest('.fb-x')) return;
         const p = pt(e);
         mode = m; sx = p.clientX; sy = p.clientY;
         const r = box.getBoundingClientRect();
@@ -1230,6 +1237,13 @@ ${tasteOf(c)}
       toast(c.name + ' 这次不看', line);
     }
     if (document.getElementById('fbWatchersModal')) fbOpenWatchers();
+    // 📨 这一来一回写进私聊（js/28）。以前只有一个八秒就没的 toast，
+    //    聊天记录里翻不到"你约过 TA 看片子"这件事，TA 下次也想不起来。
+    if (typeof window.gyInviteInChat === 'function') {
+      window.gyInviteInChat({ char: c, what: '一起看电影',
+        myText: `[一起看] 要不要一起看${f ? `《${f.title}》` : '部电影'}？`,
+        reply: line, ok: yes });
+    }
   };
 
   // —— 结束这次一起看（先存进记忆）——

@@ -536,13 +536,13 @@ async function deletePost(postId, event) {
 }
 
 function hideAllViews() {
-    ['home','profile','tag','search','notifications','post-detail','following-list','chat','anon-forum','diary','novel','theater','story-studio','tabloid','mobile-trends','faction-network','faction-members','char-relations','faction-overview','memory-album','character-center','settings','worldbook','plugins','presets','ai-enhance','memory-hub','watch-together'].forEach(v => { const el = document.getElementById(`view-${v}`); if(el) el.style.display = 'none'; });
-    ['nav-home','nav-following','nav-notif','nav-myprofile','nav-chat','nav-anon','nav-diary','nav-novel','nav-storystudio','nav-tabloid','nav-faction','nav-memoryhub'].forEach(id => { const el = document.getElementById(id); if(el) el.className = 'nav-item'; });
+    ['home','profile','tag','search','notifications','post-detail','following-list','chat','anon-forum','diary','novel','theater','story-studio','tabloid','mobile-trends','faction-network','faction-members','char-relations','faction-overview','memory-album','character-center','settings','worldbook','plugins','presets','ai-enhance','memory-hub','watch-together','mini-hub','grapevine','mall','feature-page'].forEach(v => { const el = document.getElementById(`view-${v}`); if(el) el.style.display = 'none'; });
+    ['nav-home','nav-following','nav-notif','nav-myprofile','nav-chat','nav-anon','nav-diary','nav-novel','nav-storystudio','nav-tabloid','nav-faction','nav-memoryhub','nav-minihub','nav-grapevine'].forEach(id => { const el = document.getElementById(id); if(el) el.className = 'nav-item'; });
     ['mnav-home','mnav-notif','mnav-chat','mnav-search'].forEach(id => { const el = document.getElementById(id); if(el) el.className = 'mnav-item'; });
     document.getElementById('rightPanelTrend').style.display = 'block'; document.getElementById('rightPanelProfile').style.display = 'none';
 }
 
-const mobileViewTitles = { home:'主页', anonForum:'匿名论坛', diary:'信件与日记', novel:'故事', theater:'Ta们在做什么', storyStudio:'续写', tabloid:'营销号', profile:'个人资料', tag:'标签', search:'全站搜索', notifications:'通知', postDetail:'帖子', followingList:'我的关注', chat:'聊天', factionNetwork:'势力关系网', factionMembers:'势力成员', charRelations:'角色关系', factionOverview:'势力总览', characterCenter:'角色中心', settings:'系统设置', worldbook:'世界书', plugins:'插件', presets:'预设', 'ai-enhance':'AI增强功能', memoryHub:'记忆总览', watchTogether:'一起看电影' };
+const mobileViewTitles = { home:'主页', anonForum:'匿名论坛', diary:'信件与日记', novel:'故事', theater:'Ta们在做什么', storyStudio:'续写', tabloid:'营销号', profile:'个人资料', tag:'标签', search:'全站搜索', notifications:'通知', postDetail:'帖子', followingList:'我的关注', chat:'聊天', factionNetwork:'势力关系网', factionMembers:'势力成员', charRelations:'角色关系', factionOverview:'势力总览', characterCenter:'角色中心', settings:'系统设置', worldbook:'世界书', plugins:'插件', presets:'预设', 'ai-enhance':'AI增强功能', memoryHub:'记忆总览', watchTogether:'一起看电影', miniHub:'小功能', grapevine:'日常' };
 
 function switchMainView(viewId, param = null) {
     pushViewHistory(viewId);
@@ -553,7 +553,7 @@ function switchMainView(viewId, param = null) {
     // 「全开/全关」）。这些页面里直接收起来。
     try {
         const fab = document.getElementById('fabPost');
-        if (fab) fab.style.display = ['settings', 'worldbook', 'plugins', 'presets', 'ai-enhance', 'memoryHub', 'chat', 'watchTogether'].includes(viewId) ? 'none' : '';
+        if (fab) fab.style.display = ['settings', 'worldbook', 'plugins', 'presets', 'ai-enhance', 'memoryHub', 'chat', 'watchTogether', 'miniHub', 'mall', 'featurePage'].includes(viewId) ? 'none' : '';
     } catch (e) {}
     // 手机顶栏中间显示当前页面名。这里的 id 以前写成 mobileTopTitle（元素其实叫 mtbCenterTitle），
     // 拿到的永远是 null，加上有 if 判空所以不报错——顶栏标题就一直是空的，谁也没发现。
@@ -569,19 +569,23 @@ function switchMainView(viewId, param = null) {
     else if (viewId === 'anonForum') { document.getElementById('view-anon-forum').style.display = 'block'; document.getElementById('nav-anon').className = 'nav-item active'; if(typeof renderAnonPosts === 'function') renderAnonPosts(); }
     else if (viewId === 'diary') { document.getElementById('view-diary').style.display = 'block'; document.getElementById('nav-diary').className = 'nav-item active'; renderDiaryCharList(); }
     else if (viewId === 'novel') { document.getElementById('view-novel').style.display = 'block'; document.getElementById('nav-novel').className = 'nav-item active'; renderNovelList(); }
-    else if (viewId === 'theater') { document.getElementById('view-theater').style.display = 'block'; const nv = document.getElementById('nav-novel'); if (nv) nv.className = 'nav-item active'; if (typeof renderTheaterPage === 'function') renderTheaterPage(true); if (typeof switchTheaterTab === 'function') switchTheaterTab(typeof theaterTab !== 'undefined' ? theaterTab : 'scene'); }
-    else if (viewId === 'storyStudio') { document.getElementById('view-story-studio').style.display = 'block'; const nav = document.getElementById('nav-storystudio'); if (nav) nav.className = 'nav-item active'; if (typeof renderStoryStudio === 'function') renderStoryStudio(); }
-    else if (viewId === 'tabloid') { document.getElementById('view-tabloid').style.display = 'block'; document.getElementById('nav-tabloid').className = 'nav-item active'; renderTabloidCharPicker(); }
+    // ⚠️ 下面这 7 条（个人资料 / 话题 / 搜索 / 通知 / 帖子详情 / 我的关注 / 聊天）v101 补回来的。
+    //    v100 合并「日常」时，删 tabloid 分支的那次替换把从 tabloid 一直到 chat 的整段一起吃掉了，
+    //    结果这几页全都命中不了任何分支，被末尾那段"谁都没显示就退回主页"的兜底接走——
+    //    表现就是点侧栏「聊天」「通知」「个人资料」都跳回主页，而且不报错。
+    //    （clickall 那套测试也抓不到：兜底不抛异常，点了确实"有反应"，只是反应错了。）
     else if (viewId === 'profile') { document.getElementById('view-profile').style.display = 'block'; if(param === 'me') document.getElementById('nav-myprofile').className = 'nav-item active'; renderProfilePage(param); }
     else if (viewId === 'tag') { document.getElementById('view-tag').style.display = 'block'; document.getElementById('currentTagTitle').innerText = param; if(typeof renderPosts === 'function') renderPosts(param); }
     else if (viewId === 'search') { document.getElementById('view-search').style.display = 'block'; document.getElementById('currentSearchTitle').innerText = param; document.getElementById('globalSearchInput').value = ''; const m=document.getElementById('mnav-search'); if(m) m.className='mnav-item active'; if(typeof renderSearchPosts === 'function') renderSearchPosts(param); }
     else if (viewId === 'notifications') { document.getElementById('view-notifications').style.display = 'block'; document.getElementById('nav-notif').className = 'nav-item active'; const m=document.getElementById('mnav-notif'); if(m) m.className='mnav-item active'; unreadNotifs = 0; if(typeof updateNotifBadge === 'function') updateNotifBadge(); if(typeof renderNotifications === 'function') renderNotifications(); }
     else if (viewId === 'postDetail') { document.getElementById('view-post-detail').style.display = 'block'; if(typeof renderSinglePostDetail === 'function') renderSinglePostDetail(param); }
     else if (viewId === 'followingList') { document.getElementById('view-following-list').style.display = 'block'; document.getElementById('nav-following').className = 'nav-item active'; renderFollowingList(); }
-    else if (viewId === 'chat') { 
-        document.getElementById('view-chat').style.display = 'flex'; document.getElementById('nav-chat').className = 'nav-item active'; const m=document.getElementById('mnav-chat'); if(m) m.className='mnav-item active'; renderChatCharList(); 
+    else if (viewId === 'chat') {
+        document.getElementById('view-chat').style.display = 'flex'; document.getElementById('nav-chat').className = 'nav-item active'; const m=document.getElementById('mnav-chat'); if(m) m.className='mnav-item active'; renderChatCharList();
         if(!currentChatSessionId && myCharacters.length>0) switchChatSession(myCharacters[0].id); else if(currentChatSessionId) renderChatMessages();
     }
+    // （'theater' 和 'tabloid' 的分支已经并进上面的「日常」里了）
+    else if (viewId === 'storyStudio') { document.getElementById('view-story-studio').style.display = 'block'; const nav = document.getElementById('nav-storystudio'); if (nav) nav.className = 'nav-item active'; if (typeof renderStoryStudio === 'function') renderStoryStudio(); }
     else if (viewId === 'factionNetwork') { document.getElementById('view-faction-network').style.display = 'block'; document.getElementById('nav-faction').className = 'nav-item active'; renderFactionNetworkGrid(); }
     else if (viewId === 'factionMembers') { document.getElementById('view-faction-members').style.display = 'block'; renderFactionMembersGrid(param); }
     else if (viewId === 'charRelations') { document.getElementById('view-char-relations').style.display = 'block'; renderCharRelationsView(param); }
@@ -632,6 +636,27 @@ function switchMainView(viewId, param = null) {
         if (typeof renderMemoryHubTargetOptions === 'function') renderMemoryHubTargetOptions();
     }
 
+    // 🕸️ 日常：小剧场 / 八卦网 / 营销号 三合一。
+    //    'theater' 和 'tabloid' 这两个老 viewId 全部重定向到这儿的对应 tab——
+    //    代码里到处都有 switchMainView('theater')，一个个改容易漏，重定向最稳。
+    else if (viewId === 'grapevine' || viewId === 'theater' || viewId === 'tabloid') {
+        const el = document.getElementById('view-grapevine');
+        if (el) el.style.display = 'block';
+        const nav = document.getElementById('nav-grapevine'); if (nav) nav.className = 'nav-item active';
+        if (typeof gyGrapevineTab === 'function') {
+            gyGrapevineTab(viewId === 'tabloid' ? 'tabloid' : viewId === 'theater' ? 'theater'
+                : (typeof gyGrapevineTab_ !== 'undefined' ? gyGrapevineTab_ : 'theater'));
+        }
+    }
+
+    // 🧩 小功能：以前是设置里的一个分页，现在是侧边栏的独立页面
+    else if (viewId === 'miniHub') {
+        const el = document.getElementById('view-mini-hub');
+        if (el) el.style.display = 'block';
+        const nav = document.getElementById('nav-minihub'); if (nav) nav.className = 'nav-item active';
+        if (typeof renderMiniFeaturePanel === 'function') renderMiniFeaturePanel();
+    }
+
     // 🎬 一起看电影（js/21 建的页面）。必须在这儿有个正式分支——
     //    以前是靠 js/21 自己 patch switchMainView 在事后把页面显示出来，
     //    结果下面那段兜底先跑（那时候一个页面都还没显示），把主页也放了出来，
@@ -640,6 +665,23 @@ function switchMainView(viewId, param = null) {
         const el = document.getElementById('view-watch-together');
         if (el) el.style.display = 'block';
         if (typeof window.fbOnEnterView === 'function') window.fbOnEnterView();
+    }
+
+    // 🛒 商城（js/26 建的页面）。跟一起看电影一样，必须在核心这儿有正式分支，
+    //    不能靠模块自己 patch switchMainView——那样会被下面的"没页面就退回主页"兜底抢先。
+    else if (viewId === 'mall') {
+        const el = document.getElementById('view-mall');
+        if (el) el.style.display = 'block';
+        if (typeof window.gymallOnEnterView === 'function') window.gymallOnEnterView();
+    }
+
+    // 🧩 小功能页（js/27）：音乐盒 / 行程与天气 / 关系账本 / 八卦网 / 随身物 / 日子 /
+    //    此刻 / 一起阅读 / 表情，都是把各自那个全屏弹窗的壳搬进这一页当内容用。
+    else if (viewId === 'featurePage') {
+        const el = document.getElementById('view-feature-page');
+        if (el) el.style.display = 'block';
+        const nav = document.getElementById('nav-minihub'); if (nav) nav.className = 'nav-item active';
+        if (typeof window.gyFeatureOnEnterView === 'function') window.gyFeatureOnEnterView();
     }
 
     // 🛟 兜底：上面一长串 else-if 是按 viewId 精确匹配的，写错一个字（比如把 'ai-enhance' 写成 'aiEnhance'）

@@ -2567,7 +2567,7 @@ function getDiaryAwarenessPrompt(char, maxN = 3, perChars = 70) {
 
 
 // ===================== 🧩 内置小功能的 prompt 注入 =====================
-// 音乐盒、行程与天气、关系账本、八卦网、随身物、日子这几个原来是插件，
+// 音乐盒、行程与天气、关系账本、八卦网、随身物、日子、商城这几个原来是插件，
 // 各自有一个 `code` 钩子（每次拼 prompt 都跑一遍，返回的字符串直接进 prompt）。
 // 内置之后钩子没了，改成它们各自往 window 上挂一个 __gyXxxCtxFor(charId)，
 // 这里统一调一遍。写法跟原来的钩子一模一样，只是换了个调用的地方。
@@ -2579,7 +2579,8 @@ const GY_BOX_CTX = [
     ['__gyRelCtxFor',    '关系账本'],
     ['__gyGossipCtxFor', '八卦网'],
     ['__gyKitCtxFor',    '随身物'],
-    ['__gyDaysCtxFor',   '日子']
+    ['__gyDaysCtxFor',   '日子'],
+    ['__gyMallCtxFor',   '商城']
 ];
 function getBoxPrompt(char) {
     if (!char) return '';

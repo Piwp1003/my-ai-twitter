@@ -55,7 +55,8 @@
         showNumber: false,  // 注进 prompt 时要不要把分数报给角色（默认不报，只给阶段和事）
         stages: null,
         seen: {},           // 事件去重
-        seenMood: {}        // { 角色id: 上次记过的 mood.at }
+        seenMood: {},       // { 角色id: 上次记过的 mood.at }
+        base: {}            // { 角色id: 基准分 } —— 用户直接把好感度设成某个数时存这儿
     };
 
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -71,14 +72,38 @@
         if (!S.led || typeof S.led !== 'object') S.led = {};
         if (!S.seen) S.seen = {};
         if (!S.seenMood) S.seenMood = {};
+        if (!S.base || typeof S.base !== 'object') S.base = {};
     }
 
     // ---------- 账本本身 ----------
     function book(id) { const k = String(id); if (!Array.isArray(S.led[k])) S.led[k] = []; return S.led[k]; }
+    // 总分 = 你直接设定的基准分 + 账本上每一笔的加减。
+    // 分成两截是为了让"自定义好感度"和"流水账"不打架：你把它设成 60 之后，
+    // 后面自动记的那些笔照样在 60 上面加加减减，而不是把你设的数字冲掉。
+    function baseOf(id) { const v = parseFloat(S.base[String(id)]); return isNaN(v) ? 0 : v; }
     function score(id) {
-        const t = book(id).reduce((a, e) => a + (parseFloat(e.d) || 0), 0);
+        const t = baseOf(id) + book(id).reduce((a, e) => a + (parseFloat(e.d) || 0), 0);
         return Math.max(-100, Math.min(100, Math.round(t * 10) / 10));
     }
+    // 直接把某个角色的好感度设成一个数（账本一笔都不动）
+    window.gyrelSetScore = async function (charId, v) {
+        const el = document.getElementById('gyrelScore' + charId);
+        const raw = (v !== undefined && v !== null) ? v : (el ? el.value : '');
+        const n = parseFloat(raw);
+        if (isNaN(n)) return;
+        const target = Math.max(-100, Math.min(100, Math.round(n * 10) / 10));
+        const sum = book(charId).reduce((a, e) => a + (parseFloat(e.d) || 0), 0);
+        S.base[String(charId)] = Math.round((target - sum) * 10) / 10;
+        syncOne(charId);
+        await save();
+        try { renderPanel(); renderMemHub(); } catch (e) {}
+    };
+    window.gyrelResetScore = async function (charId) {
+        delete S.base[String(charId)];
+        syncOne(charId);
+        await save();
+        try { renderPanel(); renderMemHub(); } catch (e) {}
+    };
     function stageOf(sc) {
         const list = stages();
         let cur = list[0];
@@ -176,8 +201,11 @@
     }
 
     // ---------- 注进 prompt ----------
+    const ledgerOn = () => (typeof isAutoOn === 'function') ? isAutoOn('relLedger') : true;
+
     window.__gyRelCtxFor = function (charId) {
         try {
+            if (!ledgerOn()) return '';          // 🔌 总开关关了：一个字都不注入
             const c = chars().find(x => String(x.id) === String(charId));
             if (!c) return '';
             const b = book(charId);
@@ -209,6 +237,7 @@
     // 回复钩子那边会调这个
     window.__gyRelCapture = function (char, parsed) {
         try {
+            if (!ledgerOn()) return;             // 🔌 总开关关了：也不记账
             if (!S.askModel || !char || !parsed) return;
             const v = parseFloat(parsed.rel);
             if (isNaN(v) || v === 0) return;
@@ -343,6 +372,15 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
                   <input class="gyrel-in" id="gyrelD" type="number" step="0.5" min="-20" max="20" placeholder="加减多少（-20 ~ 20）" style="max-width:180px;display:inline-block;margin-bottom:6px;">
                   <button class="gyrel-btn" onclick="gyrelAddManual('${c.id}')">记一笔</button>
                   ${b.length ? `<button class="gyrel-btn danger" onclick="gyrelClear('${c.id}')">清空这个人的账</button>` : ''}
+                </div>
+                <div style="margin-bottom:10px;padding:8px 10px;border:1px dashed rgba(128,128,128,.35);border-radius:8px;">
+                  <div class="gyrel-hint" style="margin-bottom:6px;">
+                    <b>直接设成</b>：不想一笔一笔记的时候，把好感度拨到你想要的数字（−100 ~ 100）。
+                    账本一笔都不会动，以后自动记的那些还是在这个数上面加减。${baseOf(c.id) ? `　当前基准 ${baseOf(c.id) > 0 ? '+' : ''}${baseOf(c.id)}` : ''}
+                  </div>
+                  <input class="gyrel-in" id="gyrelScore${c.id}" type="number" step="0.5" min="-100" max="100" value="${sc}" style="max-width:140px;display:inline-block;">
+                  <button class="gyrel-btn" onclick="gyrelSetScore('${c.id}')">设定</button>
+                  ${baseOf(c.id) ? `<button class="gyrel-btn ghost" onclick="gyrelResetScore('${c.id}')">清掉基准</button>` : ''}
                 </div>
                 ${b.length ? b.slice().reverse().slice(0, 40).map(e => entryRow(c.id, e)).join('')
                            : '<div class="gyrel-hint">还没有记录。上面可以手动记一笔，或者去「怎么记账」把自动来源打开。</div>'}
@@ -746,7 +784,9 @@ ${lv}
             await save();
             renderPanel();
             if (typeof addNotification === 'function') addNotification(`<b>${c.name}</b> 跟你说了点关于 ${who} 的事 🗣️`, null, c.id, c, text);
-            if (typeof showToast === 'function') showToast(typeof getAvatarHTML === 'function' ? getAvatarHTML(c, 40) : '', c.name + ' 跟你说', text, null, null, false);
+            // 通知里也留一条，点了直接进八卦网——只弹 toast 的话，人不在屏幕前就永远错过了
+            if (typeof addNotification === 'function') addNotification(`<b>${c.name}</b> 跟你说了点事 🕸️`, null, null, c, text, { feature: 'gossip' });
+            else if (typeof showToast === 'function') showToast(typeof getAvatarHTML === 'function' ? getAvatarHTML(c, 40) : '', c.name + ' 跟你说', text, null, null, false);
             tell('');
             return text;
         } catch (e) { tell('出错了：' + (e.message || e)); return null; }

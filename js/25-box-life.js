@@ -160,8 +160,9 @@
             if (a) {
                 it.note = a.slice(0, 60);
                 await save();
+                // 通知里的这一条点了进那个人的私聊（送东西这件事跟人相关，比跳去随身物页有用）
                 if (typeof addNotification === 'function') addNotification(`你把「${name}」给了 <b>${c.name}</b> 🎁`, null, c.id, c, a);
-                if (typeof showToast === 'function') showToast(typeof getAvatarHTML === 'function' ? getAvatarHTML(c, 40) : '', c.name + ' 说', a, null, null, false);
+                else if (typeof showToast === 'function') showToast(typeof getAvatarHTML === 'function' ? getAvatarHTML(c, 40) : '', c.name + ' 说', a, null, null, false);
             }
             tell('');
             renderPanel();
@@ -786,7 +787,6 @@ ${list.map(x => `· ${x.name}　${x.in === 0 ? '就是今天' : x.in === 1 ? '�
             if (!a || (a.toUpperCase().startsWith('NO') && a.length < 5)) { tell(`${c.name} 这会儿不想提这个。`); return null; }
             if (typeof applyRegexScripts === 'function') { try { a = applyRegexScripts(a, 'ai_output', c.id); } catch (e) {} }
             if (typeof addNotification === 'function') addNotification(`<b>${c.name}</b> 提到了今天的日子 📅`, null, c.id, c, a);
-            if (typeof showToast === 'function') showToast(typeof getAvatarHTML === 'function' ? getAvatarHTML(c, 40) : '', c.name + ' 说', a, null, null, false);
             tell('');
             return a;
         } catch (e) { tell('出错了：' + (e.message || e)); return null; }
@@ -848,6 +848,7 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
             <div class="gyday-tabs">
               <button class="gyday-tab" id="gydayTab-now" onclick="gydayTab('now')">这几天</button>
               <button class="gyday-tab" id="gydayTab-own" onclick="gydayTab('own')">我记的日子</button>
+              <button class="gyday-tab" id="gydayTab-anniv" onclick="gydayTab('anniv')">💗 纪念日</button>
               <button class="gyday-tab" id="gydayTab-rule" onclick="gydayTab('rule')">规则</button>
             </div>
             <div class="gyday-bd" id="gydayBody"></div></div>`;
@@ -856,6 +857,53 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
     }
 
     let tab = 'now';
+    // 💗 纪念日：以前只能一个角色一个角色地开日历看，散在各处。
+    //    这里汇总所有角色 char.anniversaries，按"今年还有几天"排好，
+    //    今天的排最前面。跟「日子」放一起是因为它们本来就是一件事——都是"哪天对你有意义"。
+    function tabAnniv() {
+        const cs = (typeof myCharacters !== 'undefined' ? myCharacters : []);
+        const now = new Date();
+        const y = now.getFullYear();
+        const t0 = new Date(y, now.getMonth(), now.getDate()).getTime();
+        const rows = [];
+        cs.forEach(c => {
+            (c.anniversaries || []).forEach(a => {
+                if (!a || !a.date) return;
+                const md = String(a.date).slice(5);          // MM-DD
+                const [mm, dd] = md.split('-').map(Number);
+                if (!mm || !dd) return;
+                let next = new Date(y, mm - 1, dd).getTime();
+                if (next < t0) next = new Date(y + 1, mm - 1, dd).getTime();
+                const inDays = Math.round((next - t0) / 86400000);
+                const years = y - parseInt(String(a.date).slice(0, 4));
+                rows.push({ char: c, ev: a.event || '（没写名字）', date: a.date, inDays,
+                            years: inDays === 0 ? years : years + (next > new Date(y, mm - 1, dd).getTime() ? 1 : 0) });
+            });
+        });
+        rows.sort((a, b) => a.inDays - b.inDays);
+        if (!rows.length) {
+            return `<div class="gyday-hint" style="padding:20px 4px;line-height:1.9;">
+                还没有记过纪念日。<br>
+                去某个角色的资料页 → 日历，就能记「我们第一次见面」「她妈妈的忌日」这类日子。
+                记了之后角色到那天会知道——不是播报，是会自然地想起来。</div>`;
+        }
+        return `<div class="gyday-hint" style="margin-bottom:10px;">
+            所有角色的纪念日都在这儿，按"还有几天"排。今天的排最前面。
+            这些日子会进 prompt，角色到那天心里有数。</div>` +
+            rows.map(r => {
+                const when = r.inDays === 0 ? '<b style="color:#f91880;">就是今天</b>'
+                    : r.inDays === 1 ? '明天' : `还有 ${r.inDays} 天`;
+                return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed rgba(128,128,128,.2);">
+                    <div style="flex:1;min-width:0;">
+                      <b>${esc(r.ev)}</b>
+                      <span style="font-size:11.5px;color:#8b98a5;"> · ${esc(r.char.name)}</span>
+                      <div style="font-size:11.5px;color:#8b98a5;">${esc(r.date)}${r.years > 0 ? `　${r.years} 周年` : ''}</div>
+                    </div>
+                    <div style="font-size:12.5px;white-space:nowrap;">${when}</div>
+                  </div>`;
+            }).join('');
+    }
+
     window.gydayOpen = function () { document.getElementById('gydayModal').classList.add('on'); renderPanel(); };
     window.gydayClose = function () { document.getElementById('gydayModal').classList.remove('on'); };
     window.gydayTab = function (t) { tab = t; renderPanel(); };
@@ -863,11 +911,12 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
     function renderPanel() {
         const box = document.getElementById('gydayModal');
         if (!box || !box.classList.contains('on')) return;
-        ['now', 'own', 'rule'].forEach(t => {
+        ['now', 'own', 'anniv', 'rule'].forEach(t => {
             const el = document.getElementById('gydayTab-' + t);
             if (el) el.className = 'gyday-tab' + (t === tab ? ' on' : '');
         });
-        document.getElementById('gydayBody').innerHTML = tab === 'now' ? tabNow() : tab === 'own' ? tabOwn() : tabRule();
+        document.getElementById('gydayBody').innerHTML =
+            tab === 'now' ? tabNow() : tab === 'own' ? tabOwn() : tab === 'anniv' ? tabAnniv() : tabRule();
         // ⚠️ tabOwn 里那块日期输入是按"每年/每月/每周/一次性"动态变的，画完主体得补一次
         if (tab === 'own') { try { renderFields(); } catch (e) {} }
     }
@@ -1087,6 +1136,60 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
         if (sel && sel.value) gydaySay(sel.value); else tell('先选个角色。');
     };
 
+    // ---------- 自主模式：TA 自己把一个日子记下来 ----------
+    // 以前"日子"和"纪念日"全都是**你**记的：你不去记，TA 永远不会自己觉得
+    // 某一天有意义。真人不是这样——第一次一起看完一部片子、吵完架和好的那天，
+    // 是当事人自己在心里画了个圈。这里让 TA 也能画。
+    // 🔌 开关：charOwnDays（默认关，不打开一次 API 都不会调）
+    function hookDayAutonomy() {
+        try {
+            if (typeof GY_AUTONOMY_ACTIONS === 'undefined' || !Array.isArray(GY_AUTONOMY_ACTIONS)) return;
+            if (GY_AUTONOMY_ACTIONS.some(a => a.key === 'day_mark')) return;
+            GY_AUTONOMY_ACTIONS.splice(GY_AUTONOMY_ACTIONS.length - 1, 0, {
+                key: 'day_mark',
+                label: '把某一天记成对自己有意义的日子',
+                hint: '给今天（或者过去某一天）画个圈，以后每年都会惦记',
+                need: () => (typeof isAutoOn === 'function') ? isAutoOn('charOwnDays') : false,
+                run: async (char) => {
+                    const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+                    if (!api || !api.key) return null;
+                    const now = new Date();
+                    const had = (Array.isArray(char.anniversaries) ? char.anniversaries : [])
+                        .slice(-6).map(a => `· ${a.date} ${a.event}`).join('\n');
+                    const ask = `今天是 ${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日。
+你想不想把某一天记下来，当成对你自己有意义的日子？可以是今天，也可以是最近发生过的某一天。
+${had ? `你已经记过的（别重复）：\n${had}\n` : ''}
+只有**真的发生了值得记的事**才记——第一次一起做了什么、和好的那天、下定决心的那天。
+平平无奇的一天不要硬记。没什么可记的就选 "no"。
+只输出 JSON：{"act":"mark"或"no", "date":"YYYY-MM-DD", "event":"这一天叫什么，12字以内", "line":"你要跟对方说的一句话，25字以内，也可以是空字符串"}`;
+                    const messages = buildStructuredMessages(buildBasePrompt(char, false, ''), [], ask);
+                    const data = await callChatCompletionAPI(api, messages);
+                    let r = (typeof parseModelJson === 'function') ? parseModelJson(data.choices?.[0]?.message?.content || '') : null;
+                    if (Array.isArray(r)) r = r[0];
+                    if (!r || r.act !== 'mark') return null;
+                    const date = String(r.date || '').match(/^\d{4}-\d{1,2}-\d{1,2}$/) ? r.date
+                        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    const event = String(r.event || '').trim().slice(0, 20);
+                    if (!event) return null;
+                    if (!Array.isArray(char.anniversaries)) char.anniversaries = [];
+                    if (char.anniversaries.some(a => a && a.date === date && a.event === event)) return null;
+                    char.anniversaries.push({ id: 'a' + Date.now().toString(36), date, event, by: 'char' });
+                    try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+                    try { renderPanel(); } catch (e) {}
+                    const line = String(r.line || '').trim();
+                    if (typeof addNotification === 'function') {
+                        addNotification(`<b>${char.name}</b> 把 ${date} 记成了「${event}」📅`, null, char.id, char,
+                            line || '这一天对 TA 有意义。');
+                    }
+                    if (line && typeof deliverCharMoveToChatMessage === 'function') {
+                        try { deliverCharMoveToChatMessage(char, line, null); } catch (e) {}
+                    }
+                    return '把 ' + date + ' 记成了「' + event + '」';
+                }
+            });
+        } catch (e) { console.warn('[日子] 挂自主模式失败：', e); }
+    }
+
     function addEntries() {
         const menu = document.querySelector('#setIndex .set-menu');
         if (menu && !document.getElementById('gydaySetEntry')) {
@@ -1101,7 +1204,7 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
 
     (async function init() {
         await load();
-        mount(); addEntries();
+        mount(); addEntries(); hookDayAutonomy();
         const sw = window.switchMainView;
         if (typeof sw === 'function' && !sw.__gydayPatched) {
             window.switchMainView = function () { const r = sw.apply(this, arguments);
@@ -1347,16 +1450,42 @@ body.dark-theme .gynow-av{background:#2f3336;color:#e7e9ea;}
     }
 
     let tab = 'now', timer = null;
-    window.gynowOpen = async function () {
-        document.getElementById('gynowModal').classList.add('on');
-        await loadExt(); render();
-        // 开着的时候每 30 秒自己刷一次（纯本地读，不花钱）
-        if (timer) clearInterval(timer);
+
+    // ⏱️ 自动刷新间隔：以前写死 30 秒，现在自己存一份让用户调。
+    //    这一页一次 API 都不调，所以刷得勤也不花钱——纯粹是"想多久看一次新数据"。
+    //    这个模块本来是纯只读、什么都不存，所以单开一个最小的库放它。
+    const NOWDB = (typeof localforage !== 'undefined') ? localforage.createInstance({ name: 'gyNowBox' }) : null;
+    let nowCfg = { sec: 30 };     // 0 = 不自动刷新
+    async function loadCfg() { try { if (NOWDB) { const d = await NOWDB.getItem('cfg'); if (d) nowCfg = Object.assign(nowCfg, d); } } catch (e) {} }
+    async function saveCfg() { try { if (NOWDB) await NOWDB.setItem('cfg', nowCfg); } catch (e) {} }
+    // 说人话：30 秒 / 2 分钟 / 不自动刷新
+    function nowEvery() {
+        const s = +nowCfg.sec || 0;
+        if (!s) return '不自动刷新';
+        if (s < 60) return s + ' 秒';
+        const m = Math.round(s / 60);
+        return m < 60 ? m + ' 分钟' : Math.round(m / 60) + ' 小时';
+    }
+    function armTimer() {
+        if (timer) { clearInterval(timer); timer = null; }
+        const s = +nowCfg.sec || 0;
+        if (!s) return;                       // 用户选了"不自动刷新"
         timer = setInterval(async () => {
             const box = document.getElementById('gynowModal');
             if (!box || !box.classList.contains('on')) return;
             await loadExt(); render();
-        }, 30000);
+        }, s * 1000);
+    }
+    window.gynowSetSec = async function (v) {
+        nowCfg.sec = Math.max(0, Math.min(3600, parseInt(v) || 0));
+        await saveCfg(); armTimer(); render();
+    };
+
+    window.gynowOpen = async function () {
+        document.getElementById('gynowModal').classList.add('on');
+        await loadCfg();
+        await loadExt(); render();
+        armTimer();
     };
     window.gynowClose = function () {
         document.getElementById('gynowModal').classList.remove('on');
@@ -1430,8 +1559,15 @@ body.dark-theme .gynow-av{background:#2f3336;color:#e7e9ea;}
             <div class="gynow-kpi"><b style="color:${heldN ? '#7856ff' : ''}">${heldN}</b><span>人有消息挂着</span></div>
             <div class="gynow-kpi"><b>${todayCalls}</b><span>今天调了几次</span></div>
           </div>
-          <div class="gynow-hint">这一页<b>一次 API 都不调</b>，只是把已有的数据读出来摆好。开着的时候每 30 秒自己刷一次。
-            <button class="gynow-btn ghost" style="padding:3px 10px;font-size:12px;" onclick="gynowRefresh()">立刻刷新</button></div>
+          <div class="gynow-hint">
+            此界面只展示数据不做调用，开启时每隔 <b>${nowEvery()}</b> 自动刷新数据。
+            <span style="display:inline-flex;align-items:center;gap:6px;margin-left:8px;flex-wrap:wrap;">
+              <select onchange="gynowSetSec(this.value)" style="padding:3px 8px;border:1px solid #cfd9de;border-radius:6px;font-size:12px;">
+                ${[['10','10 秒'],['30','30 秒'],['60','1 分钟'],['120','2 分钟'],['300','5 分钟'],['600','10 分钟'],['1800','30 分钟'],['0','不自动刷新']]
+                  .map(([v, n]) => `<option value="${v}" ${String(nowCfg.sec) === v ? 'selected' : ''}>${n}</option>`).join('')}
+              </select>
+              <button class="gynow-btn ghost" style="padding:3px 10px;font-size:12px;" onclick="gynowRefresh()">立刻刷新</button>
+            </span></div>
           ${cards}
           ${allMiss.length ? `<div class="gynow-miss"><b>⚠️ 上面有几栏是空的，因为这些还没开 / 没装：</b><br>
             ${allMiss.map(x => '· ' + esc(x)).join('<br>')}<br>
@@ -1472,15 +1608,35 @@ body.dark-theme .gynow-av{background:#2f3336;color:#e7e9ea;}
 
           <div style="margin-top:16px;"><b style="font-size:13.5px;">🔌 现在开着的自动功能（${autoOn.length}）</b>
             <div class="gynow-hint">这些是<b>不用你点、自己会去调 API</b> 的。</div>
-            ${autoOn.length ? autoOn.map(f => `<div style="font-size:13px;padding:5px 0;border-bottom:1px dashed rgba(128,128,128,.2);">
-                <b>${esc(f.label)}</b><br><span style="font-size:11.5px;color:#8b98a5;">💰 ${esc(f.cost || '')}</span></div>`).join('')
+            <div class="gynow-hint" style="margin-top:2px;">每一条都能点，点了直接跳到那个开关。</div>
+            ${autoOn.length ? autoOn.map(f => `<div class="gynow-jump" onclick="gynowJump('${f.key}')">
+                <b>${esc(f.label)}</b> <span style="color:#1d9bf0;font-size:11px;">去看看 ›</span>
+                <br><span style="font-size:11.5px;color:#8b98a5;">💰 ${esc(f.cost || '')}</span></div>`).join('')
               : '<div class="gynow-hint">一个都没开——那就完全不会有后台自动花钱的事。</div>'}
           </div>
 
           <div style="margin-top:16px;"><b style="font-size:13.5px;">😴 关着的（${autoOff.length}）</b>
-            <div class="gynow-hint" style="margin-top:6px;">${autoOff.map(f => esc(f.label)).join('　·　') || '（全开着）'}</div>
+            <div class="gynow-hint" style="margin-top:6px;">点一下就能去打开。</div>
+            <div style="margin-top:4px;">${autoOff.map(f =>
+                `<span class="gynow-chip" onclick="gynowJump('${f.key}')">${esc(f.label)}</span>`).join('') || '<span class="gynow-hint">（全开着）</span>'}</div>
           </div>`;
     }
+
+    // 点开关名字跳到「设置 → 自动功能开关」并把那一行高亮出来
+    window.gynowJump = function (key) {
+        try { gynowClose(); } catch (e) {}
+        if (typeof gyJumpToSwitch === 'function') gyJumpToSwitch(key);
+    };
+
+    const nowJumpCss = document.createElement('style');
+    nowJumpCss.textContent = `
+      .gynow-jump { font-size:13px; padding:7px 8px; margin:2px -8px; border-radius:8px; cursor:pointer;
+        border-bottom:1px dashed rgba(128,128,128,.2); }
+      .gynow-jump:hover { background:rgba(29,155,240,.1); }
+      .gynow-chip { display:inline-block; font-size:12px; padding:4px 10px; margin:3px 4px 3px 0;
+        border:1px solid #cfd9de; border-radius:999px; cursor:pointer; color:#536471; }
+      .gynow-chip:hover { border-color:#1d9bf0; color:#1d9bf0; background:rgba(29,155,240,.08); }`;
+    document.head.appendChild(nowJumpCss);
 
     // ---------- 入口 ----------
     function addEntries() {

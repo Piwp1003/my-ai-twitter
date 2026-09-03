@@ -1289,8 +1289,15 @@ function generatePostHTML(posts) {
     }).join('');
 }
 
-function addNotification(text, postId, chatCharId, char, desc) {
-globalNotifications.unshift({ text, postId, chatCharId, timestamp: Date.now() });
+// opts（可选）：{ view:'mall' }  → 点通知切到那一页
+//               { feature:'gossip' } → 点通知打开那个小功能页（js/27）
+//               { param:'xxx' }      → 跟着 view 一起传给 switchMainView
+// 加这个是因为以前通知只认两种跳转：私聊 和 帖子详情。像"快递到了""TA 说了句话"
+// 这种来自小功能的通知点了没反应，只能自己去翻——等于通知只是个已读回执。
+function addNotification(text, postId, chatCharId, char, desc, opts) {
+const o = opts || {};
+globalNotifications.unshift({ text, postId, chatCharId, timestamp: Date.now(),
+    view: o.view || null, param: o.param || null, feature: o.feature || null });
 unreadNotifs++;
 if (typeof updateNotifBadge === 'function') updateNotifBadge();
 let avatarHtml = getAvatarHTML(char, 40);
@@ -1321,9 +1328,11 @@ container.innerHTML = globalNotifications.map(n => {
     let actionAttr = '';
     if (n.chatCharId) actionAttr = `onclick="switchMainView('chat'); switchChatSession('${n.chatCharId}')"`;
     else if (n.postId) actionAttr = `onclick="switchMainView('postDetail', '${n.postId}')"`;
+    else if (n.feature) actionAttr = `onclick="gyOpenFeaturePage('${n.feature}')"`;
+    else if (n.view) actionAttr = `onclick="switchMainView('${n.view}'${n.param ? ", '" + n.param + "'" : ''})"`;
     
     return `
-    <div class="notification-item" ${actionAttr}>
+    <div class="notification-item${actionAttr ? ' notif-jump' : ''}" ${actionAttr}>
         <div style="flex-grow:1;">
             <div style="font-size:15px; color:#0f1419; margin-bottom:4px;">${n.text}</div>
             <div style="font-size:13px; color:#536471;" class="time-updater" data-timestamp="${n.timestamp}">${timeAgo(n.timestamp)}</div>

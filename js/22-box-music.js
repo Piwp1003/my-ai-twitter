@@ -1809,11 +1809,30 @@ ${chatSoFar()}
     };
 
     // 邀请 / 退出
-    window.gymToggleListener = function (id) {
+    window.gymToggleListener = async function (id) {
         const L = LS();
         id = String(id);
-        if (L.chars.includes(id)) L.chars = L.chars.filter(x => x !== id);
-        else L.chars.push(id);
+        if (L.chars.includes(id)) {                       // 已经在听了 → 请 TA 走，不用问
+            L.chars = L.chars.filter(x => x !== id);
+            save(); renderMgr(); paint();
+            return;
+        }
+        // 📨 邀请走私聊（js/28）：以前点一下人就直接进来了，TA 没有拒绝的余地，
+        //    聊天记录里也看不出"你叫过 TA 一起听歌"。
+        const c = (typeof myCharacters !== 'undefined' ? myCharacters : []).find(x => String(x.id) === id);
+        if (c && typeof window.gyInviteAsk === 'function') {
+            const song = cur();   // 模块里现成的「当前这首」，别再自己造一个 curSong
+            const ask = `${(typeof userDisplayName === 'function') ? userDisplayName(c) : '对方'}想叫你一起听歌`
+                + (song ? `，正在放的是《${song.title || '一首歌'}》${song.artist ? '（' + song.artist + '）' : ''}` : '')
+                + `。\n按你自己的性格决定听不听——在忙、没心情、不喜欢这类歌，都可以直接拒绝。\n`
+                + `只输出 JSON，不要 markdown：{"ok": true或false, "line": "你要说的一句话，30字以内"}`;
+            const r = await window.gyInviteAsk(c, ask, true);
+            const line = r.line || (r.ok ? '好啊。' : '这会儿不太想听。');
+            window.gyInviteInChat && window.gyInviteInChat({ char: c, what: '一起听歌',
+                myText: '[一起听] 要不要一起听会儿歌？', reply: line, ok: r.ok });
+            if (!r.ok) { renderMgr(); return; }
+        }
+        L.chars.push(id);
         save(); renderMgr(); paint();
     };
     window.gymLeaveListen = async function () {
