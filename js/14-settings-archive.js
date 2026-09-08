@@ -94,11 +94,13 @@ function addTheaterLog(entry) {
     if (keep > 0) { while (globalTheaterLogs.length > keep) globalTheaterLogs.shift(); }
 }
 
-// 真正跑一场。manual=true 是用户在页面上点「现在演一场」，会跳过概率抽签、也不受开关限制。
+// 真正跑一场。manual=true 是用户在页面上点「现在演一场」。
+// 🔌 开关只管**自动**那一路。以前手动点也要先去把开关打开，理由是"别绕过开关偷偷花钱"——
+//    但手动点本来就是你自己按的，钱是你主动花的，不存在"偷偷"。结果就是每次想看一场
+//    都得先跑去设置里开开关、看完再回去关掉，纯粹添堵。全 app 统一成一条规矩：
+//    **点了就生成，开关只决定它会不会自己发生。**
 async function runTheaterScene(manual) {
-    // 🔌 这个功能**默认是关的**：不主动打开开关，它一次 API 都不会调。
-    // 手动点「现在演一场」也一样要先打开——不然等于绕过开关偷偷花钱，那正是这个开关要防的事。
-    if (typeof isAutoOn === 'function' && !isAutoOn('charTheater')) return { blocked: 'switch' };
+    if (!manual && typeof isAutoOn === 'function' && !isAutoOn('charTheater')) return { blocked: 'switch' };
     if (!isGlobalCharInteractionEnabled()) return { blocked: 'interaction' };
     if (!manual) {
         if (Math.random() > 0.3) return null;   // 低概率触发，避免太频繁显得不真实
@@ -445,10 +447,10 @@ function gyAutonomyLog(char, entry) {
 }
 
 // 核心：让一个角色自己拿一次主意
-// manual=true 是用户在界面上手动点的（跳过随机概率，但开关照样拦）
+// manual=true 是用户在界面上手动点的：跳过随机概率，**也不受开关限制**（同上，点了就跑）
 async function runAutonomyTurn(char, manual) {
     if (!char) return { blocked: 'nochar' };
-    if (typeof isAutoOn === 'function' && !isAutoOn('charAutonomy')) return { blocked: 'switch' };
+    if (!manual && typeof isAutoOn === 'function' && !isAutoOn('charAutonomy')) return { blocked: 'switch' };
     if (getCharActMode(char) !== 'auto') return { blocked: 'mode' };
     if (typeof isInQuietHours === 'function' && isInQuietHours() && !manual) return { blocked: 'quiet' };
     const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;

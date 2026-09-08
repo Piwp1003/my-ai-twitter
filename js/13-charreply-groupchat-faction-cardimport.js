@@ -9,6 +9,7 @@ window.showReplyContextMenu = function(e, postId, replyIdx) {
     const menu = document.getElementById('chatContextMenu');
     menu.innerHTML = `
         <button class="context-btn" onclick="openCustomCharReplyModal()">滴滴代打</button>
+        <button class="context-btn" onclick="contextActionEditReply()">✏️ 修改评论</button>
         <button class="context-btn" style="color:#f91880;" onclick="contextActionDeleteReply()">🗑️ 删除评论</button>
     `;
     menu.style.display = 'flex'; 
@@ -26,7 +27,7 @@ window.showForumReplyContextMenu = function(e, threadId, floor) {
     replyContextMenuTarget = { threadId: threadId, floor: floor, type: 'forum' };
     const menu = document.getElementById('chatContextMenu');
     const deleteLabel = floor === 1 ? '🗑️ 删除整个帖子' : '🗑️ 删除该楼层';
-    menu.innerHTML = `<button class="context-btn" onclick="openCustomCharReplyModal()">滴滴代打</button><button class="context-btn" style="color:#f91880;" onclick="contextActionDeleteReply()">${deleteLabel}</button>`;
+    menu.innerHTML = `<button class="context-btn" onclick="openCustomCharReplyModal()">滴滴代打</button><button class="context-btn" onclick="contextActionEditReply()">✏️ 修改内容</button><button class="context-btn" style="color:#f91880;" onclick="contextActionDeleteReply()">${deleteLabel}</button>`;
     menu.style.display = 'flex';
     let x = e.pageX, y = e.pageY; 
     if(x + 150 > window.innerWidth) x -= 150; 
@@ -39,7 +40,8 @@ window.showAnonReplyContextMenu = function(e, postId, replyIdx) {
     e.preventDefault(); e.stopPropagation();
     replyContextMenuTarget = { postId: postId, replyIdx: replyIdx, type: 'anon' };
     const menu = document.getElementById('chatContextMenu');
-    menu.innerHTML = `<button class="context-btn" onclick="openCustomCharReplyModal()">滴滴代打</button>`;
+    // 匿名论坛的评论以前右键只有"滴滴代打"——改不了也删不了。补上。
+    menu.innerHTML = `<button class="context-btn" onclick="openCustomCharReplyModal()">滴滴代打</button><button class="context-btn" onclick="contextActionEditReply()">✏️ 修改评论</button><button class="context-btn" style="color:#f91880;" onclick="contextActionDeleteReply()">🗑️ 删除评论</button>`;
     menu.style.display = 'flex';
     let x = e.pageX, y = e.pageY; 
     if(x + 150 > window.innerWidth) x -= 150; 

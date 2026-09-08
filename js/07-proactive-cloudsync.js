@@ -216,7 +216,19 @@ async function syncStateToCloud(force = false) {
             body: JSON.stringify({ apiUrl: api.url, apiKey: api.key, model: api.model, ntfyTopic, characters, relationships, charInteractionEnabled, charInteractionNotify, quietHoursEnabled, quietHoursStart, quietHoursEnd, tzOffsetMin: new Date().getTimezoneOffset() }),
         });
     } catch (e) {
-        console.error('同步到云端失败：', e);
+        // ⚠️ 别用 console.error：云同步是**每次切页都会跑**的后台任务，Worker 没起来/地址填错时
+        //    它每次都失败，日志里会刷出几十条红字，把真正要看的错误全冲走了
+        //    （你贴的那条 "Failed to fetch" 就是这么来的）。
+        //    改成：同一个原因只提醒一次，之后只在控制台留一行灰字。
+        const why = String((e && e.message) || e);
+        if (window.__gyCloudLastErr !== why) {
+            window.__gyCloudLastErr = why;
+            console.warn('[云同步] 连不上，之后同样的错误不再重复打印：', why,
+                '\n（这不影响本地使用；不需要云同步的话去 设置 → ☁️ 云同步 关掉它。）');
+            if (typeof showToast === 'function') {
+                showToast('', '☁️ 云同步连不上', '不影响本地使用。不用的话可以在设置里关掉。', null, null, false);
+            }
+        }
     }
 }
 

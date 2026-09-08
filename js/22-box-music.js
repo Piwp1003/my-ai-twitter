@@ -680,6 +680,7 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
               <button class="gym-tab" id="gymTab-lib" onclick="gymTab('lib')">曲库 / 添加</button>
               <button class="gym-tab" id="gymTab-skin" onclick="gymTab('skin')">皮肤 / 歌词</button>
               <button class="gym-tab" id="gymTab-listen" onclick="gymTab('listen')">🎧 一起听</button>
+              <button class="gym-tab" id="gymTab-toggle" onclick="gymTogglePlayer()" title="播放器悬浮窗显示/收起">🎚️ 播放器</button>
             </div>
             <div class="gym-mgr-bd" id="gymMgrBody"></div></div>`;
         mgr.addEventListener('click', e => { if (e.target === mgr) gymCloseMgr(); });
@@ -1147,8 +1148,14 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         S.lyrCollapsed = !S.lyrCollapsed;
         paintLyr(); save();
     };
-    window.gymHide = function () { S.hidden = true; document.getElementById('gymRoot').style.display = 'none'; save(); toast('播放器收起来了', '想再打开：设置页目录里的「🎵 音乐盒」。'); };
+    window.gymHide = function () { S.hidden = true; document.getElementById('gymRoot').style.display = 'none'; save(); toast('播放器收起来了', '想再打开：设置 → 🧩 小功能 → 音乐盒（进去就会自动放出来），或者那一页顶上的「🎚️ 播放器」。'); };
     window.gymShow = function () { S.hidden = false; const r = document.getElementById('gymRoot'); if (r) r.style.display = 'block'; save(); };
+    // 悬浮播放器的显示/收起。收起之后一定要有地方能放回来，否则就是"再也打不开"。
+    window.gymTogglePlayer = function () {
+        if (S.hidden) { gymShow(); toast('播放器出来了', '右下角那个就是。'); }
+        else { gymHide(); }
+        try { renderMgr(); } catch (e) {}
+    };
     window.gymOpenMgr = function () { document.getElementById('gymMgr').classList.add('on'); renderMgr(); };
     window.gymCloseMgr = function () { document.getElementById('gymMgr').classList.remove('on'); editingId = null; };
     window.gymSetLoop = function (m) { S.loop = m; paint(); renderMgr(); save(); };
@@ -1817,24 +1824,30 @@ ${chatSoFar()}
             save(); renderMgr(); paint();
             return;
         }
-        // 📨 邀请走私聊（js/28）：以前点一下人就直接进来了，TA 没有拒绝的余地，
-        //    聊天记录里也看不出"你叫过 TA 一起听歌"。
+        // 📨 邀请发成私聊里的一张卡（js/28）：以前点一下人就直接进来了，
+        //    TA 没有拒绝的余地，聊天记录里也看不出"你叫过 TA 一起听歌"。
         const c = (typeof myCharacters !== 'undefined' ? myCharacters : []).find(x => String(x.id) === id);
-        if (c && typeof window.gyInviteAsk === 'function') {
-            const song = cur();   // 模块里现成的「当前这首」，别再自己造一个 curSong
-            const ask = `${(typeof userDisplayName === 'function') ? userDisplayName(c) : '对方'}想叫你一起听歌`
-                + (song ? `，正在放的是《${song.title || '一首歌'}》${song.artist ? '（' + song.artist + '）' : ''}` : '')
-                + `。\n按你自己的性格决定听不听——在忙、没心情、不喜欢这类歌，都可以直接拒绝。\n`
-                + `只输出 JSON，不要 markdown：{"ok": true或false, "line": "你要说的一句话，30字以内"}`;
-            const r = await window.gyInviteAsk(c, ask, true);
-            const line = r.line || (r.ok ? '好啊。' : '这会儿不太想听。');
-            window.gyInviteInChat && window.gyInviteInChat({ char: c, what: '一起听歌',
-                myText: '[一起听] 要不要一起听会儿歌？', reply: line, ok: r.ok });
-            if (!r.ok) { renderMgr(); return; }
+        if (c && typeof window.gyInviteSend === 'function') {
+            const song = cur();
+            await window.gyInviteSend({
+                char: c, kind: 'music',
+                title: song ? (song.title || '一首歌') : '',
+                sub: song && song.artist ? song.artist : '',
+                onYes: () => { if (!LS().chars.includes(id)) LS().chars.push(id); save(); renderMgr(); paint(); },
+                onNo: () => { renderMgr(); }
+            });
+            return;
         }
         L.chars.push(id);
         save(); renderMgr(); paint();
     };
+    // 给邀请卡片的「去听 ›」用：直接把人加进来（这时候已经答应过了，不用再问一遍）
+    window.gymJoinListener = function (id) {
+        const L = LS(); id = String(id);
+        if (!L.chars.includes(id)) L.chars.push(id);
+        save(); renderMgr(); paint();
+    };
+
     window.gymLeaveListen = async function () {
         if (charsIn().length && (S.chat || []).length >= 4) await summarizeListen(false);
         LS().chars = []; S.chat = [];

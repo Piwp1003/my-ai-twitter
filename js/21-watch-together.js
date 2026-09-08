@@ -1116,6 +1116,10 @@ ${hist}
       <div class="modal-box" style="width:430px;">
         <h2>⚙️ 一起看的设置</h2>
         <div class="fb-modal-body">
+          ${(typeof gyReqBox === 'function') ? gyReqBox([{ api: true },
+              { ok: (S.watch.chars || []).length > 0, text: '还没邀请任何角色一起看', jump: 'fbOpenWatchers()', go: '去邀请' },
+              { ok: !!curFilm(), text: '还没打开片子', jump: 'fbPickVideo()', go: '去选片' }
+          ], { title: 'TA 要开口说话，得先满足这些' }) : ''}
           <div class="fb-field">皮肤</div>
           <div>${SKINS.map(s => `<span class="fb-chip ${S.skin === s.k ? 'on' : ''}" onclick="fbSetSkin('${s.k}')" title="${esc(s.desc)}">${s.name}</span>`).join('')}</div>
 
@@ -1219,6 +1223,30 @@ ${hist}
     const already = (S.watch.chars || []).map(String).includes(String(id));
     if (already) return fbToggleWatcher(id, false);   // 已经在看了就是"请TA走"
     const f = curFilm();
+
+    // 📨 v105：邀请发成私聊里的一张卡（js/28），不再是后台偷偷问一句 + 一个八秒就没的 toast。
+    //    答应了卡片直接变成"进放映厅"的入口，拒绝了卡片上留着 TA 那句话。
+    if (typeof window.gyInviteSend === 'function') {
+      await window.gyInviteSend({
+        char: c, kind: 'film',
+        title: f ? f.title : '',
+        sub: tasteOf(c) ? '' : '',
+        ask: `对方想邀请你一起看${f ? `《${f.title}》` : '一部电影'}。
+${tasteOf(c)}
+按你的人设决定答不答应——不想看、没心情、正忙都可以拒绝，不用勉强自己。
+只输出严格 JSON，不要 markdown：{"ok": true或false, "line": "你的回答，一句话，不超过30字"}`,
+        onYes: (r) => {
+          fbToggleWatcher(id, true);
+          if (f) { if (!f.chat) f.chat = []; f.chat.push({ who: 'char', name: c.name, text: r.line || '好啊。', at: Date.now(), atSec: video ? video.currentTime : 0 }); }
+          save(); renderChat();
+          if (document.getElementById('fbWatchersModal')) fbOpenWatchers();
+        },
+        onNo: () => { if (document.getElementById('fbWatchersModal')) fbOpenWatchers(); }
+      });
+      return;
+    }
+
+    // 兜底：js/28 没加载时还按老路走
     toast('问问 TA…', `看看${c.name}想不想一起看`);
     const ask = `对方想邀请你一起看${f ? `《${f.title}》` : '一部电影'}。
 ${tasteOf(c)}
@@ -1226,24 +1254,15 @@ ${tasteOf(c)}
 只输出严格 JSON，不要 markdown：{"yes": true或false, "text": "你的回答，一句话，不超过30字"}`;
     const raw = await askChar(c, ask);
     const p = (typeof extractJsonObject === 'function') ? extractJsonObject(raw) : null;
-    const yes = p ? !!p.yes : true;          // 拿不到就当答应，别卡住用户
+    const yes = p ? !!p.yes : true;
     const line = (p && p.text) || (yes ? '好啊。' : '现在不太想看。');
     if (yes) {
       fbToggleWatcher(id, true);
       if (f) { if (!f.chat) f.chat = []; f.chat.push({ who: 'char', name: c.name, text: line, at: Date.now(), atSec: video ? video.currentTime : 0 }); }
       await save(); renderChat();
       toast(c.name + ' 来了', line);
-    } else {
-      toast(c.name + ' 这次不看', line);
-    }
+    } else { toast(c.name + ' 这次不看', line); }
     if (document.getElementById('fbWatchersModal')) fbOpenWatchers();
-    // 📨 这一来一回写进私聊（js/28）。以前只有一个八秒就没的 toast，
-    //    聊天记录里翻不到"你约过 TA 看片子"这件事，TA 下次也想不起来。
-    if (typeof window.gyInviteInChat === 'function') {
-      window.gyInviteInChat({ char: c, what: '一起看电影',
-        myText: `[一起看] 要不要一起看${f ? `《${f.title}》` : '部电影'}？`,
-        reply: line, ok: yes });
-    }
   };
 
   // —— 结束这次一起看（先存进记忆）——

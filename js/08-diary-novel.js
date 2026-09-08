@@ -100,7 +100,7 @@ function clearDiaryTxtUpload() {
 }
 
 async function generateDiaryContent() {
-    const api = getApiConfig(true); 
+    const api = getApiMain(); 
     if(!api.key) return alert("请先在设置中配置 API Key！");
     const char = myCharacters.find(c => c.id == currentDiaryCharId); if(!char) return;
     
@@ -219,7 +219,7 @@ function buildLetterThreadContext(char, maxLetters = 12) {
 // 抽取"发个请求、期待AI返回{title,content}这种JSON"的公共逻辑，信件的三种生成路径
 // （用户手动点"好想对你说"、角色主动写信、角色回信）都共用这一份，避免每处都重复一遍解析/正则烘焙的代码。
 async function generateTitledLetterContent(systemText, userText, charIdForRegex) {
-    const api = getApiConfig(true);
+    const api = getApiMain();
     if (!api.key) return null;
     let prompt = buildStructuredMessages(systemText, [], userText);
     let data = await callChatCompletionAPI(api, prompt);
@@ -340,7 +340,7 @@ function sendUserLetter() {
 let isResolvingLetterReplies = false;
 async function resolveDueLetterReplies() {
     if (isResolvingLetterReplies) return;
-    const api = getApiConfig(true);
+    const api = getApiMain();
     if (!api.key) return;
     const now = Date.now();
     let dueList = [];
@@ -516,7 +516,7 @@ async function resolveDueDiaryReactions() {
     //    关掉之后日记照写、角色照挂，只是不会自动来看——章节页/日记页上的
     //    「立即回复」按钮不受影响，那是你主动点的。
     if (typeof isAutoOn === 'function' && !isAutoOn('diaryReaction')) return;
-    const api = getApiConfig(true);
+    const api = getApiMain();
     if (!api.key) return;
     const now = Date.now();
     let dueList = [];
@@ -567,7 +567,7 @@ async function regenerateDiaryReaction(entryId, charId) {
 async function resolveDiaryReaction(entry, reaction) {
     const char = myCharacters.find(c => c.id == reaction.charId);
     if (!char) { reaction.status = 'not_peeked'; reaction.resultText = ''; reaction.resolvedAt = Date.now(); return; }
-    const api = getApiConfig(true);
+    const api = getApiMain();
     if (!api.key) return; // 留在pending里，下次再重试
     const isInvite = entry.mode === 'invite';
 
@@ -647,6 +647,97 @@ function saveNovelCSS() {
     applyNovelCSS();
     saveAllData();
     closeModal('novelCSSModal');
+}
+
+// ===================== 📥 导入本地 txt 存成故事 =====================
+// 自己写的、别处存的稿子，导进来就能当一本故事：可以接着往下生成、可以让角色点评、
+// 可以在阅读器里看。拆章优先按"第X章/第X节/Chapter N"这类标题，认不出来就按长度切。
+function gyNovelImportPick() {
+    if (typeof openFilePickerForApp === 'function') openFilePickerForApp('novelTxtInput');
+    else { const i = document.getElementById('novelTxtInput'); if (i) i.click(); }
+}
+
+function gySplitNovelText(raw) {
+    const text = String(raw || '').replace(/\r\n?/g, '\n').trim();
+    if (!text) return [];
+    // ① 先试标题行：整行就是"第一章 xxx""第1节""Chapter 3""序章""楔子"这类
+    const lines = text.split('\n');
+    const isTitle = l => {
+        const t = l.trim();
+        if (!t || t.length > 30) return false;
+        return /^(第\s*[0-9零一二三四五六七八九十百千两]+\s*[章节回卷篇](\s|$|[:：、·．.])|序章|楔子|尾声|后记|番外|终章|Chapter\s*\d+|CHAPTER\s*\d+)/.test(t);
+    };
+    const idx = [];
+    lines.forEach((l, i) => { if (isTitle(l)) idx.push(i); });
+    if (idx.length >= 2) {
+        const out = [];
+        // 第一个标题之前的内容（前言）也留着，不然会凭空丢掉一段
+        if (idx[0] > 0) {
+            const head = lines.slice(0, idx[0]).join('\n').trim();
+            if (head) out.push(head);
+        }
+        idx.forEach((start, k) => {
+            const end = (k + 1 < idx.length) ? idx[k + 1] : lines.length;
+            const body = lines.slice(start, end).join('\n').trim();
+            if (body) out.push(body);
+        });
+        return out;
+    }
+    // ② 认不出标题就按长度切，尽量切在空行/句号上，不要把一句话劈两半
+    const SIZE = 3000;
+    if (text.length <= SIZE) return [text];
+    const out = [];
+    let i = 0;
+    while (i < text.length) {
+        let end = Math.min(text.length, i + SIZE);
+        if (end < text.length) {
+            const win = text.slice(i, end);
+            const cut = Math.max(win.lastIndexOf('\n\n'), win.lastIndexOf('。'), win.lastIndexOf('\n'));
+            if (cut > SIZE * 0.5) end = i + cut + 1;
+        }
+        const piece = text.slice(i, end).trim();
+        if (piece) out.push(piece);
+        i = end;
+    }
+    return out;
+}
+
+async function gyNovelImportTxt(ev) {
+    const input = ev && ev.target;
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+    try {
+        const raw = await new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(String(r.result || ''));
+            r.onerror = () => rej(new Error('文件读不出来'));
+            r.readAsText(file, 'utf-8');
+        });
+        const parts = gySplitNovelText(raw);
+        if (!parts.length) { appAlert('这个文件是空的，或者读出来没有内容。'); return; }
+        const title = String(file.name || '导入的故事').replace(/\.txt$/i, '').slice(0, 40) || '导入的故事';
+        const now = Date.now();
+        const novel = {
+            id: 'n_' + now,
+            title,
+            outline: '（从本地 txt 导入，' + parts.length + ' 个部分，共 ' + raw.length + ' 字）',
+            chars: [], worldbooks: [], targetWordCount: 1000, secondPerson: true, __ssMigrated: true,
+            imported: true,
+            chapters: parts.map((c, i) => ({
+                id: 'c_' + now + '_' + i, index: i + 1, content: c,
+                timestamp: now + i, imported: true, chars: []
+            }))
+        };
+        globalNovels.unshift(novel);
+        saveAllData();
+        if (typeof renderNovelList === 'function') renderNovelList();
+        appAlert(`已经导入《${title}》，拆成了 ${parts.length} 个部分。\n\n打开它可以接着往下生成、也可以勾上角色让 TA 们点评。`);
+        openNovelDetail(novel.id);
+    } catch (e) {
+        appAlert('导入失败：' + (e.message || e));
+    } finally {
+        if (input) input.value = '';   // 清掉，不然同一个文件选第二次不触发 change
+    }
 }
 
 function openCreateNovelView() {
@@ -769,7 +860,7 @@ function importNovelOutline(event) {
 }
 
 async function generateNovelChapter(isRegenerate = false) {
-    const api = getApiConfig(true); 
+    const api = getApiMain(); 
     if(!api.key) return alert("请先在设置中配置 API Key (主API或副API)！");
     
     const btn = document.getElementById('btnGenNovelChapter');
@@ -878,6 +969,11 @@ ${getFinalAnswerMarkerPromptNote()}`;
                 timestamp: Date.now(),
                 genTimeMs: Date.now() - genStartTime,
                 charId: chapterCharId,
+                // ⚠️ 这一章**当时**勾了哪些角色，记在章节自己身上。
+                //    以前点评是读 novel.chars——那是"保存设置"时才写的，跟你这次生成勾的可能
+                //    完全是两拨人，于是出现"没勾的人跑来点评了"。生成时用的是 selChars，
+                //    这里就存 selChars，两边永远对得上。
+                chars: selChars.slice(),
                 reasoningHtml: reasoningHtml,
                 mvuSnapshot: mvuResult.snapshot,
                 recallHtml: recallResult.recallHtml
@@ -933,26 +1029,47 @@ function keepNovelChapter() {
 //   · 点评存在 chapter.reviews 里，跟着章节一起显示，也会在下一章的 prompt 里当上下文
 // 🔌 开关：novelReview（默认关，不打开一次 API 都不会调）
 // 💰 一章 × 参与角色数 次调用，所以还有一个"最多几个人点评"的上限（novelReviewMax，默认 3）
-async function runNovelReviews(novel, chapIdx, manual) {
+// 谁参与了这一章：优先用章节自己记的（生成时勾的那批），老章节退回小说的设置
+function novelChapterCharIds(novel, chap) {
+    const raw = (chap && Array.isArray(chap.chars) && chap.chars.length) ? chap.chars : (novel.chars || []);
+    return raw.filter(id => String(id) !== 'me')
+              .filter(id => (typeof myCharacters !== 'undefined' ? myCharacters : []).some(c => String(c.id) === String(id)));
+}
+
+const novelReviewPending = {};   // { 章节序号: [{charId,name}] } —— 正在说的人，用来画那个转圈占位
+async function runNovelReviews(novel, chapIdx, manual, onlyIds) {
     if (!novel || !novel.chapters || !novel.chapters[chapIdx]) return;
     if (!manual && typeof isAutoOn === 'function' && !isAutoOn('novelReview')) return;
     const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
-    if (!api || !api.key) return;
+    if (!api || !api.key) { if (typeof appAlert === 'function') appAlert('还没配 API Key。'); return; }
     const chap = novel.chapters[chapIdx];
     const max = Math.max(1, Math.min(8, parseInt(typeof novelReviewMax !== 'undefined' ? novelReviewMax : 3) || 3));
-    const ids = (novel.chars || []).filter(id => id !== 'me').slice(0, max);
-    if (!ids.length) return;
+    let ids = Array.isArray(onlyIds) && onlyIds.length ? onlyIds.slice() : novelChapterCharIds(novel, chap);
+    chap.reviews = Array.isArray(chap.reviews) ? chap.reviews : [];
+    ids = ids.filter(id => !chap.reviews.some(r => String(r.charId) === String(id)));   // 已经说过的不重复花钱
+    if (!onlyIds) ids = ids.slice(0, max);
+    if (!ids.length) {
+        if (manual && typeof appAlert === 'function') {
+            appAlert('这一章没有可以点评的人。\n\n要么参与这一章的角色都已经说过了，要么生成这一章时一个角色都没勾。');
+        }
+        return;
+    }
 
     // 上文：前面每一章的开头一段，够 TA 记得"故事到这儿之前发生了什么"
     const before = novel.chapters.slice(0, chapIdx).map((c, i) =>
         `第 ${i + 1} 章：${String(c.content || '').replace(/\s+/g, ' ').slice(0, 180)}…`).join('\n');
     const mine = String(chap.content || '').slice(0, 3000);
-    chap.reviews = Array.isArray(chap.reviews) ? chap.reviews : [];
+
+    // ⏳ 占位：不放个"正在说"的话，点完按钮页面一动不动，看着像没反应
+    novelReviewPending[chapIdx] = ids.map(id => {
+        const c = (typeof myCharacters !== 'undefined' ? myCharacters : []).find(x => String(x.id) === String(id));
+        return { charId: id, name: c ? c.name : '…' };
+    });
+    if (typeof renderNovelChapters === 'function') renderNovelChapters();
 
     for (const id of ids) {
-        const c = (typeof myCharacters !== 'undefined' ? myCharacters : []).find(x => String(x.id) == String(id));
+        const c = (typeof myCharacters !== 'undefined' ? myCharacters : []).find(x => String(x.id) === String(id));
         if (!c) continue;
-        if (chap.reviews.some(r => String(r.charId) === String(c.id))) continue;   // 已经点评过就不重复花钱
         try {
             const ask = `下面是《${novel.title || '这个故事'}》的第 ${chapIdx + 1} 章，你是里面的角色之一。
 ${before ? `【前面发生过什么】\n${before}\n` : ''}
@@ -970,20 +1087,79 @@ ${mine}
             if (typeof stripReasoningBlocks === 'function') t = stripReasoningBlocks(t);
             if (typeof applyRegexScripts === 'function') { try { t = applyRegexScripts(t, 'ai_output', c.id); } catch (e) {} }
             if (!t) continue;
-            chap.reviews.push({ charId: c.id, name: c.name, text: t.slice(0, 300), at: Date.now() });
+            chap.reviews.push({ id: 'rv_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+                                charId: c.id, name: c.name, text: t.slice(0, 300), at: Date.now() });
             if (typeof saveAllData === 'function') saveAllData();
-            if (typeof renderNovelChapters === 'function' && document.getElementById('novelChaptersContainer')) renderNovelChapters();
         } catch (e) { console.warn('[故事点评] ' + c.name + ' 没说成：', e); }
+        finally {
+            // 说完一个就把这个人的占位撤掉，剩下的继续转
+            novelReviewPending[chapIdx] = (novelReviewPending[chapIdx] || []).filter(x => String(x.charId) !== String(id));
+            if (typeof renderNovelChapters === 'function' && document.getElementById('novelChaptersContainer')) renderNovelChapters();
+        }
     }
+    delete novelReviewPending[chapIdx];
+    if (typeof renderNovelChapters === 'function' && document.getElementById('novelChaptersContainer')) renderNovelChapters();
     if (chap.reviews.length && typeof addNotification === 'function') {
         addNotification(`故事《${novel.title || '未命名'}》第 ${chapIdx + 1} 章，<b>${chap.reviews.length} 个人</b>说了点什么 💬`,
             null, null, null, chap.reviews[0].text, { view: 'novel' });
     }
 }
+
+// 点「💬 让 TA 们说说」：先挑人，再跑。默认勾的是这一章的参与者。
 window.gyNovelReviewNow = function (idx) {
     const novel = globalNovels.find(n => n.id === currentEditingNovelId);
-    if (!novel) return;
-    runNovelReviews(novel, idx, true);
+    if (!novel || !novel.chapters[idx]) return;
+    const chap = novel.chapters[idx];
+    const inChapter = novelChapterCharIds(novel, chap).map(String);
+    const said = new Set((chap.reviews || []).map(r => String(r.charId)));
+    const all = (typeof myCharacters !== 'undefined' ? myCharacters : []);
+    if (!all.length) { appAlert('还没有角色。'); return; }
+    const row = c => {
+        const id = String(c.id);
+        const done = said.has(id);
+        return `<label class="novel-rv-pick${done ? ' done' : ''}">
+            <input type="checkbox" class="novel-rv-check" value="${id}" ${(!done && inChapter.includes(id)) ? 'checked' : ''} ${done ? 'disabled' : ''}>
+            ${getAvatarHTML(c, 28)}<span>${escapeHtml(c.name)}</span>
+            <em>${done ? '已经说过了' : (inChapter.includes(id) ? '这一章里有 TA' : '没参与这一章')}</em>
+        </label>`;
+    };
+    const inList = all.filter(c => inChapter.includes(String(c.id)));
+    const outList = all.filter(c => !inChapter.includes(String(c.id)));
+    let m = document.getElementById('novelReviewPickModal');
+    if (!m) { m = document.createElement('div'); m.id = 'novelReviewPickModal'; m.className = 'modal-overlay'; document.body.appendChild(m); }
+    m.innerHTML = `<div class="modal-box" style="width:92%;max-width:400px;max-height:80vh;overflow-y:auto;">
+        <h3 style="margin:0 0 6px;">💬 让谁说说第 ${idx + 1} 章</h3>
+        <div class="form-hint" style="margin-bottom:10px;">默认勾的是<b>生成这一章时勾选的角色</b>。也可以叫没参与的人来说——TA 会当作"听说了这件事"。每个人一次调用。</div>
+        ${inList.length ? `<div class="novel-rv-group">参与了这一章</div>${inList.map(row).join('')}` : ''}
+        ${outList.length ? `<div class="novel-rv-group">其他角色</div>${outList.map(row).join('')}` : ''}
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+            <button class="btn-edit-small" onclick="document.getElementById('novelReviewPickModal').style.display='none'">取消</button>
+            <button class="btn-post" onclick="gyNovelReviewGo(${idx})">让 TA 们说</button>
+        </div></div>`;
+    m.style.display = 'flex';
+};
+window.gyNovelReviewGo = function (idx) {
+    const ids = [...document.querySelectorAll('#novelReviewPickModal .novel-rv-check:checked')].map(cb => cb.value);
+    document.getElementById('novelReviewPickModal').style.display = 'none';
+    if (!ids.length) { appAlert('一个人都没勾。'); return; }
+    const novel = globalNovels.find(n => n.id === currentEditingNovelId);
+    if (novel) runNovelReviews(novel, idx, true, ids);
+};
+
+// 删掉一条点评 / 清空这一章的点评
+window.gyNovelDelReview = async function (idx, rid) {
+    const novel = globalNovels.find(n => n.id === currentEditingNovelId);
+    if (!novel || !novel.chapters[idx]) return;
+    const chap = novel.chapters[idx];
+    chap.reviews = (chap.reviews || []).filter(r => (r.id || '') !== rid);
+    saveAllData(); renderNovelChapters();
+};
+window.gyNovelClearReviews = async function (idx) {
+    if (!(await appConfirm('把这一章的点评全部删掉？'))) return;
+    const novel = globalNovels.find(n => n.id === currentEditingNovelId);
+    if (!novel || !novel.chapters[idx]) return;
+    novel.chapters[idx].reviews = [];
+    saveAllData(); renderNovelChapters();
 };
 
 function discardNovelChapter() {
@@ -1027,10 +1203,13 @@ function renderNovelChapters() {
             </div>
             <div style="font-size:15px; color:#536471; margin-bottom:10px;">生成于 ${new Date(chap.timestamp).toLocaleString()} · 共 ${chap.content.length} 字${(typeof showNovelThinkingTime !== 'undefined' && showNovelThinkingTime && chap.genTimeMs) ? ` · 🕐 耗时 ${(chap.genTimeMs / 1000).toFixed(1)}s` : ''}</div>
             <div style="font-size:15px; line-height:1.8; white-space:pre-wrap; max-height:200px; overflow-y:auto; padding-right:10px; background:#f7f9f9; padding:15px; border-radius:8px;">${chap.reasoningHtml || ''}${chap.mvuSnapshot ? renderMvuStatusBarHtml(chap.mvuSnapshot) : ''}${chap.recallHtml || ''}${namespaceInjectedIds(renderMarkdownLite(chap.content, chap.charId || fallbackCharId, novel.chapters.length - 1 - idx), chap.id || ('c_idx_' + idx))}</div>
-            ${(Array.isArray(chap.reviews) && chap.reviews.length) ? `
+            ${((Array.isArray(chap.reviews) && chap.reviews.length) || (novelReviewPending[idx] || []).length) ? `
             <div class="novel-reviews">
-                <div class="novel-reviews-hd">💬 他们读完之后</div>
-                ${chap.reviews.map(r => `<div class="novel-review"><b>${escapeHtml(r.name || '')}</b><span>${escapeHtml(r.text || '')}</span></div>`).join('')}
+                <div class="novel-reviews-hd">💬 他们读完之后
+                    ${(chap.reviews || []).length ? `<span class="novel-review-clear" onclick="gyNovelClearReviews(${idx})">清空</span>` : ''}
+                </div>
+                ${(chap.reviews || []).map(r => `<div class="novel-review"><b>${escapeHtml(r.name || '')}</b><span>${escapeHtml(r.text || '')}</span><i class="novel-review-del" onclick="gyNovelDelReview(${idx},'${r.id || ''}')">删</i></div>`).join('')}
+                ${(novelReviewPending[idx] || []).map(p => `<div class="novel-review pending"><b>${escapeHtml(p.name)}</b><span><span class="novel-review-dots"><i></i><i></i><i></i></span> 正在说…</span></div>`).join('')}
             </div>` : ''}
         </div>
     `).join('');
@@ -1195,22 +1374,69 @@ function renderProfileFeed() {
     }
 }
 
+// ===== 「关注」页（v108，照 X 的名单排法重做）=====
+// 两个页签：我关注的 / 为你推荐（还没关注的）。
+// 一行一个人：头像 · 名字（＋蓝V＋星标）· @账号 · 右边关注键，简介在下面单独一行、
+// 跟名字左对齐。以前是横着滚的一排卡片，一屏看不见几个人，简介也没地方放。
+let followTab = 'mine';
+function setFollowTab(t) {
+    followTab = (t === 'sug') ? 'sug' : 'mine';
+    const a = document.getElementById('flTabMine'), b = document.getElementById('flTabSug');
+    if (a) a.className = 'fl-tab' + (followTab === 'mine' ? ' on' : '');
+    if (b) b.className = 'fl-tab' + (followTab === 'sug' ? ' on' : '');
+    renderFollowingList();
+}
+// 简介优先用 bio；没写 bio 就从人设里截一段——总比一片空白强
+function followBioText(char) {
+    let t = (char.bio || '').trim();
+    if (!t) t = (char.persona || '').replace(/\s+/g, ' ').trim().slice(0, 90);
+    return t;
+}
 function renderFollowingList() {
     const container = document.getElementById('followingListContainer');
-    if (!container) return; // 防御：如果这个容器元素因为其它原因暂时不存在，直接跳过而不是抛错卡住整个渲染流程
-    let follows = (myCharacters || []).filter(c => c && c.isFollowing).sort((a, b) => (b.isSpecialFollow ? 1 : 0) - (a.isSpecialFollow ? 1 : 0));
-    if (follows.length === 0) { container.innerHTML = `<div class=\"empty-state\">您还没有关注任何人哦。</div>`; return; }
-    // 防御：单个角色数据异常（比如头像字段损坏）导致 map() 抛错时，之前会让 innerHTML 整体不更新，
-    // 页面看起来就是"关注列表卡在旧数据不刷新"——改成逐条渲染，单条出错就跳过那一条，不影响其它人正常显示。
-    const cardsHtml = follows.map(char => {
+    if (!container) return; // 防御：容器暂时不在就跳过，别抛错卡住整个渲染
+    const all = (myCharacters || []).filter(c => c && c.id && c.id !== 'me');
+    let list;
+    if (followTab === 'sug') {
+        list = all.filter(c => !c.isFollowing);
+        if (list.length === 0) {
+            container.innerHTML = `<div class="empty-state">没有可推荐的了——角色中心里的人你都关注过了。</div>`;
+            return;
+        }
+    } else {
+        list = all.filter(c => c.isFollowing)
+                  .sort((a, b) => (b.isSpecialFollow ? 1 : 0) - (a.isSpecialFollow ? 1 : 0));
+        if (list.length === 0) {
+            container.innerHTML = `<div class="empty-state">还没有关注任何人。点上面的「为你推荐」挑几个。</div>`;
+            return;
+        }
+    }
+    // 逐条渲染：单个角色数据坏了只跳过那一条，不会让整份名单不刷新
+    container.innerHTML = list.map(char => {
         try {
-            return `<div class="following-card" oncontextmenu="showFollowingContextMenu(event, '${char.id}')" onclick="handleFollowingCardClick(event, '${char.id}')">${getAvatarHTML(char, 60)}<div style="font-weight:bold; font-size:15px; margin-bottom:5px;">${char.name} ${char.verified ? verifiedSVG : ''} ${char.isSpecialFollow ? '<span class="special-star"><svg class="blue-line-icon" viewBox="0 0 24 24" style="width:16px;height:16px;vertical-align:middle;margin-top:-2px;"><polygon points="12 2 15 8 22 9 17 14 18 21 12 18 6 21 7 14 2 9 9 8 12 2"></polygon></svg></span>' : ''}</div><div style="color:#536471; font-size:13px;">${char.handle || ''}</div>${getCharFactions(char).map(g => `<span style="display:inline-block; margin-top:4px; margin-right:4px; background:rgba(29,155,240,0.1); color:#1d9bf0; border-radius:9999px; font-size:11px; padding:1px 7px;">${escapeHtml(g)}</span>`).join('')}</div>`;
+            const star = char.isSpecialFollow
+                ? '<span class="fl-star" title="特别关注"><svg class="blue-line-icon" viewBox="0 0 24 24" style="width:15px;height:15px;"><polygon points="12 2 15 8 22 9 17 14 18 21 12 18 6 21 7 14 2 9 9 8 12 2"></polygon></svg></span>' : '';
+            const bio = followBioText(char);
+            const tags = getCharFactions(char).map(g => `<span class="fl-tag">${escapeHtml(g)}</span>`).join('');
+            return `<div class="fl-row" oncontextmenu="showFollowingContextMenu(event, '${char.id}')" onclick="handleFollowingCardClick(event, '${char.id}')">
+                <div class="fl-av">${getAvatarHTML(char, 40)}</div>
+                <div class="fl-main">
+                    <div class="fl-top">
+                        <div class="fl-id">
+                            <div class="fl-name">${escapeHtml(char.name || '')}${char.verified ? verifiedSVG : ''}${star}</div>
+                            <div class="fl-handle">${escapeHtml(char.handle || '')}</div>
+                        </div>
+                        <button class="${char.isFollowing ? 'follow-btn following' : 'follow-btn'} btn-follow-${char.id}" onclick="toggleFollow('${char.id}', event)">${char.isFollowing ? '已关注' : '关注'}</button>
+                    </div>
+                    ${bio ? `<div class="fl-bio">${escapeHtml(bio)}</div>` : ''}
+                    ${tags ? `<div class="fl-tags">${tags}</div>` : ''}
+                </div>
+            </div>`;
         } catch (e) {
-            console.error('渲染关注列表某一条时出错，已跳过：', char && char.id, e);
+            console.error('渲染关注名单某一条时出错，已跳过：', char && char.id, e);
             return '';
         }
     }).join('');
-    container.innerHTML = cardsHtml;
 }
 
 // ===== 右侧「你可能会喜欢」（仿 X 的推荐位）=====
@@ -1290,8 +1516,13 @@ function renderTheaterPage(resetFilter) {
     let offHtml = '';
     const thOn = (typeof isAutoOn === 'function') ? isAutoOn('charTheater') : true;
     const interOn = (typeof isGlobalCharInteractionEnabled === 'function') ? isGlobalCharInteractionEnabled() : true;
-    if (!thOn || !interOn) {
-        offHtml = `<div class="theater-off-banner">\u26a0\ufe0f \u73b0\u5728${!thOn ? '\u300c\ud83c\udfad Ta\u4eec\u5728\u505a\u4ec0\u4e48\u300d\u5f00\u5173' : '\u300c\u89d2\u8272\u4e92\u52a8\u603b\u5f00\u5173\u300d'}\u662f\u5173\u7740\u7684\uff0c\u4e0d\u4f1a\u8c03\u7528 API\uff0c\u4e5f\u4e0d\u4f1a\u81ea\u5df1\u6f14\u3002<br>\u53bb\u300c\u8bbe\u7f6e \u2192 \ud83d\udd0c \u81ea\u52a8\u529f\u80fd\u5f00\u5173\u300d\u6253\u5f00\u5b83\u5c31\u884c\u3002</div>`;
+    // 前置条件统一列出来（缺什么列什么，都满足就什么都不显示）
+    offHtml = (typeof gyReqBox === 'function') ? gyReqBox([
+        { api: true }, { interaction: true }, { rel: true }
+    ], { title: '「现在演一场」需要先满足这些' }) : '';
+    if (interOn && !thOn) {
+        // 开关关着 ≠ 不能看：手动点「现在演一场」照样能演，开关只管"会不会自己发生"
+        offHtml += `<div class="theater-off-banner">💤 自动演出是关着的，TA 们不会自己演。<br>想看的话直接点上面的「🎬 现在演一场」——<b>手动点不受开关限制</b>。<span class="theater-off-link" onclick="gyJumpToSwitch('charTheater')">要让它自己演 ›</span></div>`;
     }
     const filter = sel ? sel.value : '';
     const shown = (filter ? logs.filter(l => String(l.charAId) === String(filter) || String(l.charBId) === String(filter)) : logs)
@@ -1335,7 +1566,8 @@ async function manualRunTheater() {
         // runTheaterScene 会在被开关拦下时返回 {blocked:'...'}，这里把具体原因说清楚，
         // 不然用户点了没反应会以为是坏了，实际上是自己没开开关（这功能默认关，绝不偷偷调 API）。
         if (r && r.blocked === 'switch') {
-            if (typeof appAlert === 'function') appAlert('🎭「Ta们在做什么」现在是关着的，所以不会调用 API。\n\n去「设置 → 🔌 自动功能开关」把「🎭 Ta们在做什么」打开就能演了。');
+            // 手动点现在不会再被开关拦（runTheaterScene 只在 manual=false 时看开关），这条留着兜底
+            if (typeof appAlert === 'function') appAlert('这次被开关拦下了。去「设置 → ⚙️ 自动化功能」看一下「🎭 Ta们在做什么」。');
         } else if (r && r.blocked === 'interaction') {
             if (typeof appAlert === 'function') appAlert('「角色互动总开关」是关着的，角色之间不会有任何互动。\n\n去设置里把角色互动打开再试。');
         } else if (!r) {
@@ -1374,7 +1606,7 @@ async function manualAutonomyTurn(charId) {
     try {
         const r = await runAutonomyTurn(char, true);
         if (r && r.blocked === 'switch') {
-            appAlert('「角色自己决定要做什么」现在是关着的，所以不会调用 API。\n\n去「设置 → 🔌 自动功能开关」打开它。');
+            appAlert('这次被开关拦下了。去「设置 → ⚙️ 自动化功能」看一下「角色自己决定要做什么」。');
         } else if (r && r.blocked === 'mode') {
             appAlert(`${char.name} 现在是「按固定频率」模式。\n\n去 TA 的编辑页里，「行为与AI能力设置 → 🎲 行为模式」改成「由 TA 自己决定」。`);
         } else if (r && r.blocked === 'api') {
@@ -1781,7 +2013,7 @@ function renderNovelSrcListMemory(container) {
 }
 
 async function generateNovelFromSources() {
-    const api = getApiConfig(true);
+    const api = getApiMain();
     if (!api.key) return alert("请先在设置中配置 API Key (主API或副API)！");
     const novel = globalNovels.find(n => n.id === currentEditingNovelId);
     if (!novel) return;
@@ -1944,6 +2176,17 @@ function openSettingsPanel(key) {
     // 开关列表是空壳，进这一页才画（画一次不贵，但没必要在打开设置页时就画）
     if (key === 'auto' && typeof renderAutoFeatureList === 'function') renderAutoFeatureList();
     if (key === 'alive' && typeof renderAlivePanel === 'function') renderAlivePanel();
+    // 🔎 美化页里的选择器速查表也是进来才扫（要遍历整棵 DOM，不进这一页就不做）
+    if (key === 'appearance') {
+        try { if (typeof gyCssMapRender === 'function') gyCssMapRender(); } catch (e) {}
+        try {
+            const tv = document.getElementById('toastMaxVisibleSelect');
+            if (tv && typeof toastMaxVisible !== 'undefined') tv.value = String(toastMaxVisible);
+            const th = document.getElementById('uiThemeSelect');
+            if (th && typeof uiTheme !== 'undefined') th.value = uiTheme;
+            if (typeof applyMainWidth === 'function') applyMainWidth();   // 把滑块和那个 600px 的数字对上
+        } catch (e) {}
+    }
     // 手机顶栏中间的标题也跟着走，不然进了分页顶上还写着"系统设置"，分不清在哪一层
     const mt = document.getElementById('mtbCenterTitle');
     if (mt) mt.innerText = GY_SETTINGS_PANELS[key].replace(/^\S+\s*/, '');
@@ -2418,6 +2661,158 @@ function gyJumpToSwitch(key) {
             setTimeout(() => row.classList.remove('gy-flash'), 2200);
         }, 60);
     } catch (e) { console.warn('[跳转] 出错：', e); }
+}
+
+// ===================== 🔎 CSS 选择器速查表 =====================
+// 「美化」那一页以前只有一句"想知道该改哪个类名就按 F12"。手机上根本没有 F12，
+// 电脑上也得会用开发者工具。这里把**每一页、每一块**能用的选择器直接列出来。
+//
+// 关键：清单是**现场从 DOM 里扫出来的**，不是手写死的——以后加了新页面、新组件，
+// 这张表自己就长出来了，不会跟界面对不上（手写清单一定会过期，这是必然的）。
+const GY_CSS_PAGE_NAMES = {
+    'view-home': '主页时间线', 'view-profile': '个人资料页', 'view-tag': '标签页',
+    'view-search': '搜索结果', 'view-notifications': '通知页', 'view-post-detail': '帖子详情',
+    'view-following-list': '我的关注', 'view-chat': '聊天页', 'view-anon-forum': '匿名论坛',
+    'view-diary': '信件与日记', 'view-novel': '故事', 'view-story-studio': '续写工作台',
+    'view-theater': 'Ta们在做什么', 'view-tabloid': '营销号', 'view-grapevine': '日常（三合一）',
+    'view-mobile-trends': '手机·话题', 'view-faction-network': '势力关系网',
+    'view-faction-members': '势力成员', 'view-char-relations': '角色关系',
+    'view-faction-overview': '势力总览', 'view-memory-album': '回忆相册',
+    'view-character-center': '角色中心', 'view-settings': '系统设置', 'view-worldbook': '世界书',
+    'view-plugins': '插件页', 'view-presets': '预设页', 'view-ai-enhance': 'AI 增强功能',
+    'view-memory-hub': '记忆总览', 'view-watch-together': '一起看电影',
+    'view-mini-hub': '小功能', 'view-mall': '商城', 'view-feature-page': '小功能内页'
+};
+// 页面之外的公共部件（它们不在任何 view- 里）
+const GY_CSS_GLOBAL_PARTS = [
+    ['左侧边栏 / 导航', '.sidebar-left, .nav-menu, .nav-item, .nav-icon, .user-profile-mini'],
+    ['手机顶栏 / 底栏 / 抽屉', '.mobile-top-bar, .mnav-item, .mobile-drawer, .mdrawer-item, .mdrawer-footer'],
+    ['右侧栏（趋势 / 推荐）', '#rightPanelTrend, #rightPanelSuggest, .trend-item, .suggest-card'],
+    ['所有弹窗', '.modal-overlay, .modal-box, .context-menu, .context-btn'],
+    ['所有通知气泡', '#toastContainer, .toast-item, .toast-title, .toast-desc'],
+    ['所有按钮', '.btn-primary, .btn-secondary, .btn-post, .btn-edit-small, .btn-cancel'],
+    ['所有输入框', '.input-group input, .input-group textarea, .input-group select, .form-hint'],
+    ['头像', '.avatar, .profile-avatar-large'],
+    ['浮动发帖键', '.fab-post']
+];
+
+function gyCssMapRender(force) {
+    const box = document.getElementById('gyCssMap');
+    if (!box) return;
+    const kw = ((document.getElementById('gyCssMapSearch') || {}).value || '').trim().toLowerCase();
+    const hit = t => !kw || String(t).toLowerCase().includes(kw);
+
+    // 从一个容器里扫出用得上的选择器（按出现次数排序，只留有意义的）
+    const scan = root => {
+        const cls = new Map(), ids = [];
+        root.querySelectorAll('*').forEach(el => {
+            if (el.id && /^[a-zA-Z][\w-]*$/.test(el.id)) ids.push('#' + el.id);
+            (el.className && typeof el.className === 'string' ? el.className.split(/\s+/) : []).forEach(c => {
+                if (!c || c.length < 3 || !/^[a-zA-Z][\w-]*$/.test(c)) return;
+                cls.set(c, (cls.get(c) || 0) + 1);
+            });
+        });
+        return {
+            cls: [...cls.entries()].sort((a, b) => b[1] - a[1]).map(([c, n]) => ({ sel: '.' + c, n })),
+            ids: ids.slice(0, 40).map(i => ({ sel: i, n: 1 }))
+        };
+    };
+    const chip = o => `<span class="gy-css-chip${o.sel[0] === '#' ? ' id' : ''}" onclick="gyCssPick('${o.sel}')" title="${o.n > 1 ? o.n + ' 处' : '唯一'}">${escapeHtml(o.sel)}</span>`;
+
+    let html = '';
+    // ① 公共部件
+    const gRows = GY_CSS_GLOBAL_PARTS.filter(([name, sel]) => hit(name) || hit(sel));
+    if (gRows.length) {
+        html += `<div class="gy-css-grp"><div class="gy-css-grp-hd">🌐 全局（每一页都有）</div>`;
+        gRows.forEach(([name, sel]) => {
+            html += `<div class="gy-css-line"><i>${escapeHtml(name)}</i>${sel.split(',').map(x => chip({ sel: x.trim(), n: 2 })).join('')}</div>`;
+        });
+        html += `</div>`;
+    }
+    // ② 每一页
+    document.querySelectorAll('.main-content > div[id^="view-"]').forEach(view => {
+        const name = GY_CSS_PAGE_NAMES[view.id] || view.id;
+        const r = scan(view);
+        const items = r.ids.concat(r.cls).filter(o => hit(o.sel) || hit(name));
+        if (!items.length) return;
+        html += `<div class="gy-css-grp">
+            <div class="gy-css-grp-hd">${escapeHtml(name)}　<code>#${view.id}</code></div>
+            <div class="gy-css-line">${items.slice(0, 60).map(chip).join('')}</div>
+        </div>`;
+    });
+    box.innerHTML = html || '<div style="color:#8b98a5;font-size:13px;padding:14px 2px;">没有匹配的选择器。</div>';
+}
+
+// 点一下把选择器追加进上面的 CSS 输入框（并把光标放进花括号里）
+function gyCssPick(sel) {
+    const ta = document.getElementById('globalCSSInput');
+    if (!ta) return;
+    const snippet = (ta.value && !ta.value.endsWith('\n') ? '\n' : '') + sel + ' {\n    \n}\n';
+    ta.value += snippet;
+    ta.focus();
+    const pos = ta.value.length - 3;
+    try { ta.setSelectionRange(pos, pos); } catch (e) {}
+    if (typeof showToast === 'function') showToast('', '已加进 CSS 框', sel + ' { }', null, null, false);
+}
+
+// ===================== 🧷 前置条件检查（统一版）=====================
+// 一个功能能不能真的跑起来，往往不止一个开关：可能还要「角色互动总开关」开着、
+// 要把角色切到「TA 自己决定」、要配好 API Key、要在关系网里连过线。
+// 以前这些都要用户自己猜——点了没反应，也不知道差哪一步。
+//
+// gyReqBox([...]) 把所有没满足的条件列在一起，每条都带一个点了就跳过去的入口。
+// 全部满足时返回空字符串（不唠叨）。
+//
+// 支持的条件：
+//   { sw:'charTheater' }                     开关要开着
+//   { api:true }                             要配 API Key
+//   { interaction:true }                     「角色互动总开关」要开着
+//   { mode:charId }                          这个角色要切到「TA 自己决定」
+//   { rel:true }                             关系网里至少连过一条线
+//   { ok:布尔, text:'说明', jump:'js代码' }   自定义一条
+function gyReqBox(list, opts) {
+    try {
+        const rows = [];
+        (list || []).forEach(r => {
+            if (!r) return;
+            if (r.sw) {
+                if (typeof isAutoOn === 'function' && isAutoOn(r.sw)) return;
+                const def = (typeof AUTO_FEATURE_DEFS !== 'undefined') ? AUTO_FEATURE_DEFS.find(f => f.key === r.sw) : null;
+                rows.push({ text: `开关「${escapeHtml((def && def.label) || r.sw)}」还关着`, jump: `gyJumpToSwitch('${r.sw}')`, go: '去打开' });
+                return;
+            }
+            if (r.api) {
+                const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+                if (api && api.key) return;
+                rows.push({ text: '还没配 API Key', jump: `switchMainView('settings'); openSettingsPanel('api')`, go: '去配置' });
+                return;
+            }
+            if (r.interaction) {
+                if (typeof isGlobalCharInteractionEnabled !== 'function' || isGlobalCharInteractionEnabled()) return;
+                rows.push({ text: '「角色互动总开关」关着，角色之间不会有任何往来', jump: `switchMainView('settings'); openSettingsPanel('auto')`, go: '去打开' });
+                return;
+            }
+            if (r.mode !== undefined && r.mode !== null) {
+                const c = (typeof myCharacters !== 'undefined' ? myCharacters : []).find(x => String(x.id) === String(r.mode));
+                if (!c) return;
+                if (typeof getCharActMode !== 'function' || getCharActMode(c) === 'auto') return;
+                rows.push({ text: `${escapeHtml(c.name)} 现在是「按固定频率」，没切到「TA 自己决定」`, jump: `switchMainView('profile','${c.id}')`, go: '去改' });
+                return;
+            }
+            if (r.rel) {
+                if (typeof charRelationships !== 'undefined' && Array.isArray(charRelationships) && charRelationships.length) return;
+                rows.push({ text: '关系网里还没有任何两个角色连过线', jump: `switchMainView('factionNetwork')`, go: '去连一条' });
+                return;
+            }
+            if (r.ok === false) rows.push({ text: escapeHtml(r.text || '还差一步'), jump: r.jump || '', go: r.go || '去处理' });
+        });
+        if (!rows.length) return '';
+        const head = (opts && opts.title) || '还差这几步才能真的跑起来';
+        return `<div class="gy-req-box">
+            <div class="gy-req-hd">⚠️ ${escapeHtml(head)}</div>
+            ${rows.map(r => `<div class="gy-req-row"><span>${r.text}</span>${r.jump ? `<b onclick="${r.jump}">${escapeHtml(r.go)} ›</b>` : ''}</div>`).join('')}
+        </div>`;
+    } catch (e) { return ''; }
 }
 
 // 功能依赖提醒：某个功能得先打开别的开关才有用，就在它正下方挂一条。

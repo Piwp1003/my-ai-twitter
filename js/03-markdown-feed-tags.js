@@ -1232,7 +1232,10 @@ function generatePostHTML(posts) {
         let isMe = char.id === 'me';
         let verifiedIcon = char.verified ? verifiedSVG : '';
         let mediaHTML = post.mediaUrl ? `<div class="post-media" onclick="event.stopPropagation();"><img src="${post.mediaUrl}" loading="lazy"></div>` : '';
-        let locationHTML = post.location ? `<div class="post-location">${locationSVG} ${post.location}</div>` : '';
+        // 定位并进头一行（名字 · @账号 · 时间 · 📍地点）了，正文下面不再单独占一行
+        // v107：定位不上名字那一排，只跟在推文正文底下（用户明确要求）
+        let locationHTML = post.location
+            ? `<div class="post-loc-line">${locationSVG}<span>${escapeHtml(post.location)}</span></div>` : '';
         let quotedHTML = renderQuotedPostPreviewHTML(post.quotedPostId);
         
         let replyPreview = '';
@@ -1261,33 +1264,95 @@ function generatePostHTML(posts) {
             <div class="post-content" style="min-width:0; flex:1;">
                 <div class="post-header">
                     <div class="post-header-info" onclick="event.stopPropagation(); switchMainView('profile', '${char.id}')">
-                        <div class="post-name">${char.name} ${verifiedIcon}</div>
+                        <div class="post-name">${char.name}${verifiedIcon}</div>
                         <div class="post-handle">${char.handle}</div>
-                        <div style="color:#536471; font-size:15px; margin:0 4px;">·</div>
-                        <div class="time-updater" style="color:#536471; font-size:15px;" data-timestamp="${post.timestamp}">${timeAgo(post.timestamp)}</div>
+                        <div class="post-dot">·</div>
+                        <div class="time-updater post-time" data-fmt="post" data-timestamp="${post.timestamp}" onclick="gyToggleTimeFmt(event)" title="点一下换成具体日期">${fmtPostTime(post.timestamp)}</div>
                     </div>
-                   ${isMe ? `<button class="post-delete-btn" onclick="deletePost('${post.id}', event)" title="删除帖子">🗑️</button>` : `<button class="btn-edit-small btn-follow-${char.id} ${char.isFollowing ? 'following' : ''}" style="margin-left:8px;" onclick="toggleFollow('${char.id}', event)">${char.isFollowing ? '已关注' : '关注'}</button>`}
+                    <button class="post-more-btn" onclick="gyPostMenu(event, '${post.id}')" title="更多">${moreDotsSVG}</button>
                 </div>
                 <div class="post-body" ondblclick="editPost('${post.id}', this); event.stopPropagation();" title="双击可直接修改此帖子">${namespaceInjectedIds(formatPostText(post.text, char.id, { statusContext: 'post' }), post.id)}</div>
                 ${locationHTML}
                 ${mediaHTML}
                 ${quotedHTML}
-                <div class="post-footer">
-                    <div class="post-stats-group">
-                        <div class="stat-item">${commentSVG} ${formatStat(post.stats.comments)}</div>
-                        <div class="stat-item">${retweetSVG} ${formatStat(post.stats.retweets)}</div>
-                        <div class="stat-item" style="cursor:pointer;" onclick="event.stopPropagation(); openQuoteComposer('${post.id}')" title="引用推文">${quoteSVG}</div>
-                        <div class="stat-item like-stat-item" style="cursor:pointer; color:${post.userLiked ? '#f91880' : 'inherit'};" onclick="event.stopPropagation(); toggleMainPostLike('${post.id}', event)"><span class="like-icon-wrap">${post.userLiked ? likeSVGFilled.replace(/#1d9bf0/g, '#f91880').replace('blue-line-icon', '') : likeSVG}</span> <span class="like-count">${formatStat(post.stats.likes)}</span></div>
-                        <div class="stat-item">${viewSVG} ${formatStat(post.stats.views)}</div>
-                        <div class="stat-item" style="cursor:pointer; color:${isInMemoryAlbum('post', post.id) ? '#ffad1f' : 'inherit'};" onclick="toggleMemoryStar(event, 'post', '${post.id}')" title="收藏进回忆相册">${isInMemoryAlbum('post', post.id) ? '⭐' : '☆'}</div>
-                        <div class="stat-item" style="cursor:pointer;" onclick="event.stopPropagation(); openShareToChatModal('${post.id}')" title="分享到聊天">📤</div>
-                    </div>
+                <!-- 操作栏按 X 的排法：评论 / 转发 / 点赞 / 浏览量 四个均分，分享单独顶到最右边。
+                     引用、收藏、修改、删除、关注全部收进右上角的 ⋮ ——一行摆七个图标既挤又没人认得出哪个是哪个。 -->
+                <div class="post-actions">
+                    <div class="pa-item" onclick="event.stopPropagation(); switchMainView('postDetail', '${post.id}')" title="评论">${commentSVG}<span>${formatStat(post.stats.comments)}</span></div>
+                    <div class="pa-item rt" onclick="event.stopPropagation(); openQuoteComposer('${post.id}')" title="转发 / 引用">${retweetSVG}<span>${formatStat(post.stats.retweets)}</span></div>
+                    <div class="pa-item like ${post.userLiked ? 'on' : ''}" onclick="event.stopPropagation(); toggleMainPostLike('${post.id}', event)" title="喜欢"><span class="like-icon-wrap">${post.userLiked ? likeSVGFilled : likeSVG}</span><span class="like-count">${formatStat(post.stats.likes)}</span></div>
+                    <div class="pa-item" onclick="event.stopPropagation(); switchMainView('postDetail', '${post.id}')" title="查看次数">${viewsBarSVG}<span>${formatStat(post.stats.views)}</span></div>
+                    <div class="pa-item pa-share" onclick="event.stopPropagation(); openShareToChatModal('${post.id}')" title="分享">${shareOutSVG}</div>
                 </div>
                 ${replyPreview}
             </div>
         </div>`;
     }).join('');
 }
+
+// ⋮ 推文的更多菜单。以前操作栏里塞了七个图标（含引用、收藏、分享），
+// 一行摆不下、也认不出来。现在低频的都收进这里，跟 X 一样。
+window.gyPostMenu = function (e, postId) {
+    e.preventDefault(); e.stopPropagation();
+    const isTabloid = String(postId).startsWith('tb_');
+    const post = isTabloid ? (typeof tabloidPosts !== 'undefined' ? tabloidPosts : []).find(p => p.id == postId)
+                           : globalPosts.find(p => p.id == postId);
+    if (!post) return;
+    const char = post.char || {};
+    const isMe = String(char.id) === 'me';
+    const starred = (typeof isInMemoryAlbum === 'function') && isInMemoryAlbum('post', postId);
+    const menu = document.getElementById('chatContextMenu');
+    if (!menu) return;
+    const rows = [];
+    rows.push(`<button class="context-btn" onclick="gyPostMenuDo('quote','${postId}')">💬 引用推文</button>`);
+    rows.push(`<button class="context-btn" onclick="gyPostMenuDo('share','${postId}')">📤 分享到私聊</button>`);
+    rows.push(`<button class="context-btn" onclick="gyPostMenuDo('star','${postId}')">${starred ? '⭐ 从回忆相册移出' : '☆ 收藏进回忆相册'}</button>`);
+    if (isMe) {
+        rows.push(`<button class="context-btn" onclick="gyPostMenuDo('edit','${postId}')">✏️ 修改这条推文</button>`);
+        rows.push(`<button class="context-btn" style="color:#f91880;" onclick="gyPostMenuDo('del','${postId}')">🗑️ 删除</button>`);
+    } else if (char.id !== undefined) {
+        rows.push(`<button class="context-btn" onclick="gyPostMenuDo('follow','${postId}')">${char.isFollowing ? '取消关注' : '＋ 关注'} ${escapeHtml(char.name || '')}</button>`);
+        rows.push(`<button class="context-btn" style="color:#f91880;" onclick="gyPostMenuDo('del','${postId}')">🗑️ 删除</button>`);
+    }
+    menu.innerHTML = rows.join('');
+    menu.style.display = 'flex';
+    let x = e.pageX, y = e.pageY;
+    if (x + 190 > window.innerWidth) x = window.innerWidth - 195;
+    if (y + rows.length * 42 > window.innerHeight) y = Math.max(8, window.innerHeight - rows.length * 42 - 10);
+    menu.style.left = x + 'px'; menu.style.top = y + 'px';
+};
+window.gyPostMenuDo = function (act, postId) {
+    const menu = document.getElementById('chatContextMenu');
+    if (menu) menu.style.display = 'none';
+    const isTabloid = String(postId).startsWith('tb_');
+    const post = isTabloid ? (typeof tabloidPosts !== 'undefined' ? tabloidPosts : []).find(p => p.id == postId)
+                           : globalPosts.find(p => p.id == postId);
+    if (!post) return;
+    if (act === 'quote' && typeof openQuoteComposer === 'function') return openQuoteComposer(postId);
+    if (act === 'share' && typeof openShareToChatModal === 'function') return openShareToChatModal(postId);
+    if (act === 'star' && typeof toggleMemoryStar === 'function') {
+        return toggleMemoryStar({ stopPropagation() {}, preventDefault() {} }, 'post', postId);
+    }
+    if (act === 'del') {
+        // 在帖子详情页上删完要弹回主页，那是 deleteDetailPost 干的事；
+        // 在信息流里删就地刷新，走 deletePost。
+        const onDetail = document.getElementById('postDetailSection') &&
+                         document.getElementById('postDetailSection').offsetParent !== null;
+        if (onDetail && typeof deleteDetailPost === 'function') return deleteDetailPost(postId);
+        if (typeof deletePost === 'function') return deletePost(postId, { stopPropagation() {}, preventDefault() {} });
+        return;
+    }
+    if (act === 'follow' && typeof toggleFollow === 'function') {
+        return toggleFollow(post.char.id, { stopPropagation() {}, preventDefault() {} });
+    }
+    if (act === 'edit') {
+        // editPost 要的是那条推文正文的 DOM 节点，找不到就退回"在详情页里改"
+        const el = document.querySelector(`.post-placeholder[onclick*="${postId}"] .post-body`)
+                || document.querySelector('#postDetailSection .detail-post-body');
+        if (el && typeof editPost === 'function') return editPost(postId, el);
+        if (typeof switchMainView === 'function') switchMainView('postDetail', postId);
+    }
+};
 
 // opts（可选）：{ view:'mall' }  → 点通知切到那一页
 //               { feature:'gossip' } → 点通知打开那个小功能页（js/27）
@@ -1465,6 +1530,9 @@ window.onload = async function() {
         await loadAllData();
         updateGlobalBgStyles();
         applyGlobalCSS();
+        // v107 版式：中栏宽度（存档里读到的）+ 右边缘那条拖宽手柄
+        if (typeof applyMainWidth === 'function') applyMainWidth();
+        if (typeof initMainWidthGrip === 'function') initMainWidthGrip();
         updateCharSelects();
         updateSiteLogo();
         if (typeof renderPosts === "function") renderPosts();

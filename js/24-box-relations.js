@@ -394,6 +394,11 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
             <input type="checkbox" ${S[k] ? 'checked' : ''} onchange="gyrelSet('${k}',this.checked)" style="width:16px;height:16px;margin-top:2px;cursor:pointer;flex-shrink:0;">
             <span><b>${title}</b><br><span style="font-size:11.5px;color:#8b98a5;line-height:1.7;">${desc}</span>${warn ? `<br><span style="font-size:11.5px;color:#f91880;">${warn}</span>` : ''}</span></label>`;
         return `
+        ${(typeof gyReqBox === 'function') ? gyReqBox([
+            { sw: 'relLedger' },
+            { ok: !!(S.fromMood || S.askModel || S.fromEvents), text: '三个记账来源一个都没开，账本不会自己长', jump: '', go: '' },
+            { ok: !(S.fromMood && !moodOn), text: '开了「跟着情绪惯性走」，但「🫀 情绪会留到下一轮」是关的，这一项收不到东西', jump: "gyJumpToSwitch('aliveMood')", go: '去打开' }
+        ], { title: '想让好感度自己动起来，还差这些' }) : ''}
         <div class="gyrel-sec">
           <h4>💰 分数从哪来</h4>
           <div class="gyrel-hint">三个来源可以同时开。<b>都不额外调 API</b>——第一个是蹭主程序已经在要的字段，第二个是每轮多两个字段，第三个是读别的插件的存档。</div>

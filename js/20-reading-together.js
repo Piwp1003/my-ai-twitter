@@ -189,25 +189,32 @@ document.getElementById('rtCompanionModal').addEventListener('click', async func
     var book = rtCurrentBook(); if(!book) return;
     var cid = pick.getAttribute('data-char-id');
     closeModal('rtCompanionModal');
-    // 📨 邀请走私聊（js/28）：以前选一下人就直接当搭子了，TA 连拒绝的机会都没有，
-    //    聊天记录里也留不下"你叫过 TA 一起读这本书"。
+    // 📨 邀请发成私聊里的一张卡（js/28）：以前选一下人就直接当搭子了，
+    //    TA 连拒绝的机会都没有，聊天记录里也留不下"你叫过 TA 一起读这本书"。
     var c = (typeof myCharacters !== 'undefined' ? myCharacters : []).find(function(x){ return String(x.id) === String(cid); });
-    if (c && typeof window.gyInviteAsk === 'function') {
-      var ask = (typeof userDisplayName === 'function' ? userDisplayName(c) : '对方')
-        + '想叫你一起读《' + (book.title || '一本书') + '》，一段一段地读，读到哪儿聊到哪儿。\n'
-        + '按你自己的性格决定读不读——没兴趣、在忙、不喜欢这类书，都可以直接拒绝。\n'
-        + '只输出 JSON，不要 markdown：{"ok": true或false, "line": "你要说的一句话，30字以内"}';
-      var r = await window.gyInviteAsk(c, ask, true);
-      var line = r.line || (r.ok ? '好，一起读。' : '这本我读不进去，你自己看吧。');
-      window.gyInviteInChat && window.gyInviteInChat({ char: c, what: '一起阅读',
-        myText: '[一起读]《' + (book.title || '一本书') + '》，一起读吗？', reply: line, ok: r.ok });
-      if (!r.ok) { rtRenderReader(); return; }
+    if (c && typeof window.gyInviteSend === 'function') {
+      await window.gyInviteSend({
+        char: c, kind: 'read',
+        title: book.title || '一本书',
+        sub: '一段一段地读，读到哪儿聊到哪儿',
+        onYes: function(){ book.companionCharId = cid; rtSaveState(); rtRenderReader(); },
+        onNo:  function(){ rtRenderReader(); }
+      });
+      return;
     }
     book.companionCharId = cid;
     rtSaveState();
     rtRenderReader();
   }
 });
+
+// 给邀请卡片的「去读 ›」用：这时候已经答应过了，直接设成搭子
+window.rtSetCompanion = function(charId){
+  var book = rtCurrentBook(); if(!book) return;
+  book.companionCharId = String(charId);
+  rtSaveState();
+  try { rtRenderReader(); } catch(e){}
+};
 
 /* ===== 文件解析：txt / docx / pdf / epub ===== */
 function rtReadAsText(file){
@@ -457,6 +464,16 @@ window.rtDeleteBook = function(bookId, event){
 window.rtOpenCompanionModal = function(){
   var book = rtCurrentBook();
   var list = document.getElementById('rtCompanionList');
+  // 前置条件：没配 API、翻页评论开关关着，都会让"选了搭子却没人说话"
+  try {
+    var reqBox = document.getElementById('rtCompanionReq');
+    if (!reqBox && list && list.parentElement) {
+      reqBox = document.createElement('div'); reqBox.id = 'rtCompanionReq';
+      list.parentElement.insertBefore(reqBox, list);
+    }
+    if (reqBox) reqBox.innerHTML = (typeof gyReqBox === 'function')
+      ? gyReqBox([{ api: true }, { sw: 'readComment' }], { title: '想让搭子在书页旁边写评论，还差这些' }) : '';
+  } catch (e) {}
   if(!myCharacters || myCharacters.length===0){ list.innerHTML = '<div style="color:#888;font-size:13px;">还没有角色，先去角色中心创建一个吧。</div>'; }
   else {
     list.innerHTML = myCharacters.map(function(c){

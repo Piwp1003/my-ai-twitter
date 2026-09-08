@@ -273,12 +273,26 @@ function updateSiteLogo() {
 }
 
 
-const verifiedSVG = `<svg class="verified-badge blue-line-icon" viewBox="0 0 24 24"><polygon points="12 2 15 8 22 9 17 14 18 21 12 18 6 21 7 14 2 9 9 8 12 2"></polygon><polyline points="9 12 11 14 15 10"></polyline></svg>`;
-const commentSVG = `<svg class="stat-icon blue-line-icon" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>`;
-const retweetSVG = `<svg class="stat-icon blue-line-icon" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`;
-const likeSVG = `<svg class="stat-icon blue-line-icon" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`;
-const likeSVGFilled = `<svg class="stat-icon blue-line-icon" style="fill:#1d9bf0 !important;" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`;
-const viewSVG = `<svg class="stat-icon blue-line-icon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+// 蓝V：以前是个"描边五角星 + 勾"，缩到 15px 就是一坨看不清的线，很多人以为是收藏。
+// 换成 X 那种实心花瓣底 + 白色勾，小尺寸下也认得出来。
+const verifiedSVG = `<svg class="verified-badge" viewBox="0 0 24 24" aria-label="已认证"><path fill="#1d9bf0" d="M12 1.5l2.3 2.05 3.05-.36 1.06 2.9 2.9 1.06-.36 3.05L23 12l-2.05 2.3.36 3.05-2.9 1.06-1.06 2.9-3.05-.36L12 22.5l-2.3-2.05-3.05.36-1.06-2.9-2.9-1.06.36-3.05L1 12l2.05-2.3-.36-3.05 2.9-1.06 1.06-2.9 3.05.36L12 1.5z"></path><path fill="#fff" d="M10.9 15.6l-3-3 1.27-1.27 1.73 1.73 4.03-4.03 1.27 1.27-5.3 5.3z"></path></svg>`;
+/* ===== 🐦 推文操作栏的图标：换成 X 那一套实心图形 =====
+   以前用的是通用线框图标（对话框、循环箭头、心、眼睛），缩到 18px 之后几个都糊成一团，
+   而且"眼睛"很容易被当成"可见性/隐私"。X 那套是**实心路径**，小尺寸下形状还认得出来。
+   这些用 fill:currentColor（.x-icon），不是 stroke，所以别再套 .blue-line-icon。 */
+const commentSVG = `<svg class="stat-icon x-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M1.751 10c0-4.42 3.584-8 8.005-8h4.366c4.49 0 8.129 3.64 8.129 8.13 0 2.96-1.607 5.68-4.196 7.11l-8.054 4.46v-3.69h-.067c-4.49.1-8.183-3.51-8.183-8.01zm8.005-6c-3.317 0-6.005 2.69-6.005 6 0 3.37 2.77 6.08 6.138 6.01l.351-.01h1.761v2.3l5.087-2.81c1.951-1.08 3.163-3.13 3.163-5.36 0-3.39-2.744-6.13-6.129-6.13H9.756z"></path></svg>`;
+const retweetSVG = `<svg class="stat-icon x-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"></path></svg>`;
+const likeSVG = `<svg class="stat-icon x-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.697 5.5c-1.222-.06-2.679.51-3.89 2.16l-.805 1.09-.806-1.09C9.984 6.01 8.526 5.44 7.304 5.5c-1.243.07-2.349.78-2.91 1.91-.552 1.12-.633 2.78.479 4.82 1.074 1.97 3.257 4.27 7.129 6.61 3.87-2.34 6.052-4.64 7.126-6.61 1.111-2.04 1.03-3.7.477-4.82-.561-1.13-1.666-1.84-2.908-1.91zm4.187 7.69c-1.351 2.48-4.001 5.12-8.379 7.67l-.503.3-.504-.3c-4.379-2.55-7.029-5.19-8.382-7.67-1.36-2.5-1.41-4.86-.514-6.67.887-1.79 2.647-2.91 4.601-3.01 1.651-.09 3.368.56 4.798 2.01 1.429-1.45 3.146-2.1 4.796-2.01 1.954.1 3.714 1.22 4.601 3.01.896 1.81.846 4.17-.514 6.67z"></path></svg>`;
+const likeSVGFilled = `<svg class="stat-icon x-icon liked" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.884 13.19c-1.351 2.48-4.001 5.12-8.379 7.67l-.505.29-.505-.29C7.117 18.31 4.467 15.67 3.116 13.19c-1.376-2.53-1.415-5.01-.255-6.86 1.16-1.85 3.13-2.83 5.07-2.83 1.55 0 3.09.62 4.07 1.94.98-1.32 2.52-1.94 4.07-1.94 1.94 0 3.91.98 5.07 2.83 1.16 1.85 1.12 4.33-.256 6.86z"></path></svg>`;
+// 浏览量：X 用的是三根柱子，不是眼睛（眼睛容易被当成"隐私/可见性"）
+const viewSVG = `<svg class="stat-icon x-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21l.004-10h2L6 21H4zm9.248 0v-7h2v7h-2z"></path></svg>`;
+const viewsBarSVG = viewSVG;
+// 分享：截图里那个是**三个点用两条线连起来**的那种（安卓/Material 的 share），
+// 不是"方框+上箭头"。这里按截图来。
+const shareOutSVG = `<svg class="stat-icon x-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"></path></svg>`;
+// ⋮ 更多
+const moreDotsSVG = `<svg class="stat-icon x-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="12" cy="19" r="1.8"></circle></svg>`;
+// ⚠️ 这一条是 v107 换图标时被误删过一次的（推文带定位时整页报 locationSVG is not defined）。
 const locationSVG = `<svg class="blue-line-icon" style="width:18px;height:18px;" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>`;
 const quoteSVG = `<svg class="stat-icon blue-line-icon" viewBox="0 0 24 24"><path d="M9 7H4v6h3l-2 4h3l3-6V7zm10 0h-5v6h3l-2 4h3l3-6V7z"></path></svg>`;
 const websiteSVG = `<svg class="blue-line-icon" style="width:18px;height:18px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`;
@@ -286,7 +300,24 @@ const websiteSVG = `<svg class="blue-line-icon" style="width:18px;height:18px;" 
 // API配置
 let myApiUrl = "https://api.deepseek.com", myApiKey = "", myModel = "deepseek-chat"; 
 let subApiUrl = "", subApiKey = "", subModel = "";
-let vecApiUrl = "", vecApiKey = ""; // 向量记忆专用API（选填）：填了就专用于 /embeddings 请求（跟主API、副API完全独立），不填则自动走主API
+let vecApiUrl = "", vecApiKey = ""; // 🎯 v107 起：主 API / 副 API 按「重要 / 不重要」分（方案 A）
+//   主 API（贵的好模型）：私聊、群聊、故事章节、续写、日记、信件、日记反应
+//        —— 这些是你会**逐字读**的内容，值得用好模型
+//   副 API（便宜的小模型）：其余全部——评论区、路人、状态、日程、记忆总结、
+//        游戏决策、小功能里的各种一句话，这些多半是扫一眼就过
+//
+// 以前全项目 60 多处取 API，56 处传 true（= 副 API 优先），
+// 结果副 API 一填全就接管了几乎一切，主 API 只剩四件事在用。
+// 现在"重要"的那批改走 getApiMain()。
+//
+// ⚠️ 两边都会兜底：主的没配全就用副的，副的没配全就用主的，
+//    只填一个 API 的用户完全无感。
+function getApiMain() {
+    if (myApiKey && myApiUrl && myModel) return { url: myApiUrl, key: myApiKey, model: myModel, isSub: false };
+    return getApiConfig(true);
+}
+
+// 向量记忆专用API（选填）：填了就专用于 /embeddings 请求（跟主API、副API完全独立），不填则自动走主API
 let lastWorkingModel = "", lastWorkingSubModel = ""; // 主/副API各自最近一次成功用过的模型，供"模型不可用自动兜底"使用
 let quietHoursEnabled = false, quietHoursStart = "23:00", quietHoursEnd = "08:00"; // 休息时间段：这段时间内不触发主动消息（本地+云端）
 // 采样参数（sampler）：全部留空字符串＝不发送该字段，使用服务商默认值；用户在设置页填了才会真的带上。
@@ -1168,7 +1199,24 @@ function isStructuredMessages(content) {
 // 只能靠 ?v= 和强制刷新），Ctrl+F5 一下就好。
 // 故事点评最多让几个角色说（js/08 的 runNovelReviews 读它）
 let novelReviewMax = 3;
-const GY_APP_VERSION = 'v102';
+// 🔕 同时最多弹几条通知气泡：0=全部弹（老行为），>0=最多这么多条，其余合并成"还有 N 条"，
+// -1=一条都不弹，只进通知页。设置 → 🎨 外观里可改。
+let toastMaxVisible = 2;
+// 🎨 配色主题：'blue' = 原来的蓝白，'mono' = 黑白。深色模式是另一个开关，两者可以叠加。
+let uiTheme = 'blue';
+// v107 版式：
+//   tweetTimeAbs  推文时间显示成绝对时间（上午9:13 · 2018年3月19日）还是相对时间（3小时前）。
+//                 点一下时间就来回切，不用进设置。
+//   gyMainWidth   中间那一栏的宽度（px）。默认 600 = X 自己的宽度；
+//                 拖右边那条缝可以自己调，双击那条缝恢复默认。
+//   gyLeftWidth   左边导航栏的宽度（px），默认 275，同样可以拖。
+//   gyFontSize    全站正文字号的基准值（px），默认 15。css 里所有正文类字号都写成
+//                 calc(var(--gy-fs) * n)，所以改这一个数字整站的字一起变，不是只改推文。
+let tweetTimeAbs = false;
+let gyMainWidth = 600;
+let gyLeftWidth = 275;
+let gyFontSize = 15;
+const GY_APP_VERSION = 'v108';
 
 const GY_FEATURE_MAP = {
     // 聊天
@@ -1247,12 +1295,15 @@ const AUTO_FEATURE_DEFS = [
     { key: 'filmScene',       label: '一起看电影：看到有想法的地方开口',   desc: '每隔几分钟把这一段字幕给角色看一眼，有感触才说，没有就不说。没导字幕的片子完全不触发（纯陪看）。', cost: '每隔几分钟一次调用（间隔在一起看电影的设置里调，默认 5 分钟）', group: '观影阅读', where: '设置 → 🧩 小功能 → 一起看电影 → ⚙️ 设置' },
     { key: 'filmPause',       label: '一起看电影：你一暂停 TA 接一句',     desc: '按下暂停时角色说一句，像真的在旁边被打断了那样。', cost: '每次暂停一次调用', group: '观影阅读', where: '设置 → 🧩 小功能 → 一起看电影 → ⚙️ 设置' },
     { key: 'filmEnd',         label: '一起看电影：看完给个感想',           desc: '片子放完时角色说一句看完的第一反应，并把这次一起看总结进记忆。', cost: '每部片子结束时，每个一起看的角色各一次', group: '观影阅读', where: '设置 → 🧩 小功能 → 一起看电影 → ⚙️ 设置' },
+    { key: 'webExplore',      label: '角色自己上网看东西',                 desc: '角色按自己的人设挑一个此刻真想了解的东西，去网上搜一遍，读完用自己的口吻写一段感想，存进探索记录并进 prompt——以后聊到相关话题时 TA 是真的知道。取内容的方式（读取代理 / 你自己的接口 / 完全不联网）在功能页里选。默认关。', cost: '一次探索 2 次调用（挑题目 + 写感想）+ 一次网络请求；间隔在功能页里调，默认 3 小时', defaultOff: true, group: '背后', where: '设置 → 🧩 小功能 → 联网探索；记录在记忆总览' },
+    { key: 'webExploreShare', label: '看到有意思的主动发给你',               desc: '探索完之后，TA 把那段感想直接私聊发给你（"我今天看到个东西……"）。关掉的话记录照样存、prompt 照样进，只是不会主动来找你。功能页里手动点的时候可以单独勾选这次要不要发。', cost: '不额外调用（跟着上面那次一起）', defaultOff: true, group: '背后', where: '设置 → 🧩 小功能 → 联网探索' },
     { key: 'charOwnDays',     label: '日子：角色自己把某天记成纪念日',       desc: '在「TA 自己决定」的自主模式里多一个动作：TA 可以给今天（或者最近某一天）画个圈，写进自己的纪念日，以后每年都会惦记。只有真发生了值得记的事才记，平常的一天不会硬记。默认关，不打开一次 API 都不会调。', cost: '跟着自主模式走，选中这个动作时一次调用', defaultOff: true, group: '背后', where: '角色资料页 → 切到「TA 自己决定」；结果在 🧩 小功能 → 日子' },
     { key: 'diaryReaction',   label: '日记：挂上的角色到点自己来看',       desc: '你写一篇日记、挂上几个角色，过一阵 TA 们会自己去看一眼并写下反应（偷看到了/没看到/看到了假装没看到）。以前这一项没有开关，一篇日记挂三个人就是三次调用，在后台悄悄发生。关掉之后日记照写、人照挂，只是不会自动来看——日记上的「立即回复」按钮不受影响，那是你主动点的。', cost: '一篇日记 × 挂上的角色数，后台定时跑', group: '主动', where: '信件与日记 → 写日记时挂角色' },
     { key: 'novelReview',     label: '故事：角色读完这一章说几句',         desc: '一章存下来之后，被勾进这个故事的角色各自读一遍，以当事人的口吻说几句——不是评文笔，是说"我在那件事里是什么感受"。带着前面章节的梗概，所以接得上上文。点评跟着章节一起显示。默认关；关着也可以在章节上点「💬 让 TA 们说说」手动来一次。', cost: '一章 × 参与角色数 次调用（人数上限在故事页里调，默认 3）', defaultOff: true, group: '连锁', where: '故事 → 打开一本 → 章节列表' },
     { key: 'relLedger',       label: '关系账本：用不用这套好感度',         desc: '关掉之后，账本不再往角色的 prompt 里注入任何东西，也不再自动记账——你和 TA 走到哪一步，回到"由你自己心里有数"。已经记下的流水不会删，随时开回来还在。（记账本身不额外调 API，它是蹭已有回复里的字段。）', cost: '不额外调用', group: '活人感', where: '设置 → 🧩 小功能 → 关系账本' },
     { key: 'inviteInChat',    label: '邀请写进私聊并跳过去',               desc: '一起看电影 / 一起听歌 / 一起阅读 / 约出去，这四个邀请会作为一条消息发进私聊，TA 的回答也在私聊里，发完自动跳过去看 TA 怎么回。关掉就退回老样子：后台悄悄问一句，只弹个提示。', cost: '不额外调用（问 TA 的那一次本来就要发）', group: '活人感', where: '各功能的邀请按钮' },
     { key: 'mallAutoBuy',     label: '商城：角色自己随机网购',             desc: '每 5 分钟掷一次骰子，中了就有个角色心血来潮下单——给自己买，或者给你点份外卖/送样东西，理由由 TA 自己说。默认关着，不打开一次 API 都不会调。', cost: '中了一次一次调用（写下单理由）；概率在商城的设置里调，默认 8%', defaultOff: true, group: '购物', where: '设置 → 🧩 小功能 → 商城 → 设置' },
+    { key: 'mallCharSell',    label: '商城：角色自己上架东西卖',           desc: '角色会往货架上摆自己的东西——二手的、自己做的、多买的、用不上的，或者干脆是一份手艺（"帮你写一封信"）。商品名和描述都是 TA 自己的口吻，不是商家话术。上架什么本身就是一条人设信息。默认关；商城设置页里也能手动点一次（手动不看开关）。', cost: '触发一次一次调用，概率是随机购物的一半', defaultOff: true, group: '购物', where: '设置 → 🧩 小功能 → 商城 → 商品页' },
     { key: 'mallTimeline',    label: '商城：物流文案按世界观生成',           desc: '按收货人的世界书写四句物流跟踪文案，古代就是驿站快马，赛博就是无人机。关掉之后时间线照常走，只是四个节点用通用文案。', cost: '每笔订单一次调用（只在下单时生成一次，之后一直用）', group: '购物', where: '设置 → 🧩 小功能 → 商城 → 设置' },
     { key: 'mallReact',       label: '商城：快递到角色手上，TA 可能来找你说一句', desc: '包裹签收时角色自己判断要不要提这件事——惊喜、吐槽、道谢都可能，也可能什么都不说。只有"东西是买给角色的"才触发。', cost: '每个送到角色手上的包裹一次调用', group: '购物', where: '设置 → 🧩 小功能 → 商城 → 设置' },
     { key: 'charAutonomy',    label: '角色自己决定要做什么', desc: '把某个角色切到「TA 自己决定」之后，TA 会结合日程、待办、小剧场记忆和此刻的处境，自己挑一件事去做——发推文、私聊你、写信、写日记、发论坛帖、评论别人、拍你一下、换个状态、划掉一条待办、拉别人演一场……也可能什么都不做。默认关着，不打开一次 API 都不会调。', cost: '决定一次一次调用，真动手了再加那个动作本身的一次', defaultOff: true, group: '背后', where: '角色资料页 → 切到「TA 自己决定」；效果散在全 app' }

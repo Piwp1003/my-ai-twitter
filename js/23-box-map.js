@@ -935,13 +935,16 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
             const c = chars().find(x => String(x.id) === String(src));
             if (c) {
                 const ip = charIP(c);
+                // ⚠️ 名字一定要露出来。以前这里只写地点，角色没设位置时两个人显示的字
+                //    一模一样（都是"不知道在哪儿"），换来换去看不出换没换，
+                //    实际状态是变了的——看着像"切了人悬浮窗没反应"。
                 return {
                     showReal: false, r: null, fac: ip.fac, fics: [],
                     ficTxt: ip.wtxt, forChar: c, ip,
                     ico: ip.ico,
                     temp: ip.wshort,
-                    city: ip.place,
-                    sub: ip.wtxt || (ip.fac ? '这边今天还没设天气' : '还不知道 TA 在哪儿')
+                    city: c.name + ((ip.place && ip.place !== '不知道在哪儿') ? ' · ' + ip.place : ''),
+                    sub: ip.wtxt || (ip.fac ? ip.fac + '　这边今天还没设天气' : '还没告诉过 app ' + c.name + ' 在哪儿')
                 };
             }
         }
@@ -2199,6 +2202,8 @@ ${req.trim() ? '【我的要求（以这个为准）】\n' + req.trim() + '\n' :
         dateDraft[k] = v;
         renderDateForm();
     };
+    // 你约 TA：v105 起走邀请卡片（js/28）。谈成之后 settleDate 照常落地，
+    // 只是"问 TA 去不去"这一步的呈现从"行程页上的一个小状态"变成了私聊里的一张卡。
     window.gymapSendDate = async function () {
         const d = dateDraft; if (!d) return;
         const mi = document.getElementById('gymapDateMins'); if (mi) d.mins = Math.max(5, Math.min(1440, parseInt(mi.value) || 60));
@@ -2220,6 +2225,23 @@ ${(() => { const cur = activeDate(c.id); return cur ? `注意：你这会儿正�
 按你自己的性格决定去还是不去——忙、烦、不熟、闹别扭，都可以直接拒绝，不用勉强自己迎合。
 只输出 JSON，不要解释、不要 markdown 围栏：
 {"ok": true 或 false, "line": "你要说的一句话，30字以内，像人说话，不要引号不要旁白"${mine ? '' : ', "mins": 数字（分钟）, "act": "去那儿做什么，10字以内"'}}`;
+            if (typeof window.gyInviteSend === 'function') {
+                gymapCloseDate();
+                let got = null;
+                await window.gyInviteSend({
+                    char: c, kind: 'date', title: sp.name,
+                    sub: (sp.faction ? sp.faction + '　' : '') + (mine ? `待 ${fmtMin(d.mins)}${d.act ? '，' + d.act : ''}` : '待多久、干什么由 TA 定'),
+                    ask,
+                    onYes: r2 => { got = r2; },
+                    onNo:  r2 => { got = r2; }
+                });
+                // gyInviteSend 里问的那一次已经拿到答案了，这里只负责落地
+                const okk = !!(got && got.ok);
+                const line2 = (got && got.line) || (okk ? '好啊。' : '这次算了。');
+                await settleDate({ char: c, sp, by: 'me', ok: okk, line: line2,
+                                   mins: mine ? d.mins : 60, act: mine ? d.act : '' });
+                return;
+            }
             const messages = buildStructuredMessages(buildBasePrompt(c, false, ''), [], ask);
             const data = await callChatCompletionAPI(api, messages);
             const raw = (data.choices?.[0]?.message?.content || '');
@@ -2254,10 +2276,9 @@ ${(() => { const cur = activeDate(c.id); return cur ? `注意：你这会儿正�
         //    TA 约你的那一次（by==='char'）本来就走私聊投递，不用再记一遍。
         //    跳走了就不再弹那个结果框了——人已经在聊天页，背后弹一个看不见的框没意义；
         //    约成了的细节改成聊天里的一条系统消息，跟邀请挨着，翻记录时是连着的。
-        if (by === 'me' && typeof window.gyInviteInChat === 'function') {
-            window.gyInviteInChat({ char, what: '约出去', ok,
-                myText: `[约你] 一起去「${sp.name}」？${act ? '　' + act : ''}${mins ? '　待 ' + fmtMin(mins) : ''}`,
-                reply: line });
+        // ⚠️ 邀请那一来一回现在由卡片承担（js/28），这里**不能再补一遍两条文字消息**，
+        //    否则聊天里会是"卡片 + 一模一样的两条气泡"。只在约成时补一条系统消息说细节。
+        if (by === 'me') {
             if (ok) {
                 try {
                     const sid = String(char.id);
@@ -2270,6 +2291,7 @@ ${(() => { const cur = activeDate(c.id); return cur ? `注意：你这会儿正�
                     }
                 } catch (e) {}
             }
+            if (typeof switchMainView === 'function') { switchMainView('chat'); if (typeof switchChatSession === 'function') switchChatSession(char.id); }
             return;
         }
         openDatePop(`
@@ -2328,6 +2350,27 @@ ${letChar ? '待多久、去干什么，你自己定。' : '待多久和干什�
     let invitePending = null;
     function showInvitePop(c, sp, line, mins, act, decided) {
         invitePending = { charId: c.id, spotId: sp.id, mins, act, decided };
+        // 📨 v105：TA 约你**也发在私聊里**，卡片上两个按钮由你来点（js/28）。
+        //    以前是一个盖在行程页上的弹窗——不在那一页就看不见，关掉就没了，
+        //    聊天记录里也留不下"TA 约过你"这件事。
+        if (typeof window.gyInviteFromChar === 'function') {
+            window.gyInviteFromChar({
+                char: c, kind: 'date',
+                title: sp.name,
+                sub: (sp.faction ? sp.faction + '　' : '') + (decided ? `TA 想待 ${fmtMin(mins)}${act ? '，' + act : ''}` : '待多久、去干什么由你定'),
+                line,
+                onYes: async () => {
+                    invitePending = null;
+                    await settleDate({ char: c, sp, by: 'char', ok: true, line: '（你答应了）', mins: mins || 60, act: act || '' });
+                },
+                onNo: async () => {
+                    invitePending = null;
+                    await pushLog({ id: uid('d'), charId: c.id, charName: c.name, spot: sp.name, spotId: sp.id,
+                        faction: sp.faction || '', by: 'char', ok: false, mins: 0, act: '', line: '（你说改天）', at: nowMs(), until: 0 });
+                }
+            });
+            return;
+        }
         openDatePop(`
             <div style="display:flex;align-items:center;">
               <b style="color:#1d9bf0;font-size:15px;">🤝 ${esc(c.name)} 约你出去</b>

@@ -2580,7 +2580,8 @@ const GY_BOX_CTX = [
     ['__gyGossipCtxFor', '八卦网'],
     ['__gyKitCtxFor',    '随身物'],
     ['__gyDaysCtxFor',   '日子'],
-    ['__gyMallCtxFor',   '商城']
+    ['__gyMallCtxFor',   '商城'],
+    ['__gyWebCtxFor',    '联网探索']
 ];
 function getBoxPrompt(char) {
     if (!char) return '';

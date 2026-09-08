@@ -1358,7 +1358,7 @@ function toggleMainPostLike(postId, event) {
     let post = isTabloid ? tabloidPosts.find(p => p.id === postId) : globalPosts.find(p => p.id == postId);
     if (!post) return;
     if (!post.likedBy) post.likedBy = [];
-    const pinkLikeSVG = likeSVGFilled.replace(/#1d9bf0/g, '#f91880').replace('blue-line-icon', '');
+    const pinkLikeSVG = likeSVGFilled;   // v107：命名保留，颜色已交给 CSS（.x-icon.liked 跟主题走）
     // event.currentTarget 只在事件真正派发的过程中才有值：从 setTimeout 里、
     // 或者别的代码直接调这个函数时它是 null，接着 el.style 就抛
     // "Cannot read properties of null"，界面上表现为"点了没反应"。
@@ -1604,6 +1604,8 @@ function clearForm() {
     const nActMode = document.getElementById('charActMode'); if (nActMode) nActMode.value = 'fixed';
     const nAmin = document.getElementById('autonomyMinMinutes'); if (nAmin) nAmin.value = 30;
     const nAmax = document.getElementById('autonomyMaxHours'); if (nAmax) nAmax.value = 8;
+    ['charWebMode', 'charOwnDaysMode'].forEach(id => { const e = document.getElementById(id); if (e) e.value = 'default'; });
+    ['charWebGap', 'charWebPerDay'].forEach(id => { const e = document.getElementById(id); if (e) e.value = 0; });
     if (typeof onCharActModeChange === 'function') onCharActModeChange();
     document.getElementById('chatFreqInterval').value = 0; document.getElementById('chatFreqUnit').value = 'hour';
     document.getElementById('letterFreqInterval').value = 0; document.getElementById('letterFreqUnit').value = 'day';
@@ -1660,6 +1662,10 @@ function openFormForEdit(charId) {
         // 自主模式的节奏是 TA 自己定的，这两个框只是给那个随机数划范围
         const amin = document.getElementById('autonomyMinMinutes'); if (amin) amin.value = char.autonomyMinMinutes || 30;
         const amax = document.getElementById('autonomyMaxHours'); if (amax) amax.value = char.autonomyMaxHours || 8;
+        const wm = document.getElementById('charWebMode'); if (wm) wm.value = char.webMode || 'default';
+        const wg = document.getElementById('charWebGap'); if (wg) wg.value = char.webGapMin || 0;
+        const wd = document.getElementById('charWebPerDay'); if (wd) wd.value = char.webPerDay || 0;
+        const dm = document.getElementById('charOwnDaysMode'); if (dm) dm.value = char.ownDaysMode || 'default';
         if (typeof onCharActModeChange === 'function') onCharActModeChange();
     }
 
@@ -1756,17 +1762,33 @@ async function aiCompleteCharProfile(persona, blanks) {
     const personaForFill = String(persona || '').length > 1200
         ? String(persona).slice(0, 1200) + '\n（人设后面还有更多内容，这里只截取开头用于补全资料）'
         : persona;
-    const prompt = `下面是一个虚拟角色的人设。请根据人设，为TA补全社交平台的资料字段。
+    // ⚠️ 这里的提示词换过一版。以前的写法（"根据人设补全资料字段"）会让模型
+    //    **把人设复述一遍填进去**——简介变成人设第一段的缩写、网名就是人设里的本名、
+    //    自动回复像旁白。那不是这个人在写自己的资料，那是旁观者在做摘要。
+    //    现在明确要求：**你就是这个人，在自己手机上填这几栏**。
+    //    这一句改动带来的差别比换模型还大。
+    const prompt = `你现在**就是**下面这个人。你正在自己的手机上，填社交平台的个人资料。
 
-【人设】
+【你是谁】
 ${personaForFill}
 
-需要补全的字段：
+要填的几栏：
 ${want.map(k => `- ${k}：${fieldDesc[k]}`).join('\n')}
 
+【怎么填 —— 这是最重要的部分】
+· 你是在**填自己的资料**，不是在给自己写简介、更不是复述你的设定。
+  想一想：以你的性格，你会怎么在这几栏里介绍自己？会不会避重就轻？会不会写句玩笑？
+  会不会干脆写点跟正事无关的（"今天也没睡好"）？
+· **不要照抄人设里的句子**，也不要把人设浓缩成一段。人设是"别人怎么描述你"，
+  资料栏是"你怎么呈现自己"，这两件事经常不一样，有时甚至是相反的：
+  设定上很惨的人，简介里可能特别轻松；很厉害的人，可能一个字都不提自己的成就。
+· 内敛的人会写得短、含糊、留白；张扬的人会写得满；不在乎这些的人会随便写点什么。
+  照着这个人的性格来，别所有人都写成一样工整的自我介绍。
+· 这些是主页上公开展示的东西，正常人不会大片留空。人设里没直说的，按ta的身份和生活
+  合理推断一个——这不算瞎编，这叫补全。
+· 唯一例外是 birthdate：生日是硬事实，人设里没提到就必须留空，绝对不要编一个日期。
+
 严格只返回一个JSON对象，不要有任何其它文字、不要Markdown代码块。键名就用上面的英文字段名。
-【填写原则】这些字段是这个人社交主页上会公开展示的东西，正常人不会大片留空。人设里没直说的，就按ta的身份、职业、生活环境合理推断一个——这不算瞎编，这叫补全。
-唯一例外是 birthdate：生日是硬事实，人设里没提到就必须留空，绝对不要编一个日期。
 示例：{${want.map(k => `"${k}": "..."`).join(', ')}}
 不要写任何思考过程、解释或前后缀，第一个字符就是 { ，最后一个字符就是 }。`;
 
@@ -1892,18 +1914,17 @@ async function saveCharacter() {
 
     const btn = document.getElementById('saveCharBtn');
 
-    // 空白项自动补全（用户已经填过的一律不动）
-    const needAuto = ['charName', 'charHandle', 'charBio', 'charBirthdate']
-        .some(id => document.getElementById(id) && !document.getElementById(id).value.trim());
-    if (needAuto) {
-        btn.innerText = "照着人设补全资料..."; btn.disabled = true;
-        try { await autoFillCharProfile(false); } catch (e) { console.warn('[保存角色] 自动补全出错，继续保存：', e); }
-    }
+    // ⚠️ 这里以前会**在保存时顺手调一次 API 去补全空白项**。两个毛病：
+    //   ① 点「保存」要等好几秒，还悄悄花一次钱，而你只是想改个名字；
+    //   ② 补全是整表回填，实际用起来经常把你刚敲进去的内容顶掉。
+    // 现在保存就是保存：**点了立刻存，一个字都不动，一次 API 都不调**。
+    // 想补全就点表单里那颗「✨ 照着人设补全空白资料」，那才是补全的入口。
 
     let name = document.getElementById('charName').value.trim();
     let handle = document.getElementById('charHandle').value.trim();
     // 补全也可能没补出来（没配API、请求失败、AI返回空）——这时候给个能用的兜底，
     // 而不是把用户卡在这里不让保存。
+    // 名字/账号留空的兜底：本地生成，不调 API（想要像样的就去点那颗补全按钮）
     if (!name) name = persona.trim().slice(0, 6).replace(/[\s\n]/g, '') || '新角色';
     if (!handle) handle = 'user_' + Math.random().toString(36).slice(2, 8);
     if (!handle.startsWith('@')) handle = '@' + handle;
@@ -1951,6 +1972,10 @@ async function saveCharacter() {
             char.actMode = (document.getElementById('charActMode')?.value === 'auto') ? 'auto' : 'fixed';
             char.autonomyMinMinutes = Math.max(5, parseInt(document.getElementById('autonomyMinMinutes')?.value) || 30);
             char.autonomyMaxHours = Math.max(1, parseInt(document.getElementById('autonomyMaxHours')?.value) || 8);
+            char.webMode = document.getElementById('charWebMode')?.value || 'default';
+            char.webGapMin = Math.max(0, parseInt(document.getElementById('charWebGap')?.value) || 0);
+            char.webPerDay = Math.max(0, parseInt(document.getElementById('charWebPerDay')?.value) || 0);
+            char.ownDaysMode = document.getElementById('charOwnDaysMode')?.value || 'default';
             // 刚切到自主模式：现在就给 TA 掷一个"下次什么时候"，而不是立刻就动
             if (char.actMode === 'auto' && !char.nextAutonomyAt && typeof gyRollAutonomyGap === 'function') {
                 char.nextAutonomyAt = Date.now() + gyRollAutonomyGap(char);
@@ -1983,6 +2008,10 @@ async function saveCharacter() {
             actMode: (document.getElementById('charActMode')?.value === 'auto') ? 'auto' : 'fixed',
             autonomyMinMinutes: Math.max(5, parseInt(document.getElementById('autonomyMinMinutes')?.value) || 30),
             autonomyMaxHours: Math.max(1, parseInt(document.getElementById('autonomyMaxHours')?.value) || 8),
+            webMode: document.getElementById('charWebMode')?.value || 'default',
+            webGapMin: Math.max(0, parseInt(document.getElementById('charWebGap')?.value) || 0),
+            webPerDay: Math.max(0, parseInt(document.getElementById('charWebPerDay')?.value) || 0),
+            ownDaysMode: document.getElementById('charOwnDaysMode')?.value || 'default',
             lastAutonomyTime: Date.now(), nextAutonomyAt: 0, autonomyLog: [], todos: [],
             autoReplyText: document.getElementById('charAutoReply').value, busyAutoReplyText: document.getElementById('charBusyAutoReply').value,
             memorySummary: "", chatSummary: "", diaryData: { letters: [], diaries: [] }, pendingLetterReplies: [],

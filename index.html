@@ -101,9 +101,9 @@
     <!-- ⚠️ 改了 style.css 一定要把这个 ?v= 数字 +1，并且同步改 service-worker.js 里的那一份。
          浏览器是按"完整URL字符串"缓存的，数字不变就会一直用旧样式——新加的界面会因此排版全乱（踩过一次：
          日历的网格样式改了但用户那边一直是竖着排的一列）。 -->
-    <link rel="stylesheet" href="./style.css?v=102">
-    <script src="./js/vendor/localforage.min.js?v=102"></script>
-    <script src="./js/vendor/mammoth.browser.min.js?v=102"></script>
+    <link rel="stylesheet" href="./style.css?v=108">
+    <script src="./js/vendor/localforage.min.js?v=108"></script>
+    <script src="./js/vendor/mammoth.browser.min.js?v=108"></script>
 </head>
 <body>
 
@@ -435,6 +435,9 @@
                 <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
                     <button class="btn-primary" onclick="openCreateNovelView()" style="width: auto; padding: 10px 30px; margin:0;">+ 开启旅程</button>
                     <button class="btn-secondary" onclick="switchMainView('grapevine')" style="width: auto; padding: 10px 24px; margin:0;">🎭 Ta们在做什么</button>
+                    <!-- 📥 导入本地 txt：自己写的、别处存的稿子，也能进故事库跟角色一起用 -->
+                    <button class="btn-secondary" onclick="gyNovelImportPick()" style="width: auto; padding: 10px 24px; margin:0;">📥 导入 txt</button>
+                    <input type="file" id="novelTxtInput" accept=".txt,text/plain" style="display:none;" onchange="gyNovelImportTxt(event)">
                 </div>
                 <div id="novelCardsContainer" class="diary-row-container" style="flex-wrap: wrap;"></div>
             </div>
@@ -819,8 +822,14 @@
         </div>
 
         <div id="view-following-list" style="display: none;">
-            <div class="header-title">我的关注</div>
-            <div class="following-row-container" id="followingListContainer"></div>
+            <div class="header-title">关注</div>
+            <!-- v108：改成 X「关注」页那种一行一个人的名单（头像 · 名字 · @账号 · 简介 · 右边关注键），
+                 以前是横向滚的一排卡片，一屏只看得见三四个人，简介也没地方放。 -->
+            <div class="fl-tabs">
+                <div class="fl-tab on" id="flTabMine" onclick="setFollowTab('mine')">我关注的</div>
+                <div class="fl-tab" id="flTabSug" onclick="setFollowTab('sug')">为你推荐</div>
+            </div>
+            <div class="fl-list" id="followingListContainer"></div>
         </div>
 
         <div id="view-search" style="display: none;">
@@ -981,6 +990,34 @@
                         <div id="charAutonomyFreqRow" style="display:none; margin-top:8px;">
                             <div class="freq-group">间隔由 TA 自己定，但不快于 <input type="number" id="autonomyMinMinutes" value="30" min="5" max="10080"> 分钟、不慢于 <input type="number" id="autonomyMaxHours" value="8" min="1" max="168"> 小时</div>
                             <div class="form-hint" style="margin-top:6px;">留着默认就行。想让 TA 更黏人就把上限调小，想让 TA 更像有自己生活的人就把上限调大。</div>
+                        </div>
+                    </div>
+
+                    <!-- 🌐 / 📅 这两块是"这个角色自己会不会去做"的开关，跟全局开关是 且 的关系：
+                         全局那个关着，这里开了也不动；全局开着，这里可以单独把某个角色关掉。 -->
+                    <div class="input-group full-width" style="background:rgba(29,155,240,0.05); border:1px dashed #1d9bf0; padding:10px; border-radius:8px;">
+                        <label style="color:#1d9bf0;">🌐 这个角色自己上网看东西</label>
+                        <select id="charWebMode">
+                            <option value="default">跟全局开关走（默认）</option>
+                            <option value="on">这个角色一定去</option>
+                            <option value="off">这个角色不去</option>
+                        </select>
+                        <div class="freq-group" style="margin-top:8px;">最短间隔 <input type="number" id="charWebGap" value="0" min="0" max="10080"> 分钟（0＝用全局的），一天最多 <input type="number" id="charWebPerDay" value="0" min="0" max="50"> 次（0＝不限）</div>
+                        <div class="form-hint" style="margin-top:6px;">
+                            TA 会自己挑题目去搜，读完写一段感想，进 TA 的 prompt。全局开关在 设置 → ⚙️ 自动化功能 →「🌐 角色自己上网看东西」；
+                            搜几轮、读多少字在 🧩 小功能 → 联网探索 里调。
+                        </div>
+                    </div>
+                    <div class="input-group full-width" style="background:rgba(29,155,240,0.05); border:1px dashed #1d9bf0; padding:10px; border-radius:8px;">
+                        <label style="color:#1d9bf0;">📅 这个角色自己记纪念日</label>
+                        <select id="charOwnDaysMode">
+                            <option value="default">跟全局开关走（默认）</option>
+                            <option value="on">这个角色会自己记</option>
+                            <option value="off">这个角色不记</option>
+                        </select>
+                        <div class="form-hint" style="margin-top:6px;">
+                            在「TA 自己决定」模式下，TA 可以把今天或最近某一天记成对自己有意义的日子。
+                            记下来的会跟你记的一样出现在日历、「📅 日子」和 TA 的 prompt 里，并且标着"TA 自己记的"。
                         </div>
                     </div>
 
@@ -1162,7 +1199,10 @@
                 <span class="set-entry-arrow">›</span>
             </button>
         </div>
-        <div class="set-version" id="setVersionLine">谷雨 · 版本加载中…</div>
+        <div class="set-version-row">
+            <span class="set-version" id="setVersionLine">谷雨 · 版本加载中…</span>
+            <span class="set-token-link" onclick="showTokenStats()" title="看看每个功能各花了多少 token">📊 Token 用量</span>
+        </div>
     </div>
 
     <div class="set-panel" id="setPanel-api" style="display:none; padding:15px 20px 30px; max-width:700px; margin:0 auto;">
@@ -1217,8 +1257,8 @@
             </div>
         </div>
         <div style="background: rgba(249, 24, 128, 0.05); border: 1px solid #f91880; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-            <h4 style="margin-top:0; color:#f91880; margin-bottom:10px;">💬 副 API (选填，专用于私聊、日记信件、聊天总结)</h4>
-            <div class="form-hint" style="margin-bottom:10px; border-left-color:#f91880; background:rgba(249,24,128,0.1);">如果此项留空，上述功能将默认使用主 API。您可以配置不同的大模型专职陪聊。</div>
+            <h4 style="margin-top:0; color:#f91880; margin-bottom:10px;">💬 副 API（选填，跑评论区 / 日程 / 小功能 / 游戏这些量大的活）</h4>
+            <div class="form-hint" style="margin-bottom:10px; border-left-color:#f91880; background:rgba(249,24,128,0.1);">留空的话所有功能都走主 API，照常能用。填了之后按下面那张表分工：<b>你会逐字读的</b>（私聊、群聊、故事、日记信件）留在主 API，<b>你多半只是扫一眼的</b>（评论区、路人、日程、状态、小功能里的一句话、游戏决策）交给副 API——所以副 API 适合挂便宜快的小模型。</div>
             <div class="input-group">
                 <label style="color:#f91880;">副 API 接口地址</label>
                 <input type="text" id="subApiUrlInput" placeholder="例如: https://api.deepseek.com" style="border-color:#f91880;" oninput="autoSaveApiSettings()">
@@ -1259,6 +1299,36 @@
                 </select>
             </div>
         </div>
+        <!-- v107：主/副 API 分工表。以前只写在文档里，找不到，现在直接摆在 API 页上。 -->
+        <details class="gy-api-split">
+            <summary>📋 主 API / 副 API 分别负责哪些功能（点开看全表）</summary>
+            <div class="gy-api-split-body">
+                <div class="gy-api-rule">
+                    取 API 的规则：<b>主 API</b> 那一批＝主的优先，主的没配全才退到副的；
+                    <b>副 API</b> 那一批＝副的优先，副的没配全就退回主的。
+                    所以只填主 API 也能全跑，只是全都用同一个模型。
+                </div>
+                <div class="gy-api-col main">
+                    <h5>走「主 API」——你会逐字读的内容</h5>
+                    <div class="gy-api-grp"><b>聊天</b>私聊回复 · 群聊回复 · 重新生成 / 侧滑抽卡 · 进聊天时的「此刻状态」 · 主动找你说话</div>
+                    <div class="gy-api-grp"><b>故事</b>生成故事章节 · 续写工作台 · 从素材生成小说</div>
+                    <div class="gy-api-grp"><b>长文</b>角色写日记 · 角色主动写信 · 信件回信 · 角色看你的日记写反应</div>
+                    <div class="gy-api-grp"><b>总结</b>日程记忆总结 · 小剧场记忆总结 · 推文记忆总结 · 角色资料补全</div>
+                </div>
+                <div class="gy-api-col sub">
+                    <h5>走「副 API」——量大、你多半扫一眼就过</h5>
+                    <div class="gy-api-grp"><b>推文与评论</b>角色评论你的推文 · NPC 路人评论 · NPC 互相抬杠 · 角色对评论的反应 · 引用推文的连锁 · 匿名论坛跟帖 · 故事论坛楼层 · 营销号发帖与参与</div>
+                    <div class="gy-api-grp"><b>日程与状态</b>生成 / 更新今日日程 · 日程每天自动更新 · 角色写待办 · 状态跟日程流动</div>
+                    <div class="gy-api-grp"><b>背后发生的事</b>Ta们在做什么 · 自主模式的每一步 · 八卦网传话 · 营销号递料</div>
+                    <div class="gy-api-grp"><b>小功能</b>一起看电影 / 一起听歌 / 一起阅读的每一句 · 行程与天气 · 随身物 · 日子 · 商城 · 联网探索（写感想那一次可以在功能页里单独指定走哪个）</div>
+                    <div class="gy-api-grp"><b>游戏</b>五子棋 / UNO / 昆特牌 / 狼人杀 / 谁是卧底 / 20个问题 / 真心话大冒险的每一步决策，以及邀请与赛后点评</div>
+                </div>
+                <div class="gy-api-col vec">
+                    <h5>走「向量 API」（第三套，在「记忆」那一页单独填）</h5>
+                    <div class="gy-api-grp"><b>向量记忆</b>Embedding 拉取模型 / 生成向量。填了用它，没填退回<b>主 API</b>，永远不会去用副 API。</div>
+                </div>
+            </div>
+        </details>
         <button class="btn-primary" onclick="saveSettings()">保存基本设置</button>
     </div>
 
@@ -1504,17 +1574,54 @@
                 </div>
                 <div id="autoFeatureList"></div>
             </div>
-        <!-- 📊 Token 用量：刻意做得不显眼——平时不用看，想查花了多少钱的时候点开就行 -->
-        <div style="margin-top:18px; text-align:right;">
-            <span onclick="showTokenStats()" style="cursor:pointer; font-size:12px; color:#536471; text-decoration:underline; user-select:none;"
-                  title="看看每个功能各花了多少 token">📊 Token 用量统计</span>
-        </div>
+        <!-- 📊 Token 用量的入口已经挪到设置目录页最底下（版本号旁边）——
+             埋在"自动化功能"这一屏最下面根本找不着。 -->
     </div>
 
     <div class="set-panel" id="setPanel-appearance" style="display:none; padding:15px 20px 30px; max-width:700px; margin:0 auto;">
+        <div class="input-group" style="margin-bottom:15px;">
+            <label style="font-size:16px;">🎨 配色</label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                跟深色模式是<b>两回事，可以叠加</b>：配色管的是那抹主色（蓝还是黑），深色模式管的是底色（白底还是黑底）。
+            </div>
+            <select id="uiThemeSelect" onchange="setUiTheme(this.value)">
+                <option value="blue">🔵 蓝白（默认）</option>
+                <option value="mono">⚫ 黑白</option>
+            </select>
+        </div>
         <div class="input-group checkbox-group" style="margin-bottom:15px; padding:10px; background:rgba(29,155,240,0.05); border-radius:8px; border:1px solid #1d9bf0;">
             <input type="checkbox" id="darkThemeToggle" onchange="toggleDarkTheme()">
             <label style="margin:0; font-size:15px;">🌙 深色模式</label>
+        </div>
+        <!-- v107/v108：版式三件套——字号、中栏宽度、左栏宽度。
+             两条宽度也可以直接按住那一栏右边缘那道缝左右拖，双击恢复默认。 -->
+        <div class="input-group" style="margin-bottom:15px;">
+            <label style="font-size:16px;">🔠 字号　<span id="gyFsLabel" style="font-weight:normal; color:#536471;">15px</span></label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                改的是<b>全站</b>的正文字号——推文、聊天、评论、名单、设置页一起变，不是只有推文。
+                默认 15px，跟 X 官网一样。标题会比这个大一点，说明文字会小一点，整体按比例走。
+            </div>
+            <input type="range" id="gyFsRange" min="12" max="20" step="1" value="15"
+                   style="width:100%;" oninput="setFontSize(this.value)">
+            <button class="btn-secondary" style="margin-top:8px; padding:6px 12px;" onclick="setFontSize(15)">恢复默认 15px</button>
+        </div>
+        <div class="input-group" style="margin-bottom:15px;">
+            <label style="font-size:16px;">📐 中间那一栏的宽度　<span id="gyMainWLabel" style="font-weight:normal; color:#536471;">600px</span></label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                默认 600px，跟 X 官网一样。也可以<b>直接按住中栏右边缘那道缝左右拖</b>，双击那道缝恢复默认。手机上这一项不生效（永远满宽）。
+            </div>
+            <input type="range" id="gyMainWRange" min="480" max="1000" step="10" value="600"
+                   style="width:100%;" oninput="setMainWidth(this.value)">
+            <button class="btn-secondary" style="margin-top:8px; padding:6px 12px;" onclick="setMainWidth(600)">恢复默认 600px</button>
+        </div>
+        <div class="input-group" style="margin-bottom:15px;">
+            <label style="font-size:16px;">📑 左边导航栏的宽度　<span id="gyLeftWLabel" style="font-weight:normal; color:#536471;">275px</span></label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                默认 275px。跟中栏一样，<b>按住左栏右边缘那道缝左右拖</b>也能改，双击恢复默认。
+            </div>
+            <input type="range" id="gyLeftWRange" min="190" max="420" step="5" value="275"
+                   style="width:100%;" oninput="setLeftWidth(this.value)">
+            <button class="btn-secondary" style="margin-top:8px; padding:6px 12px;" onclick="setLeftWidth(275)">恢复默认 275px</button>
         </div>
         <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
             <label style="font-size:16px;">🎨 全局界面自定义 (CSS)</label>
@@ -1525,6 +1632,37 @@
                 想知道该改哪个类名/id，可以用浏览器"检查元素"(F12)点一下你想改的东西看看。
             </div>
             <textarea id="globalCSSInput" rows="6" style="width:100%; padding:10px; border:1px solid #1d9bf0; border-radius:8px; font-family:monospace; background:rgba(29,155,240,0.02); outline:none;"></textarea>
+
+            <!-- 🔎 选择器速查表：不用 F12 也能知道每一页每一块该写哪个类名。
+                 内容是**现场从页面里扫出来的**，不是手写的清单，所以永远不会跟界面对不上。 -->
+            <div style="margin-top:14px; border-top:1px dashed #cfd9de; padding-top:12px;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <b style="font-size:14px;">🔎 选择器速查表</b>
+                    <input type="text" id="gyCssMapSearch" placeholder="搜：气泡 / 侧栏 / bubble…" oninput="gyCssMapRender()"
+                           style="flex:1; min-width:140px; padding:6px 10px; border:1px solid #cfd9de; border-radius:8px; font-size:13px;">
+                    <button class="btn-edit-small" style="margin:0;" onclick="gyCssMapRender(true)">刷新</button>
+                </div>
+                <div class="form-hint" style="margin:8px 0 10px; font-size:12px;">
+                    点任意一个选择器，就把 <code>选择器 { }</code> 追加到上面的输入框里。带 <span style="color:#1d9bf0;">#</span> 的是唯一元素，
+                    带 <span style="color:#17bf63;">.</span> 的是同类元素。改了没生效就加 <code>!important</code>。
+                </div>
+                <div id="gyCssMap" style="max-height:420px; overflow-y:auto;"></div>
+            </div>
+        </div>
+        <!-- 🔕 通知气泡：一次冒一堆的时候太吵 -->
+        <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
+            <label style="font-size:16px;">🔕 通知气泡</label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                刚进主页那会儿好几个后台任务同时落地，一屏全是气泡什么都看不清。
+                超出的会合并成一条「还有 N 条新通知」，点它进通知页——<b>一条都不会少</b>。
+            </div>
+            <select id="toastMaxVisibleSelect" onchange="toastMaxVisible = parseInt(this.value); saveAllData();">
+                <option value="2">最多同时弹 2 条（推荐）</option>
+                <option value="1">最多同时弹 1 条</option>
+                <option value="3">最多同时弹 3 条</option>
+                <option value="0">全部都弹（老行为）</option>
+                <option value="-1">一条都不弹，只进通知页</option>
+            </select>
         </div>
         <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
             <label style="font-size:16px;">🖱️ 点击特效</label>
@@ -2795,34 +2933,35 @@
 </style>
 
     <!-- EJS模板引擎：本地打包(vendor)而不用CDN，离线(PWA)时也能正常渲染带<%%>语法的提示词/世界书 -->
-    <script src="./js/vendor/ejs.min.js?v=102"></script>
-    <script src="./js/01-core-state-infra.js?v=102"></script>
-    <script src="./js/02-databank-plugins-minigames.js?v=102"></script>
-    <script src="./js/03-markdown-feed-tags.js?v=102"></script>
-    <script src="./js/04-mobile-bootstrap-notifications.js?v=102"></script>
-    <script src="./js/05-anniversary-memory.js?v=102"></script>
-    <script src="./js/06-emoticons-time-humanfeel-relationships-worldbook.js?v=102"></script>
-    <script src="./js/07-proactive-cloudsync.js?v=102"></script>
-    <script src="./js/08-diary-novel.js?v=102"></script>
-    <script src="./js/09-memories-search-postfixes.js?v=102"></script>
-    <script src="./js/10-comments-npc-forum-reply.js?v=102"></script>
-    <script src="./js/11-tabloid-story-forum-engine.js?v=102"></script>
-    <script src="./js/12-worldbook-import-appexport.js?v=102"></script>
-    <script src="./js/13-charreply-groupchat-faction-cardimport.js?v=102"></script>
-    <script src="./js/14-settings-archive.js?v=102"></script>
-    <script src="./js/15-ai-presets.js?v=102"></script>
-<script src="./js/16-story-studio.js?v=102"></script>
-<script src="./js/17-tavern-bridge.js?v=102"></script>
-<script src="./js/18-minigames-board-cards.js?v=102"></script>
-<script src="./js/19-minigames-party.js?v=102"></script>
-<script src="./js/20-reading-together.js?v=102"></script>
-<script src="./js/21-watch-together.js?v=102"></script>
-<script src="./js/22-box-music.js?v=102"></script>
-<script src="./js/23-box-map.js?v=102"></script>
-<script src="./js/24-box-relations.js?v=102"></script>
-<script src="./js/25-box-life.js?v=102"></script>
-<script src="./js/26-box-mall.js?v=102"></script>
-<script src="./js/27-feature-pages.js?v=102"></script>
-<script src="./js/28-invite-in-chat.js?v=102"></script>
+    <script src="./js/vendor/ejs.min.js?v=108"></script>
+    <script src="./js/01-core-state-infra.js?v=108"></script>
+    <script src="./js/02-databank-plugins-minigames.js?v=108"></script>
+    <script src="./js/03-markdown-feed-tags.js?v=108"></script>
+    <script src="./js/04-mobile-bootstrap-notifications.js?v=108"></script>
+    <script src="./js/05-anniversary-memory.js?v=108"></script>
+    <script src="./js/06-emoticons-time-humanfeel-relationships-worldbook.js?v=108"></script>
+    <script src="./js/07-proactive-cloudsync.js?v=108"></script>
+    <script src="./js/08-diary-novel.js?v=108"></script>
+    <script src="./js/09-memories-search-postfixes.js?v=108"></script>
+    <script src="./js/10-comments-npc-forum-reply.js?v=108"></script>
+    <script src="./js/11-tabloid-story-forum-engine.js?v=108"></script>
+    <script src="./js/12-worldbook-import-appexport.js?v=108"></script>
+    <script src="./js/13-charreply-groupchat-faction-cardimport.js?v=108"></script>
+    <script src="./js/14-settings-archive.js?v=108"></script>
+    <script src="./js/15-ai-presets.js?v=108"></script>
+<script src="./js/16-story-studio.js?v=108"></script>
+<script src="./js/17-tavern-bridge.js?v=108"></script>
+<script src="./js/18-minigames-board-cards.js?v=108"></script>
+<script src="./js/19-minigames-party.js?v=108"></script>
+<script src="./js/20-reading-together.js?v=108"></script>
+<script src="./js/21-watch-together.js?v=108"></script>
+<script src="./js/22-box-music.js?v=108"></script>
+<script src="./js/23-box-map.js?v=108"></script>
+<script src="./js/24-box-relations.js?v=108"></script>
+<script src="./js/25-box-life.js?v=108"></script>
+<script src="./js/26-box-mall.js?v=108"></script>
+<script src="./js/27-feature-pages.js?v=108"></script>
+<script src="./js/28-invite-in-chat.js?v=108"></script>
+<script src="./js/29-web-explore.js?v=108"></script>
 </body>
 </html>

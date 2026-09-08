@@ -186,6 +186,10 @@
             S.lastRandomCheckAt = Date.now();
             await save();
         }
+        // 🏪 角色自己上架：跟随机购物同一个节拍，概率折半（卖东西比买东西低频）
+        if (on('mallCharSell') && since >= five) {
+            if (Math.random() < (parseFloat(S.settings.buyProbabilityPerRoll) || 0) / 2) charListProduct();
+        }
         paintBadge();
         if (viewOpen()) { if (tab === 'orders') renderOrders(); }
         if (detailId && isDetailOpen()) openDetail(detailId);
@@ -264,6 +268,51 @@
             reasonText: reasonText || '', complaints: [], timelineFlavor: null, timelineGenerating: false
         };
     }
+
+    // 🏪 角色自己上架东西（开关：mallCharSell，默认关）
+    // 以前货架只有你能摆。真人开个二手小店、卖自己做的东西，是很常见的事——
+    // 而且 TA 上架什么，本身就是一条人设信息（谁在卖手写信、谁在卖打折的旧吉他）。
+    async function charListProduct() {
+        if (!on('mallCharSell')) return null;
+        const cs = chars();
+        if (!cs.length) return null;
+        const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+        if (!api || !api.key) return null;
+        const seller = cs[Math.floor(Math.random() * cs.length)];
+        const had = S.products.filter(p => String(p.ownerId) === String(seller.id))
+            .slice(-5).map(p => '· ' + p.name).join('\n');
+        try {
+            const ask = `你打算在一个类似闲鱼的地方，上架一样自己的东西卖掉（或者送出去）。
+按你的人设和处境想一样**你真的会拿出来卖的东西**：可能是二手的、自己做的、多买的、
+用不上的、或者干脆是一份手艺（"帮你写一封信"）。别写成商场里的标准商品。
+${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
+只输出 JSON，不要解释：
+{"name":"商品名，12字以内","price":"价格，纯数字字符串，可以是0","emoji":"一个 emoji","desc":"你自己写的商品描述，30字以内，是你的口吻不是商家话术"}`;
+            const msgs = buildStructuredMessages(buildBasePrompt(seller, false, ''), [], ask);
+            const data = await callChatCompletionAPI(api, msgs);
+            let r = (typeof parseModelJson === 'function') ? parseModelJson(data.choices?.[0]?.message?.content || '') : null;
+            if (Array.isArray(r)) r = r[0];
+            const name = String((r && r.name) || '').trim().slice(0, 24);
+            if (!name) return null;
+            const item = {
+                id: uid('mp_'), name,
+                price: String((r && r.price) || '0').replace(/[^\d.]/g, '') || '0',
+                emoji: String((r && r.emoji) || '📦').slice(0, 4) || '📦',
+                description: String((r && r.desc) || '').trim().slice(0, 80),
+                ownerId: String(seller.id), createdAt: Date.now(), byChar: true
+            };
+            S.products.unshift(item);
+            await save();
+            if (viewOpen() && tab === 'products') renderProducts();
+            if (typeof addNotification === 'function') {
+                addNotification(`<b>${seller.name}</b> 上架了一样东西 🏪`, null, seller.id, seller,
+                    `${item.emoji} ${item.name}　￥${item.price}${item.description ? '　' + item.description : ''}`,
+                    { view: 'mall' });
+            }
+            return item;
+        } catch (e) { console.warn('[商城] 角色上架失败：', e); return null; }
+    }
+    window.gymallCharSell = charListProduct;
 
     async function randomPurchase() {
         if (!S.products.length || !chars().length) return;
@@ -485,7 +534,7 @@
                 <div style="flex:1;min-width:0;">
                     <div class="gymall-nm">${esc(p.name)}<span class="gymall-price">￥${esc(p.price)}</span></div>
                     <div class="gymall-dim">${esc(p.description || '')}</div>
-                    <div class="gymall-dim" style="margin-top:2px;opacity:.8;">${p.ownerId === 'me' ? '你上架的' : esc(nameOf(p.ownerId)) + ' 上架的'}</div>
+                    <div class="gymall-dim" style="margin-top:2px;opacity:.8;">${p.ownerId === 'me' ? '你上架的' : esc(nameOf(p.ownerId)) + ' 上架的'}${p.byChar ? '　🏪 TA 自己摆的' : ''}</div>
                 </div>
                 <div class="gymall-acts">
                     <button type="button" class="gymall-btn solid" onclick="gymallBuyPicker('${p.id}')">购买</button>
@@ -727,11 +776,17 @@
             </div>`;
         };
         body.innerHTML = `
+            ${(typeof gyReqBox === 'function') ? gyReqBox([
+                { api: true },
+                { ok: S.products.length > 0, text: '货架是空的，角色没东西可买', jump: "gymallTab('products')", go: '去上架' },
+                { ok: chars().length > 0, text: '还没有角色', jump: "openCharacterCenter()", go: '去建一个' }
+            ], { title: '想让角色自己去逛，还差这些' }) : ''}
             <div class="gymall-dim" style="line-height:1.9;margin-bottom:6px;">
                 三个花钱的开关统一收在 设置 → ⚙️ 自动化功能 的「🛒 购物」那一组里，这儿只是快捷入口。<br>
                 全关掉之后这一页纯手动：你不点，一次 API 都不会调。
             </div>
             ${sw('mallAutoBuy', '角色自己随机网购')}
+            ${sw('mallCharSell', '角色自己上架东西卖')}
             ${sw('mallTimeline', '物流文案按世界观生成')}
             ${sw('mallReact', '快递到角色手上，TA 可能来找你说一句')}
 
@@ -746,6 +801,7 @@
                 <label class="gymall-dim">物流/客服角色（投诉时由 TA 回你。去角色中心搓一个物流人设再回来选）</label>
                 <select id="gymallCourier"><option value="">— 没指定 —</option>${charOpts(S.settings.courierCharId)}</select>
                 <button type="button" class="gymall-btn solid" style="width:100%;padding:9px;margin-top:4px;" onclick="gymallSaveSettings()">保存</button>
+                <button type="button" class="gymall-btn" style="width:100%;padding:9px;margin-top:8px;" onclick="gymallCharSell()">🏪 现在就让某个角色上架一样东西（手动，不看开关）</button>
             </div>`;
     }
     window.gymallSaveSettings = async function () {

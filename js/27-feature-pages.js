@@ -28,7 +28,10 @@
     const PAGES = [
         { id: 'music',    icon: '🎵', title: '音乐盒',     entry: 'gymSetEntry',
           desc: '本地歌 / 直链都能放，选个角色一起听，TA 会顺着歌说话',
-          modal: 'gymMgr',    open: () => window.gymOpenMgr && window.gymOpenMgr(), onClose: () => window.gymCloseMgr && window.gymCloseMgr(), closeAttr: 'gymCloseMgr(' },
+          // ⚠️ 一定要先 gymShow()：收起播放器（gymHide）之后 #gymRoot 是 display:none，
+          //    只开管理页的话播放器再也放不出来了——以前设置目录里那个入口就是 gymShow()+gymOpenMgr()，
+          //    v102 改成页面时漏掉了前半句，于是"收起之后就再也打不开"。
+          modal: 'gymMgr',    open: () => { if (window.gymShow) window.gymShow(); if (window.gymOpenMgr) window.gymOpenMgr(); }, onClose: () => window.gymCloseMgr && window.gymCloseMgr(), closeAttr: 'gymCloseMgr(' },
         { id: 'map',      icon: '🗺️', title: '行程与天气', entry: 'gymapSetEntry',
           desc: '角色现在在哪、那边什么天气，能约出去，也能挂个悬浮窗',
           modal: 'gymapModal', open: () => window.gymapOpen && window.gymapOpen(), onClose: () => window.gymapClose && window.gymapClose(), closeAttr: 'gymapClose(' },

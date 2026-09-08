@@ -132,7 +132,7 @@ function renderTabloidPosts() {
                     <span style="background:#1d9bf0; color:white; font-size:10px; padding:2px 6px; border-radius:4px;">小报爆料</span>
                 </div>
                 <div class="post-body">${namespaceInjectedIds(formatPostText(post.text, null, { statusContext: 'post' }), post.id)}</div>
-                <div class="post-footer"><div class="post-stats-group" style="gap:40px;"><div>${commentSVG} ${post.stats.comments}</div><div class="like-stat-item" style="cursor:pointer; color:${post.userLiked ? '#f91880' : 'inherit'}; display:flex; align-items:center; gap:4px;" onclick="event.stopPropagation(); toggleMainPostLike('${post.id}', event)"><span class="like-icon-wrap">${post.userLiked ? likeSVGFilled.replace(/#1d9bf0/g, '#f91880').replace('blue-line-icon', '') : likeSVG}</span> <span class="like-count">${post.stats.likes}</span></div></div></div>
+                <div class="post-footer"><div class="post-stats-group" style="gap:40px;"><div>${commentSVG} ${post.stats.comments}</div><div class="like-stat-item" style="cursor:pointer; display:flex; align-items:center; gap:4px;" onclick="event.stopPropagation(); toggleMainPostLike('${post.id}', event)"><span class="like-icon-wrap">${post.userLiked ? likeSVGFilled : likeSVG}</span> <span class="like-count">${post.stats.likes}</span></div></div></div>
             </div>
         </div>`).join('');
     if (typeof enableChatScriptExecution !== 'undefined' && enableChatScriptExecution) { try { executeInjectedScripts(container); } catch (e) { console.error('执行小报注入脚本时出错：', e); } }
@@ -162,30 +162,43 @@ async function saveTabloidProfile() {
 
     saveAllData(); closeModal('tabloidProfileModal'); alert("保存成功！");
 }
+// 评论下面那一行：跟推文操作栏同一套排法（.post-actions/.pa-item），
+// 回复 · 转发 · 赞 · 浏览 四个均分，分享顶到最右。收藏收进右键菜单里，
+// 不再单独占一个没人认得出的五角星。
 function getActionIconsHTML(likes, isLiked, replyIdx, postId, isSubReply, isFavorited) {
-    const iconStyle = `width:${isSubReply ? 16 : 18.75}px; height:${isSubReply ? 16 : 18.75}px; fill:currentColor;`;
-    const itemStyle = 'display:flex; align-items:center; gap:6px; cursor:pointer; color:#536471; font-size:13px; transition:0.2s; user-select:none;';
-    const likeColor = isLiked ? '#f91880' : 'inherit';
-    const favColor = isFavorited ? '#ffad1f' : 'inherit';
-    const currentLikeSVG = isLiked ? likeSVGFilled.replace(/#1d9bf0/g, '#f91880') : likeSVG;
-    const favorSVG = isFavorited ? '<svg style="width:18.75px; height:18.75px; fill:#ffad1f;" viewBox="0 0 24 24"><polygon points="12 2 15.09 10.26 23.77 11.25 17.88 17.15 19.54 25.88 12 21.77 4.46 25.88 6.12 17.15 0.23 11.25 8.91 10.26 12 2"/></svg>' : '<svg style="width:18.75px; height:18.75px; fill:none; stroke:currentColor; stroke-width:1.5;" viewBox="0 0 24 24"><polygon points="12 2 15.09 10.26 23.77 11.25 17.88 17.15 19.54 25.88 12 21.77 4.46 25.88 6.12 17.15 0.23 11.25 8.91 10.26 12 2"/></svg>';
-
+    const cur = isLiked ? likeSVGFilled : likeSVG;   // v107：不再注入粉色，颜色交给 .x-icon.liked（跟主题走）
     return `
-        <div class="reply-action-row" style="display:flex; justify-content:space-between; max-width:340px; margin-top:8px;">
-            <div style="${itemStyle}" onclick="event.stopPropagation(); toggleInlineReply(${replyIdx}, '${postId}')" onmouseover="this.style.color='#1d9bf0'" onmouseout="this.style.color='#536471'">
-                ${commentSVG}
-                <span>回复</span>
-            </div>
-            <div style="${itemStyle}; color: ${likeColor};" onclick="event.stopPropagation(); likeReply(${replyIdx}, '${postId}', event)" onmouseover="this.style.color='#f91880'" onmouseout="this.style.color='${likeColor}'">
-                ${currentLikeSVG}
-                <span class="reply-like-count">${likes || 0}</span>
-            </div>
-            <div style="${itemStyle}; color: ${favColor};" onclick="event.stopPropagation(); favoriteReply(${replyIdx}, '${postId}', event)" onmouseover="this.style.color='#ffad1f'" onmouseout="this.style.color='${favColor}'">
-                ${favorSVG}
-            </div>
+        <div class="post-actions${isSubReply ? ' sub' : ''}">
+            <div class="pa-item" onclick="event.stopPropagation(); toggleInlineReply(${replyIdx}, '${postId}')" title="回复">${commentSVG}<span>回复</span></div>
+            <div class="pa-item rt" onclick="event.stopPropagation(); gyReplyQuote(${replyIdx}, '${postId}')" title="引用这条评论">${retweetSVG}</div>
+            <div class="pa-item like ${isLiked ? 'on' : ''}" onclick="event.stopPropagation(); likeReply(${replyIdx}, '${postId}', event)" title="喜欢"><span class="like-icon-wrap">${cur}</span><span class="reply-like-count">${likes || 0}</span></div>
+            <div class="pa-item pa-share" onclick="event.stopPropagation(); gyReplyMenu(event, ${replyIdx}, '${postId}')" title="更多">${moreDotsSVG}</div>
         </div>
     `;
 }
+
+// 评论的「引用」：把这条评论的内容带进回复框，跟论坛的引用回复一个意思
+window.gyReplyQuote = function (replyIdx, postId) {
+    try {
+        if (typeof toggleInlineReply === 'function') toggleInlineReply(replyIdx, postId);
+        const post = String(postId).startsWith('tb_')
+            ? (typeof tabloidPosts !== 'undefined' ? tabloidPosts : []).find(p => p.id == postId)
+            : globalPosts.find(p => p.id == postId);
+        const r = post && post.replies && post.replies[replyIdx];
+        if (!r) return;
+        const name = (r.char && r.char.name) || r.name || '';
+        setTimeout(() => {
+            // 输入框的真实 id 是 inline-input-<postId>-<replyIdx>（见 js/10 的 toggleInlineReply）
+            const box = document.getElementById(`inline-input-${postId}-${replyIdx}`);
+            if (box) { box.value = `//@${name}：${String(r.text || '').slice(0, 40)}　`; box.focus(); }
+        }, 60);
+    } catch (e) {}
+};
+
+// 评论的 ⋮：收藏、修改、删除都在这儿（右键菜单同样能开，这个是给手机用的）
+window.gyReplyMenu = function (e, replyIdx, postId) {
+    if (typeof showReplyContextMenu === 'function') showReplyContextMenu(e, postId, replyIdx);
+};
 
 // ===== 新增：详情页专用的点赞和删除功能 =====
 function toggleDetailLike(postId) {
@@ -480,6 +493,8 @@ function openForumThread(threadId) {
             <div class="forum-floor-actions">
                 <span onclick="likeForumReply('${threadId}', ${r.floor}, ${r.isMainPost})" style="cursor:pointer;">👍 ${r.likes || 0}</span>
                 <span onclick="replyForumFloor('${threadId}', ${r.floor})" style="cursor:pointer;">💬 引用回复</span>
+                <span onclick="gyForumEditFloor('${threadId}', ${r.floor})" style="cursor:pointer;">✏️ 修改</span>
+                ${r.isMainPost ? '' : `<span onclick="gyForumDelFloor('${threadId}', ${r.floor})" style="cursor:pointer;color:#f91880;">🗑️ 删除</span>`}
             </div>
         </div>`;
     });
@@ -527,6 +542,27 @@ function bindEditableEvents(threadId) {
         el.addEventListener('dblclick', (e) => { e.stopPropagation(); triggerEdit(el, threadId); });
     });
 }
+
+// ✏️ 楼层改内容 / 🗑️ 删楼。
+// 以前只能双击或者长按那段文字才能改——没有任何提示，等于没有。现在楼层操作栏里直接给按钮。
+window.gyForumEditFloor = async function (threadId, floor) {
+    const thread = forumThreads.find(t => t.id === threadId);
+    if (!thread) return;
+    const isMain = floor === 1;
+    const cur = isMain ? thread.content : ((thread.replies.find(r => r.floor === floor) || {}).content || '');
+    const next = await appPrompt('修改这一楼的内容：', cur);
+    if (next === null || next.trim() === '' || next === cur) return;
+    if (isMain) thread.content = next;
+    else { const rp = thread.replies.find(r => r.floor === floor); if (rp) rp.content = next; }
+    saveAllData(); openForumThread(threadId);
+};
+window.gyForumDelFloor = async function (threadId, floor) {
+    if (!(await appConfirm('删掉这一楼？楼层号不会重排，引用它的楼会显示原文。'))) return;
+    const thread = forumThreads.find(t => t.id === threadId);
+    if (!thread) return;
+    thread.replies = (thread.replies || []).filter(r => r.floor !== floor);
+    saveAllData(); openForumThread(threadId);
+};
 
 async function triggerEdit(el, threadId) {
     let oldText = el.innerText;

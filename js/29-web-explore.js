@@ -1,0 +1,553 @@
+/* ===========================================================================
+   js/29 —— 🌐 角色联网探索
+   ---------------------------------------------------------------------------
+   角色能聊的东西，全都来自你给的人设和你们说过的话。世界在外面变，TA 不知道；
+   TA "喜欢"的东西也只是人设里的一个词，不会自己往深里走。
+
+   这里让 TA 真的去外面看一眼：
+     ① TA 按自己的人设想一个**现在想了解的东西**（不是你给关键词，是 TA 自己挑）
+     ② 拿这个关键词去搜；**两段式**：先看搜索结果页，从里面挑最相关的几条
+        点进去读正文——搜索结果页剥完标签是一坨导航和广告，正文才有东西
+     ③ 读不明白可以**换个词再搜一轮**（轮数你定，默认 1 轮）
+     ④ 用自己的口吻写一段"我看到了什么、我怎么想"——不是摘要，是感想
+     ⑤ 存进探索记录，**进 prompt**，以后聊天时是真的知道这件事
+     ⑥ 可以选择让 TA 主动私聊发给你
+
+   v106 起下面这些全部可调，而且**自主模式跑的是同一份配置**
+   （不会出现"设置改了、自主模式还按老参数跑"）：
+     · 喂给模型的网页字数上限（默认 1500，以前写死 4000——最贵的就是这一段）
+     · 一次探索最多搜几轮
+     · 两段式点进去读几条正文
+     · 感想写多少字
+     · 写感想那次走主 API 还是副 API
+
+   ⚠️ 关于"联网"这件事的实话：
+      纯前端 fetch 别人家网站基本都会被 CORS 拦。所以给四种来源：
+        · DuckDuckGo lite（默认，免 key，自己带 CORS 头）
+        · Jina 读取代理（质量最好，但**匿名访问会 401**，要去 jina.ai 免费注册拿 key）
+        · 自定义接口（你自己的 SearXNG / Tavily / 反代）
+        · 不联网（一个请求都不发）
+      抓不到就自动退回"只用模型知道的"继续写，不卡住也不弹错。
+      APK 版走原生网络通道，不受 CORS 限制。
+   =========================================================================== */
+(function () {
+    if (window.__gyWebLoaded) return;
+    window.__gyWebLoaded = true;
+
+    const LF = (typeof localforage !== 'undefined')
+        ? localforage.createInstance({ name: 'gyWebBox', storeName: 'explore' })
+        : null;
+    const KEY = 'gyWeb_state';
+
+    const PRESETS = [
+        { k: 'ddg', name: 'DuckDuckGo（默认 · 免 key）',
+          url: 'https://lite.duckduckgo.com/lite/?q={q}',
+          note: '直连 DDG 的精简结果页，自己带 CORS 头，不用注册。' },
+        { k: 'jina', name: 'Jina 读取代理（质量最好 · 要 key）',
+          url: 'https://r.jina.ai/{u}', search: 'https://r.jina.ai/https://duckduckgo.com/html/?q={q}',
+          needKey: true,
+          note: '把网页转成干净的纯文本。⚠️ 现在匿名访问会返回 401（你日志里那条就是），去 jina.ai 免费注册拿个 key 填在下面。' },
+        { k: 'custom', name: '自定义接口', url: '', search: '',
+          note: '你自己的 SearXNG / Tavily / 反代。搜索地址里用 {q} 占位关键词；正文地址（选填）里用 {u} 占位网址。' },
+        { k: 'none', name: '不联网（只用模型知道的）', url: '', search: '',
+          note: '一个网络请求都不发。TA 还是会挑题目、写感想，只是内容来自模型自己的知识。' }
+    ];
+    const presetOf = k => PRESETS.find(p => p.k === k) || PRESETS[0];
+
+    let S = {
+        src: 'ddg',
+        url: '',            // 自定义：搜索地址（含 {q}）
+        readUrl: '',        // 自定义：读正文地址（含 {u}），留空就直接 fetch 原网址
+        key: '',            // Jina 那档的 key
+        maxChars: 1500,     // 喂给模型的网页文字上限
+        rounds: 1,          // 一次探索最多搜几轮
+        deep: 2,            // 两段式：点进去读几条正文（0 = 只读搜索结果页）
+        sayChars: 80,       // 感想字数
+        sayApi: 'auto',     // 写感想那次走哪个：auto=跟全 app 一样（副API优先）/ main=强制主API / sub=强制副API
+        max: 30,            // 每个角色最多留几条
+        inject: 3,          // 注进 prompt 的最多几条
+        lastRunAt: 0,
+        gapMin: 180,        // 自动跑的最小间隔（分钟）
+        log: {}             // { 角色id: [{id, at, topic, why, text, src, rounds, sources}] }
+    };
+    // 自主模式（js/14 的 GY_AUTONOMY_ACTIONS）跑的就是这一份 S，不另起一套参数。
+    window.gyWebConfig = () => JSON.parse(JSON.stringify(S));
+
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const chars = () => (typeof myCharacters !== 'undefined' ? myCharacters : []);
+    const charOf = id => chars().find(c => String(c.id) === String(id)) || null;
+    const uid = () => 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    const on = k => (typeof isAutoOn === 'function') ? isAutoOn(k) : false;
+    const num = (v, lo, hi, dft) => { const n = parseInt(v); return isNaN(n) ? dft : Math.max(lo, Math.min(hi, n)); };
+    // 记录里"看的是哪几个站"——URL 太长，只留域名+一小截
+    const shortUrl = u => String(u || '').replace(/^https?:\/\//i, '').slice(0, 40);
+    const ago = t => { const d = Math.floor((Date.now() - t) / 86400000);
+        return d <= 0 ? '今天' : d === 1 ? '昨天' : d < 30 ? d + ' 天前' : Math.round(d / 30) + ' 个月前'; };
+
+    async function save() { try { if (LF) await LF.setItem(KEY, JSON.parse(JSON.stringify(S))); } catch (e) { console.warn('[联网探索] 存档失败', e); } }
+    async function load() {
+        try { if (LF) { const d = await LF.getItem(KEY); if (d && typeof d === 'object') S = Object.assign(S, d); } } catch (e) {}
+        if (!S.log || typeof S.log !== 'object') S.log = {};
+        if (!PRESETS.some(p => p.k === S.src)) S.src = 'ddg';
+    }
+    const listOf = id => { const k = String(id); if (!Array.isArray(S.log[k])) S.log[k] = []; return S.log[k]; };
+
+    /* ===================== 抓取 ===================== */
+    let lastErr = '';      // 上一次抓取失败的原因，显示在功能页上（以前只在控制台里）
+
+    function headers() {
+        const p = presetOf(S.src);
+        return (p.needKey && S.key) ? { Authorization: 'Bearer ' + S.key } : {};
+    }
+    async function grab(url, ms) {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), ms || 20000);
+        try {
+            const res = await fetch(url, { signal: ctl.signal, headers: headers() });
+            if (!res.ok) throw new Error('HTTP ' + res.status + (res.status === 401 ? '（这个来源需要 key，去功能页里填）' : ''));
+            return await res.text();
+        } finally { clearTimeout(timer); }
+    }
+    // HTML → 能读的文字
+    function toText(raw) {
+        return String(raw || '')
+            .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+            .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+            .replace(/\s+/g, ' ').trim();
+    }
+    // 从搜索结果页里把外链抠出来（DDG lite 会把真实网址包在 uddg= 参数里）
+    function pickLinks(raw, n) {
+        const out = [], seen = new Set();
+        const re = /href\s*=\s*["']([^"']+)["']/gi;
+        let m;
+        while ((m = re.exec(String(raw))) && out.length < n * 4) {
+            let u = m[1];
+            try {
+                const dd = u.match(/[?&]uddg=([^&]+)/);
+                if (dd) u = decodeURIComponent(dd[1]);
+            } catch (e) {}
+            if (!/^https?:\/\//i.test(u)) continue;
+            if (/duckduckgo\.com|jina\.ai|w3\.org|\.(css|js|png|jpg|jpeg|gif|svg|ico)(\?|$)/i.test(u)) continue;
+            const host = u.split('/')[2] || u;
+            if (seen.has(host)) continue;      // 一个站只取一条，免得三条都来自同一个页面
+            seen.add(host);
+            out.push(u);
+            if (out.length >= n) break;
+        }
+        return out;
+    }
+
+    // 一轮搜索：返回 {text, sources[]}
+    async function searchOnce(q) {
+        if (S.src === 'none') return { text: '', sources: [] };
+        const p = presetOf(S.src);
+        const tpl = (S.src === 'custom') ? S.url : (p.search || p.url);
+        if (!tpl || tpl.indexOf('{q}') < 0) { lastErr = '这个来源没配好搜索地址（要带 {q}）'; return { text: '', sources: [] }; }
+        let raw = '';
+        try { raw = await grab(tpl.replace('{q}', encodeURIComponent(q))); }
+        catch (e) { lastErr = String(e.message || e); return { text: '', sources: [] }; }
+
+        const listText = toText(raw);
+        const deep = num(S.deep, 0, 5, 2);
+        if (deep === 0) return { text: listText.slice(0, num(S.maxChars, 200, 20000, 1500)), sources: ['（只读了搜索结果页）'] };
+
+        // 两段式：点进去读正文。读一条算一条，全失败就退回搜索结果页那坨字。
+        const links = pickLinks(raw, deep);
+        const readTpl = (S.src === 'custom') ? (S.readUrl || '{u}') : (p.url || '{u}');
+        const parts = [], srcs = [];
+        for (const u of links) {
+            try {
+                const body = await grab(readTpl.replace('{u}', readTpl.indexOf('{u}') === 0 ? u : encodeURI(u)), 15000);
+                const t = toText(body);
+                if (t.length < 120) continue;               // 太短基本是反爬页 / 空壳
+                parts.push(`【${u.split('/')[2]}】${t}`);
+                srcs.push(u);
+            } catch (e) { lastErr = String(e.message || e); }
+        }
+        const joined = parts.length ? parts.join('\n\n') : listText;
+        return { text: joined.slice(0, num(S.maxChars, 200, 20000, 1500)),
+                 sources: srcs.length ? srcs : ['（只读到搜索结果页）'] };
+    }
+
+    /* ===================== 一次完整的探索 ===================== */
+    let busy = false;
+    const tell = m => { const e = document.getElementById('gywebStatus'); if (e) e.innerText = m; };
+
+    window.gywebRun = async function (charId, opts) {
+        const o = opts || {};
+        const c = charOf(charId);
+        if (!c) return null;
+        if (busy) { tell('上一次还没跑完。'); return null; }
+        const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+        if (!api || !api.key) { tell('还没配 API Key。'); return null; }
+        // ⚠️ getApiConfig 的参数名是 isSubTask：true = 副API优先（副的没配全就退回主的），
+        //    false = **只用主 API**。名字很容易读反，这里写清楚。
+        const apiSay = S.sayApi === 'main' ? getApiConfig(false)
+                     : S.sayApi === 'sub'  ? getApiConfig(true)
+                     : api;
+        busy = true; lastErr = '';
+        try {
+            // ① 挑题目
+            tell(`${c.name} 正在想看点什么…`);
+            const had = listOf(c.id).slice(-6).map(x => '· ' + x.topic).join('\n');
+            const ask1 = `你有点闲，想上网看点东西。
+按你自己的人设和最近的处境，挑**一个你此刻真的会去搜的东西**——可以是你本来就喜欢的领域、
+最近惦记的事、别人提过让你好奇的名词，也可以是很日常的（"附近有什么好吃的""这个牌子的琴弦哪种好"）。
+${had ? `你最近已经查过这些，别重复：\n${had}\n` : ''}
+只输出 JSON，不要解释：{"q":"你要搜的关键词，越具体越好，不超过20字","why":"你为什么想看这个，不超过20字"}`;
+            const d1 = await callChatCompletionAPI(api, buildStructuredMessages(buildBasePrompt(c, false, ''), [], ask1));
+            let r1 = (typeof parseModelJson === 'function') ? parseModelJson(d1.choices?.[0]?.message?.content || '') : null;
+            if (Array.isArray(r1)) r1 = r1[0];
+            let topic = String((r1 && r1.q) || '').trim().slice(0, 30);
+            const why = String((r1 && r1.why) || '').trim().slice(0, 30);
+            if (!topic) { tell('没想出要搜什么。'); return null; }
+
+            // ②③ 搜（可以多轮：读完觉得没读明白就换个词再搜）
+            const maxRounds = num(S.rounds, 1, 5, 1);
+            let web = '', sources = [], usedRounds = 0, tried = [];
+            for (let i = 0; i < maxRounds; i++) {
+                usedRounds++;
+                tried.push(topic);
+                tell(`正在查「${topic}」…${maxRounds > 1 ? `（第 ${usedRounds}/${maxRounds} 轮）` : ''}`);
+                const r = await searchOnce(topic);
+                if (r.text) { web = r.text; sources = r.sources; }
+                if (i === maxRounds - 1) break;
+                // 还有余量：问一句"够不够"，不够就让 TA 换个说法
+                tell('看看够不够…');
+                const askMore = `你想搜的是「${topic}」${why ? `（因为${why}）` : ''}。
+${web ? `这是搜到的内容：\n${web.slice(0, 800)}\n` : '（这一轮什么都没搜到。）'}
+够不够回答你想知道的？够了就 done=true；不够的话换一个更可能搜到的说法再搜一次。
+已经试过：${tried.join('、')}
+只输出 JSON：{"done": true或false, "next": "换成搜这个，不超过20字"}`;
+                const dm = await callChatCompletionAPI(api, buildStructuredMessages('', [], askMore));
+                let rm = (typeof parseModelJson === 'function') ? parseModelJson(dm.choices?.[0]?.message?.content || '') : null;
+                if (Array.isArray(rm)) rm = rm[0];
+                if (!rm || rm.done !== false) break;
+                const nx = String(rm.next || '').trim().slice(0, 30);
+                if (!nx || tried.includes(nx)) break;
+                topic = nx;
+            }
+
+            // ④ 写感想
+            tell(`${c.name} 正在看…`);
+            const nChars = num(S.sayChars, 20, 600, 80);
+            const ask2 = `你刚刚上网搜了「${topic}」${why ? `（因为${why}）` : ''}。
+${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看）：\n${web}\n` : '（这次没能联网，就按你自己知道的写。）'}
+用你自己的口吻写一段"我看到了什么、我怎么想"。要求：
+· 不是摘要也不是百科，是**你的反应**——哪一条让你意外、哪一条你不同意、勾起了什么。
+· 如果内容一看就是广告、乱码或者跟你要搜的东西对不上，就直说"没搜到什么有用的"，别硬编。
+· ${nChars} 字以内，像人说话，不要引号不要旁白。`;
+            const d2 = await callChatCompletionAPI(apiSay, buildStructuredMessages(buildBasePrompt(c, false, ''), [], ask2));
+            let text = (d2.choices?.[0]?.message?.content || '').trim().replace(/^["'“”「」]+|["'“”「」]+$/g, '');
+            if (typeof stripReasoningBlocks === 'function') text = stripReasoningBlocks(text);
+            if (typeof applyRegexScripts === 'function') { try { text = applyRegexScripts(text, 'ai_output', c.id); } catch (e) {} }
+            if (!text) { tell('这次什么都没写出来。'); return null; }
+
+            const entry = { id: uid(), at: Date.now(), topic, why, text: text.slice(0, Math.max(200, nChars * 4)),
+                            src: web ? S.src : 'none', rounds: usedRounds, sources: sources.slice(0, 4) };
+            const arr = listOf(c.id);
+            arr.push(entry);
+            const keep = num(S.max, 1, 200, 30);
+            if (arr.length > keep) arr.splice(0, arr.length - keep);
+            S.lastRunAt = Date.now();
+            await save();
+            renderPanel(); renderMemHub();
+
+            if (typeof addNotification === 'function') {
+                addNotification(`<b>${c.name}</b> 在网上看到了点东西 🌐`, null, null, c,
+                    `${topic}　—　${entry.text.slice(0, 40)}`, { feature: 'web_explore' });
+            }
+            const wantShare = (o.share !== undefined) ? o.share : on('webExploreShare');
+            if (wantShare && typeof deliverCharMoveToChatMessage === 'function') {
+                try { deliverCharMoveToChatMessage(c, entry.text, null); } catch (e) {}
+            }
+            tell(lastErr ? '（这次没抓到网页：' + lastErr + '，用的是 TA 自己知道的）' : '');
+            return entry;
+        } catch (e) {
+            tell('出错了：' + (e.message || e));
+            return null;
+        } finally { busy = false; }
+    };
+
+    /* ===================== 注进 prompt ===================== */
+    window.__gyWebCtxFor = function (charId) {
+        try {
+            if (!on('webExplore')) return '';
+            const arr = listOf(charId);
+            if (!arr.length) return '';
+            const n = num(S.inject, 1, 10, 3);
+            const recent = arr.slice(-n).reverse();
+            return `\n【你自己上网看到过的东西（真的发生过，是你自己去查的）】\n`
+                + recent.map(x => `· ${ago(x.at)}查了「${x.topic}」：${x.text}`).join('\n')
+                + `\n这些是你自己的见闻，不是别人告诉你的。聊到相关的话题时你是真的知道；`
+                + `没聊到就别硬往外倒——真人不会一开口就汇报自己今天搜了什么。\n`;
+        } catch (e) { return ''; }
+    };
+
+    /* ===================== 自动跑 ===================== */
+    async function autoTick() {
+        try {
+            if (!on('webExplore')) return;
+            const gap = num(S.gapMin, 30, 1440, 180) * 60000;
+            if (Date.now() - (S.lastRunAt || 0) < gap) return;
+            const cs = chars();
+            if (!cs.length) return;
+            const last = c => { const a = listOf(c.id); return a.length ? a[a.length - 1].at : 0; };
+            const pick = cs.slice().sort((a, b) => last(a) - last(b))[0];
+            if (pick) await window.gywebRun(pick.id);
+        } catch (e) { console.warn('[联网探索] 自动跑出错：', e); }
+    }
+
+    /* ===================== 页面 ===================== */
+    const CSS = `
+    #gywebModal{position:fixed;inset:0;z-index:2600;background:rgba(0,0,0,.45);display:none;
+        align-items:center;justify-content:center;padding:16px;}
+    #gywebModal.on{display:flex;}
+    .gyweb-box{width:100%;max-width:640px;max-height:86vh;overflow-y:auto;background:var(--gy-game-box-bg,#fff);
+        color:var(--gy-game-box-fg,#0f1419);border-radius:16px;padding:16px 18px 22px;}
+    .gyweb-hd{display:flex;align-items:center;font-size:16px;font-weight:800;margin-bottom:10px;}
+    .gyweb-hint{font-size:12.5px;color:#8b98a5;line-height:1.8;}
+    .gyweb-sec{border:1px solid rgba(128,128,128,.22);border-radius:12px;padding:12px;margin-bottom:12px;}
+    .gyweb-sec h4{margin:0 0 8px;font-size:14px;}
+    .gyweb-in{width:100%;padding:8px 10px;border:1px solid rgba(128,128,128,.35);border-radius:8px;
+        background:transparent;color:inherit;font-size:13px;box-sizing:border-box;margin-bottom:8px;}
+    .gyweb-btn{border:1px solid #1d9bf0;color:#1d9bf0;background:transparent;border-radius:999px;
+        padding:5px 13px;font-size:13px;cursor:pointer;white-space:nowrap;}
+    .gyweb-btn.solid{background:#1d9bf0;color:#fff;}
+    .gyweb-btn.ghost{border-color:rgba(128,128,128,.4);color:#8b98a5;}
+    .gyweb-pick{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;
+        border:1px solid rgba(128,128,128,.3);font-size:13px;cursor:pointer;margin:0 6px 6px 0;}
+    .gyweb-pick.on{border-color:#1d9bf0;color:#1d9bf0;}
+    .gyweb-item{border:1px solid rgba(128,128,128,.2);border-radius:10px;padding:9px 11px;margin-bottom:8px;}
+    .gyweb-item b{font-size:13.5px;}
+    .gyweb-item p{margin:4px 0 0;font-size:13px;line-height:1.75;}
+    .gyweb-item i{font-style:normal;font-size:11.5px;color:#8b98a5;}
+    .gyweb-x{color:#f91880;cursor:pointer;font-size:12px;float:right;}
+    .gyweb-num{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 0;
+        border-bottom:1px solid rgba(128,128,128,.12);font-size:13px;}
+    .gyweb-num input{width:88px;padding:6px 8px;border:1px solid rgba(128,128,128,.35);
+        border-radius:8px;background:transparent;color:inherit;}
+    .gyweb-num em{font-style:normal;font-size:11.5px;color:#8b98a5;flex:1 0 100%;}
+    `;
+
+    let openChar = null;
+
+    function mount() {
+        if (document.getElementById('gywebModal')) return;
+        const st = document.createElement('style'); st.id = 'gywebStyle'; st.textContent = CSS;
+        document.head.appendChild(st);
+        const m = document.createElement('div');
+        m.id = 'gywebModal';
+        m.innerHTML = `<div class="gyweb-box">
+            <div class="gyweb-hd">🌐 联网探索<button class="gyweb-btn ghost" style="margin-left:auto" onclick="gywebClose()">关闭</button></div>
+            <div id="gywebBody"></div>
+        </div>`;
+        document.body.appendChild(m);
+    }
+    window.gywebOpen = function () { mount(); document.getElementById('gywebModal').classList.add('on'); renderPanel(); };
+    window.gywebClose = function () { const m = document.getElementById('gywebModal'); if (m) m.classList.remove('on'); };
+
+    window.gywebSet = async function (k, v) { S[k] = v; await save(); renderPanel(); };
+    window.gywebSetNum = async function (k, v, lo, hi, dft) { S[k] = num(v, lo, hi, dft); await save(); };
+    window.gywebPickChar = function (id) { openChar = (String(openChar) === String(id)) ? null : String(id); renderPanel(); };
+    window.gywebDel = async function (cid, eid) {
+        S.log[String(cid)] = listOf(cid).filter(x => x.id !== eid);
+        await save(); renderPanel(); renderMemHub();
+    };
+    window.gywebRunPick = function () {
+        const sel = document.getElementById('gywebWho');
+        const id = sel ? sel.value : '';
+        if (!id) { tell('先选个角色。'); return; }
+        window.gywebRun(id, { share: !!(document.getElementById('gywebShareNow') || {}).checked });
+    };
+
+    function renderPanel() {
+        const body = document.getElementById('gywebBody');
+        if (!body) return;
+        const cs = chars();
+        const p = presetOf(S.src);
+        const req = (typeof gyReqBox === 'function') ? gyReqBox([
+            { sw: 'webExplore' }, { api: true },
+            { ok: cs.length > 0, text: '还没有角色', jump: 'openCharacterCenter()', go: '去建一个' },
+            { ok: !(p.needKey && !S.key), text: '这个来源需要 key，下面那个框还是空的', jump: '', go: '' },
+            { ok: !(S.src === 'custom' && !String(S.url || '').includes('{q}')), text: '自定义搜索地址没填、或者里面没有 {q}', jump: '', go: '' }
+        ], { title: '想让 TA 自己上网看看，还差这些' }) : '';
+
+        const numRow = (k, label, lo, hi, dft, unit, note) => `
+            <div class="gyweb-num">
+                <span style="flex:1;min-width:130px;">${label}</span>
+                <input type="number" min="${lo}" max="${hi}" value="${S[k]}"
+                    onchange="gywebSetNum('${k}',this.value,${lo},${hi},${dft})">
+                <span class="gyweb-hint">${unit}</span>
+                <em>${note}</em>
+            </div>`;
+
+        body.innerHTML = `
+            ${req}
+            <div class="gyweb-hint" style="margin-bottom:12px;">
+                TA 会<b>自己挑一个想了解的东西</b>去搜，读完用自己的口吻写一段感想，存进探索记录，
+                并且进 prompt——以后聊到相关话题时 TA 是真的知道。<br>
+                💰 一次探索 ≈ 2 次调用（挑题目 + 写感想），多开一轮搜索就多 1 次。
+                <b>自主模式跑的是同一份配置</b>，不用改两遍。
+            </div>
+
+            <div class="gyweb-sec">
+                <h4>🔌 从哪儿取内容</h4>
+                <div>${PRESETS.map(x => `<span class="gyweb-pick ${S.src === x.k ? 'on' : ''}" onclick="gywebSet('src','${x.k}')">${esc(x.name)}</span>`).join('')}</div>
+                <div class="gyweb-hint" style="margin:4px 0 8px;">${esc(p.note)}</div>
+                ${p.needKey ? `<input class="gyweb-in" type="password" value="${esc(S.key)}" placeholder="把 key 粘在这里（只存在你本机）"
+                    onchange="gywebSet('key', this.value.trim())">` : ''}
+                ${S.src === 'custom' ? `
+                    <input class="gyweb-in" value="${esc(S.url)}" placeholder="搜索地址，例：https://你的searxng/search?q={q}&format=json"
+                        onchange="gywebSet('url', this.value.trim())">
+                    <input class="gyweb-in" value="${esc(S.readUrl)}" placeholder="读正文地址（选填），例：https://r.jina.ai/{u}"
+                        onchange="gywebSet('readUrl', this.value.trim())">` : ''}
+                ${lastErr ? `<div class="gyweb-hint" style="color:#f91880;">上次抓取失败：${esc(lastErr)}</div>` : ''}
+                ${S.src !== 'none' ? `<div class="gyweb-hint">⚠️ 抓不到时会自动退回"只用模型知道的"继续写，不会卡住也不会弹错。APK 版没有 CORS 限制。</div>` : ''}
+            </div>
+
+            <div class="gyweb-sec">
+                <h4>🎚️ 怎么搜、读多少、写多长</h4>
+                ${numRow('deep', '点进去读几条正文', 0, 5, 2, '条',
+                  '两段式：先看搜索结果页，再点进最相关的几条读正文。填 0 就只读搜索结果页（那一坨里一半是导航和广告）。每多一条多一次网络请求，不多花 token。')}
+                ${numRow('rounds', '一次探索最多搜几轮', 1, 5, 1, '轮',
+                  '读完让 TA 判断够不够，不够就换个说法再搜。每多一轮多 1 次调用。')}
+                ${numRow('maxChars', '喂给模型的网页字数上限', 200, 20000, 1500, '字',
+                  '这是整个功能最贵的一段。1500 字足够写一段感想；调到 4000 以上账单会明显变厚。')}
+                ${numRow('sayChars', '感想写多少字', 20, 600, 80, '字以内', '写长了更像读后感，写短了更像随口一句。')}
+                <div class="gyweb-num" style="border-bottom:none;">
+                    <span style="flex:1;min-width:130px;">写感想那次走哪个 API</span>
+                    <select class="gyweb-in" style="width:auto;margin:0;" onchange="gywebSet('sayApi', this.value)">
+                        <option value="auto" ${S.sayApi === 'auto' ? 'selected' : ''}>跟全 app 一样（副 API 优先）</option>
+                        <option value="main" ${S.sayApi === 'main' ? 'selected' : ''}>强制走主 API</option>
+                        <option value="sub"  ${S.sayApi === 'sub'  ? 'selected' : ''}>强制走副 API</option>
+                    </select>
+                    <em>带着一整段网页的那次最贵。想省钱就把它甩给便宜的那个模型。
+                        （挑题目那次很短，一直跟随默认。）</em>
+                </div>
+            </div>
+
+            <div class="gyweb-sec">
+                <h4>🎯 现在就让谁去看看</h4>
+                <select class="gyweb-in" id="gywebWho">
+                    ${cs.length ? cs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('') : '<option value="">（还没有角色）</option>'}
+                </select>
+                <label class="gyweb-hint" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;cursor:pointer;">
+                    <input type="checkbox" id="gywebShareNow" style="width:15px;height:15px;"> 看完顺便私聊发给我
+                </label>
+                <button class="gyweb-btn solid" onclick="gywebRunPick()">🌐 让 TA 去看看</button>
+                <span class="gyweb-hint" id="gywebStatus" style="margin-left:8px;"></span>
+                <div class="gyweb-hint" style="margin-top:6px;">手动点不受开关限制——开关只决定 TA 会不会自己去。</div>
+            </div>
+
+            <div class="gyweb-sec">
+                <h4>⚙️ 自动探索的节奏</h4>
+                ${numRow('gapMin', '最短间隔', 30, 1440, 180, '分钟', '开关开着时，每隔这么久挑一个"最久没探索过"的角色去看一次。')}
+                ${numRow('max', '每人最多存', 1, 200, 30, '条', '超了自动丢最老的。')}
+                ${numRow('inject', '注进 prompt', 1, 10, 3, '条', '注得多 TA 记得多，但每轮聊天都要带着。')}
+            </div>
+
+            <div class="gyweb-sec">
+                <h4>📚 探索记录</h4>
+                ${cs.length ? cs.map(c => {
+                    const arr = listOf(c.id);
+                    const open2 = String(openChar) === String(c.id);
+                    return `<div style="margin-bottom:8px;">
+                        <div class="gyweb-pick ${open2 ? 'on' : ''}" onclick="gywebPickChar('${c.id}')">${esc(c.name)}　${arr.length} 条</div>
+                        ${open2 ? (arr.length ? arr.slice().reverse().map(x => `
+                            <div class="gyweb-item">
+                                <span class="gyweb-x" onclick="gywebDel('${c.id}','${x.id}')">删</span>
+                                <b>${esc(x.topic)}</b>　<i>${ago(x.at)}${x.why ? '　·　' + esc(x.why) : ''}${x.src === 'none' ? '　·　没联网' : ''}${x.rounds > 1 ? '　·　搜了 ' + x.rounds + ' 轮' : ''}</i>
+                                <p>${esc(x.text)}</p>
+                                ${(x.sources && x.sources.length) ? `<i style="display:block;margin-top:4px;">看的是：${x.sources.map(u => esc(shortUrl(u))).join('、')}</i>` : ''}
+                            </div>`).join('') : '<div class="gyweb-hint" style="padding:6px 2px;">还没查过什么。</div>') : ''}
+                    </div>`;
+                }).join('') : '<div class="gyweb-hint">还没有角色。</div>'}
+            </div>`;
+    }
+
+    /* ===================== 记忆总览里的那一块 ===================== */
+    function memHubHtml(charId) {
+        const arr = listOf(charId);
+        return `
+          <label style="font-size:15px;">🌐 联网探索</label>
+          <div style="font-size:12px; color:#536471; margin-bottom:8px;">
+            TA 自己上网看过的东西。这些会进 TA 的 prompt——聊到相关话题时 TA 是真的知道。
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;background:white;padding:10px 12px;border-radius:8px;border:1px solid #eff3f4;margin-bottom:8px;">
+            <b style="font-size:18px;color:#1d9bf0;">${arr.length}</b><span style="font-size:13px;">条探索记录</span>
+            <button type="button" class="btn-edit-small" style="margin-left:auto;" onclick="gywebOpen()">打开联网探索</button>
+            <button type="button" class="btn-edit-small" onclick="gywebRun('${charId}')">让 TA 现在去看看</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;">
+          ${arr.length ? arr.slice().reverse().slice(0, 30).map(x => `
+            <div style="background:white;padding:8px 10px;border-radius:6px;border:1px solid #eff3f4;">
+              <div style="font-size:13px;"><b>${esc(x.topic)}</b>　<span style="font-size:11px;color:#8b98a5;">${ago(x.at)}${x.src === 'none' ? '　·　没联网' : ''}</span></div>
+              <div style="font-size:13px;color:#536471;line-height:1.7;margin-top:2px;">${esc(x.text)}</div>
+            </div>`).join('') : '<div style="color:#8b98a5;font-size:13px;">还没有记录</div>'}
+          </div>`;
+    }
+    function renderMemHub() {
+        const host = document.getElementById('memoryHubContent');
+        if (!host) return;
+        const id = (typeof currentMemoryHubTargetId !== 'undefined') ? currentMemoryHubTargetId : null;
+        let box = document.getElementById('gywebMemHubBox');
+        if (String(id || '').startsWith('g_') || !id) { if (box) box.remove(); return; }
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'gywebMemHubBox'; box.className = 'input-group';
+            box.style.cssText = 'margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px;';
+            host.appendChild(box);
+        }
+        box.innerHTML = memHubHtml(id);
+    }
+    function hookMemHub() {
+        try {
+            ['selectMemoryHubTarget', 'renderMemoryHubContent'].forEach(fn => {
+                const orig = window[fn];
+                if (typeof orig !== 'function' || orig.__gywebPatched) return;
+                window[fn] = function () { const r = orig.apply(this, arguments);
+                    try { setTimeout(renderMemHub, 0); } catch (e) {} return r; };
+                window[fn].__gywebPatched = true;
+            });
+        } catch (e) {}
+    }
+
+    /* ===================== 自主模式里多一个动作 ===================== */
+    function hookAutonomy() {
+        try {
+            if (typeof GY_AUTONOMY_ACTIONS === 'undefined' || !Array.isArray(GY_AUTONOMY_ACTIONS)) return;
+            if (GY_AUTONOMY_ACTIONS.some(a => a.key === 'web_explore')) return;
+            GY_AUTONOMY_ACTIONS.splice(GY_AUTONOMY_ACTIONS.length - 1, 0, {
+                key: 'web_explore',
+                label: '上网查点自己感兴趣的东西',
+                hint: '自己挑个题目去搜，读完写一段感想',
+                need: () => on('webExplore'),
+                // 走的是同一个 gywebRun，所以功能页里调的字数/轮数/主副 API 这里全都算数
+                run: async (char) => {
+                    const e = await window.gywebRun(char.id, { share: on('webExploreShare') });
+                    return e ? ('上网查了「' + e.topic + '」') : null;
+                }
+            });
+        } catch (e) { console.warn('[联网探索] 挂自主模式失败：', e); }
+    }
+
+    (async function init() {
+        await load();
+        mount();
+        hookMemHub();
+        hookAutonomy();
+        if (typeof registerMiniFeature === 'function') {
+            registerMiniFeature({
+                id: 'web_explore', icon: '🌐', title: '联网探索',
+                desc: 'TA 自己挑个题目去网上看看，读完写一段感想，聊到了是真的知道',
+                onOpen: () => window.gywebOpen()
+            });
+        }
+        setTimeout(autoTick, 90000);
+        if (!window.__gyWebTimer) window.__gyWebTimer = setInterval(autoTick, 20 * 60000);
+        console.info('[联网探索] 已加载');
+    })();
+})();

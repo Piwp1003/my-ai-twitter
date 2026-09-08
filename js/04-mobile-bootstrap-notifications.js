@@ -112,8 +112,149 @@ function toggleMobileSearch() {
 function formatStat(num) { if(typeof num === 'string') return num; if(num>=10000) return(num/10000).toFixed(1)+'万'; if(num>=1000) return(num/1000).toFixed(1)+'k'; return num; }
 function parseStat(val) { if(typeof val === 'number') return val; let str=String(val).toLowerCase(); if(str.includes('k')) return parseFloat(str)*1000; if(str.includes('万')) return parseFloat(str)*10000; return parseInt(str)||0; }
 function getRandomStat(max) { return Math.floor(Math.random() * max); }
+// 🎨 套用配色主题。黑白那一套整个是 CSS 里的 body.theme-mono，
+// 所以这里只负责挂/摘那个 class——不遍历 DOM、不改任何行内样式（行内那批由属性选择器接管）。
+function applyUiTheme() {
+    try {
+        const mono = (typeof uiTheme !== 'undefined') && uiTheme === 'mono';
+        document.body.classList.toggle('theme-mono', mono);
+        const sel = document.getElementById('uiThemeSelect');
+        if (sel && typeof uiTheme !== 'undefined') sel.value = uiTheme;
+    } catch (e) {}
+}
+function setUiTheme(v) {
+    uiTheme = (v === 'mono') ? 'mono' : 'blue';
+    applyUiTheme();
+    if (typeof saveAllData === 'function') saveAllData();
+}
+
 function timeAgo(timestamp) { const s = Math.floor((Date.now()-timestamp)/1000); if(s<60) return"刚刚"; const m=Math.floor(s/60); if(m<60) return m+"分钟前"; const h=Math.floor(m/60); if(h<24) return h+"小时前"; const d=Math.floor(h/24); return d+"天前"; }
-function updateAllRelativeTimes() { document.querySelectorAll('.time-updater').forEach(el => { const ts = parseInt(el.getAttribute('data-timestamp')); if(ts) el.innerText = timeAgo(ts); }); }
+// 推文头上那一行的时间：跟 X 一样——一天以内给相对时间（3小时前），
+// 超过一天就是 05/11，超过一年补上年份。列表里几十条"37天前"根本换算不出是哪天。
+function tweetTime(timestamp) {
+    const t = Number(timestamp) || 0;
+    const diff = Date.now() - t;
+    if (diff < 86400000) return timeAgo(t);
+    const d = new Date(t), now = new Date();
+    const md = String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() === now.getFullYear() ? md : (d.getFullYear() + '/' + md);
+}
+// 绝对时间：跟 X 一样写成「上午9:13 · 2018年3月19日」。
+// 同一年也照样带年份——推文动辄隔好几年，省掉年份反而要猜。
+function absTime(timestamp) {
+    const d = new Date(Number(timestamp) || 0);
+    let h = d.getHours();
+    const ap = h < 12 ? '上午' : '下午';
+    let h12 = h % 12; if (h12 === 0) h12 = 12;
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${ap}${h12}:${mm} · ${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+// 一个时间戳该显示成什么，只由 tweetTimeAbs 这一个开关决定，
+// 这样点一下任意一处时间，全站所有时间一起翻面，不会一半新一半旧。
+function fmtPostTime(ts) { return tweetTimeAbs ? absTime(ts) : timeAgo(ts); }
+
+function updateAllRelativeTimes() {
+    document.querySelectorAll('.time-updater').forEach(el => {
+        const ts = parseInt(el.getAttribute('data-timestamp'));
+        if (!ts) return;
+        // data-fmt="tweet" 的那些用 X 的写法（超过一天变 05/11）；
+        // data-fmt="post" 的（推文/详情页）跟着 tweetTimeAbs 翻面；其余还是"x分钟前"
+        const f = el.getAttribute('data-fmt');
+        el.innerText = f === 'tweet' ? tweetTime(ts) : (f === 'post' ? fmtPostTime(ts) : timeAgo(ts));
+    });
+}
+// 点一下推文上的时间 → 相对 / 绝对来回切。存进存档，下次进来还是这个样子。
+window.gyToggleTimeFmt = function (e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    tweetTimeAbs = !tweetTimeAbs;
+    updateAllRelativeTimes();
+    if (typeof showToast === 'function') {
+        try { showToast('', tweetTimeAbs ? '时间：显示具体日期' : '时间：显示多久以前', '再点一下时间可以切回来'); } catch (_) {}
+    }
+    if (typeof saveAllData === 'function') saveAllData();
+};
+
+/* ---------------------------------------------------------------------------
+   中栏宽度：默认 600px（X 自己就是这个宽度），拖右边那条缝可以自己调。
+   宽度写在 <html> 的 --gy-main-w 上，css 里 .main-content 读它。
+   --------------------------------------------------------------------------- */
+const GY_MAIN_W_MIN = 480, GY_MAIN_W_MAX = 1000, GY_MAIN_W_DEF = 600;
+const GY_LEFT_W_MIN = 190, GY_LEFT_W_MAX = 420, GY_LEFT_W_DEF = 275;
+const GY_FS_MIN = 12, GY_FS_MAX = 20, GY_FS_DEF = 15;
+function applyMainWidth() {
+    const w = Math.min(GY_MAIN_W_MAX, Math.max(GY_MAIN_W_MIN, Number(gyMainWidth) || GY_MAIN_W_DEF));
+    gyMainWidth = w;
+    const lw = Math.min(GY_LEFT_W_MAX, Math.max(GY_LEFT_W_MIN, Number(gyLeftWidth) || GY_LEFT_W_DEF));
+    gyLeftWidth = lw;
+    // 字号是一个"基准值"，css 里所有正文类字号都写成 calc(var(--gy-fs) * n)，
+    // 所以改这一个数字，全站的字一起变——不是只改推文。
+    const fs = Math.min(GY_FS_MAX, Math.max(GY_FS_MIN, Number(gyFontSize) || GY_FS_DEF));
+    gyFontSize = fs;
+    try {
+        const r = document.documentElement.style;
+        r.setProperty('--gy-main-w', w + 'px');
+        r.setProperty('--gy-left-w', lw + 'px');
+        r.setProperty('--gy-fs', fs + 'px');
+    } catch (e) {}
+    const set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.tagName === 'INPUT') el.value = v; else el.innerText = v; } };
+    set('gyMainWLabel', w + 'px'); set('gyMainWRange', w);
+    set('gyLeftWLabel', lw + 'px'); set('gyLeftWRange', lw);
+    set('gyFsLabel', fs + 'px');    set('gyFsRange', fs);
+}
+window.setMainWidth = function (v) {
+    gyMainWidth = Number(v) || GY_MAIN_W_DEF;
+    applyMainWidth();
+    if (typeof saveAllData === 'function') saveAllData();
+};
+window.setLeftWidth = function (v) {
+    gyLeftWidth = Number(v) || GY_LEFT_W_DEF;
+    applyMainWidth();
+    if (typeof saveAllData === 'function') saveAllData();
+};
+window.setFontSize = function (v) {
+    gyFontSize = Number(v) || GY_FS_DEF;
+    applyMainWidth();
+    if (typeof saveAllData === 'function') saveAllData();
+};
+// 拖宽手柄：中栏右边缘和左栏右边缘各一条 7px 的透明竖条（css 里的 .gy-w-grip）。
+// 按住横向拖 = 改宽度，双击 = 恢复默认。触摸走同一套。
+function gyMakeGrip(host, id, opt) {
+    if (!host || document.getElementById(id)) return;
+    const grip = document.createElement('div');
+    grip.id = id; grip.className = 'gy-w-grip'; grip.title = '按住左右拖＝调整宽度，双击＝恢复默认';
+    host.appendChild(grip);
+    let startX = 0, startW = 0, dragging = false;
+    const px = ev => (ev.touches && ev.touches[0]) ? ev.touches[0].clientX : ev.clientX;
+    const down = ev => {
+        dragging = true; startX = px(ev); startW = host.getBoundingClientRect().width;
+        document.body.classList.add('gy-w-dragging'); ev.preventDefault();
+    };
+    const move = ev => {
+        if (!dragging) return;
+        opt.set(startW + (px(ev) - startX)); applyMainWidth(); ev.preventDefault();
+    };
+    const up = () => {
+        if (!dragging) return;
+        dragging = false; document.body.classList.remove('gy-w-dragging');
+        if (typeof saveAllData === 'function') saveAllData();
+    };
+    grip.addEventListener('mousedown', down);
+    grip.addEventListener('touchstart', down, { passive: false });
+    window.addEventListener('mousemove', move);
+    window.addEventListener('touchmove', move, { passive: false });
+    window.addEventListener('mouseup', up);
+    window.addEventListener('touchend', up);
+    grip.addEventListener('dblclick', () => {
+        opt.reset(); applyMainWidth();
+        if (typeof saveAllData === 'function') saveAllData();
+    });
+}
+function initMainWidthGrip() {
+    gyMakeGrip(document.querySelector('.main-content'), 'gyWGrip',
+        { set: v => { gyMainWidth = v; }, reset: () => { gyMainWidth = GY_MAIN_W_DEF; } });
+    gyMakeGrip(document.querySelector('.sidebar-left'), 'gyLGrip',
+        { set: v => { gyLeftWidth = v; }, reset: () => { gyLeftWidth = GY_LEFT_W_DEF; } });
+}
 
 // 角色状态自动流动的后台守护代码
 async function checkAndFlowSchedules() {
@@ -306,6 +447,7 @@ function requestAllAppPermissionsOnLaunch() {
 
 function applyDarkTheme() {
     document.body.classList.toggle('dark-theme', !!darkTheme);
+    if (typeof applyUiTheme === 'function') applyUiTheme();
     // 正文区的底色是 updateGlobalBgStyles 用 JS 拼出来的，不重算一遍它会一直停在上一个模式的颜色
     if (typeof updateGlobalBgStyles === 'function') updateGlobalBgStyles();
 }
@@ -550,6 +692,7 @@ function getFullDataSnapshot() {
         plugins, aiPresets, userPersonas, npcIdentities, charUserPersona, factionUserPersona,
         cloudSyncEnabled, cloudWorkerUrl, cloudAuthToken, ntfyTopic,
         clickEffectEnabled, clickEffectStyle, clickEffectCustomImage,
+        toastMaxVisible, novelReviewMax, uiTheme, tweetTimeAbs, gyMainWidth, gyLeftWidth, gyFontSize,
         chatVariables, globalVariables,
         reasoningFormats, reasoningDisplayMode,
         mvuStats, memoryEntries,
@@ -756,7 +899,15 @@ async function loadAllData() {
                 if (parsed.cloudWorkerUrl !== undefined) cloudWorkerUrl = parsed.cloudWorkerUrl;
                 if (parsed.cloudAuthToken !== undefined) cloudAuthToken = parsed.cloudAuthToken;
                 if (parsed.ntfyTopic !== undefined) ntfyTopic = parsed.ntfyTopic;
-                applyDarkTheme();
+                if (parsed.uiTheme !== undefined) uiTheme = parsed.uiTheme;
+                if (parsed.toastMaxVisible !== undefined) toastMaxVisible = parsed.toastMaxVisible;
+                if (parsed.novelReviewMax !== undefined) novelReviewMax = parsed.novelReviewMax;
+                if (parsed.tweetTimeAbs !== undefined) tweetTimeAbs = !!parsed.tweetTimeAbs;
+                if (parsed.gyMainWidth !== undefined) gyMainWidth = parsed.gyMainWidth;
+                if (parsed.gyLeftWidth !== undefined) gyLeftWidth = parsed.gyLeftWidth;
+                if (parsed.gyFontSize !== undefined) gyFontSize = parsed.gyFontSize;
+                if (typeof applyMainWidth === 'function') applyMainWidth();
+                applyDarkTheme();   // 里面会顺带 applyUiTheme()
                 if (parsed.globalBgImage !== undefined) globalBgImage = parsed.globalBgImage;
                 if (parsed.globalBgOpacity !== undefined) globalBgOpacity = parsed.globalBgOpacity;
                 if (parsed.siteLogoImg !== undefined) siteLogoImg = parsed.siteLogoImg;
@@ -1275,10 +1426,42 @@ function updateUserMiniProfile() {
     updateUserPostAvatar();
 }
 
+// 🔕 一次冒出来一堆气泡的时候，合成一条。
+// 背景：进主页/刚打开 app 那会儿，好几个后台任务同时落地（角色主动私聊、信件、日记反应、
+// 帖子连锁…），每个都弹一个——一屏全是气泡，什么都看不清，还挡住内容。
+// 现在超过 toastMaxVisible 条就不再往外冒，改成攒在一条"还有 N 条新通知"上，
+// 点它进通知页（东西一条没少，通知页里全都在）。
+let __gyToastBurst = 0;
+function __gyToastSummary(n) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    let box = document.getElementById('gyToastMore');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'gyToastMore';
+        box.className = 'toast-item';
+        box.style.cursor = 'pointer';
+        box.onclick = () => { if (typeof switchMainView === 'function') switchMainView('notifications'); box.remove(); __gyToastBurst = 0; };
+        container.appendChild(box);
+        setTimeout(() => { if (box.parentElement) box.remove(); __gyToastBurst = 0; }, 12000);
+    }
+    box.innerHTML = `<div class="avatar" style="background:#1d9bf0;color:#fff;font-size:18px;">🔔</div>
+        <div class="toast-content"><div class="toast-title">还有 ${n} 条新通知</div>
+        <div class="toast-desc">点这里去通知页看，一条都没少</div></div>`;
+}
+
 function showToast(avatarHtml, titleText, contentText, postId, chatCharId, isAnon = false) {
     sendBrowserNotification(titleText, contentText);
     const container = document.getElementById('toastContainer');
     if(!container) return;
+
+    // 设置 → 🎨 外观 里可选：0=全部弹，>0=最多同时弹几条，-1=一条都不弹（只进通知页）
+    const cap = (typeof toastMaxVisible === 'number') ? toastMaxVisible : 2;
+    if (cap < 0) return;
+    if (cap > 0) {
+        const showing = container.querySelectorAll('.toast-item:not(#gyToastMore)').length;
+        if (showing >= cap) { __gyToastBurst++; __gyToastSummary(__gyToastBurst); return; }
+    }
 
     const toast = document.createElement('div');
     toast.className = `toast-item ${isAnon ? 'anon-toast' : ''}`;
@@ -1317,7 +1500,14 @@ function showToast(avatarHtml, titleText, contentText, postId, chatCharId, isAno
     };
 
     container.appendChild(toast);
-    setTimeout(() => { if (toast.parentElement) toast.remove(); }, 5500);
+    // ⏱️ 以前 5.5 秒就撤，角色说的那句话经常还没读完就没了（"弹窗速度过快"）。
+    //    现在 10 秒，而且鼠标停在上面时不会消失（CSS 里把淡出动画暂停了，这里把定时器也停掉）。
+    let killer = setTimeout(() => { if (toast.parentElement) toast.remove(); }, 10000);
+    toast.addEventListener('mouseenter', () => { clearTimeout(killer); });
+    toast.addEventListener('mouseleave', () => {
+        clearTimeout(killer);
+        killer = setTimeout(() => { if (toast.parentElement) toast.remove(); }, 4000);
+    });
 }
 
 let pendingChatAttachment = null; let currentlyTypingChars = new Set();
@@ -1500,21 +1690,37 @@ ${recentChat || '（暂无）'}
         showSchedulePreview(charId);
     } catch (e) {
         clearInterval(scheduleLoadTimer);
-        if (silent) { console.warn('[日程自动更新] 生成失败（下一轮再试）：', e.message); return; }
+        // 模型返回的不是 JSON 而是一整张 HTML（Unexpected token '<'），99% 是
+        // API 地址填错了/走了错的代理/被网关拦下来返回了错误页——不是模型不听话。
+        const msg = /Unexpected token '<'|<!DOCTYPE/i.test(String(e.message || ''))
+            ? 'API 返回的是一个网页而不是数据。多半是接口地址填错了（少了 /v1、或者填的是网页版地址），'
+              + '或者被网关/代理拦下来返回了错误页。去 设置 → 🔑 API 里核对一下地址。'
+            : String(e.message || e);
+        if (silent) { console.warn('[日程自动更新] 生成失败（下一轮再试）：', msg); return; }
         closeModal('scheduleLoadingModal');
-        alert('生成日程失败：' + e.message);
+        alert('生成日程失败：' + msg);
     }
 }
 
 // 🗓️ 日程自动续期：到了第二天，把过期的日程自动重新生成一份。
 // 关掉这个开关就退回原来的行为——只在角色状态气泡里提示"日程可能过期了，右键头像可更新"，等你自己点。
 // 挂在 checkAndFlowSchedules 这同一个 15 分钟的定时器上，不额外多开一个循环。
-// 一轮最多续 2 个角色：角色多的时候一次性全生成会瞬间打出十几个长请求，又慢又贵，分几轮慢慢来完全够用。
+// 一轮最多续 3 个角色：角色多的时候一次性全生成会瞬间打出十几个长请求，又慢又贵，分几轮慢慢来完全够用。
+// 排序按"上次生成时间"从早到晚，保证每个角色都轮得上（以前固定取前两个，后面的人永远排不到）。
 async function checkAndRenewStaleSchedules() {
     if (typeof isAutoOn === 'function' && !isAutoOn('scheduleAutoRenew')) return;
     const api = getApiConfig(true); if (!api.key) return;
     if (typeof isScheduleStale !== 'function') return;
-    const due = (myCharacters || []).filter(c => c && c.schedule && c.schedule.text && isScheduleStale(c)).slice(0, 2);
+    // 🐛 以前这里是 `c.schedule && c.schedule.text && isScheduleStale(c)`，两个毛病：
+    //   ① **从来没生成过日程的角色永远轮不上**——条件要求"已经有日程"才续期，
+    //      于是打开开关之后只有那个手动生成过的角色在更新，其他人一辈子没有日程。
+    //      这就是"多个角色只有一个会写"。
+    //   ② 每轮取前 2 个，而且顺序是 myCharacters 的原始顺序，永远是同样那两个先被取到；
+    //      前面的人一旦次次都排在前面，后面的人也轮不上。
+    // 现在：没日程的也算"该写"，并且按"上次生成时间"从早到晚排，谁最久没更新谁先来。
+    const cand = (myCharacters || []).filter(c => c && (!c.schedule || !c.schedule.text || isScheduleStale(c)));
+    cand.sort((a, b) => ((a.schedule && a.schedule.generatedAt) || 0) - ((b.schedule && b.schedule.generatedAt) || 0));
+    const due = cand.slice(0, 3);
     for (const char of due) {
         try { await runScheduleGeneration(char.id, true); }
         catch (e) { console.warn('[日程自动更新] 出错，跳过这个角色：', char && char.name, e); }

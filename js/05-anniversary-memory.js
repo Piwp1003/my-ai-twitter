@@ -107,6 +107,23 @@ function gyCalDayData(char, key) {
             if (years > 0) out.anniversaries.push({ ...a, years });
         }
     });
+    // 🎂 生日和你自己记的纪念日以前**只存着、不显示**：日历上一片空白，
+    //    角色也不知道。现在统一并进来，跟角色自己的纪念日一样按"每年同月同日"亮。
+    const yearly = (dateStr, label, tag) => {
+        if (!dateStr) return;
+        const ds = String(dateStr);
+        if (ds.slice(5) !== md) return;
+        const y0 = parseInt(ds.slice(0, 4));
+        const years = (isNaN(y0) || y0 <= 0) ? 0 : parseInt(key.slice(0, 4)) - y0;
+        out.anniversaries.push({ date: ds, event: label, years: years > 0 ? years : 0, auto: tag });
+    };
+    yearly(char.birthdate, char.name + '生日', 'char-birthday');
+    if (typeof currentUser !== 'undefined' && currentUser) {
+        yearly(currentUser.birthdate, (currentUser.name || '我') + '生日', 'user-birthday');
+        (currentUser.customAnniversaries || []).forEach(a2 => {
+            if (a2 && a2.date) yearly(a2.date, a2.label || '纪念日', 'user-anniv');
+        });
+    }
     (char.todos || []).forEach(t => { if (t && t.date === key) out.todos.push(t); });
     return out;
 }
@@ -1692,6 +1709,11 @@ function renderChatMessages() {
     container.innerHTML = history.map((msg, idx) => {
         try {
             if (msg.sender === 'system') return `<div class="chat-system-msg"><span>${msg.text}</span></div>`;
+            // 📨 邀请卡片（js/28）：一起看电影 / 一起听歌 / 一起阅读 / 约出去，
+            //    都是聊天里的一张卡，不是气泡。谁发起的、答没答应、TA 说了什么，全在卡上。
+            if (msg.type === 'invite' && msg.invite && typeof gyInviteCardHtml === 'function') {
+                return gyInviteCardHtml(msg, idx);
+            }
             let isMe = msg.sender === 'me', senderChar = isMe ? currentUser : myCharacters.find(c => c.id == msg.sender), timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             if (!isMe && (!msg.readBy || !msg.readBy.includes('me'))) { if(!msg.readBy) msg.readBy=[]; msg.readBy.push('me'); __markedAnyRead = true; }
 
@@ -1892,6 +1914,59 @@ function contextActionAddToMemory() {
 let replyContextMenuTarget = null;
 
 
+// ✏️ 改评论/楼层的内容。推文评论、营销号评论、故事论坛楼层、匿名论坛评论四种全走这一个。
+// 以前只有"删"没有"改"——写错一个字只能删掉重来，AI 生成的那条就永远回不来了。
+async function contextActionEditReply() {
+    document.getElementById('chatContextMenu').style.display = 'none';
+    if (!replyContextMenuTarget) return;
+    const target = replyContextMenuTarget; replyContextMenuTarget = null;
+
+    // ① 故事论坛：{threadId, floor}
+    if (target.type === 'forum') {
+        const thread = (typeof forumThreads !== 'undefined' ? forumThreads : []).find(t => t.id === target.threadId);
+        if (!thread) return;
+        const isMain = target.floor === 1;
+        const cur = isMain ? thread.content : ((thread.replies || []).find(r => r.floor === target.floor) || {}).content || '';
+        const next = await appPrompt(isMain ? '修改主楼内容：' : `修改 ${target.floor} 楼的内容：`, cur);
+        if (next === null || !next.trim() || next === cur) return;
+        if (isMain) thread.content = next;
+        else { const rp = (thread.replies || []).find(r => r.floor === target.floor); if (rp) rp.content = next; }
+        saveAllData();
+        if (typeof openForumThread === 'function') openForumThread(target.threadId);
+        return;
+    }
+
+    // ② 匿名论坛：{postId, replyIdx}，评论存在 anonPosts 里
+    if (target.type === 'anon') {
+        const post = (typeof anonPosts !== 'undefined' ? anonPosts : []).find(p => String(p.id) === String(target.postId));
+        const rp = post && post.replies && post.replies[target.replyIdx];
+        if (!rp) return;
+        const cur = rp.text || rp.content || '';
+        const next = await appPrompt('修改这条评论：', cur);
+        if (next === null || !next.trim() || next === cur) return;
+        if (rp.text !== undefined) rp.text = next; else rp.content = next;
+        saveAllData();
+        if (typeof renderAnonPosts === 'function') renderAnonPosts();
+        return;
+    }
+
+    // ③ 推文 / 营销号评论：{postId, replyIdx}
+    const { postId, replyIdx } = target;
+    const isTabloid = String(postId).startsWith('tb_');
+    const post = isTabloid ? tabloidPosts.find(p => p.id == postId) : globalPosts.find(p => p.id == postId);
+    const rp = post && post.replies && post.replies[replyIdx];
+    if (!rp) return;
+    const cur = rp.text || rp.content || '';
+    const next = await appPrompt('修改这条评论：', cur);
+    if (next === null || !next.trim() || next === cur) return;
+    if (rp.text !== undefined) rp.text = next; else rp.content = next;
+    saveAllData();
+    if (document.getElementById('view-post-detail') && document.getElementById('view-post-detail').style.display !== 'none'
+        && typeof renderSinglePostDetail === 'function') renderSinglePostDetail(postId);
+    if (typeof renderPosts === 'function') renderPosts();
+    if (isTabloid && typeof renderTabloidPosts === 'function') renderTabloidPosts();
+}
+
 async function contextActionDeleteReply() {
     document.getElementById('chatContextMenu').style.display = 'none';
     if (!replyContextMenuTarget) return;
@@ -1912,6 +1987,18 @@ async function contextActionDeleteReply() {
             saveAllData();
             if (typeof openForumThread === 'function') openForumThread(target.threadId);
         }
+        return;
+    }
+
+    // 匿名论坛的评论存在 anonPosts 里，不在 globalPosts/tabloidPosts 里——
+    // 以前这里没分支，右键删匿名评论会一路走到"找不到"然后**静默返回**，点了跟没点一样。
+    if (target.type === 'anon') {
+        const ap = (typeof anonPosts !== 'undefined' ? anonPosts : []).find(p => String(p.id) === String(target.postId));
+        if (!ap || !ap.replies || !ap.replies[target.replyIdx]) return;
+        if (!(await appConfirm('确定删除这条评论吗？该操作不可逆！'))) return;
+        ap.replies.splice(target.replyIdx, 1);
+        saveAllData();
+        if (typeof renderAnonPosts === 'function') renderAnonPosts();
         return;
     }
 

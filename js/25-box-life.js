@@ -690,7 +690,16 @@ ${mine.map((i, n) => `${n + 1}. ${i.name}${i.desc ? '（' + i.desc + '）' : ''}
         if (!c || !Array.isArray(c.anniversaries)) return out;
         const ahead = Math.max(0, Math.min(60, parseInt(S.annivAhead) || 0));
         const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-        c.anniversaries.forEach(a => {
+        // 🎂 生日和你自己记的纪念日一起并进来（v103）。以前这三样只在资料页/日历上躺着，
+        //    「日子」看不到、prompt 里也没有——过生日那天角色一句话都不会提。
+        const extra = [];
+        const push = (dateStr, label) => { if (dateStr) extra.push({ date: String(dateStr), event: label }); };
+        push(c.birthdate, c.name + '的生日');
+        if (typeof currentUser !== 'undefined' && currentUser) {
+            push(currentUser.birthdate, (currentUser.name || '你') + '的生日');
+            (currentUser.customAnniversaries || []).forEach(x => { if (x && x.date) push(x.date, x.label || '纪念日'); });
+        }
+        extra.concat(c.anniversaries).forEach(a => {
             if (!a || !a.date) return;
             const m = String(a.date).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
             if (!m) return;
@@ -882,12 +891,14 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
         });
         rows.sort((a, b) => a.inDays - b.inDays);
         if (!rows.length) {
-            return `<div class="gyday-hint" style="padding:20px 4px;line-height:1.9;">
+            const req = (typeof gyReqBox === 'function') ? gyReqBox([{ sw: 'charOwnDays' }, { api: true }], { title: '想让角色自己把某天记成纪念日，还差这些' }) : '';
+        return `${req}<div class="gyday-hint" style="padding:20px 4px;line-height:1.9;">
                 还没有记过纪念日。<br>
                 去某个角色的资料页 → 日历，就能记「我们第一次见面」「她妈妈的忌日」这类日子。
                 记了之后角色到那天会知道——不是播报，是会自然地想起来。</div>`;
         }
-        return `<div class="gyday-hint" style="margin-bottom:10px;">
+        const req2 = (typeof gyReqBox === 'function') ? gyReqBox([{ sw: 'charOwnDays' }, { api: true }], { title: '想让角色自己把某天记成纪念日，还差这些' }) : '';
+        return `${req2}<div class="gyday-hint" style="margin-bottom:10px;">
             所有角色的纪念日都在这儿，按"还有几天"排。今天的排最前面。
             这些日子会进 prompt，角色到那天心里有数。</div>` +
             rows.map(r => {

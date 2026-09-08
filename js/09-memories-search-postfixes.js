@@ -282,15 +282,12 @@ function renderSinglePostDetail(postId) {
     }
     
     let mediaHTML = post.mediaUrl ? `<div class="post-media" style="margin: 12px 0;"><img src="${post.mediaUrl}"></div>` : '';
-    let locationHTML = post.location ? `<div class="post-location" style="margin: 12px 0;">${locationSVG} ${post.location}</div>` : '';
+    // v107：定位跟在推文正文底下，不上名字那一排（跟信息流一致）
+    let locationHTML = post.location
+        ? `<div class="post-loc-line">${locationSVG}<span>${escapeHtml(post.location)}</span></div>` : '';
     let quotedHTML = typeof renderQuotedPostPreviewHTML === 'function' ? renderQuotedPostPreviewHTML(post.quotedPostId) : '';
-    let d = new Date(post.timestamp);
-    let yy = String(d.getFullYear()).slice(-2);
-    let mo = d.getMonth() + 1;
-    let dd = d.getDate();
-    let hh = String(d.getHours()).padStart(2, '0');
-    let mm = String(d.getMinutes()).padStart(2, '0');
-    let dateStr = `${yy}年${mo}月${dd}日, ${hh}:${mm}`;
+    // v107：时间按发帖时间走，点一下在「3小时前」和「上午9:13 · 2018年3月19日」之间来回切。
+    let dateStr = `<span class="time-updater" data-fmt="post" data-timestamp="${post.timestamp}" onclick="gyToggleTimeFmt(event)" title="点一下换一种时间写法">${fmtPostTime(post.timestamp)}</span>`;
 
     let quotesCount = Math.floor(parseStat(post.stats.retweets) * 0.15) || 0;
     let bookmarksCount = Math.floor(parseStat(post.stats.likes) * 0.12) || 0;
@@ -309,34 +306,35 @@ function renderSinglePostDetail(postId) {
                         <div class="detail-author-handle">${isTabloid ? '@tabloid_news' : char.handle}</div>
                     </div>
                 </div>
-                ${followBtnHTML}
+                <div style="display:flex; align-items:center; gap:4px;">
+                    ${followBtnHTML}
+                    <button class="post-more-btn" onclick="gyPostMenu(event, '${postId}')" title="更多">${typeof moreDotsSVG !== 'undefined' ? moreDotsSVG : '⋮'}</button>
+                </div>
             </div>
             <div class="post-body detail-post-body" ${actionAttr}>${namespaceInjectedIds(formatPostText(post.text, isTabloid ? null : char.id, { statusContext: 'post' }), post.id)}</div>
             ${locationHTML}
             ${mediaHTML}
             ${quotedHTML}
-            <div class="detail-time-row" style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom:1px solid #eff3f4;">
-                <span>${dateStr}</span>
-                <div style="display:flex; gap:16px; align-items:center;">
-                    <span onclick="toggleDetailLike('${postId}')" style="cursor:pointer; display:flex; align-items:center; color:${post.userLiked ? '#f91880' : '#536471'}; transition:0.2s;" onmouseover="this.style.color='#f91880'" onmouseout="this.style.color='${post.userLiked ? '#f91880' : '#536471'}'" title="点赞">
-                        ${post.userLiked ? 
-                        '<svg style="width:20px;height:20px;fill:#f91880;" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>' 
-                        : 
-                        '<svg style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>'} 
-                    </span>
-                    <span onclick="openQuoteComposer('${postId}')" style="cursor:pointer; display:flex; align-items:center; color:#536471;" title="引用推文">${typeof quoteSVG !== 'undefined' ? quoteSVG.replace('stat-icon', '') : '🔁'}</span>
-                    <span onclick="openShareToChatModal('${postId}')" style="cursor:pointer; display:flex; align-items:center; font-size:17px;" title="分享到聊天">📤</span>
-                    <span onclick="deleteDetailPost('${postId}')" style="cursor:pointer; color:#f91880; font-size:17px; display:flex; align-items:center;" title="删除此推文">🗑️</span>
-                </div>
-            </div>
-            
+            <div class="detail-time-row">${dateStr}</div>
+
             <div class="post-detail-stats-row">
                 <span><b>${formatStat(post.stats.retweets)}</b> 转帖</span>
                 <span><b>${formatStat(quotesCount)}</b> 引用</span>
                 <span><b>${formatStat(post.stats.likes)}</b> 喜欢</span>
                 <span><b>${formatStat(bookmarksCount)}</b> 书签</span>
             </div>
-            
+
+            <!-- v107：详情页也用信息流那条操作栏。
+                 引用 / 收藏 / 分享到私聊 / 修改 / 删除 全部收进右上角的 ⋮，
+                 这里只留四个高频的 + 最右边一个分享。 -->
+            <div class="post-actions detail-post-actions">
+                <div class="pa-item" onclick="document.getElementById('myCommentInput') && document.getElementById('myCommentInput').focus()" title="回复">${commentSVG}<span>${formatStat(post.stats.comments)}</span></div>
+                <div class="pa-item rt" onclick="openQuoteComposer('${postId}')" title="转发 / 引用">${retweetSVG}<span>${formatStat(post.stats.retweets)}</span></div>
+                <div class="pa-item like ${post.userLiked ? 'on' : ''}" onclick="toggleDetailLike('${postId}')" title="喜欢">${post.userLiked ? likeSVGFilled : likeSVG}<span>${formatStat(post.stats.likes)}</span></div>
+                <div class="pa-item" title="浏览量">${viewsBarSVG}<span>${formatStat(post.stats.views)}</span></div>
+                <div class="pa-item pa-share" onclick="openShareToChatModal('${postId}')" title="分享到私聊">${shareOutSVG}</div>
+            </div>
+
             ${repliesHTML}
 
             <div class="twitter-reply-box">
