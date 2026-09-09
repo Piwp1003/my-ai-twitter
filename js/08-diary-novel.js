@@ -1258,6 +1258,73 @@ function startChatFromProfile() {
     switchChatSession(currentProfileId);
 }
 
+// 模块可以往这里塞函数，给角色资料页加一块内容（见下面 profExtra 那一段）
+window.GY_PROFILE_BLOCKS = window.GY_PROFILE_BLOCKS || [];
+
+/* ================= 角色资料页右上角的 ⋮ =================
+   关注键旁边原来横着排了一串按钮（📅 纪念日、📱 手机、💳 钱包…），
+   加一个就挤一点，窄屏上直接换行。统一收进一个三竖点菜单：
+   每个模块往 GY_PROFILE_MENU 里塞一条就行，不用再各自去插按钮。
+     { id, icon, label, sub?, show(charId) -> bool, run(charId) }
+*/
+window.GY_PROFILE_MENU = window.GY_PROFILE_MENU || [];
+window.gyProfMenuAdd = function (item) {
+    if (!item || !item.id) return;
+    if (window.GY_PROFILE_MENU.some(x => x.id === item.id)) return;
+    window.GY_PROFILE_MENU.push(item);
+};
+// 内置的第一条：纪念日（原来那颗 📅）
+window.gyProfMenuAdd({
+    id: 'anniv', icon: '📅', label: '纪念日', sub: '你们之间记着的那些日子',
+    show: id => id !== 'me' && id !== 'tabloid_admin' && myCharacters.some(c => c.id == id),
+    run: id => { if (typeof openCharCalendarModal === 'function') openCharCalendarModal(id); }
+});
+function renderProfMore(charId) {
+    const btn = document.getElementById('profMoreBtn');
+    const menu = document.getElementById('profMoreMenu');
+    if (!btn || !menu) return;
+    const items = (window.GY_PROFILE_MENU || []).filter(x => {
+        try { return typeof x.show !== 'function' || x.show(charId); } catch (e) { return false; }
+    });
+    if (!items.length) { btn.style.display = 'none'; menu.classList.remove('on'); return; }
+    btn.style.display = '';
+    menu.innerHTML = items.map(x => `<button type="button" onclick="gyProfMenuRun('${x.id}')">
+        <span class="pm-i">${x.icon || '·'}</span>
+        <span class="pm-b"><b>${escapeHtml(x.label || '')}</b>${x.sub ? `<em>${escapeHtml(x.sub)}</em>` : ''}</span></button>`).join('');
+}
+window.gyProfMenuRun = function (id) {
+    const it = (window.GY_PROFILE_MENU || []).find(x => x.id === id);
+    const menu = document.getElementById('profMoreMenu');
+    if (menu) menu.classList.remove('on');
+    if (it && typeof it.run === 'function') { try { it.run(typeof currentProfileId !== 'undefined' ? currentProfileId : null); } catch (e) {} }
+};
+/* ⋮ 聊天输入框左边那个 —— 开着的时候点别处就关，跟资料页那个一个脾气 */
+window.gyChatMoreToggle = function (ev) {
+    if (ev) ev.stopPropagation();
+    const m = document.getElementById('chatMoreMenu');
+    if (!m) return;
+    // 「跟 TA 一起」那一排是按当前聊的是谁现画的（js/28）
+    try { if (typeof window.gyChatActsRender === 'function') window.gyChatActsRender(); } catch (e) {}
+    m.classList.toggle('on');
+    if (m.classList.contains('on')) {
+        setTimeout(() => document.addEventListener('click', function off(e) {
+            if (m.contains(e.target)) return;          // 在菜单里点东西不算"点别处"
+            m.classList.remove('on'); document.removeEventListener('click', off);
+        }), 0);
+    }
+};
+window.gyProfMoreToggle = function (ev) {
+    if (ev) ev.stopPropagation();
+    const menu = document.getElementById('profMoreMenu');
+    if (!menu) return;
+    menu.classList.toggle('on');
+    if (menu.classList.contains('on')) {
+        setTimeout(() => document.addEventListener('click', function off() {
+            menu.classList.remove('on'); document.removeEventListener('click', off);
+        }), 0);
+    }
+};
+
 function renderProfilePage(charId) {
     currentProfileId = charId; currentProfileTab = 'posts'; document.querySelectorAll('#view-profile .top-tabs .tab').forEach(el => el.classList.remove('active')); document.getElementById('prof-tab-posts').classList.add('active');
     let char = charId === 'me' ? currentUser : (charId === 'tabloid_admin' ? tabloidAccount : myCharacters.find(c => c.id == charId)); if (!char) return;
@@ -1268,12 +1335,22 @@ function renderProfilePage(charId) {
     let chatBtn = document.getElementById('profChatBtn');
     if (charId === 'me') { btn.style.display = 'none'; } else { btn.style.display = 'block'; btn.className = char.isFollowing ? `follow-btn following btn-follow-${char.id}` : `follow-btn btn-follow-${char.id}`; btn.innerText = char.isFollowing ? "已关注" : "关注"; btn.onclick = (e) => { if(typeof toggleFollow === 'function') toggleFollow(char.id, e); }; }
     if (chatBtn) { chatBtn.style.display = (charId !== 'me' && charId !== 'tabloid_admin' && myCharacters.some(c => c.id == charId)) ? 'block' : 'none'; }
-    const calBtn = document.getElementById('profCalendarBtn');
-    if (calBtn) { calBtn.style.display = (charId !== 'me' && charId !== 'tabloid_admin' && myCharacters.some(c => c.id == charId)) ? 'block' : 'none'; }
+    // 📅 纪念日那颗按钮已经收进右上角的 ⋮ 里了（见 GY_PROFILE_MENU / renderProfMore）
+    try { renderProfMore(charId); } catch (e) {}
     const highlightsTab = document.getElementById('prof-tab-highlights');
     if (highlightsTab) { highlightsTab.style.display = (charId === 'tabloid_admin') ? 'none' : 'block'; }
     document.getElementById('profName').innerHTML = `${char.name} ${char.verified ? verifiedSVG : ''} ${char.isSpecialFollow ? '<span class="special-star"><svg class="blue-line-icon" viewBox="0 0 24 24" style="width:16px;height:16px;vertical-align:middle;margin-top:-2px;"><polygon points="12 2 15 8 22 9 17 14 18 21 12 18 6 21 7 14 2 9 9 8 12 2"></polygon></svg></span>' : ''}`;
     document.getElementById('profHandle').innerText = char.handle; document.getElementById('profBio').innerText = char.bio || char.persona || "暂无签名";
+    // v109：各模块往资料页上挂的东西（钱包卡…）。谁想加就往 GY_PROFILE_BLOCKS 里塞一个函数，
+    // 返回 html 字符串就行；返回空就当没有。不用每个模块各自去 patch renderProfilePage。
+    try {
+        const extra = document.getElementById('profExtra');
+        if (extra) {
+            extra.innerHTML = (window.GY_PROFILE_BLOCKS || []).map(f => {
+                try { return f(charId) || ''; } catch (e) { return ''; }
+            }).join('');
+        }
+    } catch (e) {}
     const locEl = document.getElementById('profLocation'); if (char.location) { locEl.style.display = 'flex'; locEl.innerHTML = `${locationSVG}<span>${char.location}</span>`; } else { locEl.style.display = 'none'; locEl.innerHTML = ''; }
     const webEl = document.getElementById('profWebsite'); if (char.website) { webEl.style.display = 'flex'; webEl.innerHTML = `${websiteSVG}<a href="#" style="color:#1d9bf0; text-decoration:none;">${char.website.replace(/^https?:\/\//, '')}</a>`; } else { webEl.style.display = 'none'; webEl.innerHTML = ''; }
     document.getElementById('profBirthdate').innerText = char.birthdate ? char.birthdate.substring(0, 4) + "年" : "未知时间";

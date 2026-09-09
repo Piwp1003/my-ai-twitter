@@ -2267,6 +2267,15 @@ ${(() => { const cur = activeDate(c.id); return cur ? `注意：你这会儿正�
             at: nowMs(), until: ok ? nowMs() + (mins || 60) * 60000 : 0
         };
         if (ok) { S.charLoc[String(char.id)] = sp.id; }
+        // 💳 出门可能要花钱（js/31，开关 walletOuting）：花没花、花在哪儿、谁掏的
+        //    全是随机的——三成的可能就是出去走走一分钱没花。钱包没开就什么都不发生。
+        if (ok) {
+            try {
+                if (window.gyWallet && typeof window.gyWallet.outing === 'function') {
+                    await window.gyWallet.outing({ charId: char.id, spot: sp.name, mins: entry.mins, by });
+                }
+            } catch (e) { console.warn('[行程] 记出行开销失败：', e); }
+        }
         await pushLog(entry);
         renderPanel();
         if (typeof addNotification === 'function') {

@@ -1216,7 +1216,7 @@ let tweetTimeAbs = false;
 let gyMainWidth = 600;
 let gyLeftWidth = 275;
 let gyFontSize = 15;
-const GY_APP_VERSION = 'v108';
+const GY_APP_VERSION = 'v112';
 
 const GY_FEATURE_MAP = {
     // 聊天

@@ -1494,7 +1494,7 @@ async function refreshLifeStateOnChatEnter(charId) {
     if (lastScheduleBubbleRefresh[charId] && now - lastScheduleBubbleRefresh[charId] < 60000) return; // 1分钟内重复进入同一个聊天不重复请求
     lastScheduleBubbleRefresh[charId] = now;
 
-    const api = getApiConfig(true);
+    const api = getApiMain();
     if (!api.key) return;
 
     const typeAsk = statusTypes.length > 0 ? `，并从这些状态类型里选一个最贴近的填入 "statusTypeLabel" 字段：[${statusTypes.map(t => t.label).join('、')}]，都不贴切就填空字符串` : '';
@@ -1563,7 +1563,7 @@ async function triggerNudge(sessionId, targetId) {
     let sysText = targetId === 'me' ? `"${currentUser.name}" 拍了拍 自己 ${currentUser.nudgeText || '的脑袋'}` : `"${currentUser.name}" 拍了拍 "${myCharacters.find(c => c.id == targetId).name}" ${myCharacters.find(c => c.id == targetId).nudgeText || '的肩膀'}`;
     globalChats[sessionId].push({ sender: 'system', text: sysText, timestamp: Date.now() }); renderChatMessages(); saveAllData();
 
-    const api = getApiConfig(true);
+    const api = getApiMain();
     if (targetId !== 'me' && api.key) {
         let targetChar = myCharacters.find(c => c.id == targetId);
         let prompt = buildStructuredMessages(buildBasePrompt(targetChar, false, sysText), [],
@@ -1714,6 +1714,10 @@ function renderChatMessages() {
             if (msg.type === 'invite' && msg.invite && typeof gyInviteCardHtml === 'function') {
                 return gyInviteCardHtml(msg, idx);
             }
+            // 📦 包裹卡片（js/30）：下单 / 到货 / 收货。跟邀请卡是两种卡，样子也不一样。
+            if (msg.type === 'parcel' && msg.parcel && typeof gyParcelCardHtml === 'function') {
+                return gyParcelCardHtml(msg, idx);
+            }
             let isMe = msg.sender === 'me', senderChar = isMe ? currentUser : myCharacters.find(c => c.id == msg.sender), timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             if (!isMe && (!msg.readBy || !msg.readBy.includes('me'))) { if(!msg.readBy) msg.readBy=[]; msg.readBy.push('me'); __markedAnyRead = true; }
 
@@ -1723,6 +1727,25 @@ function renderChatMessages() {
                 if (isGroup) { let unreadCount = totalMembers - readCount; readStatusHtml = unreadCount > 0 ? `<div style="font-size:10px; color:#888; margin-top:2px;">${unreadCount}人未读</div>` : `<div style="font-size:10px; color:#1d9bf0; margin-top:2px;">全部已读</div>`; } 
                 else { readStatusHtml = readCount > 0 ? `<div style="font-size:10px; color:#1d9bf0; margin-top:2px;">已读</div>` : `<div style="font-size:10px; color:#888; margin-top:2px;">未读</div>`; }
             }
+            // 🔗 角色转过来的网页（js/29）：分享感想时把 TA 刚读的那个网页一起转过来，
+            //    点一下直接打开——不然你只看见一段感想，不知道 TA 在说什么、从哪儿看来的。
+            if (msg.type === 'weblink' && msg.weblink && typeof gyWebLinkHtml === 'function') {
+                const isMe0 = msg.sender === 'me';
+                const sc = isMe0 ? currentUser : myCharacters.find(c => c.id == msg.sender);
+                const av = isMe0 ? '' : `<div>${getAvatarHTML(sc, 40)}</div>`;
+                return `<div class="chat-msg-row other">${av}
+                    <div class="chat-bubble-wrapper" style="align-items:flex-start;">
+                        <div class="chat-sender-name" style="font-size:10px;">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        ${gyWebLinkHtml(msg, idx)}
+                    </div></div>`;
+            }
+            // 🎀 换装卡（js/35）：换头像/背景/壁纸要先问一声，卡上直接把那张图放出来。
+            if (msg.type === 'dress' && msg.dress && typeof gyDressCardHtml === 'function') {
+                return gyDressCardHtml(msg, idx);
+            }
+            // 💸 转账 / 红包（js/31）：不是居中的一张卡，而是**一条谁发出来的消息**——
+            //    跟气泡一样左右分边、带头像，只是气泡里装的是转账单。所以放在这儿，
+            //    要用到上面算好的 isMe / senderChar / timeStr。
             let avatarHtml = !isMe && senderChar ? `<div style="cursor:pointer;" onclick="showCharLifeStatePopup('${senderChar.id}', event)" ondblclick="triggerNudge('${currentChatSessionId}', '${senderChar.id}')" title="左键查看状态·双击拍一拍">${getAvatarHTML(senderChar, 40)}</div>` : `<div style="cursor:pointer;" ondblclick="triggerNudge('${currentChatSessionId}', 'me')" title="双击拍一拍">${getAvatarHTML(currentUser, 40)}</div>`;
             
             // 🌟 核心渲染：侧滑抽卡控件 🌟
@@ -1744,6 +1767,19 @@ function renderChatMessages() {
             if (!isMe && typeof stripLeftoverMarkers === 'function') {
                 const cleaned = stripLeftoverMarkers(msg.text);
                 if (cleaned && cleaned.trim()) displayText = cleaned;
+            }
+
+            if (msg.type === 'money' && msg.money && typeof gyMoneyCardHtml === 'function') {
+                return `
+                <div class="chat-msg-row ${isMe ? 'me' : 'other'}">
+                    ${!isMe ? avatarHtml : ''}
+                    <div class="chat-bubble-wrapper" style="align-items: ${isMe ? 'flex-end' : 'flex-start'};">
+                        <div class="chat-sender-name" style="font-size:10px;">${!isMe && isGroup ? (senderChar && senderChar.name) || '' : ''} ${timeStr}</div>
+                        ${gyMoneyCardHtml(msg, idx)}
+                        ${isMe ? readStatusHtml : ''}
+                    </div>
+                    ${isMe ? avatarHtml : ''}
+                </div>`;
             }
 
             // 💡 聊天气泡改为【纯文本显示】：不再渲染MVU状态栏卡片、记忆召回面板，也不再把
@@ -2158,7 +2194,7 @@ window.contextActionRegenerateChat = async function() {
     const recentHistory = buildTimeAwareHistoryText(historyForPrompt.slice(-chatHistoryTurns));
     const historyTurns = buildTimeAwareHistoryTurns(historyForPrompt.slice(-chatHistoryTurns), char.name);
 
-    const api = getApiConfig(true);
+    const api = getApiMain();
     if (!api.key) return alert("请先配置 API Key！");
 
     let oldText = msg.text;
@@ -2328,7 +2364,7 @@ async function triggerAIBatchReply(sessionId, triggerText, aliveCatchUp) {
         if (g && g.text) triggerText = g.text;
         if (g && g.catchUp) aliveCatch = g.catchUp;
     }
-    const api = getApiConfig(true); 
+    const api = getApiMain(); 
     if (!api.key) return alert("请先配置 API Key！");
     
     let emoPrompt = getEmoticonPrompt(), isGroup = sessionId.startsWith('g_'), targetChars = [];

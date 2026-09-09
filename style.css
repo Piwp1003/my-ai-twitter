@@ -108,7 +108,24 @@ svg.blue-line-icon { fill: none !important; stroke: var(--gy-accent) !important;
 .profile-banner { height: 200px; background-color: rgba(240, 248, 255, 0.8); background-size: cover; background-position: center; border-bottom: 2px solid var(--gy-accent);}
 .profile-details { padding: 15px; position: relative; border-bottom: 1px solid #eff3f4; }
 .profile-avatar-large { width: 134px; height: 134px; border: 4px solid white; border-radius: 50%; position: absolute; top: -70px; display: flex; align-items: center; justify-content: center; font-size: 60px; background-color: white; background-size: cover; background-position: center; box-shadow: 0 0 0 2px var(--gy-accent); color: var(--gy-accent); }
-.profile-actions { display: flex; justify-content: flex-end; margin-bottom: 10px; height: 40px; }
+.profile-actions { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 10px; height: 40px; }
+/* ⋮ 资料页右上角的收纳菜单：📅 纪念日、💳 钱包、📱 手机…都进这儿，
+   免得关注键旁边横着排一串按钮，窄屏上还换行 */
+.prof-more-wrap { position: relative; margin-left: 8px; }
+.prof-more { padding: 8px 10px !important; min-width: 0; line-height: 1; font-size: 16px; }
+.prof-more-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 60;
+  min-width: 208px; background: var(--gy-bg, #fff); border: 1px solid var(--gy-line, #cfd9de);
+  border-radius: 14px; box-shadow: 0 8px 28px rgba(0,0,0,.16); overflow: hidden; padding: 4px; }
+.prof-more-menu.on { display: block; }
+body.dark-theme .prof-more-menu { background: #16181c; }
+.prof-more-menu button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  border: none; background: none; color: inherit; font-family: inherit; cursor: pointer;
+  padding: 9px 10px; border-radius: 10px; }
+.prof-more-menu button:hover { background: rgba(var(--gy-accent-rgb), .1); }
+.prof-more-menu .pm-i { font-size: 17px; width: 22px; text-align: center; flex-shrink: 0; }
+.prof-more-menu .pm-b { display: flex; flex-direction: column; min-width: 0; }
+.prof-more-menu .pm-b b { font-size: 13.5px; font-weight: 600; }
+.prof-more-menu .pm-b em { font-size: 11px; color: #8b98a5; font-style: normal; margin-top: 1px; }
 .profile-name-section { margin-top: 10px; margin-bottom: 15px; }
 .profile-bio { font-size: 15px; line-height: 1.5; margin-bottom: 15px; white-space: pre-wrap; }
 .profile-meta-info { display: flex; flex-wrap: wrap; gap: 15px; color: #536471; font-size: 14px; margin-bottom: 15px; }
@@ -200,8 +217,10 @@ body.dark-theme .suggest-row:hover { background-color: rgba(255,255,255,0.06); }
 .btn-edit-small { background-color: rgba(255,255,255,0.8); color: var(--gy-accent); border: 1px solid var(--gy-accent); padding: 6px 12px; border-radius: 9999px; font-weight: bold; font-size: 13px; cursor: pointer; flex-shrink: 0; transition: 0.2s;}
 .btn-edit-small:hover { background: var(--gy-accent); color: white; }
 .mini-game-icon-badge { position:relative; }
-.mini-game-icon-badge::after { content:''; position:absolute; top:2px; right:2px; width:8px; height:8px; border-radius:50%; background:var(--gy-bad); display:none; }
-.mini-game-icon-badge.active::after { display:block; }
+/* 用 ::before 而不是 ::after：::after 让给 ⋮ 菜单里那套 content:attr(title) 的文字标签，
+   小红点本来就是绝对定位的一个点，用哪个伪元素都一样 */
+.mini-game-icon-badge::before { content:''; position:absolute; top:2px; right:2px; width:8px; height:8px; border-radius:50%; background:var(--gy-bad); display:none; }
+.mini-game-icon-badge.active::before { display:block; }
 .mini-game-member-pick-row { display:flex; align-items:center; gap:8px; padding:8px 4px; border-bottom:1px solid #eff3f4; }
 .mini-game-float-panel { position:fixed; right:16px; bottom:90px; z-index:2600; background:white; border:2px solid var(--gy-accent); border-radius:16px; box-shadow:0 10px 30px rgba(var(--gy-accent-rgb),0.25); max-width:94vw; max-height:80vh; overflow:auto; }
 .mini-game-float-header { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; cursor:move; background:rgba(var(--gy-accent-rgb),0.08); border-radius:14px 14px 0 0; user-select:none; touch-action:none; position:sticky; top:0; }
@@ -425,6 +444,36 @@ body.dark-theme .wb-form-resize-handle { background: var(--gy-accent); }
 .md-inlinecode { background: rgba(0,0,0,0.08); border-radius: 4px; padding: 1px 5px; font-family: monospace; font-size: 0.9em; }
 .chat-input-area { display: flex; flex-direction: column; background: rgba(247,247,247,0.8); border-top: 1px solid #e0e0e0; padding: 10px 15px; flex-shrink: 0; }
 .chat-input-row { display: flex; gap: 10px; align-items: center; width: 100%; }
+/* ⋮ 输入框左边的收纳菜单：导演耳语、表情、图片、小游戏、转账、插件动作…全在里面。
+   往 #chatToolIconsRow / #chatPluginActionsBar 里塞按钮的老代码一行都不用改，
+   按钮上的 title 会被 content:attr(title) 自动变成菜单里的文字。 */
+.chat-more-wrap { position: relative; flex-shrink: 0; }
+.chat-input-row .chat-more { margin: 0; font-size: 17px; line-height: 1; padding: 8px 10px; }
+.chat-more-menu { display: none; margin-bottom: 8px; padding: 6px; border-radius: 14px;
+  border: 1px solid var(--gy-line, #cfd9de); background: rgba(128,128,128,.05); }
+.chat-more-menu.on { display: block; }
+.chat-more-menu #chatToolIconsRow { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px !important; margin: 0 !important; }
+.chat-more-menu #chatPluginActionsBar { flex-wrap: wrap; margin-bottom: 6px !important; }
+/* 「跟 TA 一起」：约听歌/看片/借手机/送东西…以前得各自翻到自己那一页去找人 */
+#gyChatActs { margin-bottom: 8px; }
+.gyca-hd { font-size: 11px; color: #8b98a5; letter-spacing: .06em; padding: 2px 4px 6px; }
+.gyca-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 4px; }
+.gyca-grid button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  border: 1px solid var(--gy-line, #cfd9de); background: var(--gy-bg, #fff); color: inherit;
+  font-family: inherit; cursor: pointer; padding: 8px 10px; border-radius: 11px; }
+body.dark-theme .gyca-grid button { background: rgba(255,255,255,.04); }
+.gyca-grid button:hover { border-color: var(--gy-accent); background: rgba(var(--gy-accent-rgb), .1); }
+.gyca-i { font-size: 17px; width: 22px; text-align: center; flex-shrink: 0; }
+.gyca-b { display: flex; flex-direction: column; min-width: 0; }
+.gyca-b b { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gyca-b em { font-size: 10.5px; color: #8b98a5; font-style: normal; margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-more-menu #chatToolIconsRow > button { display: flex; align-items: center; gap: 8px; margin: 0;
+  width: 100%; text-align: left; border-radius: 10px; padding: 9px 10px; font-size: 15px; }
+.chat-more-menu #chatToolIconsRow > button::after { content: attr(title); font-size: 12.5px; color: inherit;
+  opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-more-menu #chatToolIconsRow > button:hover { background: rgba(var(--gy-accent-rgb), .12); }
 .chat-input-row input { flex-grow: 1; border: 2px solid var(--gy-accent); border-radius: 9999px; padding: 10px 18px; outline: none; font-size: 15px; color: var(--gy-accent); background: rgba(255,255,255,0.8);}
 
 .chat-quote-preview { background: rgba(0,0,0,0.05); padding: 8px 12px; border-left: 3px solid var(--gy-accent); font-size: 12px; color: #536471; margin-bottom: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
@@ -2621,10 +2670,14 @@ body.dark-theme .gyiv-card,.dark-theme .gyiv-card{--gy-iv-bg:#1a222c;--gy-iv-fg:
 /* 头一行：名字 / 蓝V / @账号 / · / 日期，右边一个 ⋮ */
 .post-dot{color:#536471;font-size:15px;margin:0 2px;}
 .post-time{color:#536471;font-size:15px;white-space:nowrap;}
-/* 定位跟时间同一行：名字 · @账号 · 3小时前 · 📍地点 */
-.post-loc-inline{display:inline-flex;align-items:center;gap:3px;color:#536471;font-size:14px;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;}
-.post-loc-inline svg{width:15px !important;height:15px !important;flex-shrink:0;}
+/* 详情页：时间和定位**并排一行、同一基线**（v108 按你 P 的那张图对齐）。
+   两边都用 inline-flex + align-items:center，图钉图标跟文字一样高，不高不低。 */
+.post-loc-inline{display:inline-flex;align-items:center;gap:4px;color:#536471;
+    font-size:inherit;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    max-width:220px;margin-left:14px;}
+.post-loc-inline svg{width:1.05em !important;height:1.05em !important;flex-shrink:0;
+    display:block;position:relative;top:-0.5px;}
+.detail-time-row .time-updater{display:inline-flex;align-items:center;line-height:1;}
 .post-header-info{flex-wrap:nowrap;min-width:0;}
 .post-more-btn{background:none;border:none;color:#536471;cursor:pointer;padding:4px;
     border-radius:50%;line-height:0;flex-shrink:0;transition:.15s;}
@@ -2971,3 +3024,16 @@ input, select, textarea { font-size: var(--gy-fs); }
 
 /* 左栏那条拖宽手柄贴在左栏右边缘 */
 .sidebar-left .gy-w-grip { right: -3px; }
+
+/* 势力成员卡上的好感度徽章（v108） */
+.faction-member-aff{font-size:11.5px;margin-top:3px;font-weight:600;white-space:nowrap;}
+
+/* 我的资料：分类收纳（v108），跟系统设置一个套路 */
+#userProfileModal .modal-box h2{display:flex;align-items:center;gap:10px;}
+.up-back{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;
+    border-radius:50%;cursor:pointer;font-size:19px;color:var(--gy-accent);
+    background:var(--gy-accent-soft);flex-shrink:0;transition:.15s;}
+.up-back:hover{background:rgba(var(--gy-accent-rgb),.2);}
+#upIndex .set-menu{display:flex;flex-direction:column;gap:8px;margin-bottom:6px;}
+.up-panel{animation:upIn .16s ease;}
+@keyframes upIn{from{opacity:.4;transform:translateY(4px);}to{opacity:1;transform:none;}}

@@ -1276,8 +1276,42 @@ function saveSettings() {
     saveAllData(); alert("设置保存成功！");
 }
 
+// v108：资料页改成分类收纳（索引 + 分页）。传空字符串＝回到索引页。
+// 分页只是 display 切换，节点一直在 DOM 里，所以 saveUserProfile() 那种
+// 一次性读一堆 getElementById 的老代码完全不用改。
+const GY_USER_PANELS = {
+    basic:  '🪪 基本资料',
+    persona:'🎭 人设切换',
+    wallet: '💳 我的钱包与银行卡',
+    anniv:  '📅 我的纪念日',
+    chat:   '💬 聊天互动',
+    anon:   '🕶️ 匿名论坛身份',
+    status: '🎨 状态气泡样式'
+};
+window.openUserPanel = function (key) {
+    const idx = document.getElementById('upIndex');
+    const back = document.getElementById('upBackBtn');
+    const title = document.getElementById('upTitleText');
+    document.querySelectorAll('.up-panel').forEach(p => { p.style.display = 'none'; });
+    if (!key || !GY_USER_PANELS[key]) {
+        if (idx) idx.style.display = 'block';
+        if (back) back.style.display = 'none';
+        if (title) title.innerText = '自定义我的资料';
+    } else {
+        if (idx) idx.style.display = 'none';
+        const p = document.getElementById('upPanel-' + key);
+        if (p) p.style.display = 'block';
+        if (back) back.style.display = 'inline-flex';
+        if (title) title.innerText = GY_USER_PANELS[key];
+        if (key === 'wallet' && typeof window.gyWalletPanel === 'function') window.gyWalletPanel();
+    }
+    // 换一页从头看起，别继承上一页滚到一半的位置
+    try { const box = document.querySelector('#userProfileModal .modal-box'); if (box) box.scrollTop = 0; } catch (e) {}
+};
+
 function openUserProfileModal() {
     try {
+        openUserPanel('');   // 每次打开都从索引页开始
         ['myName','myHandle','myPersona','myBio','myFollowers','myFollowing','myLocation','myWebsite','myBirthdate','myAnonName','myAnonId','myNudgeText','myGender','myPersona'].forEach(id => {
             const elem = document.getElementById(id);
             if(elem) {

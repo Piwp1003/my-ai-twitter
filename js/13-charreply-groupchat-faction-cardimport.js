@@ -156,7 +156,7 @@ window.submitCustomCharReply = async function() {
         return;
     }
 
-    const api = getApiConfig(true); 
+    const api = getApiMain(); 
 
     // A. 文本框留空 -> 触发 AI 角色自动代打
     if (!text) {
@@ -472,7 +472,7 @@ window.confirmInviteToGroup = async function() {
 
 // 4. 核心引擎：老成员表态 -> 新成员回应
 window.triggerGroupWelcomeSequence = async function(groupId, newCharId) {
-    const api = getApiConfig(true);
+    const api = getApiMain();
     if (!api.key) return;
     
     const group = groupChats.find(g => g.id === groupId);
@@ -579,12 +579,22 @@ function renderFactionMembersGrid(factionName) {
         : myCharacters.filter(c => charInFaction(c, factionName));
     const grid = document.getElementById('factionMembersGrid');
     if (members.length === 0) { grid.innerHTML = '<div class="empty-state">该势力暂无角色。</div>'; return; }
-    grid.innerHTML = members.map(c => `
+    // v108：好感度开着的话，成员卡上直接带出 💗 分数和阶段名——
+    // 以前只有点进某个角色的关系图、而且手动建过一条"跟我"的关系线才看得到，
+    // 等于账本里改了数在关系网这边基本没有体现。
+    grid.innerHTML = members.map(c => {
+        const a = Number(c.affinity || 0);
+        const stage = (window.gyRel && typeof window.gyRel.stage === 'function')
+            ? (function () { try { return window.gyRel.stage(c.id); } catch (e) { return ''; } })() : '';
+        const badge = enableAffinitySystem
+            ? `<div class="faction-member-aff" style="color:${a >= 0 ? 'var(--gy-ok)' : 'var(--gy-bad)'};">💗${a > 0 ? '+' : ''}${a}${stage ? ' · ' + escapeHtml(stage) : ''}</div>` : '';
+        return `
         <div class="faction-member-card" onclick="switchMainView('charRelations', '${c.id}')">
             ${getAvatarHTML(c, 64)}
             <div class="faction-member-name">${c.name}</div>
-        </div>
-    `).join('');
+            ${badge}
+        </div>`;
+    }).join('');
 }
 
 function backFromCharRelations() {
@@ -603,6 +613,17 @@ function renderCharRelationsView(charId) {
         const other = otherId === 'me' ? currentUser : myCharacters.find(c => c.id == otherId);
         return { char: other, isUser: otherId === 'me', edge: r };
     }).filter(x => x.char);
+    // v108：好感度开着、但你没手动建过"TA 跟我"这条关系线时，
+    // 自动补一个「你」的节点上去。以前少了这条线，💗 徽章和线粗细就永远画不出来——
+    // 关系账本里改了分，关系网这边一点反应都没有，看着像没联动。
+    if (enableAffinitySystem && !relatedChars.some(x => x.isUser)) {
+        const stage = (window.gyRel && typeof window.gyRel.stage === 'function')
+            ? (function () { try { return window.gyRel.stage(charId); } catch (e) { return ''; } })() : '';
+        relatedChars.push({
+            char: currentUser, isUser: true,
+            edge: { fromId: charId, toId: 'me', label: stage || '好感度', color: '#f91880', __auto: true }
+        });
+    }
 
     const wrap = document.getElementById('relationsGraphWrap');
     const nodesEl = document.getElementById('relationsGraphNodes');
@@ -1127,7 +1148,7 @@ async function handleCharCardImport(event) {
     document.getElementById('charPersona').value = fullPersona;
 
     // 🌟 独家新增：让 AI 自动为你浓缩“短简介”、起好“匿名昵称”和“拍一拍文案” 🌟
-    const api = getApiConfig(true); 
+    const api = getApiMain(); 
     if (api.key && fullPersona.length > 10) {
         const bioInput = document.getElementById('charBio');
         if (bioInput) bioInput.placeholder = "AI正在根据几千字人设，疯狂为您提炼短简介中... ⏳";

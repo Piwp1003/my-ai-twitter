@@ -131,21 +131,68 @@
     };
 
     // 跟主程序的好感度系统对上，关系网那边的 💗 徽章和线粗细就会跟着动
+    //
+    // ⚠️ enableAffinitySystem 是主程序里的顶层 let，不是 window 上的属性——
+    //    直接写 window.enableAffinitySystem 会新建一个同名属性，而读裸标识符的地方
+    //    （关系网画徽章那儿）还是看的 let，等于白设。间接 eval 跑在全局作用域里，
+    //    能真正赋到那个 let 上。插件系统本来就靠 new Function 跑，eval 的可用性是一样的。
+    function turnOnMainAffinity() {
+        try {
+            if (typeof enableAffinitySystem !== 'undefined' && enableAffinitySystem) return;
+            (0, eval)('enableAffinitySystem = true');
+            const box = document.getElementById('enableAffinitySystem');
+            if (box) box.checked = true;
+        } catch (e) { console.warn('[关系账本] 打不开主程序的好感度开关：', e); }
+    }
+    // 关系网那三页哪一页开着就重画哪一页，不然要退出去再进来才看得到新数字。
+    // （势力总览 / 某个势力的成员 / 某个角色的关系图，💗 在后两页上）
+    const shown = id => { const v = document.getElementById(id); return v && v.style.display !== 'none'; };
+    function repaintNetwork() {
+        try {
+            if (shown('view-faction-network')) {
+                if (typeof renderFactionNetworkGrid === 'function') renderFactionNetworkGrid();
+                if (typeof renderFactionOverviewList === 'function') renderFactionOverviewList();
+            }
+            if (shown('view-faction-members') && typeof renderFactionMembersGrid === 'function'
+                && typeof currentRelationsFactionName !== 'undefined' && currentRelationsFactionName) {
+                renderFactionMembersGrid(currentRelationsFactionName);
+            }
+            if (shown('view-char-relations') && typeof renderCharRelationsView === 'function'
+                && typeof currentRelationCharId !== 'undefined' && currentRelationCharId) {
+                renderCharRelationsView(currentRelationCharId);
+            }
+        } catch (e) {}
+    }
+    /* v108 修：syncOne 以前只把数字写进内存里的 c.affinity，
+       ①不打开 enableAffinitySystem（关系网靠它决定画不画 💗，不开就等于没同步）
+       ②不调 saveAllData（刷新一下就回到旧值）
+       ③不重画关系网（那一页开着的话看不到变化）
+       ——所以"账本里改了数，关系网纹丝不动"。现在三件一起做。 */
     function syncOne(charId) {
         if (!S.syncAffinity) return;
         const c = chars().find(x => String(x.id) === String(charId));
         if (!c) return;
+        turnOnMainAffinity();
         c.affinity = score(charId);
+        try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+        repaintNetwork();
     }
+    // syncAll 会被频繁调用（每次切页），所以先比一遍，真有变化才写、才存。
+    //
+    // ⚠️ 还有一个时序坑：本模块的 init 在脚本加载时就跑了，那时 loadAllData() 还没执行，
+    //    myCharacters 是空的，而且紧接着 loadAllData 会把 enableAffinitySystem 从存档里
+    //    读回 false，把这里刚打开的开关又盖掉。所以光在 init 里同步一次是不够的，
+    //    必须在切页时再对一遍——尤其是进「关系网」那一页之前。
     function syncAll() {
         if (!S.syncAffinity) return;
-        // ⚠️ enableAffinitySystem 是主程序里的顶层 let，不是 window 上的属性——
-        //    直接写 window.enableAffinitySystem 会新建一个同名属性，而读裸标识符的地方
-        //    （关系网画徽章那儿）还是看的 let，等于白设。间接 eval 跑在全局作用域里，
-        //    能真正赋到那个 let 上。插件系统本来就靠 new Function 跑，eval 的可用性是一样的。
-        try { (0, eval)('enableAffinitySystem = true'); } catch (e) { console.warn('[关系账本] 打不开主程序的好感度开关：', e); }
-        chars().forEach(c => { c.affinity = score(c.id); });
+        const list = chars();
+        if (!list.length) return;
+        let changed = false;
+        list.forEach(c => { const v = score(c.id); if (c.affinity !== v) { c.affinity = v; changed = true; } });
+        if (typeof enableAffinitySystem === 'undefined' || !enableAffinitySystem) { turnOnMainAffinity(); changed = true; }
+        if (!changed) return;
         try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+        repaintNetwork();
     }
 
     // ---------- 来源①：跟着「情绪惯性」走（零成本）----------
@@ -592,6 +639,9 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
         const sw = window.switchMainView;
         if (typeof sw === 'function' && !sw.__gyrelPatched) {
             window.switchMainView = function () {
+                // 进任何一页之前先把好感度对一遍（有变化才写），这样「关系网」那一页
+                // 一进去看到的就是账本里的最新数字，不用退出去再进来
+                try { syncAll(); } catch (e) {}
                 const r = sw.apply(this, arguments);
                 try { setTimeout(addEntries, 0); } catch (e) {}
                 return r;
@@ -1118,6 +1168,9 @@ body.dark-theme .gygs-box{background:#16181c;color:#e7e9ea;}
         const sw = window.switchMainView;
         if (typeof sw === 'function' && !sw.__gygsPatched) {
             window.switchMainView = function () {
+                // 进任何一页之前先把好感度对一遍（有变化才写），这样「关系网」那一页
+                // 一进去看到的就是账本里的最新数字，不用退出去再进来
+                try { syncAll(); } catch (e) {}
                 const r = sw.apply(this, arguments);
                 try { setTimeout(addEntries, 0); } catch (e) {}
                 return r;

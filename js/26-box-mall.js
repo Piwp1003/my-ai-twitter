@@ -170,6 +170,15 @@
                 o.deliveredAt = o.orderedAt + o.etaMs;
                 changed = true;
                 arrived.push(o);
+            } else if (o.status !== 'delivered' && o.parcelId && !o.shipNoted && progress(o) >= 0.25) {
+                // 走过第二个节点就在聊天里提一句（系统提示，不是卡片；开关 parcelShipLine）
+                o.shipNoted = true; changed = true;
+                try {
+                    const flavor = (o.timelineFlavor && o.timelineFlavor[1]) ? o.timelineFlavor[1] : '仓库已发出';
+                    if (window.gyParcel && typeof window.gyParcel.ship === 'function') {
+                        window.gyParcel.ship(o.parcelId, flavor + '　·　' + etaLabel(o));
+                    }
+                } catch (e) {}
             }
         });
         if (changed) await save();
@@ -210,7 +219,13 @@
         try { if (typeof sendBrowserNotification === 'function') sendBrowserNotification('📦 快递到了！', body); } catch (e) {}
         try { if (typeof showToast === 'function') showToast('', '📦 快递到了', body, null, null, false); } catch (e) {}
         await save();
-        await putIntoKit(o);
+        // v108：有包裹卡的走卡片那条线——到货翻到「到货」，
+        // 是礼物就停在这儿等收件人真的收下，收下时才进随身物。
+        if (o.parcelId && window.gyParcel && typeof window.gyParcel.arrive === 'function') {
+            try { await window.gyParcel.arrive(o.parcelId); } catch (e) { console.warn('[商城] 包裹卡到货失败：', e); }
+        } else {
+            await putIntoKit(o);
+        }
         reactToDelivery(o);
     }
 
@@ -255,6 +270,21 @@
     }
 
     // ---------- 下单 ----------
+    // v108：每一单都在私聊里留一张包裹卡（js/30）。
+    // "礼物"＝下单人和收货人不是同一个人（你送角色、角色送你、角色互送都算），
+    // 礼物到货之后还要收件人真的收下才算数。
+    function makeParcel(o) {
+        try {
+            if (!window.gyParcel || typeof window.gyParcel.order !== 'function') return;
+            const pk = window.gyParcel.order({
+                orderId: o.id, from: o.boughtBy, to: o.forWhom,
+                name: o.productSnapshot.name, emoji: o.productSnapshot.emoji,
+                price: o.productSnapshot.price, desc: o.productSnapshot.description,
+                reason: o.reasonText || '', gift: String(o.boughtBy) !== String(o.forWhom)
+            });
+            if (pk) o.parcelId = pk.id;
+        } catch (e) { console.warn('[商城] 建包裹卡失败：', e); }
+    }
     function newOrder(product, forWhom, boughtBy, reasonText) {
         const min = (parseInt(S.settings.minDeliveryMin) || 20) * 60000;
         const max = (parseInt(S.settings.maxDeliveryMin) || 180) * 60000;
@@ -318,14 +348,22 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         if (!S.products.length || !chars().length) return;
         const buyer = chars()[Math.floor(Math.random() * chars().length)];
         const product = S.products[Math.floor(Math.random() * S.products.length)];
-        const forWhom = Math.random() < 0.5 ? buyer.id : 'me';
+        // v108：三种去向——买给自己 / 送给你 / 送给另一个角色（角色之间互送）。
+        // 互送只有在有第二个角色的时候才可能出现。
+        const others = chars().filter(c => String(c.id) !== String(buyer.id));
+        const roll = Math.random();
+        const forWhom = roll < 0.45 ? buyer.id
+                      : (roll < 0.85 || !others.length) ? 'me'
+                      : others[Math.floor(Math.random() * others.length)].id;
 
         let reason = '';
         try {
             const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
             if (api && api.key) {
                 const p = '你是"' + buyer.name + '"，人设：' + (buyer.persona || '') + '。你刚刚心血来潮，网购/点了"' + product.name + '"（' +
-                    (product.description || '无描述') + '），' + (forWhom === 'me' ? '打算送给用户/给用户点的外卖，当作一份心意' : '是买给你自己的') +
+                    (product.description || '无描述') + '），' + (forWhom === 'me' ? '打算送给用户/给用户点的外卖，当作一份心意'
+                        : String(forWhom) === String(buyer.id) ? '是买给你自己的'
+                        : ('打算送给' + nameOf(forWhom) + '，当作一份心意')) +
                     '。请用第一人称写一句简短的内心独白，说说此刻为什么想买这个、当下的心情或场景，不超过 40 字。只输出这句话本身，不要引号。';
                 const msgs = (typeof buildStructuredMessages === 'function') ? buildStructuredMessages('', [], p) : [{ role: 'user', content: p }];
                 const data = await callChatCompletionAPI(api, msgs);
@@ -333,15 +371,21 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
                     .trim().replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').replace(/^["「]|["」]$/g, '').slice(0, 100);
             }
         } catch (e) {}
-        if (!reason) reason = forWhom === 'me' ? (buyer.name + '给你点了份「' + product.name + '」～') : (buyer.name + '给自己买了「' + product.name + '」。');
+        if (!reason) reason = forWhom === 'me' ? (buyer.name + '给你点了份「' + product.name + '」～')
+            : String(forWhom) === String(buyer.id) ? (buyer.name + '给自己买了「' + product.name + '」。')
+            : (buyer.name + '买了「' + product.name + '」，说是要送给' + nameOf(forWhom) + '。');
 
         const o = newOrder(product, forWhom, buyer.id, reason);
+        // 角色也一样要付得起——买不起就不买了，随机网购不会再无限刷单
+        if (!(await chargeFor(o))) return;
         S.orders.unshift(o);
+        makeParcel(o);
         await save();
         genTimeline(o, buyer);
 
+        // 有包裹卡的时候就不再补那条 "[下单] xxx" 的纯文字消息了——同一件事出现两遍。
         try {
-            if (typeof globalChats !== 'undefined' && globalChats[buyer.id]) {
+            if (!o.parcelId && typeof globalChats !== 'undefined' && globalChats[buyer.id]) {
                 globalChats[buyer.id].push({ sender: buyer.id, text: '[下单] ' + reason, timestamp: Date.now(), readBy: [] });
                 if (typeof currentChatSessionId !== 'undefined' && currentChatSessionId == buyer.id && typeof renderChatMessages === 'function') renderChatMessages();
                 if (typeof saveAllData === 'function') saveAllData();
@@ -356,7 +400,10 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         if (!product) return;
         const o = newOrder(product, forWhom, 'me',
             forWhom === 'me' ? '你自己下单买的。' : ('你给 ' + nameOf(forWhom) + ' 买了一份心意。'));
+        // v108：钱包开着的话真的扣钱 + 出小票；卡里不够这单就不成立
+        if (!(await chargeFor(o))) return;
         S.orders.unshift(o);
+        makeParcel(o);
         await save();
         paintBadge();
         genTimeline(o, forWhom === 'me' ? null : charOf(forWhom));
@@ -365,6 +412,21 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
     }
 
     const toast = m => { try { if (typeof showToast === 'function') showToast('', '🛒 商城', m, null, null, false); } catch (e) {} };
+
+    // v108：真的扣钱。钱包没开（或没装 js/31）就直接放行，行为跟以前一模一样。
+    // 返回 false ＝ 付不出来，这一单不该成立。
+    async function chargeFor(o) {
+        try {
+            if (!window.gyWallet || typeof window.gyWallet.charge !== 'function') return true;
+            const price = parseFloat(o.productSnapshot.price) || 0;
+            const r = await window.gyWallet.charge(o.boughtBy, price, o.productSnapshot.name, o.id);
+            if (r && r.ok === false) {
+                if (String(o.boughtBy) === 'me') toast('卡里不够 ￥' + price + '，这一单没下成');
+                return false;
+            }
+            return true;
+        } catch (e) { console.warn('[商城] 扣款失败：', e); return true; }
+    }
 
     // ---------- 分享商品 ----------
     // 分享到私聊 = 跳到私聊页面，把话填进输入框。发不发、改不改由你，TA 按人设回你。
@@ -496,6 +558,8 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
             <div class="gymall-tabs">
                 <div class="gymall-tab" id="gymallTab-products" onclick="gymallTab('products')">商品</div>
                 <div class="gymall-tab" id="gymallTab-orders" onclick="gymallTab('orders')">我的订单</div>
+                <div class="gymall-tab" id="gymallTab-takeout" onclick="gymallTab('takeout')">外卖</div>
+                <div class="gymall-tab" id="gymallTab-parcels" onclick="gymallTab('parcels')">收货</div>
                 <div class="gymall-tab" id="gymallTab-settings" onclick="gymallTab('settings')">设置</div>
             </div>
             <div class="gymall-body" id="gymallBody"></div>`;
@@ -503,14 +567,39 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
     }
 
     function renderAll() {
-        ['products', 'orders', 'settings'].forEach(t => {
+        ['products', 'orders', 'takeout', 'parcels', 'settings'].forEach(t => {
             const el = document.getElementById('gymallTab-' + t);
             if (el) el.className = 'gymall-tab' + (t === tab ? ' on' : '');
         });
         if (tab === 'products') renderProducts();
         else if (tab === 'orders') renderOrders();
+        else if (tab === 'takeout') renderTakeout();
+        else if (tab === 'parcels') renderParcels();
         else renderSettings();
         paintBadge();
+    }
+    // 「外卖」页：内容由 js/32 提供。商城卖的是"东西"，外卖卖的是"这一顿"——
+    // 几十分钟就到、店本身有性格，所以单独一页，不跟商品混在一起。
+    function renderTakeout() {
+        const body = document.getElementById('gymallBody');
+        if (!body) return;
+        if (typeof window.gyTakeoutHtml !== 'function') {
+            body.innerHTML = `<div class="gymall-empty">外卖模块没加载。</div>`;
+            return;
+        }
+        body.innerHTML = `<div id="gyTakeoutBody">${window.gyTakeoutHtml()}</div>`;
+    }
+
+    // 「收货」页：订单看的是物流走到哪儿了，这一页看的是东西到没到人手上、收没收。
+    // 内容由 js/30 提供，那边也负责聊天里的卡片，两边永远是同一份数据。
+    function renderParcels() {
+        const body = document.getElementById('gymallBody');
+        if (!body) return;
+        if (typeof window.gyParcelTabHtml !== 'function') {
+            body.innerHTML = `<div class="gymall-empty">包裹卡片模块没加载。</div>`;
+            return;
+        }
+        body.innerHTML = `<div id="gyParcelTabBody">${window.gyParcelTabHtml()}</div>`;
     }
     window.gymallTab = t => { tab = t || 'products'; renderAll(); };
 
@@ -700,6 +789,7 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
                 ${o.reasonText ? `<div class="gymall-dim" style="font-style:italic;margin-top:4px;">"${esc(o.reasonText)}"</div>` : ''}
             </div>
             ${timelineHtml(o)}
+            ${receiptBlock(o)}
             ${unbox}
             <div style="border-top:1px dashed rgba(128,128,128,.35);margin-top:12px;padding-top:10px;">
                 <div style="font-weight:700;font-size:13px;margin-bottom:6px;">📮 投诉物流</div>
@@ -711,6 +801,30 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
                 <div class="gymall-dim" style="margin-top:6px;">由你在「设置」里指定的物流/客服角色用 TA 自己的口吻回你。</div>
             </div></div>`);
     }
+
+    // v108：这一单的小票（钱包开着才有）。默认折起来，点一下展开——
+    // 小票不是每次都要看的东西，但要能随时翻出来。
+    function receiptBlock(o) {
+        try {
+            if (!window.gyWallet || typeof window.gyWallet.receipt !== 'function') return '';
+            const r = window.gyWallet.receipt(o.id);
+            if (!r || typeof window.gyReceiptHtml !== 'function') return '';
+            const openNow = detailReceiptOpen === o.id;
+            return `<div style="border-top:1px dashed rgba(128,128,128,.35);margin-top:12px;padding-top:10px;">
+                <div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="gymallReceipt('${o.id}')">
+                    <span style="font-weight:700;font-size:13px;">🧾 小票</span>
+                    <span class="gymall-dim">${esc(r.method)}　￥${esc(r.amount)}</span>
+                    <span style="margin-left:auto;color:var(--mc);">${openNow ? '收起' : '查看'} ›</span>
+                </div>
+                ${openNow ? window.gyReceiptHtml(o.id) : ''}
+            </div>`;
+        } catch (e) { return ''; }
+    }
+    let detailReceiptOpen = null;
+    window.gymallReceipt = function (id) {
+        detailReceiptOpen = (detailReceiptOpen === id) ? null : id;
+        openDetail(id);
+    };
 
     window.gymallUnbox = async function (id) {
         const o = S.orders.find(x => x.id === id);
@@ -830,6 +944,23 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
     (async function init() {
         await load();
         mountView();
+        // 💌 聊天 ⋮ 里的「买点什么送 TA / 给 TA 点份外卖」——省得每次都翻到商城再找人
+        try {
+            if (typeof window.gyChatActionAdd === 'function') {
+                window.gyChatActionAdd({
+                    id: 'mallGift', icon: '🛍️', label: '买点什么送 TA', sub: '去商城挑一样',
+                    show: () => true,
+                    run: () => { if (typeof switchMainView === 'function') switchMainView('mall');
+                                 setTimeout(() => { try { gymallTab('products'); } catch (e) {} }, 120); }
+                });
+                window.gyChatActionAdd({
+                    id: 'takeout', icon: '🛵', label: '给 TA 点份外卖', sub: '附近的店',
+                    show: () => typeof window.gytoTab === 'function',
+                    run: () => { if (typeof switchMainView === 'function') switchMainView('mall');
+                                 setTimeout(() => { try { gymallTab('takeout'); } catch (e) {} }, 120); }
+                });
+            }
+        } catch (e) {}
         if (typeof registerMiniFeature === 'function') {
             registerMiniFeature({
                 id: 'mall', icon: '🛒', title: '商城',

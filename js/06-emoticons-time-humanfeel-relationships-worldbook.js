@@ -994,6 +994,11 @@ function getLetterAwarenessPrompt(char, maxLetters = 4, perLetterChars = 90) {
 //   精确插到聊天历史的深度位置 / 作者注释前后（只有聊天回复这条主线路会这样做，因为只有那里才有"历史轮次"和
 //   "作者注释"这两个概念）。不传这个参数（比如发推文/评论/论坛等一次性生成场景）时，这几个位置的条目
 //   会自动降级成固定摊平展示在prompt里合理的位置，不会因为选了这些"聊天专属"位置就丢内容。
+// 🧾 注入内容管理（js/37）：那一页把每一条注入都做成了开关。
+// 大部分条目是靠"套一层 getXxxPrompt"实现的，但下面这三段是直接写在这个函数里的
+// 字符串拼接，套不了壳，所以在这儿显式问一句。js/37 没加载时永远返回 true，行为不变。
+const injOn = k => { try { return typeof window.gyInjectOn !== 'function' || window.gyInjectOn(k); } catch (e) { return true; } };
+
 function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", options = null) {
     const opts = options || {};
     // 世界书条目和预设模块都各自能设置"插入位置"，这里先各自算好一份数据/文本，再按位置分段拼进最终prompt里，
@@ -1018,8 +1023,8 @@ function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", o
     prompt += wbText('after_example');
     prompt += getUserContextPrompt(char);   // 👤 按“在这个角色面前我是谁”取用户人设
     prompt += aliveVoicePrompt(char);       // 🫀 语言指纹（静态，放前面对缓存友好）
-    if (char.memorySummary) prompt += `\n【你的专属推文记忆总结】：\n${char.memorySummary}\n`;
-    if (includeChatSummary && char.chatSummary) {
+    if (char.memorySummary && injOn('mem.tweet')) prompt += `\n【你的专属推文记忆总结】：\n${char.memorySummary}\n`;
+    if (includeChatSummary && char.chatSummary && injOn('mem.chat')) {
         // 🫀 开了「久远的记忆会褪色」就换成分层褪色版；没开就还是原来那段全文
         const faded = (typeof aliveFadedSummaryBlock === 'function') ? aliveFadedSummaryBlock(char) : null;
         if (faded) prompt += faded;
@@ -1028,7 +1033,7 @@ function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", o
             if (recentSummary) prompt += `\n【与用户的历史聊天总结（仅供你了解背景，都是已经聊过、翻篇的旧话题，除非跟当前对话自然衔接，否则不要主动重提或把话题拉回去，优先跟着最近的对话内容走）】：\n${recentSummary}\n`;
         }
     }
-    const groupTopics = getCharGroupChatTopics(char);
+    const groupTopics = injOn('mem.group') ? getCharGroupChatTopics(char) : '';
     if (groupTopics) prompt += `\n【你参与的群聊最近话题（发帖/发言时可以自然提及）】：\n${groupTopics}\n`;
     prompt += getScheduleContextPrompt(char);   // 🗓️ 今天的日程 + 最近几天的生活轨迹记忆（小说/续写不走这条路，天然排除）
     prompt += getTheaterContextPrompt(char);    // 🎭 跟别的角色私下发生过的事（同上，小说/续写天然排除）
@@ -2581,7 +2586,12 @@ const GY_BOX_CTX = [
     ['__gyKitCtxFor',    '随身物'],
     ['__gyDaysCtxFor',   '日子'],
     ['__gyMallCtxFor',   '商城'],
-    ['__gyWebCtxFor',    '联网探索']
+    ['__gyWebCtxFor',    '联网探索'],
+    ['__gyWalletCtxFor', '钱包'],
+    ['__gyTakeoutCtxFor', '外卖'],
+    ['__gyPhoneCtxFor',   '手机'],
+    ['__gySilenceCtxFor','冷落'],
+    ['__gyDressCtxFor',  '换装']
 ];
 function getBoxPrompt(char) {
     if (!char) return '';

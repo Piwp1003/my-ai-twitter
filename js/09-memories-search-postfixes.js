@@ -282,12 +282,12 @@ function renderSinglePostDetail(postId) {
     }
     
     let mediaHTML = post.mediaUrl ? `<div class="post-media" style="margin: 12px 0;"><img src="${post.mediaUrl}"></div>` : '';
-    // v107：定位跟在推文正文底下，不上名字那一排（跟信息流一致）
-    let locationHTML = post.location
-        ? `<div class="post-loc-line">${locationSVG}<span>${escapeHtml(post.location)}</span></div>` : '';
+    // v108：定位跟时间**并排一行、同一基线**（不是各占一行，也不上名字那一排）。
+    let locationHTML = '';
     let quotedHTML = typeof renderQuotedPostPreviewHTML === 'function' ? renderQuotedPostPreviewHTML(post.quotedPostId) : '';
-    // v107：时间按发帖时间走，点一下在「3小时前」和「上午9:13 · 2018年3月19日」之间来回切。
-    let dateStr = `<span class="time-updater" data-fmt="post" data-timestamp="${post.timestamp}" onclick="gyToggleTimeFmt(event)" title="点一下换一种时间写法">${fmtPostTime(post.timestamp)}</span>`;
+    // 时间按发帖时间走，点一下在「3小时前」和「上午9:13 · 2018年3月19日」之间来回切。
+    let dateStr = `<span class="time-updater" data-fmt="post" data-timestamp="${post.timestamp}" onclick="gyToggleTimeFmt(event)" title="点一下换一种时间写法">${fmtPostTime(post.timestamp)}</span>`
+        + (post.location ? `<span class="post-loc-inline">${locationSVG}<span>${escapeHtml(post.location)}</span></span>` : '');
 
     let quotesCount = Math.floor(parseStat(post.stats.retweets) * 0.15) || 0;
     let bookmarksCount = Math.floor(parseStat(post.stats.likes) * 0.12) || 0;

@@ -99,7 +99,37 @@ function addTheaterLog(entry) {
 //    但手动点本来就是你自己按的，钱是你主动花的，不存在"偷偷"。结果就是每次想看一场
 //    都得先跑去设置里开开关、看完再回去关掉，纯粹添堵。全 app 统一成一条规矩：
 //    **点了就生成，开关只决定它会不会自己发生。**
+// 🧾 小剧场会读什么，登记到「注入内容管理 → ② 生成时读什么」那一页去，
+//    让用户自己勾。登记要在加载时就做，不然那一页要等演过一出才看得见这一组。
+(function regTheaterSrc(tries) {
+    try {
+        if (window.gyInjectSrc && typeof window.gyInjectSrc.def === 'function') {
+            window.gyInjectSrc.def({
+                feat: 'theater', icon: '🎭', title: '小剧场（两个角色背着你发生的事）',
+                note: '每演一出之前，程序会把下面这些素材递给模型。全关掉的话就只剩两个人的人设和关系——'
+                    + '演出来的多半是"一起吃饭""线上拌嘴"这种谁都能套的桥段。',
+                items: [
+                    { k: 'recent',  label: '他们最近已经演过什么', desc: '给了才不会老演同一出。' },
+                    { k: 'dress',   label: '换过的头像 / 背景 / 壁纸', desc: '含当时谁说了什么。' },
+                    { k: 'phone',   label: '手机被翻过这件事', desc: '' },
+                    { k: 'sched',   label: '各自今天的日程', desc: '' },
+                    { k: 'wallet',  label: '各自最近一笔账', desc: '', defaultOff: true }
+                ]
+            });
+            return;
+        }
+    } catch (e) {}
+    if ((tries || 0) < 12) setTimeout(() => regTheaterSrc((tries || 0) + 1), 500);
+})(0);
+
 async function runTheaterScene(manual) {
+    // 🎬 报一下场景：自主模式调过来的时候外面已经定了场景，这里不抢（Soft）。
+    //    所以"自动跑"和"你手动点这一次"能在注入页里分开设。
+    if (typeof window.gyInjectInSceneSoft === 'function')
+        return window.gyInjectInSceneSoft('theater', () => runTheaterSceneInner(manual));
+    return runTheaterSceneInner(manual);
+}
+async function runTheaterSceneInner(manual) {
     if (!manual && typeof isAutoOn === 'function' && !isAutoOn('charTheater')) return { blocked: 'switch' };
     if (!isGlobalCharInteractionEnabled()) return { blocked: 'interaction' };
     if (!manual) {
@@ -127,12 +157,34 @@ async function runTheaterScene(manual) {
                         || (String(l.charAId) === String(charB.id) && String(l.charBId) === String(charA.id))))
         .slice(-5).map(l => '- ' + (l.summary || '')).join('\n');
 
+    // 🎀📱 这两个人身上最近真发生过的事（换了头像被谁看见、谁的手机被翻过）——
+    //      不给这些，小剧场永远只能演"一起吃饭""线上拌嘴"这类无根之谈。
+    //      读哪几样由用户定：设置 → 🧾 注入内容管理 → ② 生成时读什么 → 🎭 小剧场
+    const thSrc = k => { try { return !window.gyInjectSrc || window.gyInjectSrc.on('theater', k); } catch (e) { return true; } };
+    let realBits = '';
+    try {
+        const bits = [];
+        if (thSrc('dress') && typeof window.gyDressBetween === 'function')
+            window.gyDressBetween(charA.id, charB.id, 3).forEach(x => bits.push('- ' + x.text));
+        [charA, charB].forEach(c => {
+            if (thSrc('dress') && typeof window.gyDressRecent === 'function')
+                window.gyDressRecent(c.id, 2).forEach(x => bits.push(`- ${c.name}：${x.text.replace(/^你/, '')}`));
+            if (thSrc('phone') && typeof window.gyPhoneSeen === 'function')
+                (window.gyPhoneSeen(c.id) || []).slice(0, 2).forEach(x => bits.push(`- ${c.name} 的手机被用户翻过：${x.gist || x.name}`));
+            if (thSrc('sched') && c.schedule && c.schedule.text)
+                bits.push(`- ${c.name} 今天：${String(c.schedule.text).replace(/\s+/g, ' ').slice(0, 40)}`);
+            if (thSrc('wallet') && window.gyWallet && typeof window.gyWallet.log === 'function')
+                (window.gyWallet.log(c.id) || []).slice(0, 1).forEach(x => bits.push(`- ${c.name} 最近一笔账：${x.why}`));
+        });
+        if (bits.length) realBits = `\n【他们身上最近真发生过的事（可以用，也可以不用；用的话别当新闻播报，是他们本来就知道的事）】：\n${bits.slice(0, 8).join('\n')}\n`;
+    } catch (e) {}
+
     const prompt = `现在的真实时间是 ${new Date().toLocaleString('zh-CN', { hour12: false })}。
 这两个角色有如下关系：
 ${charA.name} 的人设：${String(charA.persona || '').slice(0, 800)}
 ${charB.name} 的人设：${String(charB.persona || '').slice(0, 800)}
 他们之间的关系是：${pair.relation}。
-${recent ? `\n【他们最近已经发生过这些事，这次换点别的，别重复】：\n${recent}\n` : ''}
+${(recent && thSrc('recent')) ? `\n【他们最近已经发生过这些事，这次换点别的，别重复】：\n${recent}\n` : ''}${realBits}
 他们现在背着用户正在私下发生一件小事（一起吃饭、线上拌嘴、讨论工作、意外偶遇、互相吐槽某个人等等）。
 请根据他们的性格和关系写出来。注意：用户不在场，这是他们两个人之间的事。
 

@@ -148,7 +148,8 @@
               <div class="gyiv-link"><i></i><b>${K.ico}</b><i></i></div>
               <div class="gyiv-p">${av(target, 38)}<span>${esc(target.name)}</span></div>
             </div>
-            <div class="gyiv-title">${esc(who.name)}想跟${esc(target.name)}${esc(K.verb)}${inv.title ? `「${esc(inv.title)}」` : ''}</div>
+            <div class="gyiv-title">${inv.say ? esc(inv.say)
+                : `${esc(who.name)}想跟${esc(target.name)}${esc(K.verb)}${inv.title ? `「${esc(inv.title)}」` : ''}`}</div>
             ${inv.sub ? `<div class="gyiv-sub">${esc(inv.sub)}</div>` : ''}
             ${foot}
           </div>
@@ -159,7 +160,7 @@
     // gyInviteSend({char, kind, title, sub, ask, onYes, onNo, jump})
     // ask 不传就用默认措辞。onYes/onNo 是这次邀请谈成/谈崩之后各自要做的事。
     const pendingCb = {};   // { 邀请id: {onYes, onNo} } —— 回调不进存档，只在这次会话里有效
-    window.gyInviteSend = async function ({ char, kind = 'other', title = '', sub = '', ask, onYes, onNo, jump = true } = {}) {
+    window.gyInviteSend = async function ({ char, kind = 'other', title = '', sub = '', ask, say = '', onYes, onNo, jump = true } = {}) {
         const c = (typeof char === 'object') ? char : charOf(char);
         if (!c) return null;
         const K = kindOf(kind);
@@ -172,8 +173,9 @@
             return r;
         }
 
+        // say：整句自己写（借看手机那种"请求"不是"一起做点什么"，套不进默认句式）
         const inv = { id: 'iv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-                      kind, title, sub, charId: String(c.id), from: 'me', status: 'pending', line: '' };
+                      kind, title, sub, say, charId: String(c.id), from: 'me', status: 'pending', line: '' };
         pendingCb[inv.id] = { onYes, onNo };
         pushCard(c.id, 'me', inv);
         refresh(c.id);
@@ -199,12 +201,12 @@
 
     /* ================= TA 约你 ================= */
     // 卡片上是两个按钮，等**你**来点。TA 主动发起的功能（比如「角色主动约你出去」）走这里。
-    window.gyInviteFromChar = function ({ char, kind = 'other', title = '', sub = '', line = '', onYes, onNo, notify = true } = {}) {
+    window.gyInviteFromChar = function ({ char, kind = 'other', title = '', sub = '', line = '', say = '', onYes, onNo, notify = true } = {}) {
         const c = (typeof char === 'object') ? char : charOf(char);
         if (!c) return null;
         const K = kindOf(kind);
         const inv = { id: 'iv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-                      kind, title, sub, charId: String(c.id), from: 'char', status: 'pending', line: '', ask: line };
+                      kind, title, sub, say, charId: String(c.id), from: 'char', status: 'pending', line: '', ask: line };
         pendingCb[inv.id] = { onYes, onNo };
         if (line) {
             // TA 开口那句话单独作为一条正常消息，卡片跟在后面——像真人先说一句再发个邀请
@@ -311,4 +313,81 @@
         } catch (e) { console.warn('[邀请] 问 TA 出错：', e); }
         return out;
     };
+
+    /* =====================================================================
+       💌 聊天里的「跟 TA 一起」
+       ---------------------------------------------------------------------
+       约听歌在音乐盒里、约看片在放映厅里、约出去在地图里、借手机在资料页上——
+       每样都得先离开聊天、翻到那一页、再把人找出来。可这些事本来就是
+       "正跟 TA 说着话，顺口约一句"，绕这么一圈很奇怪。
+
+       所以统一收到聊天输入框左边那颗 ⋮ 里：往 GY_CHAT_ACTIONS 里塞一条就行。
+         { id, icon, label, sub, show(charId)->bool, run(charId) }
+       show 返回 false（功能没开、没加载、群聊里用不了）的就不画，
+       不会出现点了没反应的死按钮。
+       ===================================================================== */
+    window.GY_CHAT_ACTIONS = window.GY_CHAT_ACTIONS || [];
+    window.gyChatActionAdd = function (item) {
+        if (!item || !item.id) return;
+        if (window.GY_CHAT_ACTIONS.some(x => x.id === item.id)) return;
+        window.GY_CHAT_ACTIONS.push(item);
+    };
+    const curChat = () => {
+        try {
+            const id = (typeof currentChatSessionId !== 'undefined') ? currentChatSessionId : null;
+            if (!id || String(id).indexOf('g_') === 0) return null;    // 群聊不算
+            return charOf(id) ? String(id) : null;
+        } catch (e) { return null; }
+    };
+    window.gyChatActRun = function (id) {
+        const cid = curChat(); if (!cid) return;
+        const it = (window.GY_CHAT_ACTIONS || []).find(x => x.id === id);
+        const m = document.getElementById('chatMoreMenu');
+        if (m) m.classList.remove('on');
+        if (it && typeof it.run === 'function') { try { it.run(cid); } catch (e) { console.warn('[跟 TA 一起] ' + id, e); } }
+    };
+    window.gyChatActsRender = function () {
+        const menu = document.getElementById('chatMoreMenu');
+        if (!menu) return;
+        let box = document.getElementById('gyChatActs');
+        const cid = curChat();
+        const items = !cid ? [] : (window.GY_CHAT_ACTIONS || []).filter(x => {
+            try { return typeof x.show !== 'function' || x.show(cid); } catch (e) { return false; }
+        });
+        if (!items.length) { if (box) box.remove(); return; }
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'gyChatActs';
+            menu.insertBefore(box, menu.firstChild);
+        }
+        const name = (charOf(cid) || {}).name || 'TA';
+        box.innerHTML = `<div class="gyca-hd">跟 ${esc(name)} 一起</div>
+          <div class="gyca-grid">${items.map(x => `<button type="button" onclick="gyChatActRun('${x.id}')">
+            <span class="gyca-i">${x.icon || '·'}</span>
+            <span class="gyca-b"><b>${esc(x.label || '')}</b>${x.sub ? `<em>${esc(x.sub)}</em>` : ''}</span>
+          </button>`).join('')}</div>`;
+    };
+
+    /* 内置这几条：功能本来就在，只是以前得绕到各自的页面去 */
+    const has = n => typeof window[n] === 'function';
+    window.gyChatActionAdd({
+        id: 'music', icon: '🎧', label: '约 TA 一起听歌', sub: '正在放的这首',
+        show: () => has('gymToggleListener'),
+        run: id => window.gymToggleListener(id)
+    });
+    window.gyChatActionAdd({
+        id: 'film', icon: '🎬', label: '约 TA 一起看片', sub: '放映厅里那部',
+        show: () => has('fbToggleWatcher'),
+        run: id => window.fbToggleWatcher(id, true)
+    });
+    window.gyChatActionAdd({
+        id: 'read', icon: '📖', label: '约 TA 一起读书', sub: '去挑一本',
+        show: () => has('gyOpenFeaturePage') && has('rtSetCompanion'),
+        run: () => window.gyOpenFeaturePage('reading_together')
+    });
+    window.gyChatActionAdd({
+        id: 'date', icon: '🤝', label: '约 TA 出去', sub: '在地图上挑个地方',
+        show: () => has('gyOpenFeaturePage') && has('__gyMapCtxFor'),
+        run: () => window.gyOpenFeaturePage('map')
+    });
 })();

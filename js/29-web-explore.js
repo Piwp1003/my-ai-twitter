@@ -54,6 +54,16 @@
     ];
     const presetOf = k => PRESETS.find(p => p.k === k) || PRESETS[0];
 
+    // 「读正文」这一步走哪条路。搜索结果页只给外链，正文要再抓一次；
+    // 浏览器里直连别人家网页会被对方 CORS 拦掉，所以这里给几条常见的代理。
+    // {u} = 原样拼上去；{U} = URL 编码后拼上去。
+    const READ_PROXIES = [
+        { v: '',                                        name: '直连（APK / exe 用这个）' },
+        { v: 'https://api.allorigins.win/raw?url={U}',  name: 'AllOrigins（免 key）' },
+        { v: 'https://corsproxy.io/?{U}',               name: 'corsproxy.io（免 key）' },
+        { v: 'https://r.jina.ai/{u}',                   name: 'Jina（干净，但要 key）' }
+    ];
+
     let S = {
         src: 'ddg',
         url: '',            // 自定义：搜索地址（含 {q}）
@@ -117,6 +127,20 @@
             .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
             .replace(/\s+/g, ' ').trim();
     }
+    // 顺手把页面里的图片地址抠出来——角色上网看到喜欢的图会存进自己的图库（js/34）
+    function pickImgs(raw, base) {
+        const out = [];
+        const re = /<img[^>]+src\s*=\s*["']([^"']+)["']/gi;
+        let m;
+        while ((m = re.exec(String(raw))) && out.length < 8) {
+            let u = m[1];
+            if (u.indexOf('//') === 0) u = 'https:' + u;
+            if (!/^https?:\/\//i.test(u)) continue;
+            if (/\.svg(\?|$)|sprite|logo|icon|avatar|1x1|pixel|blank/i.test(u)) continue;   // 图标和埋点像素不要
+            out.push(u);
+        }
+        return out;
+    }
     // 从搜索结果页里把外链抠出来（DDG lite 会把真实网址包在 uddg= 参数里）
     function pickLinks(raw, n) {
         const out = [], seen = new Set();
@@ -139,7 +163,25 @@
         return out;
     }
 
-    // 一轮搜索：返回 {text, sources[]}
+    /* 读正文用哪个地址。
+       · 自己填了「读正文地址」就用自己的（必须带 {u} 或 {U}）
+       · 否则 jina 那档走 r.jina.ai/{u}
+       · 其余情况直连原网址 {u}
+       {u} = 原样拼上去（jina、大多数反代都要这个）
+       {U} = URL 编码后拼上去（allorigins、corsproxy 这类 ?url= 参数式的要这个） */
+    function readTplOf() {
+        const t = String(S.readUrl || '').trim();
+        if (t && /\{u\}/i.test(t)) return t;
+        if (S.src === 'jina') return 'https://r.jina.ai/{u}';
+        return '{u}';
+    }
+    function fillRead(tpl, u) {
+        return String(tpl).replace(/\{u\}/g, u).replace(/\{U\}/g, encodeURIComponent(u));
+    }
+    let deepInfo = '';     // 上一次"读正文"到底读成了几条，显示在功能页上
+    let gotImgs = [];      // 这一轮抓到的图片地址（给"角色存图"用）
+
+    // 一轮搜索：返回 {text, sources[], deepInfo}
     async function searchOnce(q) {
         if (S.src === 'none') return { text: '', sources: [] };
         const p = presetOf(S.src);
@@ -154,28 +196,54 @@
         if (deep === 0) return { text: listText.slice(0, num(S.maxChars, 200, 20000, 1500)), sources: ['（只读了搜索结果页）'] };
 
         // 两段式：点进去读正文。读一条算一条，全失败就退回搜索结果页那坨字。
+        //
+        // ⚠️ v108 修的一个真 bug：这里以前写的是
+        //        readTpl = (S.src === 'custom') ? (S.readUrl || '{u}') : (p.url || '{u}')
+        //    而 ddg 那一档的 p.url 是**搜索地址**（.../lite/?q={q}），里面根本没有 {u}。
+        //    于是 replace('{u}', …) 什么都没换，每一条"正文"抓的都是同一个搜索结果页——
+        //    读正文条数填几都一样，永远只看得到搜索结果页。现在按 readTplOf() 统一算。
         const links = pickLinks(raw, deep);
-        const readTpl = (S.src === 'custom') ? (S.readUrl || '{u}') : (p.url || '{u}');
+        const readTpl = readTplOf();
         const parts = [], srcs = [];
+        let okN = 0, failN = 0, firstFail = '';
+        gotImgs = pickImgs(raw);        // 搜索结果页上的图先收着
         for (const u of links) {
             try {
-                const body = await grab(readTpl.replace('{u}', readTpl.indexOf('{u}') === 0 ? u : encodeURI(u)), 15000);
+                const body = await grab(fillRead(readTpl, u), 15000);
                 const t = toText(body);
-                if (t.length < 120) continue;               // 太短基本是反爬页 / 空壳
+                if (t.length < 120) { failN++; if (!firstFail) firstFail = '正文太短（多半是反爬页）'; continue; }
+                gotImgs = gotImgs.concat(pickImgs(body)).slice(0, 12);
                 parts.push(`【${u.split('/')[2]}】${t}`);
                 srcs.push(u);
-            } catch (e) { lastErr = String(e.message || e); }
+                okN++;
+            } catch (e) {
+                failN++;
+                const msg = String(e.message || e);
+                if (!firstFail) firstFail = /Failed to fetch|NetworkError|load failed/i.test(msg)
+                    ? '被对方网站的 CORS 拦了（浏览器里直连别人家网页基本都会）' : msg;
+                lastErr = msg;
+            }
         }
+        // 把"到底读到没读到"记下来，功能页上直说，别让人以为参数没生效
+        deepInfo = deep === 0 ? '只读搜索结果页（读正文条数填的 0）'
+                 : `找到 ${links.length} 条外链，正文读成 ${okN} 条${failN ? `、失败 ${failN} 条：${firstFail}` : ''}`;
         const joined = parts.length ? parts.join('\n\n') : listText;
         return { text: joined.slice(0, num(S.maxChars, 200, 20000, 1500)),
-                 sources: srcs.length ? srcs : ['（只读到搜索结果页）'] };
+                 sources: srcs.length ? srcs : ['（正文没读到，只用了搜索结果页）'],
+                 deepInfo };
     }
 
     /* ===================== 一次完整的探索 ===================== */
     let busy = false;
     const tell = m => { const e = document.getElementById('gywebStatus'); if (e) e.innerText = m; };
 
+    // 🎬 报场景（Soft：自主模式调过来的时候不抢）——注入页里"自动跑"和"手动点"能分开设
     window.gywebRun = async function (charId, opts) {
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('web', () => gywebRunInner(charId, opts));
+        return gywebRunInner(charId, opts);
+    };
+    const gywebRunInner = async function (charId, opts) {
         const o = opts || {};
         const c = charOf(charId);
         if (!c) return null;
@@ -191,11 +259,23 @@
         try {
             // ① 挑题目
             tell(`${c.name} 正在想看点什么…`);
-            const had = listOf(c.id).slice(-6).map(x => '· ' + x.topic).join('\n');
+            const had = webSrc('had') ? listOf(c.id).slice(-6).map(x => '· ' + x.topic).join('\n') : '';
+            // 最近跟你聊了什么、今天在干嘛——不给这些，TA 搜的永远是人设里那几个词
+            let hint = '';
+            try {
+                if (webSrc('chat')) {
+                    const arr = ((typeof globalChats !== 'undefined' && globalChats[String(c.id)]) || [])
+                        .filter(x => x && x.text && x.sender !== 'system').slice(-6)
+                        .map(x => (x.sender === 'me' ? '对方：' : '你：') + String(x.text).replace(/<[^>]+>/g, '').slice(0, 24));
+                    if (arr.length) hint += `\n你们最近聊到：\n${arr.join('\n')}\n`;
+                }
+                if (webSrc('sched') && c.schedule && c.schedule.text)
+                    hint += `\n你今天：${String(c.schedule.text).replace(/\s+/g, ' ').slice(0, 60)}\n`;
+            } catch (e) {}
             const ask1 = `你有点闲，想上网看点东西。
 按你自己的人设和最近的处境，挑**一个你此刻真的会去搜的东西**——可以是你本来就喜欢的领域、
 最近惦记的事、别人提过让你好奇的名词，也可以是很日常的（"附近有什么好吃的""这个牌子的琴弦哪种好"）。
-${had ? `你最近已经查过这些，别重复：\n${had}\n` : ''}
+${hint}${had ? `你最近已经查过这些，别重复：\n${had}\n` : ''}
 只输出 JSON，不要解释：{"q":"你要搜的关键词，越具体越好，不超过20字","why":"你为什么想看这个，不超过20字"}`;
             const d1 = await callChatCompletionAPI(api, buildStructuredMessages(buildBasePrompt(c, false, ''), [], ask1));
             let r1 = (typeof parseModelJson === 'function') ? parseModelJson(d1.choices?.[0]?.message?.content || '') : null;
@@ -213,6 +293,7 @@ ${had ? `你最近已经查过这些，别重复：\n${had}\n` : ''}
                 tell(`正在查「${topic}」…${maxRounds > 1 ? `（第 ${usedRounds}/${maxRounds} 轮）` : ''}`);
                 const r = await searchOnce(topic);
                 if (r.text) { web = r.text; sources = r.sources; }
+                if (r.deepInfo) tell(`正在查「${topic}」…${r.deepInfo}`);
                 if (i === maxRounds - 1) break;
                 // 还有余量：问一句"够不够"，不够就让 TA 换个说法
                 tell('看看够不够…');
@@ -245,8 +326,18 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
             if (typeof applyRegexScripts === 'function') { try { text = applyRegexScripts(text, 'ai_output', c.id); } catch (e) {} }
             if (!text) { tell('这次什么都没写出来。'); return null; }
 
+            // 🖼️ 看到喜欢的图就往自己的图库里存一张（js/34，开关 galleryCharSave）。
+            //    存的是**私库**——那是 TA 自己的相册，别人看不到。
+            try {
+                if (gotImgs.length && window.gyGallery && typeof window.gyGallery.charSave === 'function') {
+                    const pick = gotImgs[Math.floor(Math.random() * gotImgs.length)];
+                    await window.gyGallery.charSave(c.id, pick, topic, '上网看「' + topic + '」的时候留下的');
+                }
+            } catch (e) { console.warn('[联网探索] 存图失败', e); }
+
             const entry = { id: uid(), at: Date.now(), topic, why, text: text.slice(0, Math.max(200, nChars * 4)),
-                            src: web ? S.src : 'none', rounds: usedRounds, sources: sources.slice(0, 4) };
+                            src: web ? S.src : 'none', rounds: usedRounds, sources: sources.slice(0, 4),
+                            deep: deepInfo };   // 这一条到底读到了正文还是只读了搜索页，记下来备查
             const arr = listOf(c.id);
             arr.push(entry);
             const keep = num(S.max, 1, 200, 30);
@@ -262,6 +353,9 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
             const wantShare = (o.share !== undefined) ? o.share : on('webExploreShare');
             if (wantShare && typeof deliverCharMoveToChatMessage === 'function') {
                 try { deliverCharMoveToChatMessage(c, entry.text, null); } catch (e) {}
+                // 🔗 顺手把 TA 刚读的那个网页转过来——不然你只看见一段感想，
+                //    不知道 TA 到底在说什么、从哪儿看来的。点卡片能直接打开原网页。
+                try { pushLinkCard(c, entry); } catch (e) {}
             }
             tell(lastErr ? '（这次没抓到网页：' + lastErr + '，用的是 TA 自己知道的）' : '');
             return entry;
@@ -272,6 +366,26 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
     };
 
     /* ===================== 注进 prompt ===================== */
+    /* 🧾 挑题目的时候读什么——登记到「注入内容管理 → ② 生成时读什么」 */
+    const webSrc = k => { try { return !window.gyInjectSrc || window.gyInjectSrc.on('web', k); } catch (e) { return true; } };
+    (function regSrc(tries) {
+        try {
+            if (window.gyInjectSrc && typeof window.gyInjectSrc.def === 'function') {
+                window.gyInjectSrc.def({
+                    feat: 'web', icon: '🌐', title: '联网探索：TA 决定搜什么的时候',
+                    note: '不给素材的话，TA 每次搜的都是人设里那几个词，翻来覆去。给了才会出现"你昨天说的那个牌子"这种真实的好奇。',
+                    items: [
+                        { k: 'chat',  label: '你们最近聊到的话题', desc: '最近六句里提过的东西。' },
+                        { k: 'sched', label: '今天的日程', desc: '今天要出门的人，搜的东西不一样。' },
+                        { k: 'had',   label: '最近已经查过什么', desc: '给了才不会翻来覆去搜同一个词。' }
+                    ]
+                });
+                return;
+            }
+        } catch (e) {}
+        if ((tries || 0) < 12) setTimeout(() => regSrc((tries || 0) + 1), 500);
+    })(0);
+
     window.__gyWebCtxFor = function (charId) {
         try {
             if (!on('webExplore')) return '';
@@ -281,7 +395,11 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
             const recent = arr.slice(-n).reverse();
             return `\n【你自己上网看到过的东西（真的发生过，是你自己去查的）】\n`
                 + recent.map(x => `· ${ago(x.at)}查了「${x.topic}」：${x.text}`).join('\n')
-                + `\n这些是你自己的见闻，不是别人告诉你的。聊到相关的话题时你是真的知道；`
+                + `\n⚠️ 这几段是**你当时写下的原话**，只是提醒你"你知道这件事"。\n`
+                + `写推文、写日记、聊天、发评论的时候，**绝对不要把上面的句子原样搬出来**——\n`
+                + `那是你早就说过的话，再说一遍会像复读机。要用**这一刻的说法**重新讲，\n`
+                + `而且多半只该带出其中一点，不是整段。\n`
+                + `这些是你自己的见闻，不是别人告诉你的。聊到相关话题时你是真的知道；\n`
                 + `没聊到就别硬往外倒——真人不会一开口就汇报自己今天搜了什么。\n`;
         } catch (e) { return ''; }
     };
@@ -302,6 +420,21 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
 
     /* ===================== 页面 ===================== */
     const CSS = `
+    /* 🔗 转发的网页卡片：像个链接预览，点了直接开原网页 */
+    .gyweb-lk{width:min(268px,84%);margin:8px 0;border-radius:14px;overflow:hidden;
+        border:1px solid rgba(128,128,128,.24);background:rgba(128,128,128,.06);}
+    .gyweb-lk-hd{font-size:10.5px;letter-spacing:.1em;color:#8b98a5;padding:8px 12px 4px;}
+    .gyweb-lk-t{font-size:13.5px;font-weight:700;padding:0 12px;line-height:1.5;}
+    .gyweb-lk-w{font-size:11.5px;color:#8b98a5;padding:3px 12px 0;line-height:1.6;}
+    .gyweb-lk-list{padding:8px 10px 10px;display:flex;flex-direction:column;gap:5px;}
+    .gyweb-lk-a{display:flex;align-items:center;gap:7px;text-decoration:none;color:inherit;
+        background:rgba(128,128,128,.1);border-radius:9px;padding:7px 9px;font-size:11.5px;transition:.15s;}
+    .gyweb-lk-a:hover{background:rgba(var(--gy-accent-rgb),.14);}
+    .gyweb-lk-fav{font-size:13px;}
+    .gyweb-lk-h{font-weight:600;white-space:nowrap;}
+    .gyweb-lk-u{flex:1;min-width:0;color:#8b98a5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .gyweb-lk-go{color:var(--gy-accent);font-weight:700;}
+
     #gywebModal{position:fixed;inset:0;z-index:2600;background:rgba(0,0,0,.45);display:none;
         align-items:center;justify-content:center;padding:16px;}
     #gywebModal.on{display:flex;}
@@ -401,11 +534,20 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
                     onchange="gywebSet('key', this.value.trim())">` : ''}
                 ${S.src === 'custom' ? `
                     <input class="gyweb-in" value="${esc(S.url)}" placeholder="搜索地址，例：https://你的searxng/search?q={q}&format=json"
-                        onchange="gywebSet('url', this.value.trim())">
-                    <input class="gyweb-in" value="${esc(S.readUrl)}" placeholder="读正文地址（选填），例：https://r.jina.ai/{u}"
-                        onchange="gywebSet('readUrl', this.value.trim())">` : ''}
+                        onchange="gywebSet('url', this.value.trim())">` : ''}
+                ${S.src !== 'none' ? `
+                    <div class="gyweb-hint" style="margin:8px 0 4px;"><b>读正文走哪条路</b>（决定「点进去读几条正文」到底读不读得到）</div>
+                    <div>${READ_PROXIES.map(x => `<span class="gyweb-pick ${String(S.readUrl || '') === x.v ? 'on' : ''}" onclick="gywebSet('readUrl','${x.v}')">${esc(x.name)}</span>`).join('')}</div>
+                    <input class="gyweb-in" value="${esc(S.readUrl)}" placeholder="或者自己填一条，{u}=原网址、{U}=编码后的网址"
+                        onchange="gywebSet('readUrl', this.value.trim())">
+                    <div class="gyweb-hint">
+                        搜索结果页拿到的是<b>一串外链</b>，正文得再点进去抓一次。浏览器里直连别人家网页
+                        会被对方的 CORS 拦掉，所以这一步多半要挂个代理；
+                        <b>APK / exe 里没有 CORS 限制，选「直连」就行</b>。
+                    </div>` : ''}
+                ${deepInfo ? `<div class="gyweb-hint">上次读正文：${esc(deepInfo)}</div>` : ''}
                 ${lastErr ? `<div class="gyweb-hint" style="color:#f91880;">上次抓取失败：${esc(lastErr)}</div>` : ''}
-                ${S.src !== 'none' ? `<div class="gyweb-hint">⚠️ 抓不到时会自动退回"只用模型知道的"继续写，不会卡住也不会弹错。APK 版没有 CORS 限制。</div>` : ''}
+                ${S.src !== 'none' ? `<div class="gyweb-hint">⚠️ 抓不到时会自动退回"只用模型知道的"继续写，不会卡住也不会弹错。</div>` : ''}
             </div>
 
             <div class="gyweb-sec">
@@ -468,6 +610,56 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
             </div>`;
     }
 
+    /* ===================== 🔗 转发网页 =====================
+       角色分享感想的时候，把**刚刚读的那个网页**一起转过来。
+       没有这一条的话，你只看见 TA 叽里呱啦一段，不知道在说什么、从哪儿看来的。 */
+    function hostOf(u) { try { return String(u).split('/')[2] || String(u).slice(0, 24); } catch (e) { return ''; } }
+    function pushLinkCard(c, entry) {
+        if (typeof globalChats === 'undefined') return;
+        const srcs = (entry.sources || []).filter(u => /^https?:\/\//i.test(u));
+        if (!srcs.length) return;                      // 没真读到网页就不发卡片
+        const sid = String(c.id);
+        if (!globalChats[sid]) globalChats[sid] = [];
+        globalChats[sid].push({
+            sender: c.id, type: 'weblink', timestamp: Date.now(), readBy: [],
+            weblink: { topic: entry.topic, why: entry.why || '',
+                       gist: String(entry.text || '').slice(0, 60),
+                       links: srcs.slice(0, 3).map(u => ({ u, h: hostOf(u) })) },
+            text: `［看的这个］${entry.topic}　${srcs[0]}`
+        });
+        try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+        try {
+            if (typeof currentChatSessionId !== 'undefined' && String(currentChatSessionId) === sid
+                && typeof renderChatMessages === 'function') renderChatMessages();
+        } catch (e) {}
+    }
+    window.gyWebLinkHtml = function (msg) {
+        const w = msg.weblink || {};
+        const ls = w.links || [];
+        return `
+        <div class="gyweb-lk">
+          <div class="gyweb-lk-hd">🔗 TA 刚看的</div>
+          <div class="gyweb-lk-t">${esc(w.topic || '')}</div>
+          ${w.why ? `<div class="gyweb-lk-w">${esc(w.why)}</div>` : ''}
+          <div class="gyweb-lk-list">
+            ${ls.map(x => `<a class="gyweb-lk-a" href="${esc(x.u)}" target="_blank" rel="noreferrer noopener">
+                <span class="gyweb-lk-fav">🌐</span>
+                <span class="gyweb-lk-h">${esc(x.h)}</span>
+                <span class="gyweb-lk-u">${esc(String(x.u).replace(/^https?:\/\//, '').slice(0, 46))}</span>
+                <span class="gyweb-lk-go">↗</span></a>`).join('')}
+          </div>
+        </div>`;
+    };
+    // 手动把某一条探索转发到某个人的私聊
+    window.gywebShareEntry = function (charId, entryId) {
+        const c = charOf(charId); if (!c) return;
+        const e = listOf(charId).find(x => x.id === entryId);
+        if (!e) return;
+        try { if (typeof deliverCharMoveToChatMessage === 'function') deliverCharMoveToChatMessage(c, e.text, null); } catch (err) {}
+        pushLinkCard(c, e);
+        try { if (typeof switchMainView === 'function') { switchMainView('chat'); if (typeof switchChatSession === 'function') switchChatSession(charId); } } catch (err) {}
+    };
+
     /* ===================== 记忆总览里的那一块 ===================== */
     function memHubHtml(charId) {
         const arr = listOf(charId);
@@ -486,6 +678,8 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
             <div style="background:white;padding:8px 10px;border-radius:6px;border:1px solid #eff3f4;">
               <div style="font-size:13px;"><b>${esc(x.topic)}</b>　<span style="font-size:11px;color:#8b98a5;">${ago(x.at)}${x.src === 'none' ? '　·　没联网' : ''}</span></div>
               <div style="font-size:13px;color:#536471;line-height:1.7;margin-top:2px;">${esc(x.text)}</div>
+              ${(x.sources || []).some(u => /^https?:/i.test(u))
+                ? `<div style="margin-top:5px;"><button type="button" class="btn-edit-small" onclick="gywebShareEntry('${charId}','${x.id}')">🔗 让 TA 把这个网页转给我</button></div>` : ''}
             </div>`).join('') : '<div style="color:#8b98a5;font-size:13px;">还没有记录</div>'}
           </div>`;
     }

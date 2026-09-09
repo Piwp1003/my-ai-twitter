@@ -101,9 +101,9 @@
     <!-- ⚠️ 改了 style.css 一定要把这个 ?v= 数字 +1，并且同步改 service-worker.js 里的那一份。
          浏览器是按"完整URL字符串"缓存的，数字不变就会一直用旧样式——新加的界面会因此排版全乱（踩过一次：
          日历的网格样式改了但用户那边一直是竖着排的一列）。 -->
-    <link rel="stylesheet" href="./style.css?v=108">
-    <script src="./js/vendor/localforage.min.js?v=108"></script>
-    <script src="./js/vendor/mammoth.browser.min.js?v=108"></script>
+    <link rel="stylesheet" href="./style.css?v=112">
+    <script src="./js/vendor/localforage.min.js?v=112"></script>
+    <script src="./js/vendor/mammoth.browser.min.js?v=112"></script>
 </head>
 <body>
 
@@ -756,7 +756,6 @@
                 <div class="empty-state">请在上方选择一个角色或群聊开始聊天。</div>
             </div>
             <div class="chat-input-area" id="chatInputArea" style="display:none;">
-                <div id="chatPluginActionsBar" style="display:none; gap:6px; overflow-x:auto; margin-bottom:8px; padding-bottom:2px;"></div>
                 <div id="chatQuotePreview" class="chat-quote-preview" style="display:none; margin-bottom: 8px;">
                     <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                         <span id="chatQuoteName" style="font-weight:bold;"></span>: <span id="chatQuoteText"></span>
@@ -764,16 +763,26 @@
                     <button onclick="clearChatQuote()" style="background:none; border:none; cursor:pointer; font-size:16px; color:#536471; margin-left:8px;">×</button>
                 </div>
                 <div id="chatAttachmentPreview" class="emo-preview-box" style="display:none; padding-left:0; margin-bottom:10px;"></div>
-                <!-- 输入框上方的工具图标一排：导演耳语/表情图片/小游戏（小游戏图标点了以后由 registerMiniGame() 注册进来的具体游戏插件接管） -->
-                <div id="chatToolIconsRow" style="display:flex; gap:6px; margin-bottom:8px; align-items:center;">
-                    <button class="btn-edit-small" title="导演耳语 (Author's Note)" onclick="const an = document.getElementById('chatAuthorsNoteBox'); an.style.display = an.style.display === 'none' ? 'block' : 'none';">📝</button>
-                    <button class="btn-edit-small" title="添加表情/图片" onclick="openEmoticonPicker('chat')">🖼️</button>
+                <!-- ⋮ 输入框左边那颗三竖点里的东西：导演耳语/表情图片/小游戏/转账…
+                     以前这些横着摆在输入框上方，加一个挤一点，窄屏上还换行。
+                     现在整体收进一个菜单，但 id 和 onclick 一个没动——
+                     插件往 chatToolIconsRow / chatPluginActionsBar 里塞按钮照样落在这儿，
+                     标题文字由 CSS 的 content:attr(title) 自动补上，不用改插件。 -->
+                <div id="chatMoreMenu" class="chat-more-menu">
+                <div id="chatPluginActionsBar" style="display:none; gap:6px; overflow-x:auto; margin-bottom:8px; padding-bottom:2px;"></div>
+                <div id="chatToolIconsRow" style="display:flex; gap:6px; align-items:center;">
+                    <button class="btn-edit-small" title="导演耳语 A/N" onclick="const an = document.getElementById('chatAuthorsNoteBox'); an.style.display = an.style.display === 'none' ? 'block' : 'none';">📝</button>
+                    <button class="btn-edit-small" title="表情 / 图片" onclick="openEmoticonPicker('chat')">🖼️</button>
                     <input type="file" id="chatImageUploadInput" accept="image/*" style="display:none;" onchange="handleDirectImageUpload(this, 'chat')">
                     <button class="btn-edit-small" title="上传图片" onclick="document.getElementById('chatImageUploadInput').click()">📷</button>
                     <button class="btn-edit-small mini-game-icon-badge" id="miniGameIconBtn" title="小游戏" onclick="onMiniGameIconClick()">🎮</button>
-                    <button class="btn-edit-small" title="估算当前prompt字数/token体积" onclick="estimateCurrentPromptSize()">📊</button>
+                    <button class="btn-edit-small" title="估算 prompt 体积" onclick="estimateCurrentPromptSize()">📊</button>
+                    <!-- v108：转账/红包。钱包总开关关着的时候这颗按钮自己藏起来（js/31 管） -->
+                    <button class="btn-edit-small" id="gywlSendBtn" title="转账 / 发红包" style="display:none;" onclick="gyWalletSendUI()">💸</button>
+                </div>
                 </div>
                 <div class="chat-input-row">
+                    <span class="chat-more-wrap"><button type="button" class="btn-edit-small chat-more" id="chatMoreBtn" title="更多" onclick="gyChatMoreToggle(event)">⋮</button></span>
                     <input type="text" id="chatInput" placeholder="输入消息..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
                     <button class="btn-edit-small" title="语音输入" style="margin:0;" onclick="toggleVoiceInput('chatInput', this)">🎤</button>
                     <button class="btn-post" onclick="sendChatMessage()">发送</button>
@@ -794,7 +803,7 @@
             <div class="profile-banner" id="profBanner"></div>
             <div class="profile-details">
                 <div id="profAvatarWrap"></div>
-                <div class="profile-actions"><button id="profCalendarBtn" class="follow-btn" style="display:none; margin-right:8px; padding:8px 12px;" onclick="openCharCalendarModal(currentProfileId)" title="纪念日">📅</button><button id="profChatBtn" class="follow-btn" style="display:none; margin-right:8px;" onclick="startChatFromProfile()">💬 私聊</button><button id="profFollowBtn" class="follow-btn">关注</button></div>
+                <div class="profile-actions"><button id="profChatBtn" class="follow-btn" style="display:none; margin-right:8px;" onclick="startChatFromProfile()">💬 私聊</button><button id="profFollowBtn" class="follow-btn">关注</button><span class="prof-more-wrap"><button type="button" id="profMoreBtn" class="follow-btn prof-more" style="display:none;" onclick="gyProfMoreToggle(event)" title="更多">⋮</button><div class="prof-more-menu" id="profMoreMenu"></div></span></div>
                 <div class="profile-name-section">
                     <div style="font-weight:bold; font-size:22px; display:flex; align-items:center; gap:4px;" id="profName">名字</div>
                     <div style="color:#536471; font-size:15px;" id="profHandle">@handle</div>
@@ -806,6 +815,9 @@
                     <div class="profile-meta-item" id="profJoin"><svg class="blue-line-icon" style="width:18px;height:18px;" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg> <span id="profBirthdate"></span> 加入</div>
                 </div>
                 <div class="profile-stats"><div><b style="color:#1d9bf0;" id="profFollowing">100</b> 正在关注</div><div><b style="color:#1d9bf0;" id="profFollowers">1万</b> 关注者</div></div>
+                <!-- v109：模块往资料页上挂的东西（钱包卡这类）。钱是这个角色身上的东西，
+                     就该长在 TA 自己的资料页上，别再藏进记忆总览的三级页里。 -->
+                <div id="profExtra"></div>
             </div>
             <div class="top-tabs" style="position:static;">
                 <div class="tab active" id="prof-tab-posts" onclick="switchProfileTab('posts')">帖子</div>
@@ -2536,19 +2548,58 @@
     </div>
 </div>
 
+<!-- v108：我的资料改成跟系统设置一样的**分类收纳**——一个索引页 + 若干分页。
+     以前是一整屏从头拉到尾，头像、匿名论坛、纪念日、状态气泡全堆在一起，找一样东西要滚半天。
+     ⚠️ 分页只是 display:none，节点全都还在 DOM 里，
+        所以 saveUserProfile() 那种一次性读一大堆 getElementById 的老代码一个字都不用改。 -->
 <div class="modal-overlay" id="userProfileModal">
     <div class="modal-box">
-        <h2>自定义我的资料</h2>
-        <div class="input-group full-width" style="background:rgba(29,155,240,0.05); padding:10px; border-radius:8px; border:1px solid #1d9bf0; margin-bottom:12px;">
-            <label style="font-size:13px; color:#1d9bf0;">👤 人设切换（多个"我"的身份，随时切换）</label>
-            <div class="form-hint" style="margin:4px 0 8px;">可以为同一个你保存多份不同的资料快照（比如"本体""马甲小号"），切换后下方表单会整体替换成对应的内容，记得切换后点最下面的"保存设置"确认生效。</div>
-            <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <select id="personaSwitchSelect" onchange="switchToPersona(this.value)" style="flex:1; min-width:140px;"></select>
-                <button type="button" class="btn-secondary" style="margin:0; padding:6px 10px; font-size:12px;" onclick="saveCurrentAsPersona()">💾 另存为人设</button>
-                <button type="button" class="btn-secondary" style="margin:0; padding:6px 10px; font-size:12px;" onclick="renameCurrentPersona()">✏️ 重命名</button>
-                <button type="button" class="btn-secondary" style="margin:0; padding:6px 10px; font-size:12px; color:#f91880; border-color:#f91880;" onclick="deleteCurrentPersona()">🗑️ 删除</button>
+        <h2 id="userProfileTitle">
+            <span class="up-back" id="upBackBtn" style="display:none;" onclick="openUserPanel('')">←</span>
+            <span id="upTitleText">自定义我的资料</span>
+        </h2>
+
+        <div id="upIndex">
+            <div class="set-menu">
+                <button type="button" class="set-entry" onclick="openUserPanel('basic')">
+                    <span class="set-entry-ico">🪪</span>
+                    <span class="set-entry-main"><span class="set-entry-title">基本资料</span><span class="set-entry-desc">头像 · 背景图 · 用户名 · 性别 · 简介 · 人设 · 生日 · 蓝V</span></span>
+                    <span class="set-entry-arrow">›</span>
+                </button>
+                <button type="button" class="set-entry" onclick="openUserPanel('persona')">
+                    <span class="set-entry-ico">🎭</span>
+                    <span class="set-entry-main"><span class="set-entry-title">人设切换</span><span class="set-entry-desc">多个"我"的身份快照，随时整体切换</span></span>
+                    <span class="set-entry-arrow">›</span>
+                </button>
+                <button type="button" class="set-entry" onclick="openUserPanel('wallet')">
+                    <span class="set-entry-ico">💳</span>
+                    <span class="set-entry-main"><span class="set-entry-title">我的钱包与银行卡</span><span class="set-entry-desc">余额 · 银行卡 · 收支流水 · 默认支付方式</span></span>
+                    <span class="set-entry-arrow">›</span>
+                </button>
+                <button type="button" class="set-entry" onclick="openUserPanel('anniv')">
+                    <span class="set-entry-ico">📅</span>
+                    <span class="set-entry-main"><span class="set-entry-title">我的纪念日</span><span class="set-entry-desc">角色会在这些日子主动提起</span></span>
+                    <span class="set-entry-arrow">›</span>
+                </button>
+                <button type="button" class="set-entry" onclick="openUserPanel('chat')">
+                    <span class="set-entry-ico">💬</span>
+                    <span class="set-entry-main"><span class="set-entry-title">聊天互动</span><span class="set-entry-desc">拍一拍文案</span></span>
+                    <span class="set-entry-arrow">›</span>
+                </button>
+                <button type="button" class="set-entry" onclick="openUserPanel('anon')">
+                    <span class="set-entry-ico">🕶️</span>
+                    <span class="set-entry-main"><span class="set-entry-title">匿名论坛身份</span><span class="set-entry-desc">匿名昵称 · 固定 ID</span></span>
+                    <span class="set-entry-arrow">›</span>
+                </button>
+                <button type="button" class="set-entry" onclick="openUserPanel('status')">
+                    <span class="set-entry-ico">🎨</span>
+                    <span class="set-entry-main"><span class="set-entry-title">状态气泡样式</span><span class="set-entry-desc">角色状态的配色和透明度</span></span>
+                    <span class="set-entry-arrow">›</span>
+                </button>
             </div>
         </div>
+
+        <div class="up-panel" id="upPanel-basic" style="display:none;">
         <div class="form-grid">
             <div class="input-group">
                 <label>自定义头像 (1:1 自选范围)</label>
@@ -2586,19 +2637,23 @@
             <div class="input-group"><label>出生日期</label><input type="date" id="myBirthdate"></div>
             <div class="input-group checkbox-group"><input type="checkbox" id="myVerified"><label style="margin:0; font-size:14px; color:#1d9bf0;">官方认证 (蓝V)</label></div>
         </div>
-        
-        <h4 style="color:#aaa; margin-top:20px; border-top:1px solid #eee; padding-top:15px; margin-bottom:5px;">匿名论坛专属设置</h4>
-        <div class="form-grid" style="background:#f7f9f9; padding:10px; border-radius:8px; margin-bottom:15px;">
-            <div class="input-group"><label style="color:#536471;">匿名论坛昵称</label><input type="text" id="myAnonName" placeholder="例如：无名氏"></div>
-            <div class="input-group"><label style="color:#536471;">匿名论坛 ID (固定身份)</label><input type="text" id="myAnonId" placeholder="例如：User123"></div>
         </div>
-
-        <h4 style='color:#1d9bf0; margin-top:5px; margin-bottom:5px;'>聊天互动设置</h4>
-        <div class='input-group full-width' style='background:#f0f8ff; padding:10px; border-radius:8px; border:1px solid #1d9bf0;'>
-            <label>我的'拍一拍'文案（别人拍你时显示）</label>
-            <input type='text' id='myNudgeText' placeholder='例如：的聪明脑袋' maxlength='10'>
+        <div class="up-panel" id="upPanel-persona" style="display:none;">
+<div class="input-group full-width" style="background:rgba(29,155,240,0.05); padding:10px; border-radius:8px; border:1px solid #1d9bf0; margin-bottom:12px;">
+            <label style="font-size:13px; color:#1d9bf0;">👤 人设切换（多个"我"的身份，随时切换）</label>
+            <div class="form-hint" style="margin:4px 0 8px;">可以为同一个你保存多份不同的资料快照（比如"本体""马甲小号"），切换后下方表单会整体替换成对应的内容，记得切换后点最下面的"保存设置"确认生效。</div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <select id="personaSwitchSelect" onchange="switchToPersona(this.value)" style="flex:1; min-width:140px;"></select>
+                <button type="button" class="btn-secondary" style="margin:0; padding:6px 10px; font-size:12px;" onclick="saveCurrentAsPersona()">💾 另存为人设</button>
+                <button type="button" class="btn-secondary" style="margin:0; padding:6px 10px; font-size:12px;" onclick="renameCurrentPersona()">✏️ 重命名</button>
+                <button type="button" class="btn-secondary" style="margin:0; padding:6px 10px; font-size:12px; color:#f91880; border-color:#f91880;" onclick="deleteCurrentPersona()">🗑️ 删除</button>
+            </div>
         </div>
-
+        </div>
+        <div class="up-panel" id="upPanel-wallet" style="display:none;">
+            <div id="upWalletBox"><div class="form-hint">钱包模块没加载。</div></div>
+        </div>
+        <div class="up-panel" id="upPanel-anniv" style="display:none;">
       <h4 style="color:#1d9bf0; margin-top:15px; margin-bottom:5px;">📅 我的特殊纪念日</h4>
         <div class="input-group full-width" style="background:#f0f8ff; padding:10px; border-radius:8px; border:1px solid #1d9bf0; margin-bottom:15px;">
             <div class="form-hint" style="margin-bottom:10px; border-left-color:#1d9bf0; background:rgba(29,155,240,0.1);">添加重要日期（如生日、周年纪念等），角色会在这些日期主动提及</div>
@@ -2609,7 +2664,22 @@
                 <button type="button" class="btn-primary" style="margin-top:0; padding:6px 12px;" onclick="addUserAnniversary()">添加</button>
             </div>
         </div>
-
+        </div>
+        <div class="up-panel" id="upPanel-chat" style="display:none;">
+        <h4 style='color:#1d9bf0; margin-top:5px; margin-bottom:5px;'>聊天互动设置</h4>
+        <div class='input-group full-width' style='background:#f0f8ff; padding:10px; border-radius:8px; border:1px solid #1d9bf0;'>
+            <label>我的'拍一拍'文案（别人拍你时显示）</label>
+            <input type='text' id='myNudgeText' placeholder='例如：的聪明脑袋' maxlength='10'>
+        </div>
+        </div>
+        <div class="up-panel" id="upPanel-anon" style="display:none;">
+        <h4 style="color:#aaa; margin-top:20px; border-top:1px solid #eee; padding-top:15px; margin-bottom:5px;">匿名论坛专属设置</h4>
+        <div class="form-grid" style="background:#f7f9f9; padding:10px; border-radius:8px; margin-bottom:15px;">
+            <div class="input-group"><label style="color:#536471;">匿名论坛昵称</label><input type="text" id="myAnonName" placeholder="例如：无名氏"></div>
+            <div class="input-group"><label style="color:#536471;">匿名论坛 ID (固定身份)</label><input type="text" id="myAnonId" placeholder="例如：User123"></div>
+        </div>
+        </div>
+        <div class="up-panel" id="upPanel-status" style="display:none;">
         <h4 style='color:#1d9bf0; margin-top:15px; margin-bottom:5px;'>🎨 状态气泡类型设置</h4>
         <div class='input-group full-width' style='background:#f0f8ff; padding:10px; border-radius:8px; border:1px solid #1d9bf0; margin-bottom:15px;'>
             <div class='form-hint' style='margin-bottom:10px; border-left-color:#1d9bf0; background:rgba(29,155,240,0.1);'>为所有角色设置状态气泡样式（用于聊天里查看角色状态），支持自定义颜色和透明度</div>
@@ -2622,6 +2692,7 @@
                 <button type='button' class='btn-primary' style='margin-top:0; padding:6px 12px;' onclick='addStatusType()'>添加</button>
             </div>
             <div style='display:flex; gap:4px; flex-wrap:wrap; margin-top:8px;' id='colorPalette'></div>
+        </div>
         </div>
 
         <button class='btn-primary' onclick='saveUserProfile()'>保存我的资料</button>
@@ -2887,7 +2958,7 @@
             </div>
             <div class="user-post-icon-row" style="padding-left: 50px;">
                 <button class="btn-edit-small" title="高级设置" onclick="toggleAdvancedPostOptions()">⚙️</button>
-                <button class="btn-edit-small" title="添加表情/图片" onclick="openEmoticonPicker('post')">🖼️</button>
+                <button class="btn-edit-small" title="表情 / 图片" onclick="openEmoticonPicker('post')">🖼️</button>
                 <input type="file" id="postImageUploadInput" accept="image/*" style="display:none;" onchange="handleDirectImageUpload(this, 'post')">
                 <button class="btn-edit-small" title="上传图片" onclick="document.getElementById('postImageUploadInput').click()">📷</button>
                 <button class="btn-post" onclick="userPost()">发布推文</button>
@@ -2933,35 +3004,43 @@
 </style>
 
     <!-- EJS模板引擎：本地打包(vendor)而不用CDN，离线(PWA)时也能正常渲染带<%%>语法的提示词/世界书 -->
-    <script src="./js/vendor/ejs.min.js?v=108"></script>
-    <script src="./js/01-core-state-infra.js?v=108"></script>
-    <script src="./js/02-databank-plugins-minigames.js?v=108"></script>
-    <script src="./js/03-markdown-feed-tags.js?v=108"></script>
-    <script src="./js/04-mobile-bootstrap-notifications.js?v=108"></script>
-    <script src="./js/05-anniversary-memory.js?v=108"></script>
-    <script src="./js/06-emoticons-time-humanfeel-relationships-worldbook.js?v=108"></script>
-    <script src="./js/07-proactive-cloudsync.js?v=108"></script>
-    <script src="./js/08-diary-novel.js?v=108"></script>
-    <script src="./js/09-memories-search-postfixes.js?v=108"></script>
-    <script src="./js/10-comments-npc-forum-reply.js?v=108"></script>
-    <script src="./js/11-tabloid-story-forum-engine.js?v=108"></script>
-    <script src="./js/12-worldbook-import-appexport.js?v=108"></script>
-    <script src="./js/13-charreply-groupchat-faction-cardimport.js?v=108"></script>
-    <script src="./js/14-settings-archive.js?v=108"></script>
-    <script src="./js/15-ai-presets.js?v=108"></script>
-<script src="./js/16-story-studio.js?v=108"></script>
-<script src="./js/17-tavern-bridge.js?v=108"></script>
-<script src="./js/18-minigames-board-cards.js?v=108"></script>
-<script src="./js/19-minigames-party.js?v=108"></script>
-<script src="./js/20-reading-together.js?v=108"></script>
-<script src="./js/21-watch-together.js?v=108"></script>
-<script src="./js/22-box-music.js?v=108"></script>
-<script src="./js/23-box-map.js?v=108"></script>
-<script src="./js/24-box-relations.js?v=108"></script>
-<script src="./js/25-box-life.js?v=108"></script>
-<script src="./js/26-box-mall.js?v=108"></script>
-<script src="./js/27-feature-pages.js?v=108"></script>
-<script src="./js/28-invite-in-chat.js?v=108"></script>
-<script src="./js/29-web-explore.js?v=108"></script>
+    <script src="./js/vendor/ejs.min.js?v=112"></script>
+    <script src="./js/01-core-state-infra.js?v=112"></script>
+    <script src="./js/02-databank-plugins-minigames.js?v=112"></script>
+    <script src="./js/03-markdown-feed-tags.js?v=112"></script>
+    <script src="./js/04-mobile-bootstrap-notifications.js?v=112"></script>
+    <script src="./js/05-anniversary-memory.js?v=112"></script>
+    <script src="./js/06-emoticons-time-humanfeel-relationships-worldbook.js?v=112"></script>
+    <script src="./js/07-proactive-cloudsync.js?v=112"></script>
+    <script src="./js/08-diary-novel.js?v=112"></script>
+    <script src="./js/09-memories-search-postfixes.js?v=112"></script>
+    <script src="./js/10-comments-npc-forum-reply.js?v=112"></script>
+    <script src="./js/11-tabloid-story-forum-engine.js?v=112"></script>
+    <script src="./js/12-worldbook-import-appexport.js?v=112"></script>
+    <script src="./js/13-charreply-groupchat-faction-cardimport.js?v=112"></script>
+    <script src="./js/14-settings-archive.js?v=112"></script>
+    <script src="./js/15-ai-presets.js?v=112"></script>
+<script src="./js/16-story-studio.js?v=112"></script>
+<script src="./js/17-tavern-bridge.js?v=112"></script>
+<script src="./js/18-minigames-board-cards.js?v=112"></script>
+<script src="./js/19-minigames-party.js?v=112"></script>
+<script src="./js/20-reading-together.js?v=112"></script>
+<script src="./js/21-watch-together.js?v=112"></script>
+<script src="./js/22-box-music.js?v=112"></script>
+<script src="./js/23-box-map.js?v=112"></script>
+<script src="./js/24-box-relations.js?v=112"></script>
+<script src="./js/25-box-life.js?v=112"></script>
+<script src="./js/26-box-mall.js?v=112"></script>
+<script src="./js/27-feature-pages.js?v=112"></script>
+<script src="./js/28-invite-in-chat.js?v=112"></script>
+<script src="./js/29-web-explore.js?v=112"></script>
+<script src="./js/30-parcel-cards.js?v=112"></script>
+<script src="./js/31-wallet.js?v=112"></script>
+<script src="./js/32-takeout.js?v=112"></script>
+<script src="./js/33-phone.js?v=112"></script>
+<script src="./js/34-gallery.js?v=112"></script>
+<script src="./js/35-dressup.js?v=112"></script>
+<script src="./js/36-silence.js?v=112"></script>
+<script src="./js/37-inject-hub.js?v=112"></script>
 </body>
 </html>
