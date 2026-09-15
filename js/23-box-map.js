@@ -30,9 +30,11 @@
     if (window.__gyMapLoaded) { try { gymapOpen(); } catch (e) {} return; }
     window.__gyMapLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyMapBox', storeName: 'maps' })
-        : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyMapBox', 'maps')          // 带兜底的存档口：localforage 用不了就退 localStorage，两条都断才报错
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyMapBox', storeName: 'maps' })
+            : null);
     const KEY = 'gyMap_state';
 
     let S = {

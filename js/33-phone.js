@@ -31,8 +31,11 @@
     if (window.__gyPhoneLoaded) return;
     window.__gyPhoneLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyPhoneBox', storeName: 'phone' }) : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyPhoneBox', 'phone')          // 带兜底的存档口
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyPhoneBox', storeName: 'phone' })
+            : null);
     const KEY = 'gyPhone_state';
 
     const esc = s => (typeof escapeHtml === 'function') ? escapeHtml(s == null ? '' : s)

@@ -20,8 +20,11 @@
     if (window.__gyMyDayLoaded) return;
     window.__gyMyDayLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyMyDayBox', storeName: 'days' }) : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyMyDayBox', 'days')          // 带兜底的存档口
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyMyDayBox', storeName: 'days' })
+            : null);
     const KEY = 'gyMyDay_state';
 
     // 谁能看见：五档

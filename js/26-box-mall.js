@@ -23,9 +23,11 @@
     if (window.__gyMallLoaded) return;
     window.__gyMallLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyMallBox', storeName: 'mall' })
-        : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyMallBox', 'mall')          // 带兜底的存档口：localforage 用不了就退 localStorage，两条都断才报错
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyMallBox', storeName: 'mall' })
+            : null);
     const KEY = 'gyMall_state';
     const OLD_KEY = 'mallPluginState_v2';   // 插件版的存档位置，只读一次然后搬过来
     const KEEP_ORDERS = 200;                // 订单最多留这么多条，再老的自己掉队

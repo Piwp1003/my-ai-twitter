@@ -29,9 +29,11 @@
     }
     window.__gyMusicBoxLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyMusicBox', storeName: 'tracks' })
-        : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyMusicBox', 'tracks')          // 带兜底的存档口：localforage 用不了就退 localStorage，两条都断才报错
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyMusicBox', storeName: 'tracks' })
+            : null);
     const KEY = 'gyMusic_state';
 
     // ---------- 状态 ----------

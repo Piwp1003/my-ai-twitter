@@ -33,9 +33,11 @@
     if (window.__gyRelLoaded) { try { gyrelOpen(); } catch (e) {} return; }
     window.__gyRelLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyRelBox', storeName: 'ledger' })
-        : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyRelBox', 'ledger')          // 带兜底的存档口：localforage 用不了就退 localStorage，两条都断才报错
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyRelBox', storeName: 'ledger' })
+            : null);
     const KEY = 'gyRel_state';
 
     const DEF_STAGES = [
@@ -681,9 +683,11 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
     if (window.__gyGossipLoaded) { try { gygsOpen(); } catch (e) {} return; }
     window.__gyGossipLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyGossipBox', storeName: 'rumors' })
-        : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyGossipBox', 'rumors')          // 带兜底的存档口：localforage 用不了就退 localStorage，两条都断才报错
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyGossipBox', storeName: 'rumors' })
+            : null);
     const KEY = 'gyGossip_state';
 
     let S = {

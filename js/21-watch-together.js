@@ -23,9 +23,11 @@
   window.__gyFilmBoxLoaded = true;
 
   // ---------- 存储 ----------
-  const DB = (typeof localforage !== 'undefined')
-    ? localforage.createInstance({ name: 'gyFilmBox' })
-    : null;
+  const DB = (typeof window.gyStore === 'function')
+    ? window.gyStore('gyFilmBox', 'default')          // 带兜底的存档口
+    : ((typeof localforage !== 'undefined')
+        ? localforage.createInstance({ name: 'gyFilmBox' })
+        : null);
   const KEY = 'state';
 
   let S = {

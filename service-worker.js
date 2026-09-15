@@ -7,68 +7,68 @@
 
 // ⚠️ 以后改了 index.html / style.css / js/*.js 这些核心文件后，记得把下面这个版本号 +1，
 // 不然有些用户的浏览器可能会因为命中旧版本的离线缓存，长期看不到最新更新内容。
-const CACHE_VERSION = 'v126';
+const CACHE_VERSION = 'v127';
 
 const CACHE_NAME = `guyu-app-cache-${CACHE_VERSION}`;
 
 // ⚠️ 这份清单必须和 index.html 里实际 <script src> / <link href> 的路径**逐字一致**
-// （包括 ./ 前缀和 ?v=126 这种查询参数），因为预缓存是按URL字符串存的，差一个字符就命中不了。
+// （包括 ./ 前缀和 ?v=127 这种查询参数），因为预缓存是按URL字符串存的，差一个字符就命中不了。
 // 加了新的 js 模块 / 第三方库之后，记得同步加到这里，否则离线时那个模块会加载失败。
 const CORE_ASSETS = [
     './',
     './index.html',
-    './style.css?v=126',   // ⚠️ 跟 index.html 里的 ?v= 必须完全一致，改一处就要改两处
+    './style.css?v=127',   // ⚠️ 跟 index.html 里的 ?v= 必须完全一致，改一处就要改两处
     './pwa-manifest.json', // 注意是 pwa-manifest.json，不是 manifest.json（后者是HBuilderX打包APK用的应用配置，见index.html开头的注释）
     './icons/icon-192.png',
     './icons/icon-512.png',
     // 第三方库：localforage 是整个App的本地存储底座，没缓存到的话离线直接打不开，务必保留
-    './js/vendor/localforage.min.js?v=126',
-    './js/vendor/mammoth.browser.min.js?v=126',
-    './js/vendor/ejs.min.js?v=126',
+    './js/vendor/localforage.min.js?v=127',
+    './js/vendor/mammoth.browser.min.js?v=127',
+    './js/vendor/ejs.min.js?v=127',
     // 角色卡前端页面（开场白菜单/状态栏）里用到 $ 的那些，会由 js/03 往 iframe 里挂这个 <script src>；
     // 不预缓存的话离线时那些卡片会报 "$ is not defined" 整张卡死掉
-    './js/vendor/jquery.min.js?v=126',
-    './js/01-core-state-infra.js?v=126',
-    './js/02-databank-plugins-minigames.js?v=126',
-    './js/03-markdown-feed-tags.js?v=126',
-    './js/04-mobile-bootstrap-notifications.js?v=126',
-    './js/05-anniversary-memory.js?v=126',
-    './js/06-emoticons-time-humanfeel-relationships-worldbook.js?v=126',
-    './js/07-proactive-cloudsync.js?v=126',
-    './js/08-diary-novel.js?v=126',
-    './js/09-memories-search-postfixes.js?v=126',
-    './js/10-comments-npc-forum-reply.js?v=126',
-    './js/11-tabloid-story-forum-engine.js?v=126',
-    './js/12-worldbook-import-appexport.js?v=126',
-    './js/13-charreply-groupchat-faction-cardimport.js?v=126',
-    './js/14-settings-archive.js?v=126',
-    './js/15-ai-presets.js?v=126',
-    './js/16-story-studio.js?v=126',
-    './js/17-tavern-bridge.js?v=126',
-    './js/18-minigames-board-cards.js?v=126',
-    './js/19-minigames-party.js?v=126',
-    './js/20-reading-together.js?v=126',
-    './js/21-watch-together.js?v=126',
-    './js/22-box-music.js?v=126',
-    './js/23-box-map.js?v=126',
-    './js/24-box-relations.js?v=126',
-    './js/25-box-life.js?v=126',
-    './js/26-box-mall.js?v=126',
-    './js/27-feature-pages.js?v=126',
-    './js/28-invite-in-chat.js?v=126',
-    './js/29-web-explore.js?v=126',
-    './js/30-parcel-cards.js?v=126',
-    './js/31-wallet.js?v=126',
-    './js/32-takeout.js?v=126',
-    './js/33-phone.js?v=126',
-    './js/34-gallery.js?v=126',
-    './js/35-dressup.js?v=126',
-    './js/36-silence.js?v=126',
-    './js/37-inject-hub.js?v=126',
-    './js/38-my-days.js?v=126',
-    './js/39-npcs.js?v=126',
-    './js/40-nav-groups.js?v=126',
-    './js/41-site-ctx.js?v=126'
+    './js/vendor/jquery.min.js?v=127',
+    './js/01-core-state-infra.js?v=127',
+    './js/02-databank-plugins-minigames.js?v=127',
+    './js/03-markdown-feed-tags.js?v=127',
+    './js/04-mobile-bootstrap-notifications.js?v=127',
+    './js/05-anniversary-memory.js?v=127',
+    './js/06-emoticons-time-humanfeel-relationships-worldbook.js?v=127',
+    './js/07-proactive-cloudsync.js?v=127',
+    './js/08-diary-novel.js?v=127',
+    './js/09-memories-search-postfixes.js?v=127',
+    './js/10-comments-npc-forum-reply.js?v=127',
+    './js/11-tabloid-story-forum-engine.js?v=127',
+    './js/12-worldbook-import-appexport.js?v=127',
+    './js/13-charreply-groupchat-faction-cardimport.js?v=127',
+    './js/14-settings-archive.js?v=127',
+    './js/15-ai-presets.js?v=127',
+    './js/16-story-studio.js?v=127',
+    './js/17-tavern-bridge.js?v=127',
+    './js/18-minigames-board-cards.js?v=127',
+    './js/19-minigames-party.js?v=127',
+    './js/20-reading-together.js?v=127',
+    './js/21-watch-together.js?v=127',
+    './js/22-box-music.js?v=127',
+    './js/23-box-map.js?v=127',
+    './js/24-box-relations.js?v=127',
+    './js/25-box-life.js?v=127',
+    './js/26-box-mall.js?v=127',
+    './js/27-feature-pages.js?v=127',
+    './js/28-invite-in-chat.js?v=127',
+    './js/29-web-explore.js?v=127',
+    './js/30-parcel-cards.js?v=127',
+    './js/31-wallet.js?v=127',
+    './js/32-takeout.js?v=127',
+    './js/33-phone.js?v=127',
+    './js/34-gallery.js?v=127',
+    './js/35-dressup.js?v=127',
+    './js/36-silence.js?v=127',
+    './js/37-inject-hub.js?v=127',
+    './js/38-my-days.js?v=127',
+    './js/39-npcs.js?v=127',
+    './js/40-nav-groups.js?v=127',
+    './js/41-site-ctx.js?v=127'
 ];
 
 self.addEventListener('install', (event) => {

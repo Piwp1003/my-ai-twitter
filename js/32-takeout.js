@@ -26,8 +26,11 @@
     if (window.__gyTakeoutLoaded) return;
     window.__gyTakeoutLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyTakeoutBox', storeName: 'takeout' }) : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyTakeoutBox', 'takeout')          // 带兜底的存档口
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyTakeoutBox', storeName: 'takeout' })
+            : null);
     const KEY = 'gyTakeout_state';
 
     const esc = s => (typeof escapeHtml === 'function') ? escapeHtml(s == null ? '' : s)

@@ -28,8 +28,11 @@
     if (window.__gySilenceLoaded) return;
     window.__gySilenceLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gySilenceBox', storeName: 'silence' }) : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gySilenceBox', 'silence')          // 带兜底的存档口
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gySilenceBox', storeName: 'silence' })
+            : null);
     const KEY = 'gySilence_state';
 
     const esc = s => (typeof escapeHtml === 'function') ? escapeHtml(s == null ? '' : s)

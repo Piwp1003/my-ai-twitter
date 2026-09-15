@@ -29,8 +29,11 @@
     window.__gyInjectHubLoaded = true;
 
     const LSK = 'gyInjectOffV1';
-    const store = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyInjectBox' }) : null;
+    const store = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyInjectBox', 'default')          // 带兜底的存档口
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyInjectBox' })
+            : null);
 
     // off[key] === true 表示这一条**不注入**。默认全空 = 跟以前一模一样。
     let S = { off: {}, found: {}, sc: {} };   // sc: 每个场景单独设过的那些

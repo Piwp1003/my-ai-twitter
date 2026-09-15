@@ -21,8 +21,11 @@
     if (window.__gyNpcLoaded) return;
     window.__gyNpcLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyNpcBox', storeName: 'npcs' }) : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyNpcBox', 'npcs')          // 带兜底的存档口
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyNpcBox', storeName: 'npcs' })
+            : null);
     const KEY = 'gyNpc_state';
 
     let S = {

@@ -30,9 +30,11 @@
     if (window.__gyKitLoaded) { try { gykitOpen(); } catch (e) {} return; }
     window.__gyKitLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyKitBox', storeName: 'items' })
-        : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyKitBox', 'items')          // 带兜底的存档口：localforage 用不了就退 localStorage，两条都断才报错
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyKitBox', storeName: 'items' })
+            : null);
     const KEY = 'gyKit_state';
 
     const STATES = [
@@ -602,9 +604,11 @@ ${mine.map((i, n) => `${n + 1}. ${i.name}${i.desc ? '（' + i.desc + '）' : ''}
     if (window.__gyDaysLoaded) { try { gydayOpen(); } catch (e) {} return; }
     window.__gyDaysLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyDaysBox', storeName: 'days' })
-        : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyDaysBox', 'days')          // 带兜底的存档口：localforage 用不了就退 localStorage，两条都断才报错
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyDaysBox', storeName: 'days' })
+            : null);
     const KEY = 'gyDays_state';
 
     // ---------- 24 节气 ----------

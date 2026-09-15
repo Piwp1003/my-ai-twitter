@@ -25,8 +25,11 @@
     if (window.__gyGalleryLoaded) return;
     window.__gyGalleryLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyGalleryBox', storeName: 'gallery' }) : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyGalleryBox', 'gallery')          // 带兜底的存档口
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyGalleryBox', storeName: 'gallery' })
+            : null);
     const KEY = 'gyGallery_state';
 
     const esc = s => (typeof escapeHtml === 'function') ? escapeHtml(s == null ? '' : s)
@@ -139,6 +142,8 @@
     /* ---------- 页面 ---------- */
     let tab = '';        // '' 公共；角色 id 就是那个人的私库
     window.gyGalTab = t => { tab = String(t || ''); render(); };
+    // 换装设置里改了模式要重画一次（"我来定"那档才显示时长输入框）
+    window.gyGalleryRepaint = () => { try { render(); } catch (e) {} };
     window.gyGalDel = async id => { await window.gyGallery.remove(id); };
     window.gyGalMove = async function (id, owner) {
         const im = window.gyGallery.get(id);
@@ -196,9 +201,17 @@
             <div class="gygal-set-b">
                 <div class="gygal-row">
                     <span>角色多久可能想换一次</span>
+                    <select onchange="gyDressSet('gapMode',this.value)">
+                        <option value="fixed"${(d.gapMode || 'fixed') === 'fixed' ? ' selected' : ''}>我来定一个时长</option>
+                        <option value="self"${d.gapMode === 'self' ? ' selected' : ''}>让 TA 按人设自己定</option>
+                    </select>
+                </div>
+                ${(d.gapMode || 'fixed') === 'fixed' ? `<div class="gygal-row">
+                    <span>多久一次</span>
                     <input type="number" min="0" max="720" value="${d.everyGapH}" onchange="gyDressSet('everyGapH',this.value)">
                     <em>小时（填 0 就关掉这个节拍，交给自主模式让 TA 自己感受）</em>
-                </div>
+                </div>` : `<div class="gygal-row"><em style="flex:1;">爱打扮的人两三天就想换一张，冷淡的人半年不动一次——
+                    照人设推，同一个人上下浮动一点，不会整齐得像定时器。本地算，不调 API。</em></div>`}
                 <div class="gygal-row">
                     <span>换完之后谁会注意到</span>
                     <select onchange="gyDressSet('noticeMode',this.value)">

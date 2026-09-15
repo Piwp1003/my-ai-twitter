@@ -27,8 +27,11 @@
     if (window.__gyDressLoaded) return;
     window.__gyDressLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyDressBox', storeName: 'dress' }) : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyDressBox', 'dress')          // 带兜底的存档口
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyDressBox', storeName: 'dress' })
+            : null);
     const KEY = 'gyDress_state';
 
     const esc = s => (typeof escapeHtml === 'function') ? escapeHtml(s == null ? '' : s)

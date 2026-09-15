@@ -29,8 +29,11 @@
     if (window.__gyWalletLoaded) return;
     window.__gyWalletLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyWalletBox', storeName: 'wallet' }) : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyWalletBox', 'wallet')          // 带兜底的存档口
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyWalletBox', storeName: 'wallet' })
+            : null);
     const KEY = 'gyWallet_state';
 
     const esc = s => (typeof escapeHtml === 'function') ? escapeHtml(s == null ? '' : s)

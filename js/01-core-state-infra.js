@@ -611,6 +611,61 @@ let enableStreaming = true;
 let enableGroupMoveToChat = true;
 let globalBgImage = null, globalBgOpacity = 1;
 
+/* ============================================================
+   💾 gyStore —— 小功能模块统一的存档口（带兜底 + 存不上会说话）
+   ------------------------------------------------------------
+   踩过的坑：各个小功能模块都是这么写的——
+       const LF = (typeof localforage !== 'undefined') ? localforage.createInstance(...) : null;
+       async function save() { try { if (LF) await LF.setItem(KEY, S); } catch (e) {} }
+   两个问题，而且都是**静默**的：
+     ① localforage 拿不到时 LF 是 null，于是 `if (LF)` 直接跳过——**什么都没存，一声不吭**；
+     ② 真写失败了（无痕模式、配额满、打包环境里 IndexedDB 被限制），
+        catch 把错误吞掉，用户只看到"我改的设置怎么又变回去了"，连个提示都没有。
+   现在统一走这里：先 localforage，不行就退到 localStorage（小数据才镜像，
+   免得把几十兆的图片音乐塞爆 5MB 的配额），两条路都失败才算真失败——
+   真失败会弹一次提示告诉你，而不是假装存上了。
+   ============================================================ */
+window.gyStore = function (name, storeName) {
+    let lf = null;
+    try {
+        if (typeof localforage !== 'undefined') lf = localforage.createInstance({ name, storeName });
+    } catch (e) { lf = null; }
+    const lsKey = k => 'gyfs:' + name + ':' + storeName + ':' + k;
+    const MIRROR_MAX = 300 * 1024;      // 超过这个大小就不往 localStorage 镜像了
+    let told = false;
+    const complain = (err) => {
+        if (told) return; told = true;
+        const msg = '「' + name + '」的设置存不下来（' + (err && err.message || err || '存储不可用') +
+                    '）。改动这次能用，但一刷新就没了。';
+        console.warn('[存档]', msg);
+        try { if (typeof showToast === 'function') showToast('', '设置没存住', msg, null, null, false); } catch (e) {}
+    };
+    return {
+        _lf: lf,
+        async getItem(k) {
+            if (lf) { try { const v = await lf.getItem(k); if (v !== null && v !== undefined) return v; } catch (e) {} }
+            try { const raw = localStorage.getItem(lsKey(k)); if (raw != null) return JSON.parse(raw); } catch (e) {}
+            return null;
+        },
+        async setItem(k, v) {
+            let ok = false, lastErr = null;
+            if (lf) { try { await lf.setItem(k, v); ok = true; } catch (e) { lastErr = e; } }
+            try {
+                const raw = JSON.stringify(v);
+                if (raw.length <= MIRROR_MAX) { localStorage.setItem(lsKey(k), raw); ok = true; }
+            } catch (e) { lastErr = lastErr || e; }
+            if (!ok) complain(lastErr);
+            return ok;
+        },
+        async removeItem(k) {
+            if (lf) { try { await lf.removeItem(k); } catch (e) {} }
+            try { localStorage.removeItem(lsKey(k)); } catch (e) {}
+        },
+        async keys() { if (lf) { try { return await lf.keys(); } catch (e) {} } return []; },
+        async iterate(fn) { if (lf) { try { return await lf.iterate(fn); } catch (e) {} } }
+    };
+};
+
 // 全局自定义CSS
 let globalCustomCSS = "";
 // 这段CSS会被注入到<head>里的<style>标签，对整个App所有界面生效（不是只对某一页）。
@@ -1221,7 +1276,7 @@ let tweetTimeAbs = false;
 let gyMainWidth = 600;
 let gyLeftWidth = 275;
 let gyFontSize = 15;
-const GY_APP_VERSION = 'v126';
+const GY_APP_VERSION = 'v127';
 
 const GY_FEATURE_MAP = {
     // 聊天

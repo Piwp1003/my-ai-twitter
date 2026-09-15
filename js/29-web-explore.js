@@ -34,9 +34,11 @@
     if (window.__gyWebLoaded) return;
     window.__gyWebLoaded = true;
 
-    const LF = (typeof localforage !== 'undefined')
-        ? localforage.createInstance({ name: 'gyWebBox', storeName: 'explore' })
-        : null;
+    const LF = (typeof window.gyStore === 'function')
+        ? window.gyStore('gyWebBox', 'explore')          // 带兜底的存档口：localforage 用不了就退 localStorage，两条都断才报错
+        : ((typeof localforage !== 'undefined')
+            ? localforage.createInstance({ name: 'gyWebBox', storeName: 'explore' })
+            : null);
     const KEY = 'gyWeb_state';
 
     const PRESETS = [
