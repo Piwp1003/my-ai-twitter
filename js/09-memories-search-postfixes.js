@@ -406,7 +406,14 @@ function isCoolTowardUser(char) {
 
 // 修复：主页用户发推功能 (userPost)
 // ==========================================
+// 报场景：这段生成属于「comment」那一场（soft＝外层已有场景就不抢）
 async function userPost() {
+    const a = arguments;
+    if (typeof window.gyInjectInSceneSoft === 'function')
+        return window.gyInjectInSceneSoft('comment', () => userPostInner.apply(null, a));
+    return userPostInner.apply(null, a);
+}
+async function userPostInner() {
     let input = document.getElementById('userPostInput'); 
     let text = input.value.trim(); 
     if (!text && !pendingPostAttachment) return;

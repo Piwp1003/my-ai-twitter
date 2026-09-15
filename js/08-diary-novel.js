@@ -2256,6 +2256,7 @@ function openSettingsPanel(key) {
     // 🔎 美化页里的选择器速查表也是进来才扫（要遍历整棵 DOM，不进这一页就不做）
     if (key === 'appearance') {
         try { if (typeof gyCssMapRender === 'function') gyCssMapRender(); } catch (e) {}
+        try { if (typeof gyCssEgRender === 'function') gyCssEgRender(); } catch (e) {}
         try {
             const tv = document.getElementById('toastMaxVisibleSelect');
             if (tv && typeof toastMaxVisible !== 'undefined') tv.value = String(toastMaxVisible);

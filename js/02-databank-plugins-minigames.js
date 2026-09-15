@@ -178,7 +178,14 @@ async function runMiniGame1v1Invite(gameId) {
 
 // 通用：问某个角色要不要接受游戏邀请（把角色的回应写进聊天记录），返回是否接受。
 // spectatorMode为true时表示名额已经被别人占了，只让这个角色围观吐槽一句，不再真的问要不要上场。
-async function askCharGameInvite(char, sessionId, gameName, spectatorMode, opponentName) {
+// 报场景：这段生成属于「game」那一场（soft＝外层已有场景就不抢）
+async function askCharGameInvite() {
+    const a = arguments;
+    if (typeof window.gyInjectInSceneSoft === 'function')
+        return window.gyInjectInSceneSoft('game', () => askCharGameInviteInner.apply(null, a));
+    return askCharGameInviteInner.apply(null, a);
+}
+async function askCharGameInviteInner(char, sessionId, gameName, spectatorMode, opponentName) {
     const api = getApiConfig(true);
     const recentHistory = buildTimeAwareHistoryText(globalChats[sessionId].slice(-chatHistoryTurns));
     if (spectatorMode) {
@@ -305,7 +312,21 @@ function miniGameCharSay(sessionId, char, text) {
     return true;
 }
 
-async function askCharGameEndComment(char, sessionId, gameName, resultText) {
+
+// 报场景：这段生成属于「game」那一场（soft＝外层已有场景就不抢）
+
+async function askCharGameEndComment() {
+
+    const a = arguments;
+
+    if (typeof window.gyInjectInSceneSoft === 'function')
+
+        return window.gyInjectInSceneSoft('game', () => askCharGameEndCommentInner.apply(null, a));
+
+    return askCharGameEndCommentInner.apply(null, a);
+
+}
+async function askCharGameEndCommentInner(char, sessionId, gameName, resultText) {
     if (!enableMiniGameCharSpeech) return '';
     const api = getApiConfig(true);
     const recentHistory = buildTimeAwareHistoryText(globalChats[sessionId].slice(-chatHistoryTurns));

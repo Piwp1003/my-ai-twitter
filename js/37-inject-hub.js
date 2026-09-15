@@ -75,8 +75,10 @@
     const GROUPS = [
         {
             key: 'core', icon: '🧬', title: '角色本身',
-            note: '这几条是"TA 是谁"。人设正文永远注入，不在这儿——关掉它角色就不存在了。',
+            note: '这几条是"TA 是谁"。',
             items: [
+                { k: 'core.persona', label: '角色人设正文', always: true,
+                  desc: '角色卡/资料页里那段人设。这是"TA 是谁"的本体，关掉角色就不存在了，所以这一条永远带着、关不掉——列在这儿是为了让你看到完整的清单，知道 prompt 里到底有什么。' },
                 { k: 'core.user', label: '我在 TA 面前是谁', fn: 'getUserContextPrompt',
                   desc: '你给这个角色单独设的用户人设（没单独设就用默认那份）。关掉之后 TA 不知道在跟谁说话。' },
                 { k: 'core.voice', label: '语言指纹（TA 自己的打字习惯）', fn: 'aliveVoicePrompt',
@@ -90,7 +92,33 @@
                 { k: 'core.human', label: '拟人化底稿（别像 AI 那样说话）', fn: 'getHumanFeelPromptText',
                   desc: '一整段"不要写成小作文、不要每句都总结"的通用要求。关掉会明显更像模型腔，但省不少 token。' },
                 { k: 'core.tpes', label: '时间感知（现在几点、白天还是深夜）', fn: 'getTpesPromptText',
-                  desc: '关掉之后角色对"现在是什么时候"没有概念。' }
+                  desc: '关掉之后角色对"现在是什么时候"没有概念。' },
+                { k: 'core.now', label: '当前时刻那一行（整份 prompt 的最后一句）', fn: 'getTpesNowLine',
+                  desc: '"现在是 X 月 X 日 X 点"那一行，钉在最后面。它每分钟都在变，所以必须放最后——放前面会让它后面所有内容的输入缓存失效、每轮都重新计费。关掉能省一点缓存开销，代价是 TA 不知道此刻几点。' },
+                { k: 'core.fmt', label: '格式规则（能不能写括号里的动作心理）', desc: '"你可以用()【】写动作和心理描写"或者反过来那一句，跟着设置里的「允许动作描写」走。关掉之后这句话不进 prompt，模型按自己的习惯来。' }
+            ]
+        },
+        {
+            key: 'wb', icon: '📖', title: '世界书条目',
+            note: '世界书按**插入位置**分成八段塞进 prompt——同一本世界书，条目写在哪个位置就归哪一段。这八段可以分别关：比如只留"人设之后"那一段，其余位置的条目一律不进。关掉一整段不会删任何词条，只是这一轮不塞。',
+            items: [
+                { k: 'wb.before_persona',  label: '人设之前', desc: '排在角色人设正文前面的词条。世界观总纲、时代背景这类通常放这儿。' },
+                { k: 'wb.after_persona',   label: '人设之后（默认位置）', desc: '**没有特意设过位置的词条全在这儿**，也就是绝大多数。这一段是世界书的主体，关掉等于这张卡的设定基本不进 prompt。' },
+                { k: 'wb.before_example',  label: '对话范例之前', desc: '' },
+                { k: 'wb.after_example',   label: '对话范例之后', desc: '' },
+                { k: 'wb.before_an',       label: '作者注释之前', desc: '酒馆卡里 Author\'s Note 前后那两个位置。' },
+                { k: 'wb.after_an',        label: '作者注释之后', desc: '' },
+                { k: 'wb.at_depth',        label: '按插入深度（插在聊天记录中间的）', desc: '设了"插入深度"的词条——它们不在开头，而是插进最近几轮对话之间，所以存在感最强、也最费 token。' },
+                { k: 'wb.end',             label: '整份提示词的末尾', desc: '压轴强调用的那一档。' }
+            ]
+        },
+        {
+            key: 'preset', icon: '🧩', title: '预设条目',
+            note: '你导入的预设（酒馆那套 preset）按同样的三个位置塞进来，跟世界书是两套东西、分别控制。',
+            items: [
+                { k: 'preset.before_persona', label: '人设之前', desc: '' },
+                { k: 'preset.after_persona',  label: '人设之后（默认位置）', desc: '预设条目多数落在这儿。' },
+                { k: 'preset.end',            label: '整份提示词的末尾', desc: '' }
             ]
         },
         {
@@ -102,6 +130,8 @@
                 { k: 'mem.group', label: '参与过的群聊话题', desc: '发帖、发言的时候能自然带出来的群聊近况。' },
                 { k: 'mem.schedule', label: '今天的日程 + 最近几天的轨迹', fn: 'getScheduleContextPrompt',
                   desc: '日程系统排的那些。这是"TA 今天在干嘛"的主要来源，关掉之后 TA 的一天就空了。' },
+                { k: 'mem.todo', label: '待办清单：TA 还惦记着没办的事',
+                  desc: '以前这一条是塞在「今天的日程」里面的，关日程才能一起关掉。现在拆出来单独控制——只给没办完的，办完的不占 prompt。这是"角色为什么会突然想起点什么"的依据（答应过的东西、约好的日子）。' },
                 { k: 'mem.theater', label: '小剧场：跟别的角色私下发生过的事', fn: 'getTheaterContextPrompt',
                   desc: '角色互动生成的那些片段。不想让 TA 在跟你聊天时惦记着别人，可以关。' },
                 { k: 'mem.letter', label: '你们之间的通信', fn: 'getLetterAwarenessPrompt',
@@ -216,11 +246,58 @@
             ]
         },
         {
-            key: 'plugin', icon: '🧩', title: '预设与插件',
-            note: '这两条是你自己装的东西，内容取决于你装了什么。',
+            key: 'myday', icon: '🗓️', title: '我的日程', box: '__gyMyDayCtxFor',
+            note: '你自己写的那些日程里，**这个角色有权知道**的那几条（按你给每条设的可见范围筛）。',
             items: [
-                { k: 'plugin.prompt', label: '提示词规则插件', fn: 'getPluginPromptText', desc: '' },
-                { k: 'plugin.script', label: '进阶脚本钩子', fn: 'runPluginScriptHooks', desc: '' }
+                { k: 'myday.plan', label: '我这几天的安排（TA 知道的那部分）', box: '__gyMyDayCtxFor', re: '这几天的安排',
+                  desc: '只包含你允许这个角色看见的条目——设成"谁都别知道"的那些根本不会出现在这儿。关掉之后你的日程照记，只是 TA 不知道。' }
+            ]
+        },
+        {
+            key: 'npc', icon: '👥', title: '世界里的人（NPC）', box: '__gyNpcCtxFor',
+            note: '从角色卡世界书里抽出来、绑给这个角色的那批 NPC。',
+            items: [
+                { k: 'npc.around', label: '你身边的这些人（名字 / 是谁 / 什么关系）', box: '__gyNpcCtxFor', head: '你身边的这些人',
+                  desc: '让 TA 提起"我师父"的时候前后对得上。条数在「小功能 → 世界里的人」里调。关掉之后 NPC 照样存着，手机通讯录和推文评论照用，只是聊天时不提。' }
+            ]
+        },
+        {
+            key: 'site', icon: '🌍', title: '全站内容（默认都不带）',
+            note: 'app 里存着、但以前**根本没路子塞进 prompt** 的那些东西。'
+                + '以前只能让角色读到 buildBasePrompt 恰好写进去的那几段，'
+                + '所以"让发推文也读一读匿名论坛和小说"这种事做不到。现在全在这儿，一条一条勾。'
+                + '⚠️ 整组默认关着——它们以前一段都没进过 prompt，默认打开等于偷偷把你的 prompt 撑大一倍。'
+                + '而且别忘了这一页最上面可以**按场景分别设**：私聊时不带小说，发推文时带上，是可以的。',
+            box: '__gySiteCtxFor',
+            items: [
+                { k: 'site.posts', label: 'TA 自己发过的推文（原话）', box: '__gySiteCtxFor', head: '你自己发过的推文', defaultOff: true,
+                  desc: '跟上面「推文记忆总结」是两回事：那个是压缩过的几句话，这个是原文。想让 TA 记得自己具体说过什么就开这条。' },
+                { k: 'site.anon', label: '匿名论坛上的帖子', box: '__gySiteCtxFor', head: '匿名论坛上最近在聊什么', defaultOff: true,
+                  desc: '包括 TA 自己用马甲发的那几条（会标出来），和别人发的（TA 不知道是谁发的）。' },
+                { k: 'site.forum', label: '论坛帖子', box: '__gySiteCtxFor', head: '论坛上最近的帖子', defaultOff: true, desc: '' },
+                { k: 'site.novel', label: '我们的故事（小说章节）', box: '__gySiteCtxFor', head: '你参与的那些故事', defaultOff: true,
+                  desc: '只给挂了这个角色的那些故事的最新一章。开了之后 TA 会把故事里写过的事当成真发生过。' },
+                { k: 'site.story', label: '续写里正在展开的剧情', box: '__gySiteCtxFor', head: '续写里正在展开的剧情', defaultOff: true, desc: '' },
+                { k: 'site.udiary', label: '我写的日记（挂了 TA 的那几篇）', box: '__gySiteCtxFor', head: '对方写的日记', defaultOff: true,
+                  desc: '跟上面「TA 自己写过的日记」是反过来的：那是角色的日记，这是**你的**。' },
+                { k: 'site.album', label: '回忆相册里收藏的瞬间', box: '__gySiteCtxFor', head: '被特意收藏起来的那些瞬间', defaultOff: true,
+                  desc: '你特意收藏过的片段，分量比普通聊天记录重。' },
+                { k: 'site.bank', label: 'TA 的专属资料库', box: '__gySiteCtxFor', head: '你的专属资料库', defaultOff: true,
+                  desc: '角色编辑页里传的那些资料。文件多的话会很长，注意条数。' },
+                { k: 'site.auto', label: 'TA 自主模式下做过的事', box: '__gySiteCtxFor', head: '你自己最近做过的事', defaultOff: true,
+                  desc: '没人让 TA 做、TA 自己决定去做的那些。开了之后 TA 记得自己前几天干了什么。' },
+                { k: 'site.emo', label: '手里有哪些表情包', box: '__gySiteCtxFor', head: '你手里有这些表情包', defaultOff: true,
+                  desc: '把表情包清单和含义递过去，TA 才知道自己能发什么。' },
+                { k: 'site.grouptalk', label: '群里最近说的话（原话）', box: '__gySiteCtxFor', head: '群里最近说的话', defaultOff: true,
+                  desc: '跟上面「参与过的群聊话题」不同：那个是总结出来的话题，这个是原话。' }
+            ]
+        },
+        {
+            key: 'plugin', icon: '🧩', title: '插件',
+            note: '你自己装的插件，内容取决于你装了什么。（导入的**预设**是上面单独那一组，不在这儿。）',
+            items: [
+                { k: 'plugin.prompt', label: '提示词规则插件', fn: 'getPluginPromptText', desc: '插件往 prompt 里加的那几段规则。' },
+                { k: 'plugin.script', label: '进阶脚本钩子', fn: 'runPluginScriptHooks', desc: '插件用脚本动态生成、塞进来的内容。' }
             ]
         }
     ];
@@ -274,7 +351,7 @@
         if (viewScene) {                      // 正在看某个场景 → 只改这一场
             if (!S.sc[viewScene]) S.sc[viewScene] = {};
             S.sc[viewScene][key] = !!v;
-        } else if (v) delete S.off[key]; else S.off[key] = true;
+        } else if (v) S.off[key] = false; else S.off[key] = true;
         save(); renderInjectPanel();
     };
     window.gyInjectSrcAll = async function (feat, v) {
@@ -335,7 +412,30 @@
         { k: 'web',       icon: '🌐', title: '联网探索（手动点的那次）', srcOnly: true, note: '你点「让 TA 去看看」。自主模式自己去看的那次算 🧭 自主模式。' },
         { k: 'silence',   icon: '🕯️', title: '你很久没回消息时', srcOnly: true, note: '' },
         { k: 'phoneTalk', icon: '📱', title: 'TA 手机里那些人发来的消息', srcOnly: true, note: '' },
-        { k: 'dress',     icon: '🎀', title: '有人注意到你换了样子', srcOnly: true, note: '' }
+        { k: 'dress',     icon: '🎀', title: '有人注意到你换了样子', srcOnly: true, note: '' },
+        // ⬇️ 小功能自己那些"角色开口"的地方。以前一个都没挂场景——它们照样读整份 prompt，
+        //    只是你在这一页上看不见、也分不开设。（漏了六十多个，v125 一次补齐。）
+        { k: 'invite',    icon: '🎟️', title: '邀请：看电影 / 听歌 / 阅读 / 约出去',
+          note: 'TA 答应还是拒绝、以及 TA 反过来约你。这一场很短，一句话的事，注入可以砍得很狠。' },
+        { k: 'film',      icon: '🎬', title: '一起看电影时开口',
+          note: '看到有想法的地方说一句、你一暂停接一句、看完给个感想。每隔几分钟就一次，是很花钱的一场。' },
+        { k: 'read',      icon: '📖', title: '一起阅读时写评论',
+          note: '每翻一页就一次调用，翻得快的时候特别费。' },
+        { k: 'music',     icon: '🎵', title: '音乐盒：一起听 / 挑歌 / 听后感', note: '' },
+        { k: 'map',       icon: '🗺️', title: '行程与天气：说自己在哪 / 造天气 / 认地图', note: '' },
+        { k: 'gossip',    icon: '🗣️', title: '八卦网：传话 / 打听', note: '' },
+        { k: 'kit',       icon: '🎒', title: '随身物：送东西 / 生成家当', note: '' },
+        { k: 'days',      icon: '📅', title: '日子：TA 把某天记成纪念日', note: '' },
+        { k: 'mall',      icon: '🛍️', title: '商城与包裹：收货反应 / 上架 / 抱怨 / 收不收',
+          note: '包裹签收、角色上架东西、对买到的东西抱怨、别人送来的收不收。' },
+        { k: 'wallet',    icon: '💰', title: '钱包：自己买 / 开口问你要钱', note: '' },
+        { k: 'takeout',   icon: '🛵', title: '外卖：收到之后说一句', note: '' },
+        { k: 'phoneAct',  icon: '📲', title: '手机：通知文案 / 借看时那句话',
+          note: '跟上面「TA 手机里那些人发来的消息」不是一回事：那个是编通讯录里的人，这个是 TA 自己开口。' },
+        { k: 'game',      icon: '🎲', title: '桌游 / 派对游戏里的发言',
+          note: '狼人杀、UNO、斗地主、二十问这些。一局里会调很多次，是全 app 最容易悄悄烧钱的一场。' },
+        { k: 'custom',    icon: '✍️', title: '你指定内容让 TA 回', note: '' },
+        { k: 'welcome',   icon: '👋', title: '群里欢迎新人', note: '' }
     ];
     const sceneOf = k => SCENES.find(x => x.k === k) || null;
     // 哪个函数属于哪个场景。值是场景 key，或者一个按参数判断的函数。
@@ -364,7 +464,31 @@
         ['generateCharTodosForChar',   'schedule'],
         ['generateCharTodosAI',        'schedule'],
         ['runAutonomyTurn',            'autonomy'],
-        ['autonomyCommentOnSomePost',  'autonomy']
+        ['autonomyCommentOnSomePost',  'autonomy'],
+        // ⬇️ 小功能那一批（全是挂在 window 上的，直接套；局部函数由各模块自己报场景）
+        ['gyInviteAnswer',             'invite'],
+        ['gyInviteAsk',                'invite'],
+        ['gymapCharInvite',            'invite'],
+        ['gymapSendDate',              'invite'],
+        ['gymapAskSay',                'map'],
+        ['gymapGenFicWeather',         'map'],
+        ['gymapGenMap',                'map'],
+        ['gygsTell',                   'gossip'],
+        ['gygsAsk',                    'gossip'],
+        ['gykitGive',                  'kit'],
+        ['gykitGen',                   'kit'],
+        ['gydaySay',                   'days'],
+        ['rtSendDiscuss',              'read'],
+        ['rtOpenReflectionGen',        'read'],
+        ['gymallComplain',             'mall'],
+        ['gyPhoneAiNotif',             'phoneAct'],
+        ['submitCustomCharReply',      'custom'],
+        ['triggerGroupWelcomeSequence','welcome'],
+        ['submitAnonReplyBtn',         'forum'],
+        ['gyDressAsk',                 'dress'],
+        ['contextActionRegenerateChat','chat'],
+        ['gymAskPick',                 'music'],
+        ['gymGenTaste',                'music']
     ];
     let curScene = '';                       // '' = 没在任何已知场景里（按总设置走）
     const sceneStack = [];
@@ -425,7 +549,11 @@
             try { return typeof aliveSettings === 'undefined' || aliveSettings[it.link] !== false; }
             catch (e) { return true; }
         }
-        return !S.off[it.k];
+        // 三态：S.off 里没有这个 key＝用户从没动过 → 看这一条自己的默认；
+        // true＝手动关掉；false＝手动打开。默认关的那些（全站内容那一组）靠的就是这个。
+        const cur = S.off[it.k];
+        if (cur === undefined) return !it.defaultOff;
+        return !cur;
     }
     function keyOn(k, scene) {
         if (byKey[k]) return itemOn(byKey[k], scene);
@@ -437,6 +565,12 @@
 
     // 给别的模块用：window.gyInjectOn('mem.tweet')
     window.gyInjectOn = function (k) { try { return keyOn(k); } catch (e) { return true; } };
+    // 只读出口：把两块清单原样吐出来。给自检测试用（核对"prompt 里真有的段落"
+    // 跟"页面上列出来的条目"是不是一一对上），也方便以后排查"这条到底登记没登记"。
+    window.gyInjectGroups = () => GROUPS.map(g => ({ key: g.key, icon: g.icon, title: g.title, box: g.box,
+        items: g.items.map(it => ({ k: it.k, label: it.label, fn: it.fn, box: it.box, always: !!it.always })) }));
+    window.gyInjectSrcGroups = () => SRCS.map(g => ({ feat: g.feat, icon: g.icon, title: g.title,
+        items: g.items.map(it => ({ k: it.k, label: it.label })) }));
     window.gyInjectSet = async function (k, v) {
         // 正在看某个场景 → 写成那个场景的单独设置，不动总设置
         if (viewScene) {
@@ -448,8 +582,8 @@
         if (it && it.link) {
             try { if (typeof aliveSetLink === 'function') aliveSetLink(it.link, !!v); } catch (e) {}
         } else {
-            if (v) delete S.off[k]; else S.off[k] = true;
-            save();
+            if (v) S.off[k] = false; else S.off[k] = true;   // 写死成 false，别用 delete——
+            save();                                          // 不然"手动打开过"会跟"从没动过"混在一起
         }
         renderInjectPanel();
     };
@@ -458,6 +592,10 @@
         if (!viewScene || !S.sc[viewScene]) return;
         delete S.sc[viewScene][k];
         save(); renderInjectPanel();
+    };
+    window.gyInjectSceneResetOf = function (k) {
+        if (!k || !S.sc[k]) return;
+        delete S.sc[k]; save(); renderInjectPanel();
     };
     window.gyInjectSceneReset = async function () {
         if (!viewScene) return;
@@ -576,6 +714,34 @@
                 });
             }
         });
+
+        // 世界书 / 预设的八个 + 三个插入位置：它们不是独立函数，探法不一样——
+        // 直接问"这个位置现在有没有词条"，这样"现在有内容/现在是空的"那个标才是真的。
+        try {
+            const POS_WB = ['before_persona', 'after_persona', 'before_example', 'after_example',
+                            'before_an', 'after_an', 'at_depth', 'end'];
+            for (const c of cs) {
+                let ents = [];
+                try { ents = (typeof getCharacterWorldbookEntries === 'function') ? (getCharacterWorldbookEntries(c, '', null) || []) : []; } catch (e) {}
+                if (!ents.length) continue;
+                POS_WB.forEach(pos => {
+                    if (has['wb.' + pos]) return;
+                    let t = '';
+                    try { t = (typeof formatWorldbookEntriesText === 'function') ? (formatWorldbookEntriesText(ents, pos) || '') : ''; } catch (e) {}
+                    if (String(t).trim()) has['wb.' + pos] = true;
+                });
+            }
+            ['before_persona', 'after_persona', 'end'].forEach(pos => {
+                for (const c of cs) {
+                    let t = '';
+                    try { t = (typeof getActivePresetPromptText === 'function') ? (getActivePresetPromptText(c, false, null, pos) || '') : ''; } catch (e) {}
+                    if (String(t).trim()) { has['preset.' + pos] = true; break; }
+                }
+            });
+        } catch (e) {}
+        // 这两条是拼在 buildBasePrompt 里的固定文本，不是函数，永远有
+        has['core.fmt'] = true;
+        has['core.persona'] = true;
         return has;
     }
 
@@ -637,7 +803,7 @@
         }
         for (const it of g.items) {
             if (it.link) { try { if (typeof aliveSetLink === 'function') aliveSetLink(it.link, !!v); } catch (e) {} }
-            else if (v) delete S.off[it.k]; else S.off[it.k] = true;
+            else if (v) S.off[it.k] = false; else S.off[it.k] = true;
         }
         Object.keys(S.found).forEach(k => {
             const f = S.found[k];
@@ -646,6 +812,32 @@
         save(); renderInjectPanel();
     };
     window.gyInjectFilter = function (v) { onlyOff = !!v; renderInjectPanel(); };
+    // 「按功能看」里直接写某一场的设置（不改当前 viewScene）
+    window.gyInjectSetIn = function (scene, k, v) {
+        if (!scene) return window.gyInjectSet(k, v);
+        if (!S.sc[scene]) S.sc[scene] = {};
+        S.sc[scene][k] = !!v; save(); renderInjectPanel();
+    };
+    window.gyInjectSameIn = function (scene, k) {
+        if (!scene) return window.gyInjectSame(k);
+        if (S.sc[scene]) { delete S.sc[scene][k]; if (!Object.keys(S.sc[scene]).length) delete S.sc[scene]; }
+        save(); renderInjectPanel();
+    };
+    window.gyInjectSrcSetIn = function (scene, feat, k, v) {
+        if (!scene) return window.gyInjectSrcSet(feat, k, v);
+        if (!S.sc[scene]) S.sc[scene] = {};
+        S.sc[scene]['src:' + feat + ':' + k] = !!v; save(); renderInjectPanel();
+    };
+    // 视图模式：'data' = 按数据看（老样子）；'feat' = 按功能看（每个功能列出它读的全部东西）
+    let viewMode = 'data';
+    try { viewMode = localStorage.getItem('gy_inj_viewmode') || 'data'; } catch (e) {}
+    window.gyInjectViewMode = function (m) {
+        viewMode = (m === 'feat') ? 'feat' : 'data';
+        try { localStorage.setItem('gy_inj_viewmode', viewMode); } catch (e) {}
+        renderInjectPanel();
+    };
+    let openF = {};   // 「按功能看」里哪个功能是展开的
+    window.gyInjectToggleF = function (k) { openF[k] = !openF[k]; renderInjectPanel(); };
     window.gyInjectResetAll = async function () {
         if (!confirm('把所有条目都恢复成"注入"，各个场景单独设的也一起撤掉？（等于回到没动过这一页的状态）')) return;
         S.off = {}; S.sc = {}; save();      // src: 开头的、各场景单独设的，一起清
@@ -665,24 +857,40 @@
             .map(k => ({ k, label: S.found[k].head, desc: '（新功能自己带的，还没写说明）', box: S.found[k].box, auto: true }));
     }
 
-    function rowHtml(it, has) {
-        const on = itemOn(it, viewScene);
+    function rowHtml(it, has, scOverride) {
+        const sc = (scOverride === undefined) ? viewScene : scOverride;   // 「按功能看」里每一行都绑在自己那一场上
+        const on = itemOn(it, sc);
         const live = has[it.k];
-        const own = viewScene && scVal(viewScene, it.k) !== undefined;     // 这个场景单独设过
+        const own = sc && scVal(sc, it.k) !== undefined;                  // 这个场景单独设过
         const base = itemOn(it, '');                                       // 总设置是什么
+        const setCall = (scOverride === undefined) ? `gyInjectSet('${it.k}', this.checked)`
+                                                  : `gyInjectSetIn('${sc}','${it.k}', this.checked)`;
+        // always：关不掉的（人设正文那种）。照样列出来——这一页的意义就是让你看到
+        // prompt 里到底有什么，漏掉一条就等于骗自己。只是勾选框锁住、点不动。
+        if (it.always) {
+            return `<label class="gyinj-row lock">
+                <input type="checkbox" checked disabled>
+                <div class="gyinj-body">
+                  <div class="gyinj-t">${esc(it.label)}
+                    <span class="gyinj-tag own">永远带着 · 关不掉</span>
+                  </div>
+                  ${it.desc ? `<div class="gyinj-d">${esc(it.desc)}</div>` : ''}
+                </div>
+            </label>`;
+        }
         return `<label class="gyinj-row${on ? '' : ' off'}${own ? ' own' : ''}">
-            <input type="checkbox" ${on ? 'checked' : ''} onchange="gyInjectSet('${it.k}', this.checked)">
+            <input type="checkbox" ${on ? 'checked' : ''} onchange="${setCall}">
             <div class="gyinj-body">
               <div class="gyinj-t">${esc(it.label)}
-                ${it.link && !viewScene ? '<span class="gyinj-tag link">和活人感页同一个开关</span>' : ''}
+                ${it.link && !sc ? '<span class="gyinj-tag link">和活人感页同一个开关</span>' : ''}
                 ${it.auto ? '<span class="gyinj-tag">自动认出来的</span>' : ''}
                 ${own ? '<span class="gyinj-tag own">这一场单独设的</span>'
-                      : (viewScene ? `<span class="gyinj-tag dim">跟总设置一样（${base ? '带' : '不带'}）</span>` : '')}
+                      : (sc ? `<span class="gyinj-tag dim">跟总设置一样（${base ? '带' : '不带'}）</span>` : '')}
                 <span class="gyinj-tag ${live ? 'live' : 'dim'}">${live ? '现在有内容' : '现在是空的'}</span>
               </div>
               ${it.desc ? `<div class="gyinj-d">${esc(it.desc)}</div>` : ''}
             </div>
-            ${own ? `<span class="gyinj-peek" onclick="event.preventDefault();event.stopPropagation();gyInjectSame('${it.k}')">跟总设置</span>` : ''}
+            ${own ? `<span class="gyinj-peek" onclick="event.preventDefault();event.stopPropagation();gyInjectSameIn('${sc}','${it.k}')">跟总设置</span>` : ''}
             <span class="gyinj-peek" onclick="event.preventDefault();event.stopPropagation();gyInjectPeek('${it.k}')">看一眼</span>
         </label>`;
     }
@@ -762,6 +970,11 @@
         const scCount = k => Object.keys((S.sc && S.sc[k]) || {}).length;
         const chips = `<div class="gyinj-scn">
             <div class="gyinj-scn-hd">先选一个场景，再往下勾——<b>同一条数据，在不同场合该不该带，可以不一样</b>。</div>
+            <div class="gyinj-vm">
+              <span class="gyinj-vmc on" onclick="gyInjectViewMode('data')">📚 按数据看</span>
+              <span class="gyinj-vmc" onclick="gyInjectViewMode('feat')">🧰 按功能看</span>
+              <span class="gyinj-vm-tip">想知道"发推文到底读了什么"，切到「按功能看」一眼就全在那儿</span>
+            </div>
             <div class="gyinj-scn-row">
               <span class="gyinj-chip${viewScene ? '' : ' on'}" onclick="gyInjectSceneView('')">⚙️ 总设置</span>
               ${SCENES.map(x => `<span class="gyinj-chip${viewScene === x.k ? ' on' : ''}" onclick="gyInjectSceneView('${x.k}')">
@@ -775,6 +988,77 @@
               ${scCount(viewScene) ? `<br><span class="gyinj-scn-reset" onclick="gyInjectSceneReset()">↺ 这一场单独设的全撤掉（${scCount(viewScene)} 条）</span>` : ''}
             </div>` : `<div class="gyinj-scn-tip">现在改的是<b>总设置</b>：改了对所有场景生效，除非那个场景自己另设过。</div>`}
           </div>`;
+
+        /* ===== 「按功能看」：每一个功能列出来，点开就是它读的全部东西 =====
+           以前这一页只按"数据"分组，功能只是顶上一排小标签——
+           想知道"发推文到底读了什么"，得先点那个标签，再从 20 多组里一组组翻。
+           这个视图反过来：功能在外层，点开一个，底下就是**它读的完整清单**
+           （prompt 的每一段 + 这个功能自己额外读的素材），就地勾。 */
+        if (viewMode === 'feat') {
+            const featBlocks = SCENES.map(sc => {
+                const srcG = (window.gyInjectSrc ? window.gyInjectSrc.all() : []).filter(g => g.feat === sc.k);
+                // 这一场带了多少段 prompt
+                let fAll = 0, fOn = 0;
+                GROUPS.forEach(g => {
+                    const items = g.items.concat(extraItemsOf(g));
+                    items.forEach(x => { fAll++; if (itemOn(x, sc.k)) fOn++; });
+                });
+                let sTot = 0, sOnN = 0;
+                srcG.forEach(g => g.items.forEach(it => { sTot++; if (window.gyInjectSrc.on(g.feat, it.k, sc.k)) sOnN++; }));
+                const mine = Object.keys((S.sc && S.sc[sc.k]) || {}).length;
+                const open = openF[sc.k];
+                const body = !open ? '' : `<div class="gyinj-gb">
+                    ${sc.note ? `<div class="gyinj-gnote">${esc(sc.note)}</div>` : ''}
+                    <div class="gyinj-gnote">
+                      下面是<b>这个功能读的全部东西</b>，就地勾就是给这一场单独设，别的场景不受影响。
+                      ${mine ? `已经单独设过 ${mine} 条　<span class="gyinj-scn-reset" onclick="gyInjectSceneResetOf('${sc.k}')">↺ 全撤掉</span>` : '现在全部跟总设置走。'}
+                    </div>
+                    ${srcG.map(g => `<div class="gyinj-fsec">🔧 ${esc(g.title)}（这个功能自己额外读的素材）</div>
+                      ${g.items.map(it => {
+                        const isOn = window.gyInjectSrc.on(g.feat, it.k, sc.k);
+                        const own = scVal(sc.k, 'src:' + g.feat + ':' + it.k) !== undefined;
+                        return `<label class="gyinj-row${isOn ? '' : ' off'}${own ? ' own' : ''}">
+                          <input type="checkbox" ${isOn ? 'checked' : ''} onchange="gyInjectSrcSetIn('${sc.k}','${g.feat}','${it.k}', this.checked)">
+                          <div class="gyinj-body"><div class="gyinj-t">${esc(it.label)}
+                            ${own ? '<span class="gyinj-tag own">这一场单独设的</span>' : ''}</div>
+                            ${it.desc ? `<div class="gyinj-d">${esc(it.desc)}</div>` : ''}</div>
+                        </label>`; }).join('')}`).join('')}
+                    ${/* ⚠️ 这里原来写的是 sc.srcOnly ? '' : …，把那 5 个"程序替角色编内容"的功能
+                          整份清单藏了，只留它们自己那几项——于是页面上看着像"这几个功能只读 4 项"。
+                          查过了：小剧场 / 联网探索 / 很久没回 / 手机里那些人 / 换装，
+                          **五个全都调 buildBasePrompt**，也就是那 71 段它们一段不落全读。
+                          藏起来等于骗人，现在一视同仁全列出来。 */ ''}
+                    ${GROUPS.map(g => {
+                        const items = g.items.concat(extraItemsOf(g));
+                        const n = items.filter(x => itemOn(x, sc.k)).length;
+                        return `<div class="gyinj-fsec">${g.icon} ${esc(g.title)} <i>${n}/${items.length}</i></div>
+                                ${items.map(it => rowHtml(it, has, sc.k)).join('')}`;
+                    }).join('')}
+                  </div>`;
+                return `<div class="gyinj-g${open ? ' open' : ''}">
+                  <div class="gyinj-gh" onclick="gyInjectToggleF('${sc.k}')">
+                    <span class="gyinj-gi">${sc.icon}</span>
+                    <b>${esc(sc.title)}</b>
+                    <span class="gyinj-gn">带 ${fOn}/${fAll} 段${sTot ? ` · 另读 ${sOnN}/${sTot} 项` : ''}</span>
+                    ${mine ? `<span class="gyinj-tag own">单独设了 ${mine} 条</span>` : ''}
+                    <span class="gyinj-sp"></span>
+                    <span class="gyinj-gc">${open ? '收起 ⌃' : '展开 ⌄'}</span>
+                  </div>
+                  ${body}
+                </div>`;
+            }).join('');
+            box.innerHTML = `<div class="gyinj-scn"><div class="gyinj-scn-hd">
+                <b>按功能看</b>：每个功能点开，底下就是它读的<b>全部</b>数据——prompt 的每一段、
+                加上这个功能自己额外读的素材。就地勾＝只改这一个功能。</div>
+                <div class="gyinj-vm">
+                  <span class="gyinj-vmc" onclick="gyInjectViewMode('data')">📚 按数据看</span>
+                  <span class="gyinj-vmc on" onclick="gyInjectViewMode('feat')">🧰 按功能看</span>
+                </div></div>
+              <div class="gyinj-top"><div class="gyinj-sum">一共 <b>${SCENES.length}</b> 个功能</div>
+                <div class="gyinj-acts"><button type="button" onclick="gyInjectResetAll()">全部恢复注入</button></div></div>
+              ${featBlocks}`;
+            return;
+        }
 
         box.innerHTML = chips + `
           <div class="gyinj-top">
@@ -873,6 +1157,17 @@
     .gyinj-scn-tip b{color:inherit;}
     .gyinj-scn-reset{color:var(--gy-accent);cursor:pointer;}
     .gyinj-row.own{background:rgba(var(--gy-accent-rgb),.05);border-radius:8px;padding-left:6px;padding-right:6px;}
+    .gyinj-vm{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;}
+    .gyinj-vmc{border:1px solid var(--gy-border,#cfd9de);border-radius:999px;padding:4px 12px;
+        font-size:12.5px;cursor:pointer;line-height:1.7;transition:.15s;}
+    .gyinj-vmc:hover{border-color:#1d9bf0;color:#1d9bf0;}
+    .gyinj-vmc.on{background:#1d9bf0;border-color:#1d9bf0;color:#fff;font-weight:600;}
+    .gyinj-vm-tip{font-size:11px;opacity:.6;}
+    .gyinj-fsec{font-size:12px;font-weight:700;opacity:.75;margin:12px 0 2px;padding-top:8px;
+        border-top:1px dashed var(--gy-border,#e6ecf0);}
+    .gyinj-fsec i{font-style:normal;font-weight:400;opacity:.6;margin-left:4px;}
+    .gyinj-row.lock{cursor:default;opacity:.92;}
+    .gyinj-row.lock>input{cursor:not-allowed;}
     .gyinj-tag.own{border-color:var(--gy-accent);color:var(--gy-accent);}
     #gyinjPeek{position:fixed;inset:0;z-index:3200;background:rgba(0,0,0,.45);display:none;
       align-items:center;justify-content:center;padding:18px;}

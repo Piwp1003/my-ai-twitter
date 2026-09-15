@@ -117,6 +117,8 @@
     }
     // 卡上那句话（角色的反应 / 收不收的理由）有没有内容，决定要不要给展开箭头
     const hasBody = pk => !!(pk.line || pk.desc || pk.note || pk.reason);
+    // 到货之后的反应有好几种形态，不是只有"说了一句"
+    const REACT_KIND = { say: '说了句', act: '做了个动作', keep: '收起来了', use: '当场用了', mixed: 'TA 的反应' };
 
     window.gyParcelCardHtml = function (msg) {
         const pk = msg.parcel || {};
@@ -155,7 +157,7 @@
                 ${pk.desc ? `<div class="gypk-desc">${esc(pk.desc)}</div>` : ''}
                 ${pk.reason ? `<div class="gypk-note">下单时的说法：${esc(pk.reason)}</div>` : ''}
                 ${pk.line ? `<div class="gypk-said${st === 'declined' ? ' no' : ''}">${esc(pk.line)}</div>` : ''}
-                ${pk.note ? `<div class="gypk-note">${esc(pk.note)}</div>` : ''}
+                ${pk.note ? `<div class="gypk-note"><span class="gypk-kd">${esc(REACT_KIND[pk.noteKind] || '反应')}</span>${esc(pk.note)}</div>` : ''}
                 ${foot}
             </div>` : (foot ? `<div class="gypk-body">${foot}</div>` : '');
 
@@ -250,13 +252,25 @@
             if (String(pk.to) !== 'me') await askAccept(id);
             return pk;
         },
-        // 角色到货之后随口说的那句（js/26 的 reactToDelivery）收进卡里，不再单发一条消息
-        say(id, text) {
+        /* 角色到货之后的反应收进卡里，不再单发一条消息。
+           v113：反应不一定是一句话——也可能是"什么都没说，收进抽屉了"这种
+           行为。kind 记下是哪一种，卡上会标出来。 */
+        say(id, text, kind) {
             const f = findCard(id);
             if (!f || !text) return;
-            f.pk.note = String(text).slice(0, 200);
+            f.pk.note = String(text).slice(0, 300);
+            f.pk.noteKind = String(kind || 'say').slice(0, 8);
+            f.pk.noteAt = Date.now();
             f.pk.__open = true;
             refresh(f.sid);
+        },
+        // 给记忆注入用：这个人最近收到的东西，以及当时的反应
+        reacts(charId, n) {
+            return allCards()
+                .filter(pk => String(pk.to) === String(charId) && pk.note)
+                .sort((a, b) => (b.noteAt || b.at) - (a.noteAt || a.at))
+                .slice(0, n || 3)
+                .map(pk => ({ name: pk.name, kind: pk.noteKind || 'say', text: pk.note, at: pk.noteAt || pk.at }));
         },
         list: allCards,
         find: id => (findCard(id) || {}).pk || null
@@ -276,7 +290,8 @@
         pk.receivedAt = Date.now();
         if (line) pk.line = String(line).slice(0, 200);
         // 收下了才真的进随身物——以前是一到货就塞进去，等于"不收也归你"
-        if (yes && String(pk.to) !== 'me' && window.gyKit && typeof window.gyKit.add === 'function') {
+        // （v113 起 to === 'me' 也照样进——你自己也有一份随身物了）
+        if (yes && window.gyKit && typeof window.gyKit.add === 'function') {
             try {
                 const fromTag = String(pk.from) === 'me' ? 'user' : (String(pk.from) === String(pk.to) ? 'self' : 'char:' + pk.from);
                 await window.gyKit.add(pk.to, pk.name, pk.desc || '', fromTag, nameOf(pk.from));
@@ -287,7 +302,14 @@
         return pk;
     }
     // 送给角色：TA 自己决定收不收（开关 parcelAccept）
-    async function askAccept(id) {
+        // 报一下场景：这段生成属于「mall」那一场，好让「注入内容管理」能单独设它读什么（soft＝外层已经有场景就不抢）
+    async function askAccept() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('mall', () => askAcceptInner.apply(null, a));
+        return askAcceptInner.apply(null, a);
+    }
+    async function askAcceptInner(id) {
         const f = findCard(id);
         if (!f) return;
         const pk = f.pk;
@@ -455,6 +477,8 @@
     .gypk-body{max-height:0;overflow:hidden;padding:0 12px 0 18px;transition:max-height .22s,padding .22s;}
     .gypk-card.open .gypk-body{max-height:420px;padding:0 12px 12px 18px;}
     .gypk-desc{font-size:12.5px;color:#7a6455;line-height:1.7;}
+    .gypk-kd{display:inline-block;font-size:10px;border:1px solid rgba(128,128,128,.35);border-radius:4px;
+        padding:0 5px;margin-right:6px;opacity:.75;vertical-align:1px;}
     .gypk-note{font-size:12px;color:#a3907f;line-height:1.7;margin-top:3px;}
     .gypk-said{margin-top:8px;background:rgba(180,101,47,.09);border-left:3px solid var(--pk);
         border-radius:0 6px 6px 0;padding:8px 10px;font-size:13px;line-height:1.7;}

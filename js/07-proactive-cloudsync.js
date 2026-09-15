@@ -75,7 +75,7 @@ let isProactiveLetterRunning = false;
 async function checkAndTriggerProactiveLetters() {
     if (typeof isAutoOn === 'function' && !isAutoOn('proactiveLetter')) return;   // 🔌 设置里关掉了「角色主动给你写信」
     if (isInQuietHours()) return;
-    const api = getApiConfig(true);
+    const api = getApiMain();
     if (!api.key || isProactiveLetterRunning) return;
     if (typeof generateProactiveLetter !== 'function') return; // 定义在 js/08，防止加载顺序问题报错
 
@@ -598,7 +598,9 @@ function switchMainView(viewId, param = null) {
     }
     // （'theater' 和 'tabloid' 的分支已经并进上面的「日常」里了）
     else if (viewId === 'storyStudio') { document.getElementById('view-story-studio').style.display = 'block'; const nav = document.getElementById('nav-storystudio'); if (nav) nav.className = 'nav-item active'; if (typeof renderStoryStudio === 'function') renderStoryStudio(); }
-    else if (viewId === 'factionNetwork') { document.getElementById('view-faction-network').style.display = 'block'; document.getElementById('nav-faction').className = 'nav-item active'; renderFactionNetworkGrid(); }
+    // ⚠️ nav-faction 这一行从侧边栏拿掉了（关系网搬进了小功能），所以这里必须判空——
+    // 不判的话点一次关系网就是一个 TypeError，整个 switchMainView 断在这儿，页面卡住不动。
+    else if (viewId === 'factionNetwork') { document.getElementById('view-faction-network').style.display = 'block'; const nvF = document.getElementById('nav-faction'); if (nvF) nvF.className = 'nav-item active'; renderFactionNetworkGrid(); }
     else if (viewId === 'factionMembers') { document.getElementById('view-faction-members').style.display = 'block'; renderFactionMembersGrid(param); }
     else if (viewId === 'charRelations') { document.getElementById('view-char-relations').style.display = 'block'; renderCharRelationsView(param); }
     else if (viewId === 'factionOverview') { document.getElementById('view-faction-overview').style.display = 'block'; renderFactionOverviewList(); }

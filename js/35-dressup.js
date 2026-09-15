@@ -64,6 +64,7 @@
         log: [],            // [{id, at, kind, target, src, by, note}]
         auto: {},           // { 角色id: 上次自己换的时间 }
         everyGapH: 72,      // 用户自定义：角色多久可能想换一次（小时）
+        gapMode: 'fixed',   // fixed 用上面那个数 / self 让 TA 按人设自己定
         noticeMode: 'rel'   // rel 按关系网+人设 / all 所有人都注意到 / none 谁都别提
     };
     async function save() { try { if (LF) await LF.setItem(KEY, JSON.parse(JSON.stringify(S))); } catch (e) {} }
@@ -163,14 +164,27 @@
             return window.gyInjectInSceneSoft('dress', () => sayNoticeInner(c, K, target, src));
         return sayNoticeInner(c, K, target, src);
     }
+    // 「生成时读什么」的开关（没登记过/注入中心还没就绪时一律当开着）
+    const srcOn = k => { try { return !window.gyInjectSrc || window.gyInjectSrc.on('dress', k); } catch (e) { return true; } };
+    // 最近换过的样子，拼成一小段给模型当素材
+    function dressHistLine(charId) {
+        try {
+            const list = (typeof window.gyDressRecent === 'function') ? (window.gyDressRecent(charId, 5) || []) : [];
+            if (!list.length) return '';
+            return '\n【最近换过的样子】\n' + list.slice(0, 5).map(x => '· ' + x.text).join('\n') + '\n';
+        } catch (e) { return ''; }
+    }
     async function sayNoticeInner(c, K, target, src) {
         const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
         if (!api || !api.key) return;
-        const whose = String(target) === 'me'
-            ? ((typeof userDisplayName === 'function') ? userDisplayName(c) : '对方')
-            : nameOf(target);
-        const base = (typeof buildBasePrompt === 'function') ? buildBasePrompt(c, false, '') : ('你是' + c.name);
-        const ask = `你注意到${whose}换了${K.name}。
+        const whose = !srcOn('uname') ? '对方'
+            : (String(target) === 'me'
+                ? ((typeof userDisplayName === 'function') ? userDisplayName(c) : '对方')
+                : nameOf(target));
+        const base = (srcOn('base') && typeof buildBasePrompt === 'function') ? buildBasePrompt(c, false, '') : ('你是' + c.name);
+        const hist = srcOn('hist') ? dressHistLine(c.id) : '';
+        const what = srcOn('what') ? `${whose}换了${K.name}` : '有件跟外表有关的小事';
+        const ask = `${hist}你注意到${what}。
 按你的性格决定要不要开口提这件事——可以夸、可以打趣、可以问一句"怎么突然换了"、
 可以阴阳一句，也可以觉得没什么好说的。
 不想提就只输出 NO；想说就直接输出那句话，30 字以内，不要引号。`;
@@ -353,6 +367,10 @@
         if (typeof addNotification === 'function') addNotification(`<b>${c.name}</b> 想换${K.name} ${K.ico}`, null, charId, c, note || '等你回话');
         return d;
     };
+    /* 你答完之后 TA 得有个反应。
+       以前卡上写死"换上了。/ 这次算了。"——是 TA 提的议，你点了同意或者拒绝，
+       TA 一个字不说很奇怪：被答应了会高兴、被拒了可能没所谓也可能有点在意。
+       所以这里问一次（默认走副 API，一句话），拿不到就退回原来那两句。 */
     window.gyDressAnswer = async function (id, yes) {
         const f = findCard(id); if (!f) return;
         const d = f.d;
@@ -361,7 +379,83 @@
         d.line = yes ? '换上了。' : '这次算了。';
         if (yes) await doApply(d.kind, d.target, d.src, d.from, d.note);
         refresh(f.sid);
+        try { await sayBack(d, yes); } catch (e) {}
     };
+    // 报场景：这段生成属于「dress」那一场（soft＝外层已有场景就不抢）
+    async function sayBack() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('dress', () => sayBackInner.apply(null, a));
+        return sayBackInner.apply(null, a);
+    }
+    async function sayBackInner(d, yes) {
+        if (!on('dressAsk') && !on('dressCharSelf')) return;
+        const c = charOf(d.charId); if (!c) return;
+        const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+        if (!api || !api.key) return;
+        const K = kindOf(d.kind);
+        const whose = d.target === 'me' ? '对方的' : '你自己的';
+        const base = (srcOn('base') && typeof buildBasePrompt === 'function') ? buildBasePrompt(c, false, '') : ('你是' + c.name);
+        const hist = srcOn('hist') ? dressHistLine(c.id) : '';
+        const uname = (srcOn('uname') && typeof userDisplayName === 'function') ? userDisplayName(c) : '对方';
+        const what = srcOn('what') ? `把${whose}${K.name}换成一张图` : '换点什么';
+        const ask = `${hist}你刚才提议${what}，${uname}${yes ? '答应了，已经换上了' : '说这次算了，没换'}。
+按你的性格回一句。${yes ? '可以高兴、可以只是"嗯"、可以顺口说点别的。' : '可以完全没所谓，也可以有点在意、有点扫兴、或者嘴上说没事——别一律写成体贴懂事。'}
+一句话 25 字以内，不要引号，不要旁白。按你的性格这会儿真不会开口就只输出 NO。`;
+        const msgs = (typeof buildStructuredMessages === 'function') ? buildStructuredMessages(base, [], ask) : [{ role: 'user', content: base + '\n' + ask }];
+        const r = await callChatCompletionAPI(api, msgs);
+        let t = (r && r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content || '').trim();
+        if (!t || t.toUpperCase().indexOf('NO') === 0) return;
+        t = t.replace(/^["「]|["」]$/g, '').trim().slice(0, 40);
+        if (!t) return;
+        d.line = t;                                   // 卡上那句换成 TA 真说的
+        const f2 = findCard(d.id); if (f2) refresh(f2.sid);
+        // 顺带在聊天里也说一句，不然只有卡上一行字，像系统提示
+        try { if (typeof deliverCharMoveToChatMessage === 'function') deliverCharMoveToChatMessage(c, t, null); } catch (e) {}
+    }
+
+    // 让 TA 自己挑这张图该换哪一样（顺带给出同不同意）
+    // 报场景：这段生成属于「dress」那一场（soft＝外层已有场景就不抢）
+    async function askKind() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('dress', () => askKindInner.apply(null, a));
+        return askKindInner.apply(null, a);
+    }
+    async function askKindInner(charId, src, note) {
+        const c = charOf(charId); if (!c) return;
+        const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+        if (!api || !api.key) { toast('还没配 API Key，先按头像来'); return window.gyDressAsk({ charId, kind: 'avatar', src, note }); }
+        toast('问问 ' + c.name + ' 想拿这张图换哪一样…');
+        try {
+            const base = (typeof buildBasePrompt === 'function') ? buildBasePrompt(c, false, '') : ('你是' + c.name);
+            const ask = `${(typeof userDisplayName === 'function') ? userDisplayName(c) : '对方'}给你看了一张图${note ? `，还说了一句"${note}"` : ''}，
+说这张图给你用，让你自己决定拿来换哪一样。
+可选：avatar（你的头像）/ banner（你资料页的背景图）/ wall（你手机的壁纸）。
+按你的性格挑一个——有人只肯换壁纸（那是自己看的），有人无所谓什么都行，也有人根本不想换。
+只输出 JSON：{"kind":"avatar|banner|wall","ok":true或false,"line":"你要说的一句话，25字以内"}`;
+            const msgs = (typeof buildStructuredMessages === 'function') ? buildStructuredMessages(base, [], ask) : [{ role: 'user', content: base + '\n' + ask }];
+            const d = await callChatCompletionAPI(api, msgs);
+            let t = (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content || '').trim();
+            if (typeof extractAfterFinalMarker === 'function') t = extractAfterFinalMarker(t).trim();
+            t = t.replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
+            let o = (typeof extractJsonObject === 'function') ? extractJsonObject(t) : JSON.parse(t);
+            if (Array.isArray(o)) o = o[0];
+            const kind = (o && ['avatar', 'banner', 'wall'].indexOf(o.kind) >= 0) ? o.kind : 'avatar';
+            const line = String((o && o.line) || '').replace(/^["「]|["」]$/g, '').slice(0, 40);
+            if (o && o.ok === false) {
+                // TA 自己就不想换：别再发一张要 TA 点的卡，直接在聊天里回一句
+                if (line && typeof deliverCharMoveToChatMessage === 'function') deliverCharMoveToChatMessage(c, line, null);
+                toast(c.name + '：' + (line || '这次算了'));
+                return;
+            }
+            toast(c.name + ' 想拿它当' + kindOf(kind).name + (line ? '：' + line : ''));
+            await window.gyDressAsk({ charId, kind, src, note: note || line });
+        } catch (e) {
+            toast('没问出来，先按头像来');
+            await window.gyDressAsk({ charId, kind: 'avatar', src, note });
+        }
+    }
 
     /* ================= 从图库点一张图 → 拿它换什么 ================= */
     window.gyDressPicker = function (im) {
@@ -376,6 +470,7 @@
             <img src="${esc(im.src)}" style="width:100%;max-height:170px;object-fit:cover;border-radius:12px;display:block;margin-bottom:12px;">
             <div class="input-group"><label>换什么</label>
                 <select id="gydrKind">
+                    <option value="self">让 TA 自己看着办（头像 / 背景 / 壁纸）</option>
                     <option value="avatar">角色头像</option>
                     <option value="banner">角色资料背景图</option>
                     <option value="wall">角色手机壁纸</option>
@@ -408,16 +503,35 @@
         try { if (typeof gyGalleryClose === 'function') gyGalleryClose(); } catch (e) {}
         if (kind === 'appbg') { await doApply('appbg', 'me', im.src, 'me', note); return; }
         if (!who) return toast('先去角色中心搓一个角色');
+        /* 「让 TA 自己看着办」：这个流程本来就是"先问一声、TA 同意了才换"，
+           既然要问，那"这张图拿来当头像还是壁纸"也该让 TA 自己说。
+           问一次就把"换哪一样 + 同不同意"一起定了，不多花一次调用。 */
+        if (kind === 'self') { await askKind(who, im.src, note); return; }
         await window.gyDressAsk({ charId: who, kind, src: im.src, note });
     };
 
     /* ================= 角色自己想换 =================
-       两种节奏：你自定义多久一次（everyGapH），或者交给自主模式让 TA 自己感受。 */
+       三种节奏：你自定义多久一次（everyGapH）、交给自主模式（填 0）、
+       或者**让 TA 按自己的人设定**（gapMode='self'）——
+       爱打扮的人两三天就想换一张，冷淡的人半年不动一次，
+       这本来就不该是所有角色一个数。本地算，不调 API。 */
+    function gapHoursFor(c) {
+        if (S.gapMode !== 'self') return Math.max(1, Number(S.everyGapH) || 72);
+        const per = String((c && c.persona) || '') + ' ' + String((c && c.bio) || '');
+        let h = 72;
+        if (/爱美|讲究|精致|臭美|时髦|潮|自恋|爱打扮|少女|活泼|跳脱|善变/.test(per)) h = 30;
+        if (/冷淡|沉默|寡言|懒|不在意|随便|朴素|克制|寡淡|面瘫|古板|守旧/.test(per)) h = 240;
+        if (/念旧|长情|执拗|固执/.test(per)) h = 400;
+        // 同一个人上下浮动 ±25%，别整齐得像定时器
+        const seed = String((c && c.id) || '').split('').reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
+        return Math.round(h * (0.75 + (seed % 100) / 200));
+    }
+    window.gyDressGapOf = charId => gapHoursFor(charOf(charId));
     async function maybeSelfChange(c) {
         if (!on('dressCharSelf')) return false;
         const imgs = (window.gyGallery && window.gyGallery.seenBy(c.id)) || [];
         if (!imgs.length) return false;
-        const gap = Math.max(1, Number(S.everyGapH) || 72) * 3600000;
+        const gap = gapHoursFor(c) * 3600000;
         if (Date.now() - (S.auto[String(c.id)] || 0) < gap) return false;
         S.auto[String(c.id)] = Date.now(); await save();
         const im = rnd(imgs);
@@ -452,7 +566,7 @@
     function startBeat() {
         if (beat) return;
         beat = setInterval(async () => {
-            if (!on('dressCharSelf') || S.everyGapH <= 0) return;
+            if (!on('dressCharSelf') || (S.gapMode !== 'self' && S.everyGapH <= 0)) return;
             const cs = chars();
             if (!cs.length) return;
             try { await maybeSelfChange(rnd(cs)); } catch (e) {}
@@ -473,8 +587,34 @@
         if ((tries || 0) < 12) setTimeout(() => regChatAct((tries || 0) + 1), 500);
     })(0);
 
-    window.gyDressSet = async function (k, v) { S[k] = (k === 'everyGapH') ? parseInt(v) : v; await save(); };
-    window.gyDressCfg = () => JSON.parse(JSON.stringify({ everyGapH: S.everyGapH, noticeMode: S.noticeMode }));
+    window.gyDressSet = async function (k, v) {
+        S[k] = (k === 'everyGapH') ? parseInt(v) : v;
+        await save();
+        try { if (typeof window.gyGalleryRepaint === 'function') window.gyGalleryRepaint(); } catch (e) {}
+    };
+    window.gyDressCfg = () => JSON.parse(JSON.stringify({ everyGapH: S.everyGapH, noticeMode: S.noticeMode, gapMode: S.gapMode || 'fixed' }));
+
+    /* ---------- 「生成时读什么」登记 ----------
+       换装这几句话（TA 注意到你换了样子 / 你答应或拒绝之后 TA 的反应）是现生成的，
+       生成时会去读一批东西当素材。以前读什么是写死的，现在逐条登记出来由你决定。 */
+    function regSrc() {
+        try {
+            if (!window.gyInjectSrc || typeof window.gyInjectSrc.def !== 'function') return;
+            window.gyInjectSrc.def({
+                feat: 'dress', icon: '🎀', title: '有人注意到你换了样子',
+                note: '生成这几句话时递给模型的材料。全关掉的话模型手里只剩"换了什么"这一件事实，说出来的话会很空。',
+                items: [
+                    { k: 'base', label: '这个角色的整份人设与记忆',
+                      desc: '走的是跟聊天同一套 prompt（人设、世界书、日程、关系账本、小功能那些）。具体带哪几段，在上面「① prompt 里有哪几段」里按「有人注意到你换了样子」这一场单独设。' },
+                    { k: 'what', label: '换的是什么（头像 / 背景 / 壁纸）+ 换的是谁的',
+                      desc: '这条关掉模型就不知道在说哪件事了，一般别关。' },
+                    { k: 'hist', label: '最近换过的样子（谁提的、谁答应了、谁注意到了）',
+                      desc: '让 TA 说得出"你上次那张也挺好看"这种话。关掉之后每次反应都是孤立的。' },
+                    { k: 'uname', label: '你在 TA 面前的称呼', desc: '' }
+                ]
+            });
+        } catch (e) {}
+    }
 
     /* ---------- 开关 ---------- */
     function addSwitches() {
@@ -533,5 +673,9 @@
         await load();
         startBeat();
         setTimeout(addAutonomy, 1500);
+        // 注入中心可能比这个模块晚就绪，隔一会儿再登记一次（同 feat 会覆盖，不会重复）
+        regSrc();
+        setTimeout(regSrc, 1200);
+        setTimeout(regSrc, 3000);
     })();
 })();

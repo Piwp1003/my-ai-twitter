@@ -445,6 +445,13 @@ function requestAllAppPermissionsOnLaunch() {
     }
 }
 
+// 🖐️ 切聊天回复模式
+function gySetChatReplyMode(v) {
+    gyChatReplyMode = (v === 'manual') ? 'manual' : 'auto';
+    try { if (typeof gyPaintReplyBtn === 'function') gyPaintReplyBtn(); } catch (e) {}
+    try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+}
+
 function applyDarkTheme() {
     document.body.classList.toggle('dark-theme', !!darkTheme);
     if (typeof applyUiTheme === 'function') applyUiTheme();
@@ -680,7 +687,7 @@ function getFullDataSnapshot() {
     return {
         myApiUrl, myApiKey, myModel, subApiUrl, subApiKey, subModel, vecApiUrl, vecApiKey, lastWorkingModel, lastWorkingSubModel, quietHoursEnabled, quietHoursStart, quietHoursEnd, samplerTemperature, samplerTopP, samplerFrequencyPenalty, samplerPresencePenalty, samplerTopK, samplerMaxTokens,
         myCharacters, globalPosts, anonPosts, characterGroups, factionColors, charRelationships, relationshipTypePresets, statusTypes, globalEmoticons, worldbooks, worldbookCategories, globalChats, groupChats, currentUser, tabloidAccount, trendingTags,
-        globalBgImage, globalBgOpacity, allowActionTags, humanFeelEnabled, tpesEnabled, autoRenderStatusChips, showStatusInPosts, showStatusInComments, showStatusInDiary, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, commentWordLimit, chatMsgCountMin, chatMsgCountMax, chatReplyStyleMode, chatSummaryInterval, groupSummaryInterval, postMemoryInterval, chatListViewMode, pinnedSessionIds,
+        globalBgImage, globalBgOpacity, allowActionTags, gyChatReplyMode, humanFeelEnabled, tpesEnabled, autoRenderStatusChips, showStatusInPosts, showStatusInComments, showStatusInDiary, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, commentWordLimit, chatMsgCountMin, chatMsgCountMax, chatReplyStyleMode, chatSummaryInterval, groupSummaryInterval, postMemoryInterval, chatListViewMode, pinnedSessionIds,
         letterReplyDelayMin, letterReplyDelayMax, globalUserDiaries,
         globalNovels, storySessions, novelCustomCSS, globalCustomCSS, tabloidPosts, siteLogoImg,
         forumThreads,
@@ -832,6 +839,7 @@ async function loadAllData() {
                 if (parsed.samplerTopK !== undefined) samplerTopK = parsed.samplerTopK;
                 if (parsed.samplerMaxTokens !== undefined) samplerMaxTokens = parsed.samplerMaxTokens;
                 if (parsed.allowActionTags !== undefined) allowActionTags = parsed.allowActionTags;
+                if (parsed.gyChatReplyMode !== undefined) gyChatReplyMode = parsed.gyChatReplyMode === 'manual' ? 'manual' : 'auto';
                 if (parsed.enableCharMoveToChat !== undefined) enableCharMoveToChat = parsed.enableCharMoveToChat;
                 if (parsed.showNovelReasoning !== undefined) showNovelReasoning = parsed.showNovelReasoning;
                 if (parsed.showNovelFloorNumber !== undefined) showNovelFloorNumber = parsed.showNovelFloorNumber;
@@ -933,6 +941,8 @@ async function loadAllData() {
                     if (el && uiSyncMap[id] !== undefined) el.value = uiSyncMap[id];
                 });
                 if (document.getElementById('allowActionTags')) document.getElementById('allowActionTags').checked = allowActionTags;
+                if (document.getElementById('gyChatReplyModeSel')) document.getElementById('gyChatReplyModeSel').value = gyChatReplyMode;
+                try { if (typeof gyPaintReplyBtn === 'function') gyPaintReplyBtn(); } catch (e) {}
                 if (document.getElementById('enableCharMoveToChat')) document.getElementById('enableCharMoveToChat').checked = enableCharMoveToChat;
                 if (document.getElementById('showNovelReasoning')) document.getElementById('showNovelReasoning').checked = showNovelReasoning;
                 if (document.getElementById('showNovelFloorNumber')) document.getElementById('showNovelFloorNumber').checked = showNovelFloorNumber;

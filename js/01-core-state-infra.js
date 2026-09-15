@@ -266,7 +266,9 @@ function updateSiteLogo() {
     // onerror：logo 图片取不到时把自己藏掉，只留下面那行署名。
     // 打包进 App / 拷到别的目录时 icons/ 偶尔会漏带，少一张装饰图不该留个裂图占位，
     // 也不该在控制台里反复刷"资源加载失败"。自定义 logo 同理（用户可能删了那张图）。
-    const imgStyle = `height:126px; width:auto; display:block; object-fit:contain; cursor:pointer;`;
+    // 高度：原来是 126px，比两行导航还高，把整条侧边栏顶得装不下（15 行时内容 1175px、
+    // 窗口才 1000px，刷新和设置得滚动才看得见）。缩到 40px，署名那行保留。
+    const imgStyle = `height:40px; width:auto; display:block; object-fit:contain; cursor:pointer;`;
     const onErr = `this.style.display='none'`;
     const src = siteLogoImg || './icons/icon-192.png';
     container.innerHTML = `<img src="${src}" alt="谷雨" style="${imgStyle}" onerror="${onErr}">${signatureHTML}`;
@@ -368,6 +370,9 @@ function gyNoticeIfTruncated(data) {
 
 // 设置及字数限制
 let allowActionTags = false; // 控制是否允许动作描写
+// 🖐️ 聊天回复模式：auto = 消息发出去 TA 就回（一直以来的行为）
+//                 manual = 发完不自动回，想让 TA 回的时候点输入框右边那颗「回复」
+let gyChatReplyMode = 'auto';
 // 关闭（默认）=现有逻辑：角色对用户评论/推文互动必须按原有规则回应（评论/点赞/NO等）。
 // 开启后：角色在这些场景下多一个选择——可以自主判断"这事儿更适合私下聊"，转而主动发一条私聊消息去找用户聊，
 // 而不是老老实实在推文底下评论。目前接入了"用户评论互动"和"角色对用户新帖子的反应"这两个最主要的场景。
@@ -1216,7 +1221,7 @@ let tweetTimeAbs = false;
 let gyMainWidth = 600;
 let gyLeftWidth = 275;
 let gyFontSize = 15;
-const GY_APP_VERSION = 'v112';
+const GY_APP_VERSION = 'v126';
 
 const GY_FEATURE_MAP = {
     // 聊天
@@ -1273,6 +1278,7 @@ const AUTO_FEATURE_DEFS = [
     // 所以做成"主动打开才有"，而不是"发现了再去关"。
     { key: 'charTheater',     label: '角色之间的后台小剧场', desc: '每 5 分钟有 30% 概率，让有关系的两个角色在背后自己演一段，存进「我们的故事 → Ta们在做什么」。默认关着——不打开的话一次 API 都不会调。', cost: '触发一次一次调用', defaultOff: true, group: '背后', where: '「我们的故事 → Ta们在做什么」' },
     { key: 'theaterMemory',   label: '小剧场记忆总结',       desc: '把角色参与过的小剧场总结成一段记忆，让 TA 记得"我前几天跟谁发生过什么"。聊天/发推/评论/日记信件/论坛都会用上（小说和续写不用）。', cost: '每个角色攒够 3 场才总结一次', group: '记忆', where: '小剧场记录；效果在「记忆总览」' },
+    { key: 'vecAutoBackfill', label: '向量记忆自动补算旧内容', desc: '聊天消息只在**发出的那一刻**算一次向量，所以你打开向量记忆之前的那几百条永远轮不上，数字会一直停在"83 / 260"不动。打开这一项之后，程序每两分钟悄悄补 8 条，数字会自己往上走。也可以不开，去「记忆总览 → 向量记忆」里手动点一次补齐。', cost: '每补一条一次 embedding 调用（很便宜，但不是免费）；一轮最多 8 条', defaultOff: true, group: '记忆', where: '记忆总览 → 🧠 向量记忆' },
     { key: 'chatSummary',     label: '聊天自动总结',         desc: '聊天记录攒够设定条数后，自动总结一次存进记忆，防止聊久了失忆。', cost: '每次总结一次调用，但能省下后续每轮的历史长度', group: '记忆', where: '设置 → 基本设置 → 聊天总结条数；效果在「记忆总览」' },
     { key: 'postMemory',      label: '推文记忆自动总结',     desc: '角色发够设定条数的推文后，自动总结成"专属推文记忆"。', cost: '每次总结一次调用', group: '记忆', where: '设置 → 基本设置 → 推文记忆条数；效果在「记忆总览」' },
     { key: 'scheduleMemory',  label: '日程记忆总结',         desc: '把过去几天的日程归档、总结成一段"最近的生活轨迹"，让角色记得自己前几天在忙什么。聊天/发推/评论/日记信件/论坛都会用上这段记忆（小说和续写不用，那两个有自己的剧情线）。', cost: '攒够 3 天才总结一次，每次一次调用', group: '记忆', where: '日程归档（保留天数在「记忆总览」里调）' },
@@ -2967,30 +2973,185 @@ function cosineSimilarity(a, b) {
     return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+// ⚠️ 这里以前是 `catch (e) { return null; }` —— 一个字都不留。
+//    结果是：模型名填错、key 过期、地址写错、返回了一个 error 对象……全都长一个样子：
+//    "已向量化 83 / 260"，数字停在那儿不动，谁也不知道为什么。
+//    现在把失败原因留在 window.gyVecLastErr 上，记忆总览那一页直接显示出来。
+window.gyVecLastErr = '';
 async function getEmbedding(text) {
     if (!text || !text.trim()) return null;
     const api = getVectorApiConfig();
-    if (!api.key) return null;
+    if (!api.key) { window.gyVecLastErr = '还没配 Embedding 用的 API Key（设置 → API 与模型 → 向量记忆专用API，留空就用主 API）'; return null; }
     try {
         const res = await smartFetch(`${api.url}/embeddings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${api.key}` },
             body: JSON.stringify({ model: embeddingModel || 'text-embedding-3-small', input: text.slice(0, 3000) })
         });
-        const data = await res.json();
-        return data?.data?.[0]?.embedding || null;
-    } catch (e) { return null; }
+        let data = null;
+        try { data = await res.json(); } catch (e) { data = null; }
+        if (!res.ok) {
+            const m = (data && (data.error?.message || data.message)) || ('HTTP ' + res.status);
+            window.gyVecLastErr = String(m).slice(0, 160)
+                + (res.status === 401 ? '（key 不对或没权限）' : res.status === 404 ? '（地址或模型名不对）' : '');
+            return null;
+        }
+        if (data && data.error) { window.gyVecLastErr = String(data.error.message || data.error).slice(0, 160); return null; }
+        const vec = data?.data?.[0]?.embedding || null;
+        if (!vec) { window.gyVecLastErr = '接口回了个没有 embedding 的东西——多半是模型名不是 embedding 模型'; return null; }
+        window.gyVecLastErr = '';
+        return vec;
+    } catch (e) {
+        window.gyVecLastErr = String(e.message || e).slice(0, 160);
+        return null;
+    }
 }
 
+// 太短的不算：跟聊天消息的过滤标准保持一致，这个数字要跟界面上写的对得上
+const GY_VEC_MIN_LEN = 10;
+window.gyVecTooShort = t => !t || String(t).trim().length < GY_VEC_MIN_LEN;
 
 // 聊天消息发出去之后，后台悄悄给它算一个向量，不阻塞聊天体验，失败了也无所谓
 async function embedMessageInBackground(msg) {
-    if (!enableVectorMemory || !msg || !msg.text || msg.text.trim().length < 10) return; // 太短的消息（"在吗""哈哈"之类）检索价值低，不值得为它调一次embedding
+    if (!enableVectorMemory || !msg || !msg.text || msg.text.trim().length < GY_VEC_MIN_LEN) return; // 太短的消息（"在吗""哈哈"之类）检索价值低，不值得为它调一次embedding
     try {
         const vec = await getEmbedding(msg.text);
         if (vec) { msg.embVec = vec; saveAllData(); }
     } catch (e) { /* 静默失败 */ }
 }
+
+/* ===================== 把还没算过的一次补齐 =====================
+   为什么需要这个：
+   · 聊天消息只在**发出的那一刻**后台算一次。你是聊到一半才打开向量记忆的，
+     那之前的几百条永远轮不上——它们不会自己回头补。
+   · 日记/信件/小说/论坛那一批本来是"检索时顺手补"，可那要等你**真的在聊天**、
+     而且这个角色**真的走到了检索这一步**。你光看记忆总览，它就一直是 0 / 9。
+   所以给一个"点了就补"的入口。点了就跑，不看自动开关——全 app 一条规矩。
+   ==================================================================== */
+window.gyVecScan = async function (sessionId, isGroup) {
+    const out = { chatAll: 0, chatDone: 0, chatShort: 0, chatTodo: 0,
+                  dataAll: 0, dataDone: 0, dataTodo: 0 };
+    const history = (typeof globalChats !== 'undefined' && globalChats[sessionId]) || [];
+    history.forEach(m => {
+        if (!m || !m.text) return;
+        out.chatAll++;
+        if (m.embVec) out.chatDone++;
+        else if (window.gyVecTooShort(m.text)) out.chatShort++;
+        else out.chatTodo++;
+    });
+    const char = isGroup ? null : (typeof myCharacters !== 'undefined' ? myCharacters.find(c => c.id == sessionId) : null);
+    if (char && typeof collectCharVectorCandidates === 'function') {
+        const cands = await collectCharVectorCandidates(char);
+        out.dataAll = cands.length;
+        cands.forEach(it => { if (it.ref.embVec) out.dataDone++; else out.dataTodo++; });
+        out._cands = cands;
+    }
+    return out;
+};
+window.gyVecBackfill = async function (sessionId, isGroup, onProgress) {
+    window.gyVecLastErr = '';
+    const say = m => { try { if (onProgress instanceof Function) onProgress(m); } catch (e) {} };
+    const history = (typeof globalChats !== 'undefined' && globalChats[sessionId]) || [];
+    const jobs = [];
+    history.forEach(m => {
+        if (m && m.text && !m.embVec && !window.gyVecTooShort(m.text))
+            jobs.push({ text: m.text, set: v => { m.embVec = v; } });
+    });
+    const char = isGroup ? null : (typeof myCharacters !== 'undefined' ? myCharacters.find(c => c.id == sessionId) : null);
+    if (char && typeof collectCharVectorCandidates === 'function') {
+        (await collectCharVectorCandidates(char)).forEach(it => {
+            if (!it.ref.embVec) jobs.push({ text: it.text, set: v => { it.ref.embVec = v; } });
+        });
+    }
+    if (!jobs.length) { say('没有要补的，全都算过了。'); return { ok: 0, fail: 0, total: 0 }; }
+    let ok = 0, fail = 0;
+    const BATCH = 5;
+    for (let i = 0; i < jobs.length; i += BATCH) {
+        say(`正在补算… ${Math.min(i + BATCH, jobs.length)} / ${jobs.length}`);
+        await Promise.all(jobs.slice(i, i + BATCH).map(async j => {
+            try { const v = await getEmbedding(j.text); if (v) { j.set(v); ok++; } else fail++; }
+            catch (e) { fail++; }
+        }));
+        // 一路失败就别硬撑着把几百条全试一遍——多半是 key/模型不对
+        if (ok === 0 && fail >= 10) { say('连着失败了 10 条，先停下。' + (window.gyVecLastErr || '')); break; }
+    }
+    try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+    say(fail ? `补完了：成功 ${ok} 条，失败 ${fail} 条。${window.gyVecLastErr ? '失败原因：' + window.gyVecLastErr : ''}`
+             : `补完了：${ok} 条全部成功。`);
+    return { ok, fail, total: jobs.length };
+};
+
+/* 把**所有**会话都补一遍。
+   以前只能一个会话一个会话点——你有十个角色就得进去十次，
+   而且不进那一页根本不知道哪个还差着。 */
+window.gyVecBackfillAll = async function (onProgress) {
+    const say = m => { try { if (onProgress instanceof Function) onProgress(m); } catch (e) {} };
+    const ids = [];
+    try { Object.keys(globalChats || {}).forEach(k => ids.push(k)); } catch (e) {}
+    try { (myCharacters || []).forEach(c => { if (ids.indexOf(String(c.id)) < 0) ids.push(String(c.id)); }); } catch (e) {}
+    let ok = 0, fail = 0, total = 0, n = 0;
+    for (const id of ids) {
+        n++;
+        const isG = String(id).indexOf('g_') === 0;
+        const r = await window.gyVecBackfill(id, isG, m => say(`（${n}/${ids.length}）${m}`));
+        ok += r.ok; fail += r.fail; total += r.total;
+        if (r.fail >= 10 && r.ok === 0) break;     // key/模型不对，别把几千条全试一遍
+    }
+    say(fail ? `全部补完：成功 ${ok} 条，失败 ${fail} 条。${window.gyVecLastErr ? '失败原因：' + window.gyVecLastErr : ''}`
+             : `全部补完：${ok} 条全部成功。`);
+    return { ok, fail, total };
+};
+
+/* 一共还差多少条（不分会话）——好在页面上一句话说清楚规模 */
+window.gyVecTodoCount = function () {
+    let todo = 0, done = 0;
+    try {
+        Object.keys(globalChats || {}).forEach(k => {
+            (globalChats[k] || []).forEach(m => {
+                if (!m || !m.text) return;
+                if (m.embVec) { done++; return; }
+                if (!window.gyVecTooShort(m.text)) todo++;
+            });
+        });
+    } catch (e) {}
+    return { todo, done };
+};
+
+/* 自动补算：开着的话，闲下来就悄悄补几条，数字会自己往上走。
+   默认关着——每补一条都是一次 embedding 调用，得你点头才花这个钱。
+   一次只补 8 条、隔 2 分钟一轮，不会突然刷掉一大笔。 */
+let gyVecTrickleBusy = false;
+async function gyVecTrickle() {
+    if (gyVecTrickleBusy) return;
+    if (typeof enableVectorMemory === 'undefined' || !enableVectorMemory) return;
+    if (typeof isAutoOn === 'function' && !isAutoOn('vecAutoBackfill')) return;
+    const api = (typeof getVectorApiConfig === 'function') ? getVectorApiConfig() : null;
+    if (!api || !api.key) return;
+    gyVecTrickleBusy = true;
+    try {
+        const jobs = [];
+        Object.keys(globalChats || {}).forEach(k => {
+            (globalChats[k] || []).forEach(m => {
+                if (jobs.length >= 8) return;
+                if (m && m.text && !m.embVec && !window.gyVecTooShort(m.text))
+                    jobs.push({ text: m.text, set: v => { m.embVec = v; } });
+            });
+        });
+        if (!jobs.length) return;
+        let bad = 0;
+        for (const j of jobs) {
+            try { const v = await getEmbedding(j.text); if (v) j.set(v); else bad++; } catch (e) { bad++; }
+            if (bad >= 3) break;                    // 一直失败就停，等你去看看是不是 key 不对
+        }
+        try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+        try { if (typeof renderMemoryHubVectorMemory === 'function'
+            && document.getElementById('memHubVectorStats')
+            && document.getElementById('memHubVectorStats').offsetParent !== null
+            && typeof currentMemoryHubTargetId !== 'undefined' && currentMemoryHubTargetId)
+            renderMemoryHubVectorMemory(currentMemoryHubTargetId, String(currentMemoryHubTargetId).indexOf('g_') === 0); } catch (e) {}
+    } finally { gyVecTrickleBusy = false; }
+}
+setInterval(() => { try { gyVecTrickle(); } catch (e) {} }, 2 * 60 * 1000);
 
 // 语义检索：从这个聊天/角色的历史消息 + 专属资料库里，找出和当前话题最相关的内容
 async function getSemanticContext(sessionId, char, queryText) {

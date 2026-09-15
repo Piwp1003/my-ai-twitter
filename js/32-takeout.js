@@ -288,7 +288,14 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
         }
     }
     // 送到角色手上，TA 可能说一句（开关 takeoutReact）
-    async function react(o) {
+        // 报一下场景：这段生成属于「takeout」那一场，好让「注入内容管理」能单独设它读什么（soft＝外层已经有场景就不抢）
+    async function react() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('takeout', () => reactInner.apply(null, a));
+        return reactInner.apply(null, a);
+    }
+    async function reactInner(o) {
         try {
             if (!on('takeoutReact')) return;
             const c = charOf(o.forWhom); if (!c) return;
@@ -437,12 +444,23 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
                 <div class="gyto-rail">${STEPS.map((t, i) => `<i class="${i <= si ? 'on' : ''}"></i>`).join('')}</div>
                 <div class="gyto-ord-ft">
                     <span>合计 ￥${money(o.total)}</span>
+                    ${o.status !== 'done' ? `<button type="button" class="gymall-btn ghost" onclick="gytoNow('${o.id}')">⚡ 立即送达</button>` : ''}
                     ${o.receiptId ? `<button type="button" class="gymall-btn ghost" onclick="gytoReceipt('${o.id}')">🧾 外卖单</button>` : ''}
                 </div>
                 ${rcOpen === o.id && o.receiptId && typeof gyReceiptHtml === 'function' ? gyReceiptHtml(o.receiptId) : ''}
             </div>`;
         }).join('');
     }
+    /* ⚡ 立即送达：把 eta 抹掉让它"已经到了"，然后照常走 tick——
+       送达提示、角色的反应一样都不少，只是不用等那半小时。 */
+    window.gytoNow = async function (id) {
+        const o = S.orders.find(x => x.id === id);
+        if (!o || o.status === 'done') return;
+        o.at = Date.now() - 1; o.etaMs = 0;
+        await save();
+        await tick();
+        render();
+    };
     let rcOpen = null;
     window.gytoReceipt = id => { rcOpen = (rcOpen === id) ? null : id; render(); };
 

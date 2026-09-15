@@ -74,12 +74,16 @@
         // 看手机这件事本身要被记住：翻了哪个 app、那一屏上是什么，都记一条。
         // 这些会注进 prompt——TA 知道你看过，也知道你看到了什么。
         seen: {},   // { 角色id: [{at, app, name, gist}] }   你看 TA 的
-        seenMe: {}  // { 角色id: [{at, gist}] }              TA 看你的
+        seenMe: {}, // { 角色id: [{at, gist}] }              TA 看你的
+        // 📇 按人设生成的通讯录：{ 角色id: {at, list:[{n, ico, who, src, talk:[...] }]} }
+        // 十二个固定联系人（妈妈/爸/房东…）对谁都一样，可现实里有人没家人、
+        // 有人不上班、有人手机里只有工作群。这一份是让模型照着人设和世界书开的。
+        ppl: {}
     };
     async function save() { try { if (LF) await LF.setItem(KEY, JSON.parse(JSON.stringify(S))); } catch (e) { console.warn('[手机] 存档失败', e); } }
     async function load() {
         try { if (LF) { const d = await LF.getItem(KEY); if (d && typeof d === 'object') S = Object.assign(S, d); } } catch (e) {}
-        ['notif', 'wall', 'allow', 'lastGen', 'grant', 'mine', 'askedAt', 'seen', 'seenMe', 'iconSkin', 'iconTint', 'manual'].forEach(k => { if (!S[k] || typeof S[k] !== 'object') S[k] = {}; });
+        ['notif', 'wall', 'allow', 'lastGen', 'grant', 'mine', 'askedAt', 'seen', 'seenMe', 'iconSkin', 'iconTint', 'manual', 'ppl'].forEach(k => { if (!S[k] || typeof S[k] !== 'object') S[k] = {}; });
         if (typeof S.grantMin !== 'number') S.grantMin = 60;
         if (!S.float || typeof S.float !== 'object') S.float = { open: false, mini: false, charId: '', x: 24, y: 24 };
         if (!S.need || typeof S.need !== 'object') S.need = { mid: 20, deep: 50 };
@@ -422,6 +426,12 @@
         const n = seedInt(c.id, 'ct', 3, 6);
         const out = [];
         const used = new Set();
+        const ai = pplOf(c);
+        if (ai) {
+            const peers0 = peersOf(c).filter(p => !ai.some(x => x.n === p.n));
+            return peers0.map(p => ({ n: p.n, ico: p.ico, peer: p.peer, rel: p.rel, unread: seedInt(c.id, 'pu' + p.peer, 0, 3) }))
+                .concat(ai.map((x, i) => ({ n: x.n, ico: x.ico, who: x.who, unread: seedInt(c.id, 'au' + i, 0, 4) })));
+        }
         // 先挑"真有话可说的"那几个：TA 今天有日程，妈妈就会念叨；
         // 钱包里有房租，房东才会来催。凑不够再拿其余的填。
         // 不这么排的话，随机挑中的几个多半都读不到东西，一屋子都是模板。
@@ -469,6 +479,114 @@
         { n: '楼下便利店', ico: '🏪' }, { n: '没备注的号码', ico: '📵' }, { n: '快递', ico: '🚚' },
         { n: '医生', ico: '🩺' }, { n: '健身房', ico: '🏋️' }, { n: '银行', ico: '🏦' }
     ];
+
+    /* ===== 📇 照着人设开一份通讯录 =====
+       十二个固定联系人对谁都一样：妈妈、爸、房东、同事、组长……
+       可人设里写着"父母双亡""独居""没工作""江湖人"的角色，手机里不该有这些。
+       所以给一颗按钮：读**人设 + 世界书**（以及你勾了的其它几样），
+       让模型替这个人开一份真正属于 TA 的通讯录，连带每个人会说的话。
+
+       一个角色只花一次调用，结果存下来；想换就点「重开一份」。
+       没生成过、或者你把开关关着，就还是用那十二个固定的，行为跟以前一样。 */
+    const PPL_SRC = [
+        { k: 'persona', label: '人设正文', desc: '最要紧的一条。关掉的话模型只能瞎编。' },
+        { k: 'wb',      label: '世界书', desc: '设定里那些人名、地名、组织——通讯录里出现的人才对得上世界。' },
+        { k: 'rel',     label: '关系网上的角色', desc: '让模型知道哪些名字是"真人"，别拿去当路人重名。' },
+        { k: 'sched',   label: '今天的日程', desc: '有没有工作、几点上班，决定通讯录里有没有同事。' },
+        { k: 'bio',     label: '资料页的简介 / 所在地 / 职业', desc: '' },
+        { k: 'npc',     label: '世界书里抽出来的 NPC', desc: '「小功能 → 👥 世界里的人」抽过的话，优先把他们放进通讯录，不用另编一套。跟着「手机通讯录优先用这些人」那个开关走。' }
+    ];
+    const pplSrc = k => { try { return !window.gyInjectSrc || window.gyInjectSrc.on('phonePeople', k); } catch (e) { return true; } };
+    let pplBusy = {};
+    window.gyPhoneMakePeople = async function (charId) {
+        const id = String(charId);
+        const c = charOf(id); if (!c) return null;
+        if (pplBusy[id]) return null;
+        const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+        if (!api || !api.key) { toast('还没配 API Key'); return null; }
+        pplBusy[id] = true;
+        try {
+            toast('正在照着人设给 ' + c.name + ' 开通讯录…');
+            let info = '';
+            if (pplSrc('persona')) info += `【人设】${String(c.persona || '').slice(0, 1200)}\n`;
+            if (pplSrc('bio')) {
+                const bits = [c.bio && ('简介：' + c.bio), c.location && ('所在地：' + c.location)].filter(Boolean);
+                if (bits.length) info += `【资料页】${bits.join('　').slice(0, 200)}\n`;
+            }
+            if (pplSrc('wb')) {
+                let wb = '';
+                try { if (typeof getCharacterWorldbookText === 'function') wb = getCharacterWorldbookText(c, '', null) || ''; } catch (e) {}
+                if (wb) info += `【世界书】${String(wb).replace(/\s+/g, ' ').slice(0, 1200)}\n`;
+            }
+            if (pplSrc('rel')) {
+                const names = chars().filter(x => String(x.id) !== id).map(x => x.name).slice(0, 12);
+                if (names.length) info += `【这个世界里已经存在的人（别拿这些名字当路人）】${names.join('、')}\n`;
+            }
+            if (pplSrc('sched') && c.schedule && c.schedule.text)
+                info += `【今天的日程】${String(c.schedule.text).replace(/\s+/g, ' ').slice(0, 200)}\n`;
+            /* 👥 世界书里抽出来的那些人（js/39）——这才是最该出现在通讯录里的。
+               有这一批就先用他们，别再另编一套跟世界对不上的人。 */
+            let npcs = [];
+            try { if (pplSrc('npc') && on('npcInPhone') && typeof window.gyNpcPool === 'function') npcs = window.gyNpcPool(id) || []; } catch (e) {}
+            if (npcs.length) info += `【TA 身边真实存在的人（优先把这些放进通讯录，别另外编）】\n`
+                + npcs.map(x => `· ${x.name}${x.who ? '，' + x.who : ''}${x.tie ? '——' + x.tie : ''}${x.tone ? '。说话' + x.tone : ''}`).join('\n') + '\n';
+
+            const ask = `下面是一个人的设定。请替 TA 开一份**真实的手机通讯录**。
+
+${info}
+要求：
+0. 上面如果给了「TA 身边真实存在的人」，**先把他们放进通讯录**（名字原样用，别改），
+   再按下面的规矩补到 3~6 个。
+1. 3 到 6 个联系人。**照着这个人的处境来**——没有家人的就别写"妈妈"，
+   不上班的就别写"组长"，江湖人/古代人不会有"健身房"和"银行"。
+   可以是这个世界里该有的角色：师父、掌柜、押镖的、坊主、驿站、药铺……
+2. 每个人给 1 到 3 句 TA 们发来的消息，**像真的短信**：短、具体、有来由，
+   不要寒暄体（别一律"吃饭了没""注意身体"）。可以是催账、问事、抱怨、通知。
+3. 备注名要像本人存的（"王姐""三号仓库""没备注的号码"都行），不要写成介绍语。
+4. ico 给一个 emoji。
+5. src 从这几个里挑一个最贴的，挑不到就留空：
+   sched(日程) wallet(钱) mall(包裹) takeout(外卖) kit(随身物) days(节气) map(位置天气) web(看过的网页)
+
+只输出 JSON，不要解释：
+{"contacts":[{"n":"备注名","ico":"🏠","who":"这人是谁，10字以内","src":"","talk":["第一句","第二句"]}]}`;
+            const msgs = (typeof buildStructuredMessages === 'function')
+                ? buildStructuredMessages('你在替一个虚构角色设计 TA 手机里的通讯录。', [], ask)
+                : [{ role: 'user', content: ask }];
+            const d = await callChatCompletionAPI(api, msgs);
+            let t = (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content || '').trim();
+            if (typeof extractAfterFinalMarker === 'function') t = extractAfterFinalMarker(t).trim();
+            t = t.replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
+            const o = (typeof extractJsonObject === 'function') ? extractJsonObject(t) : JSON.parse(t);
+            const arr = (o && Array.isArray(o.contacts)) ? o.contacts : null;
+            if (!arr || !arr.length) { toast('没开出来，回头再试'); return null; }
+            const list = arr.slice(0, 6).map(x => ({
+                n: String(x.n || '').trim().slice(0, 12) || '没备注的号码',
+                ico: String(x.ico || '📵').slice(0, 4),
+                who: String(x.who || '').slice(0, 20),
+                src: String(x.src || '').slice(0, 10),
+                talk: (Array.isArray(x.talk) ? x.talk : []).slice(0, 3).map(y => String(y).slice(0, 40)).filter(Boolean)
+            })).filter(x => x.talk.length);
+            if (!list.length) { toast('没开出来，回头再试'); return null; }
+            S.ppl[id] = { at: Date.now(), list };
+            await save();
+            window.gyPhoneForgetThreads();
+            paint();
+            toast(c.name + ' 的通讯录开好了：' + list.map(x => x.n).join('、'));
+            return list;
+        } catch (e) { toast('没开出来：' + String(e.message || e).slice(0, 40)); return null; }
+        finally { pplBusy[id] = false; }
+    };
+    window.gyPhoneDropPeople = async function (charId) {
+        delete S.ppl[String(charId)];
+        await save(); window.gyPhoneForgetThreads(); paint();
+        toast('回到默认那十二个联系人了');
+    };
+    // 这个角色现在用的是哪一份通讯录
+    function pplOf(c) {
+        if (!on('phoneAiPeople')) return null;
+        const p = S.ppl[String(c.id)];
+        return (p && Array.isArray(p.list) && p.list.length) ? p.list : null;
+    }
 
     /* ---- 那些"你不认识的人"发来的消息，读的是 TA 真实的一天 ----
        原来是十二段写死的模板，谁的手机翻开都一模一样。
@@ -546,11 +664,34 @@
     function buildThreads(c) {
         if (typeof window.gyInjectInScene === 'function' && window.gyInjectScene() !== 'phoneTalk')
             return window.gyInjectInScene('phoneTalk', () => buildThreads(c));
-        const key = String(c.id) + '|' + new Date().toDateString();
+        const key = String(c.id) + '|' + new Date().toDateString() + '|' + (pplOf(c) ? 'ai' : 'std');
         if (threadCache.key === key && threadCache.map) return threadCache.map;
         const map = {};
         const usedSrc = {};       // 每路数据用了几次
         const usedTxt = new Set();
+        // 📇 有按人设开的通讯录就用那一份：说的话是模型写的，
+        //    但如果那个人挂了 src，还是会从真实数据里挑一条补进去。
+        const ai = pplOf(c);
+        if (ai) {
+            ai.forEach(x => {
+                const lines = x.talk.map(t => [x.n, t]);
+                if (x.src && (usedSrc[x.src] || 0) < 2) {
+                    const fs = factsFrom(c, x.src).filter(f => !usedTxt.has(f));
+                    if (fs.length) {
+                        const f = fs[seedInt(c.id, 'f' + x.n + x.src, 0, fs.length - 1)];
+                        usedSrc[x.src] = (usedSrc[x.src] || 0) + 1; usedTxt.add(f);
+                        lines.push([x.n, String(f).slice(0, 40)]);
+                    }
+                }
+                if (lines.length > 1) {
+                    const rep = ['嗯', '知道了', '好', '行', '晚点说'][seedInt(c.id, 'rp' + x.n, 0, 4)];
+                    lines.splice(1, 0, ['我', rep]);
+                }
+                map[x.n] = lines;
+            });
+            threadCache = { key, map };
+            return map;
+        }
         const names = POOL.map(p => p.n);
         names.forEach(who => {
             const plan = SAY[who] || [];
@@ -584,8 +725,9 @@
             if (real.length) return real;
             return [[who, p.rel ? '（' + p.rel + '，还没发生过什么）' : '（还没发生过什么）']];
         }
-        // 读 TA 真实的一天
+        // 读 TA 真实的一天（有按人设开的通讯录就是那一份）
         const lines = (buildThreads(c)[who] || []).slice();
+        if (!lines.length && pplOf(c)) return [[who, '……']];
         if (!lines.length) {
             const t = TALK[who] || [[who, '……']];
             const n = seedInt(c.id, 'tk' + who, Math.min(2, t.length), t.length);
@@ -616,6 +758,12 @@
     function regSrc() {
         try {
             if (!window.gyInjectSrc || typeof window.gyInjectSrc.def !== 'function') return;
+            window.gyInjectSrc.def({
+                feat: 'phonePeople', icon: '📇', title: '手机通讯录（照人设开的那一份）',
+                note: '点「照人设开一份通讯录」时，把下面这些交给模型，让它替这个人开一份真正属于 TA 的联系人。'
+                    + '一个角色只花一次调用，开好就存着。全关掉的话模型手里什么都没有，只能瞎编。',
+                items: PPL_SRC
+            });
             window.gyInjectSrc.def({
                 feat: 'phoneTalk', icon: '📱', title: 'TA 手机里那些人发来的消息',
                 note: '通讯录里你不认识的那些人（妈妈、房东、同事、快递…）跟 TA 说的话，是照着下面这些真实数据编的。'
@@ -878,8 +1026,24 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
             <div class="gyph-need" style="margin-top:8px;">
               <span>答应之后能看多久</span>
               <select class="gyph-in" style="width:auto;margin:0;" onchange="gyPhoneGrantMin(this.value)">
-                ${[0, 30, 60, 240, 1440].map(m => `<option value="${m}"${Number(S.grantMin) === m ? ' selected' : ''}>${GRANT_LABEL[m]}</option>`).join('')}
+                ${[-1, 0, 30, 60, 240, 1440].map(m => `<option value="${m}"${Number(S.grantMin) === m ? ' selected' : ''}>${GRANT_LABEL[m]}</option>`).join('')}
               </select>
+            </div>
+            <div class="gyph-side-hd" style="margin-top:14px;">📇 通讯录</div>
+            <div class="gyph-side-p">
+              ${S.ppl[curId] && S.ppl[curId].list && S.ppl[curId].list.length
+                ? `现在用的是<b>照着 ${esc(c.name)} 的人设开的那一份</b>：${esc(S.ppl[curId].list.map(x => x.n).join('、'))}`
+                : `现在是那十二个通用联系人（妈妈、房东、同事…），谁的手机翻开都一样。
+                   人设里写着没家人、不上班、或者根本不是现代人的角色，这些人不该出现在 TA 手机里。`}
+            </div>
+            <div style="margin-bottom:10px;">
+              <button class="gyph-btn" onclick="gyPhoneMakePeople('${curId}')">
+                ${S.ppl[curId] ? '↻ 重开一份' : '照人设开一份通讯录'}</button>
+              ${S.ppl[curId] ? `<button class="gyph-btn ghost" onclick="gyPhoneDropPeople('${curId}')">用回默认的</button>` : ''}
+            </div>
+            <div class="gyph-side-p" style="opacity:.75;">
+              读人设和世界书生成，一个角色只花一次调用，开好就存着。
+              读哪几样在 <b>设置 → 🧾 注入内容管理 → ② 生成时读什么 → 📇 手机通讯录</b> 里挑。
             </div>
             <div class="gyph-side-hd" style="margin-top:14px;">壁纸与图标</div>
             <div class="gyph-side-p">
@@ -903,10 +1067,11 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
             <div class="gyph-need">
               <span>图标形状</span>
               <select class="gyph-in" style="width:auto;margin:0;" onchange="gyPhoneSetSkin('${curId}', this.value)">
-                <option value="round"${skinOf(curId) === 'round' ? ' selected' : ''}>圆角方块</option>
-                <option value="circle"${skinOf(curId) === 'circle' ? ' selected' : ''}>圆的</option>
-                <option value="glass"${skinOf(curId) === 'glass' ? ' selected' : ''}>毛玻璃</option>
-                <option value="flat"${skinOf(curId) === 'flat' ? ' selected' : ''}>纯色扁平</option>
+                <option value="auto"${!S.iconSkin[curId] ? ' selected' : ''}>跟 ${esc(c.name)} 的人设推</option>
+                <option value="round"${S.iconSkin[curId] === 'round' ? ' selected' : ''}>圆角方块</option>
+                <option value="circle"${S.iconSkin[curId] === 'circle' ? ' selected' : ''}>圆的</option>
+                <option value="glass"${S.iconSkin[curId] === 'glass' ? ' selected' : ''}>毛玻璃</option>
+                <option value="flat"${S.iconSkin[curId] === 'flat' ? ' selected' : ''}>纯色扁平</option>
               </select>
             </div>
             <div class="gyph-side-hd" style="margin-top:14px;">能看到多少</div>
@@ -1029,7 +1194,20 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
        所以它不是一个按钮直接生效，而是私聊里的一张卡：你问 → TA 按人设决定 →
        答应了这段时间才解锁。TA 也会反过来问你（自主模式里的一个动作）。
        用的是 js/28 那套邀请卡的管线（同一套"请求-回应"语义），只是句子自己写。 */
-    const GRANT_LABEL = { 0: '一直能看', 30: '半小时', 60: '一小时', 240: '四小时', 1440: '一整天' };
+    const GRANT_LABEL = { '-1': '让 TA 自己定', 0: '一直能看', 30: '半小时', 60: '一小时', 240: '四小时', 1440: '一整天' };
+    /* 「让 TA 自己定」：给不给本来就是 TA 按人设决定的，那"能看多久"凭什么是个全局常数？
+       大方的人递过去就不管了，警惕的人五分钟就要回去。
+       不额外调 API——用的是 TA 答应时那句话里的语气 + 好感度，本地折一个时长出来。 */
+    function grantMsFor(charId, line) {
+        const m = Number(S.grantMin);
+        if (m >= 0) return m > 0 ? m * 60000 : 0;
+        const t = String(line || '');
+        // 说话里带"一会儿/别乱翻/快点"是不情不愿；带"随便看/拿去"是无所谓
+        if (/一会|几分钟|别乱|别翻|快点|就一下|看完还我/.test(t)) return 10 * 60000;
+        if (/随便看|都给你|你自己看|拿去|无所谓|想看就看/.test(t)) return 0;
+        const sc = relScore(charId);
+        return sc >= 60 ? 0 : sc >= 30 ? 240 * 60000 : sc >= 10 ? 60 * 60000 : 20 * 60000;
+    }
     function grantMs() { const m = Number(S.grantMin); return m > 0 ? m * 60000 : 0; }
     function grantText(charId) {
         const g = S.grant[String(charId)];
@@ -1062,7 +1240,8 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
 只输出 JSON，不要 markdown：{"ok": true或false, "line": "你要说的一句话，30字以内，像人说话，不要引号"}`,
             onYes: async r => {
                 const k = String(charId);
-                S.grant[k] = { at: Date.now(), until: grantMs() ? Date.now() + grantMs() : 0, line: (r && r.line) || '' };
+                const ms = grantMsFor(charId, (r && r.line) || '');
+                S.grant[k] = { at: Date.now(), until: ms ? Date.now() + ms : 0, line: (r && r.line) || '' };
                 await save();
                 toast(c.name + ' 把手机给你了');
                 paint();
@@ -1125,7 +1304,14 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
             }
         });
     };
-    async function charLookLine(c) {
+        // 报一下场景：这段生成属于「phoneAct」那一场，好让「注入内容管理」能单独设它读什么（soft＝外层已经有场景就不抢）
+    async function charLookLine() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('phoneAct', () => charLookLineInner.apply(null, a));
+        return charLookLineInner.apply(null, a);
+    }
+    async function charLookLineInner(c) {
         const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
         if (!api || !api.key) return;
         const base = (typeof buildBasePrompt === 'function') ? buildBasePrompt(c, false, '') : ('你是' + c.name);
@@ -1137,7 +1323,14 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
         const t = (d?.choices?.[0]?.message?.content || '').trim().replace(/^["「]|["」]$/g, '').slice(0, 60);
         if (t && typeof deliverCharMoveToChatMessage === 'function') deliverCharMoveToChatMessage(c, t, null);
     }
-    async function charRefusedLine(c) {
+        // 报一下场景：这段生成属于「phoneAct」那一场，好让「注入内容管理」能单独设它读什么（soft＝外层已经有场景就不抢）
+    async function charRefusedLine() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('phoneAct', () => charRefusedLineInner.apply(null, a));
+        return charRefusedLineInner.apply(null, a);
+    }
+    async function charRefusedLineInner(c) {
         const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
         if (!api || !api.key) return;
         const base = (typeof buildBasePrompt === 'function') ? buildBasePrompt(c, false, '') : ('你是' + c.name);
@@ -1149,6 +1342,17 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
         if (t && typeof deliverCharMoveToChatMessage === 'function') deliverCharMoveToChatMessage(c, t, null);
     }
     window.gyPhoneGrantMin = async function (v) { S.grantMin = parseInt(v); await save(); paint(); };
+    // 「让 TA 自己定」这一档会折出多少分钟（0 = 不限时）。
+    // 暴露出来是为了能直接量它——这段判断藏在借手机流程里，
+    // 从外面走一遍要过冷却、过邀请卡，量不到。
+    window.gyPhoneGrantGuess = (charId, line) => Math.round(grantMsFor(charId, line) / 60000);
+    // 现在这个人给了你多久（mins：0 = 不限时，null = 没给）
+    window.gyPhoneGrantState = function (charId) {
+        const g = S.grant[String(charId)];
+        if (!g) return null;
+        return { at: g.at, line: g.line || '',
+                 mins: g.until ? Math.max(0, Math.round((g.until - g.at) / 60000)) : 0 };
+    };
     /* 给 js/35 换装用：把某个角色的手机壁纸换成一张图。
        传色号（w1~w5）就是纯色渐变，传图片地址就铺成照片壁纸。 */
     window.gyPhoneSetWall = function (charId, src) {
@@ -1168,7 +1372,9 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
         toast('回到按人设推出来的样子');
     };
     window.gyPhoneSetSkin = async function (charId, skin) {
-        S.iconSkin[String(charId)] = skin || 'round';
+        // 'auto' ＝ 撤掉手动选择，回到按人设推（跟图标配色那一档对齐）
+        if (!skin || skin === 'auto') delete S.iconSkin[String(charId)];
+        else S.iconSkin[String(charId)] = skin;
         await save(); paint();
     };
     window.gyPhoneRepaint = () => { try { paint(); } catch (e) {} };
@@ -1383,6 +1589,9 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
                 { key: 'phoneRemember', label: '记住"你看过 TA 的手机"以及看到了什么',
                   desc: '每翻开一个 app 就记一条——不只是"你翻过我手机"，而是**具体看到了什么**（"余额 ￥1733，最近一笔是一碗面"、"搜过：临安天气"）。这些会进 TA 的 prompt：TA 知道你看过，也知道你看见了哪些，之后聊天时可能提起来（坦然、别扭、开玩笑都有可能）。TA 看过你的手机同样会记。',
                   cost: '不调 API（只是记账，注进本来就要发的 prompt 里）', group: '手机', where: '记忆总览 → 📱 手机' },
+                { key: 'phoneAiPeople', label: '通讯录照人设开，不用那十二个通用联系人',
+                  desc: '默认每个角色手机里都是妈妈、爸、房东、同事·小吴、组长……对谁都一样。可人设里写着父母双亡、独居、没工作、或者压根不是现代人的角色，手机里不该有这些人。打开之后，可以在手机侧栏点「照人设开一份通讯录」——读人设和世界书，让模型替 TA 开一份真正属于这个人的联系人（师父、掌柜、押镖的、驿站都可能），连带每个人会发来什么消息。**开好就存着**，不重开不再花钱；不打开就还是那十二个，跟以前一模一样。',
+                  cost: '一个角色一次调用（手动点才生成，之后一直用那一份）', defaultOff: true, group: '手机', where: '手机侧栏 → 📇 通讯录' },
                 { key: 'phoneNotifAi', label: '让模型写通知（更像那个人）',
                   desc: '不用本地模板，而是按人设和最近发生的事写一批通知——会出现只属于这个角色的人和事（"排练室老周：周三还来吗"）。手机页上多一颗「✨ 让 TA 的手机活过来」，**只在你点它的时候才调**。',
                   cost: '点一次一次调用', defaultOff: true, group: '手机', where: '角色资料页 → 📱 → 右边那颗 ✨' }
@@ -1570,6 +1779,9 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
     .gyph-side{flex:1;min-width:240px;max-width:430px;}
     .gyph-side-hd{font-size:14px;font-weight:700;margin-bottom:6px;}
     .gyph-side-p{font-size:12.5px;color:#8b98a5;line-height:1.8;margin-bottom:10px;}
+    .gyph-btn{border:1px solid var(--gy-accent,#1d9bf0);color:var(--gy-accent,#1d9bf0);background:transparent;
+        border-radius:999px;padding:6px 13px;font-size:12.5px;cursor:pointer;font-family:inherit;margin:0 6px 6px 0;}
+    .gyph-btn.ghost{border-color:rgba(128,128,128,.4);color:#8b98a5;}
     .gyph-acts{display:flex;gap:6px;flex-wrap:wrap;}
     .gyph-in{width:100%;padding:9px;border-radius:9px;background:transparent;color:inherit;
         border:1px solid var(--gy-accent-line);margin-bottom:8px;font-family:inherit;}

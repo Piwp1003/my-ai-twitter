@@ -241,7 +241,14 @@
        月底才结的、拿提成的。与其让你替每个角色猜，不如照着人设让 TA 自己说。
        只在第一次发生（或者你点「重新想一次」）时花一次调用，想完存下来。 */
     let selfBusy = {};
-    async function decideSelf(c) {
+        // 报一下场景：这段生成属于「wallet」那一场，好让「注入内容管理」能单独设它读什么（soft＝外层已经有场景就不抢）
+    async function decideSelf() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('wallet', () => decideSelfInner.apply(null, a));
+        return decideSelfInner.apply(null, a);
+    }
+    async function decideSelfInner(c) {
         const id = String(c.id);
         if (selfBusy[id]) return null;
         const w = walletOf(id);
@@ -360,7 +367,14 @@ ${hint}
         await earn(c.id, amt, l.n, '', { tag: l.t });
         renderPanel();
     }
-    async function askSpend(c, hintAmt) {
+        // 报一下场景：这段生成属于「wallet」那一场，好让「注入内容管理」能单独设它读什么（soft＝外层已经有场景就不抢）
+    async function askSpend() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('wallet', () => askSpendInner.apply(null, a));
+        return askSpendInner.apply(null, a);
+    }
+    async function askSpendInner(c, hintAmt) {
         try {
             const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
             if (!api || !api.key) return null;
@@ -526,6 +540,28 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
                 if (sc >= 50) who = r < 0.35 ? 'me' : r < 0.7 ? 'ta' : 'aa';        // 亲近：谁掏都自然
                 else if (sc >= 20) who = r < 0.45 ? 'me' : r < 0.75 ? 'ta' : 'aa';  // 熟人
                 else who = r < 0.7 ? 'me' : r < 0.85 ? 'ta' : 'aa';                 // 还不熟：多半你请
+            } else if (mode === 'self') {
+                /* 让 TA 自己决定：照人设 + 关系 + 兜里有多少钱来掷。
+                   本地算，不调 API——抢着买单这件事跟性格的关系比跟当天心情大得多：
+                   要面子/大方/宠着你的人抢着付；抠门/计较/穷学生那一挂多半 AA；
+                   兜里真没钱的时候，再大方也只能你来。 */
+                const c = charOf(charId) || {};
+                const per = String(c.persona || '') + ' ' + String(c.bio || '');
+                let w = { me: 34, ta: 33, aa: 33 };
+                const bump = (k, n) => { w[k] += n; };
+                if (/大方|豪爽|阔绰|不差钱|富|少爷|老板|宠|惯着|护短|要面子|好面子|讲究/.test(per)) { bump('ta', 40); bump('me', -18); }
+                if (/抠|吝啬|节俭|省|计较|穷|拮据|清贫|学生|打工/.test(per)) { bump('aa', 30); bump('ta', -22); }
+                if (/独立|界限|分寸|不欠人情|生分|见外|客气/.test(per)) { bump('aa', 35); bump('ta', -15); }
+                if (/傲|冷|不屑|懒得/.test(per)) { bump('me', 12); }
+                try {
+                    const sc = (window.gyRel && typeof window.gyRel.score === 'function') ? (Number(window.gyRel.score(charId)) || 0) : 0;
+                    if (sc >= 50) { bump('ta', 18); bump('aa', -8); }        // 亲近的更愿意请
+                    else if (sc < 20) { bump('me', 18); bump('ta', -12); }   // 还不熟，多半你请
+                } catch (e) {}
+                if (totalOf(charId) < total) { w.ta = 0; bump('me', 25); }   // TA 真掏不出来
+                const sum = Math.max(1, w.me + w.ta + w.aa);
+                const r = Math.random() * sum;
+                who = r < w.me ? 'me' : r < w.me + w.ta ? 'ta' : 'aa';
             } else {
                 who = ['me', 'ta', 'aa'][Math.floor(Math.random() * 3)];
             }
@@ -666,7 +702,8 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
             </button>
             <label style="font-size:15px;margin-top:16px;">🚕 出门那一趟</label>
             <div class="form-hint" style="margin-bottom:8px;">
-                「行程与天气」里约成一次出门时怎么记账。开关在 设置 → ⚙️ 自动化功能 → 💰 钱包 →「出门会花钱」。
+                「行程与天气」里约成一次出门时怎么记账。开关在 设置 → ⚙️ 自动化功能 → 💰 钱包 →「出门会花钱」。<br>
+                选「让 TA 自己决定」的话：要面子/大方的抢着付，计较/讲分寸的多半 AA，兜里真没钱的时候还是你来。本地算，不调 API。
             </div>
             <div class="gywl-set">
                 <span>谁掏钱</span>
@@ -676,6 +713,7 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
                     <option value="ta"${p0('ta')}>一直 TA 请</option>
                     <option value="aa"${p0('aa')}>一直各付各的</option>
                     <option value="rel"${p0('rel')}>按好感度定（越熟越可能 TA 请或 AA）</option>
+                    <option value="self"${p0('self')}>让 TA 自己决定（按人设 + 关系 + 兜里有多少）</option>
                 </select>
             </div>
             <div class="gywl-set">

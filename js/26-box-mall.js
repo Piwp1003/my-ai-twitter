@@ -37,7 +37,9 @@
             minDeliveryMin: 20,
             maxDeliveryMin: 180,
             buyProbabilityPerRoll: 0.08,
-            courierCharId: ''
+            courierCharId: '',
+            reactMode: 'free',      // 收到东西之后的反应：free 让角色自由发挥 / say 只说一句 / custom 我来定
+            reactCustom: ''
         },
         lastRandomCheckAt: 0
     };
@@ -233,7 +235,8 @@
     async function putIntoKit(o) {
         try {
             if (o.kitAdded) return;
-            if (!o || o.forWhom === 'me') return;
+            if (!o) return;
+            // v113：forWhom === 'me' 也照样进——你自己也有一份随身物了
             if (!window.gyKit || typeof window.gyKit.add !== 'function') return;
             const from = o.boughtBy === 'me' ? 'user' : (o.boughtBy === o.forWhom ? 'self' : 'char:' + o.boughtBy);
             const fromName = o.boughtBy === 'me' ? meName() : nameOf(o.boughtBy);
@@ -244,7 +247,28 @@
     }
 
     // 快递到角色手上，TA 自己决定要不要来说一句（开关：mallReact）
-    async function reactToDelivery(o) {
+    /* 收到东西之后的反应 —— 不一定是一句话
+       ------------------------------------------------------------------
+       以前这里硬要一句聊天消息："不想提就输出 NO，想说就输出那句话"。
+       可现实里收到东西的反应经常不是说话：默默收进抽屉、当场拆开用了、
+       拿在手里看半天、什么都没说但当天换上了。逼着模型每次都憋一句话出来，
+       结果就是每个人收到什么都得"哇谢谢"一下，特别假。
+       现在让它自己挑形态，也可以你来定（商城设置 → 收到东西之后的反应）。
+       反应不再单发一条聊天消息，而是**收进那张包裹卡里**，默认收起来，
+       点一下展开；同时进 prompt，TA 以后是记得这件事的。 */
+    const REACT_MODES = {
+        free:   { n: '让角色自由发挥（默认）', d: '说一句、做个动作、默默收起来、当场用了、或者什么都不做——TA 自己挑。' },
+        say:    { n: '只说一句话', d: '老行为：要么说一句，要么什么都不说。' },
+        custom: { n: '我来定', d: '下面写你希望 TA 的反应可以是什么样，会原样接进 prompt。' }
+    };
+        // 报一下场景：这段生成属于「mall」那一场，好让「注入内容管理」能单独设它读什么（soft＝外层已经有场景就不抢）
+    async function reactToDelivery() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('mall', () => reactToDeliveryInner.apply(null, a));
+        return reactToDeliveryInner.apply(null, a);
+    }
+    async function reactToDeliveryInner(o) {
         try {
             if (!on('mallReact')) return;
             if (!o || o.forWhom === 'me') return;
@@ -252,20 +276,61 @@
             if (!c) return;
             const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
             if (!api || !api.key) return;
+            const mode = REACT_MODES[S.settings.reactMode] ? S.settings.reactMode : 'free';
             const byText = o.boughtBy === 'me' ? '用户' : (o.boughtBy === o.forWhom ? '你自己' : nameOf(o.boughtBy));
             const base = (typeof buildBasePrompt === 'function') ? buildBasePrompt(c, false) : ('你是' + c.name + '，人设：' + (c.persona || ''));
-            const p = base + '\n刚刚你的一个快递到了：' + (o.productSnapshot.emoji || '📦') + ' ' + o.productSnapshot.name +
+            const head = '\n刚刚你的一个快递到了：' + (o.productSnapshot.emoji || '📦') + ' ' + o.productSnapshot.name +
                 '（' + (o.productSnapshot.description || '无描述') + '），是' + byText + '买的' +
-                (o.reasonText ? '，当时的说法是："' + o.reasonText + '"' : '') + '。' +
-                '\n请结合你的人设，判断你现在要不要主动找用户聊几句提一下这件事（惊喜、吐槽、道谢、"这是啥"都行，' +
-                '也可以选择不提——比如你本来话就不多，或者这东西对你来说没什么大不了）。' +
-                '\n不想提就只输出 NO。想说就直接输出你要说的话（不超过 60 字，不要引号，不要任何多余说明）。';
+                (o.reasonText ? '，当时的说法是："' + o.reasonText + '"' : '') + '。\n';
+            let ask;
+            if (mode === 'say') {
+                ask = '请结合你的人设，判断你现在要不要主动找用户聊几句提一下这件事。不想提就只输出 NO。' +
+                      '想说就直接输出你要说的话（不超过 60 字，不要引号）。';
+            } else {
+                const mine = String(S.settings.reactCustom || '').trim();
+                ask = '你收到东西之后会怎么样？**不一定要说话**——'
+                    + (mode === 'custom' && mine ? '按下面这个来：\n' + mine.slice(0, 400) + '\n'
+                       : '默默收进抽屉、当场拆开用上、拿在手里看半天、当天就换上了、翻个白眼扔一边……都行。\n')
+                    + '按你的性格挑一种，别为了有反应而硬挤一句感谢。\n\n'
+                    + '只输出 JSON，不要解释：\n'
+                    + '{"kind":"say|act|keep|use|mixed|none","text":"这一下具体是什么样，60字以内；kind 是 none 就留空"}\n'
+                    + '· say＝说了一句话（text 就是那句话本身，不要加引号）\n'
+                    + '· act＝一个动作或表情，没说话（用第三人称写，比如"拿起来看了看，没说话"）\n'
+                    + '· keep＝收起来了 · use＝当场用上了 · mixed＝又有动作又说了话\n'
+                    + '· none＝这件事对你来说不值一提，什么反应都没有';
+            }
+            const p = base + head + ask;
             const msgs = (typeof buildStructuredMessages === 'function') ? buildStructuredMessages('', [], p) : [{ role: 'user', content: p }];
             const data = await callChatCompletionAPI(api, msgs);
-            const raw = (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || '').trim();
-            if (!raw || raw.toUpperCase().indexOf('NO') === 0) return;
-            const text = raw.replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').replace(/^["「]|["」]$/g, '').trim();
-            if (text && typeof deliverCharMoveToChatMessage === 'function') deliverCharMoveToChatMessage(c, text, null);
+            let raw = (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || '').trim();
+            if (!raw) return;
+            raw = raw.replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').trim();
+            let kind = 'say', text = '';
+            if (mode === 'say') {
+                if (raw.toUpperCase().indexOf('NO') === 0) return;
+                text = raw.replace(/^["「]|["」]$/g, '').trim();
+            } else {
+                let r = null;
+                try { r = (typeof extractJsonObject === 'function') ? extractJsonObject(raw) : JSON.parse(raw); } catch (e) { r = null; }
+                if (Array.isArray(r)) r = r[0];
+                if (r && typeof r === 'object') {
+                    kind = ['say', 'act', 'keep', 'use', 'mixed', 'none'].indexOf(r.kind) >= 0 ? r.kind : 'say';
+                    text = String(r.text || '').replace(/^["「]|["」]$/g, '').trim();
+                } else {
+                    // 模型没给 JSON 就当成"说了一句"，别白花这一次调用
+                    if (raw.toUpperCase().indexOf('NO') === 0) return;
+                    text = raw.replace(/^["「]|["」]$/g, '').trim();
+                }
+            }
+            if (kind === 'none' || !text) return;
+            o.reactKind = kind; o.reactText = text.slice(0, 200); o.reactAt = Date.now();
+            await save();
+            // 有包裹卡就收进卡里（默认收起来，点一下展开）；没有卡才退回发一条消息
+            if (o.parcelId && window.gyParcel && typeof window.gyParcel.say === 'function') {
+                window.gyParcel.say(o.parcelId, o.reactText, kind);
+            } else if (typeof deliverCharMoveToChatMessage === 'function') {
+                deliverCharMoveToChatMessage(c, kind === 'say' || kind === 'mixed' ? o.reactText : '（' + o.reactText + '）', null);
+            }
         } catch (e) { console.warn('[商城] 角色对到货的反应失败：', e); }
     }
 
@@ -302,7 +367,14 @@
     // 🏪 角色自己上架东西（开关：mallCharSell，默认关）
     // 以前货架只有你能摆。真人开个二手小店、卖自己做的东西，是很常见的事——
     // 而且 TA 上架什么，本身就是一条人设信息（谁在卖手写信、谁在卖打折的旧吉他）。
+        // 报一下场景：这段生成属于「mall」那一场，好让「注入内容管理」能单独设它读什么（soft＝外层已经有场景就不抢）
     async function charListProduct() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('mall', () => charListProductInner.apply(null, a));
+        return charListProductInner.apply(null, a);
+    }
+    async function charListProductInner() {
         if (!on('mallCharSell')) return null;
         const cs = chars();
         if (!cs.length) return null;
@@ -487,7 +559,16 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
                     : (nameOf(o.boughtBy) + '买来送给你的');
                 return '- ' + role + '「' + o.productSnapshot.name + '」：' + st(o);
             });
-            return '\n【你的购物/包裹动态（真实发生过的事，符合当下情境时可以自然提一句，不用每次都刻意聊，不提也没关系）】：\n' + lines.join('\n') + '\n';
+            let out = '\n【你的购物/包裹动态（真实发生过的事，符合当下情境时可以自然提一句，不用每次都刻意聊，不提也没关系）】：\n' + lines.join('\n') + '\n';
+            // 收到东西时是什么反应，也是真发生过的——TA 该记得自己当时怎么了
+            try {
+                const KD = { say: '当时你说', act: '当时你', keep: '你把它', use: '你当场就' };
+                const rs = (window.gyParcel && typeof window.gyParcel.reacts === 'function')
+                    ? window.gyParcel.reacts(charId, 3) : [];
+                if (rs.length) out += '你收到这些东西时的反应：\n'
+                    + rs.map(r => `- 「${r.name}」：${KD[r.kind] || '当时你'}${r.text}`).join('\n') + '\n';
+            } catch (e) {}
+            return out;
         } catch (e) { return ''; }
     };
 
@@ -749,9 +830,27 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
                 <div class="gymall-dim" style="margin-top:4px;">收货：${esc(nameOf(o.forWhom))} · 下单：${esc(nameOf(o.boughtBy))}</div>
                 <div class="gymall-dim" style="margin-top:2px;">${etaLabel(o)}</div>
                 <div class="gymall-bar"><i style="width:${pct}%"></i></div>
+                ${o.status !== 'delivered' ? `<div style="text-align:right;margin-top:8px;">
+                    <button type="button" class="gymall-btn ghost" style="padding:3px 10px;font-size:11.5px;"
+                        onclick="event.stopPropagation();gymallNow('${o.id}')">⚡ 立即到货</button></div>` : ''}
             </div>`;
         }).join('');
     }
+
+    /* ⚡ 立即到货：不想等物流。
+       做法是把这一单的 eta 抹掉，让它"已经到了"，然后照常走 tick——
+       该出的卡片、该问的收不收、该进随身物的，一样都不少，只是不用等。 */
+    window.gymallNow = async function (id) {
+        const o = S.orders.find(x => x.id === id);
+        if (!o || o.status === 'delivered') return;
+        o.orderedAt = Date.now() - 1;
+        o.etaMs = 0;
+        o.shipNoted = true;                  // 都到了就别再补一句"仓库已发出"
+        await save();
+        await tick();
+        render();
+        try { if (typeof showToast === 'function') showToast('', '🛍️ 商城', o.productSnapshot.name + ' 到了。', null, null, false); } catch (e) {}
+    };
 
     window.gymallDetail = id => openDetail(id);
     function openDetail(id) {
@@ -914,6 +1013,17 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
                 </div>
                 <label class="gymall-dim">物流/客服角色（投诉时由 TA 回你。去角色中心搓一个物流人设再回来选）</label>
                 <select id="gymallCourier"><option value="">— 没指定 —</option>${charOpts(S.settings.courierCharId)}</select>
+                <label class="gymall-dim" style="margin-top:10px;">收到东西之后的反应</label>
+                <select id="gymallReactMode" onchange="gymallReactMode(this.value)">
+                    ${Object.keys(REACT_MODES).map(k => `<option value="${k}"${(S.settings.reactMode || 'free') === k ? ' selected' : ''}>${REACT_MODES[k].n}</option>`).join('')}
+                </select>
+                <div class="gymall-dim" style="line-height:1.8;margin:-2px 0 6px;">
+                    ${esc((REACT_MODES[S.settings.reactMode] || REACT_MODES.free).d)}<br>
+                    反应不再单发一条聊天消息，而是<b>收进那张包裹卡里</b>，默认收着、点一下展开，也会进 TA 的记忆。
+                </div>
+                ${(S.settings.reactMode === 'custom') ? `<textarea id="gymallReactCustom" rows="3"
+                    placeholder="例：TA 的反应可以是一个动作、一段沉默、把东西收进某个固定的地方，也可以什么都不做；不要每次都道谢。"
+                    style="width:100%;box-sizing:border-box;padding:9px;border:1px solid rgba(128,128,128,.35);border-radius:9px;background:transparent;color:inherit;font-size:13px;font-family:inherit;margin-bottom:8px;">${esc(S.settings.reactCustom || '')}</textarea>` : ''}
                 <button type="button" class="gymall-btn solid" style="width:100%;padding:9px;margin-top:4px;" onclick="gymallSaveSettings()">保存</button>
                 <button type="button" class="gymall-btn" style="width:100%;padding:9px;margin-top:8px;" onclick="gymallCharSell()">🏪 现在就让某个角色上架一样东西（手动，不看开关）</button>
             </div>`;
@@ -924,8 +1034,17 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         S.settings.minDeliveryMin = parseInt(g('gymallMin')) || 20;
         S.settings.maxDeliveryMin = Math.max(S.settings.minDeliveryMin, parseInt(g('gymallMax')) || 180);
         S.settings.courierCharId = g('gymallCourier') || '';
+        S.settings.reactMode = REACT_MODES[g('gymallReactMode')] ? g('gymallReactMode') : 'free';
+        S.settings.reactCustom = String(g('gymallReactCustom') || '').slice(0, 600);
         await save();
         toast('设置已保存');
+        renderSettings();
+    };
+
+    // 换模式立刻重画一次（"我来定"那档要把输入框放出来）
+    window.gymallReactMode = async function (v) {
+        S.settings.reactMode = REACT_MODES[v] ? v : 'free';
+        await save();
         renderSettings();
     };
 

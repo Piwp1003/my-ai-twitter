@@ -60,7 +60,9 @@
     const READ_PROXIES = [
         { v: '',                                        name: '直连（APK / exe 用这个）' },
         { v: 'https://api.allorigins.win/raw?url={U}',  name: 'AllOrigins（免 key）' },
+        { v: 'https://api.codetabs.com/v1/proxy?quest={U}', name: 'CodeTabs（免 key）' },
         { v: 'https://corsproxy.io/?{U}',               name: 'corsproxy.io（免 key）' },
+        { v: 'https://api.cors.lol/?url={U}',           name: 'cors.lol（免 key）' },
         { v: 'https://r.jina.ai/{u}',                   name: 'Jina（干净，但要 key）' }
     ];
 
@@ -78,6 +80,7 @@
         inject: 3,          // 注进 prompt 的最多几条
         lastRunAt: 0,
         gapMin: 180,        // 自动跑的最小间隔（分钟）
+        lastGoodRead: '',   // 上次真的读到正文的那条路（下次先试它）
         log: {}             // { 角色id: [{id, at, topic, why, text, src, rounds, sources}] }
     };
     // 自主模式（js/14 的 GY_AUTONOMY_ACTIONS）跑的就是这一份 S，不另起一套参数。
@@ -169,15 +172,74 @@
        · 其余情况直连原网址 {u}
        {u} = 原样拼上去（jina、大多数反代都要这个）
        {U} = URL 编码后拼上去（allorigins、corsproxy 这类 ?url= 参数式的要这个） */
-    function readTplOf() {
-        const t = String(S.readUrl || '').trim();
-        if (t && /\{u\}/i.test(t)) return t;
-        if (S.src === 'jina') return 'https://r.jina.ai/{u}';
-        return '{u}';
+    /* 读正文要试几条路。
+       以前只试一条：默认是"直连"，而浏览器（还有 exe 里那个 webview）直连别人家网页
+       基本都会被对方的 CORS 拦掉——于是每一条都失败，退回搜索结果页，
+       记录里永远写着"正文没读到"。参数没错、代码没错，就是那一条路走不通。
+       现在按顺序试：你自己填的 → 这个来源自带的 → 几个免 key 的公共代理。
+       哪条成了就把它记下来（S.lastGoodRead），下次第一个试它，不用每次从头撞一遍。 */
+    function readChain() {
+        const out = [];
+        const push = v => { if (v && out.indexOf(v) < 0) out.push(v); };
+        push(S.lastGoodRead);                       // 上次成功的那条排最前
+        const mine = String(S.readUrl || '').trim();
+        if (mine && /\{u\}/i.test(mine)) push(mine);
+        if (S.src === 'jina') push('https://r.jina.ai/{u}');
+        push('{u}');                                 // 直连（APK / exe 里可能行）
+        READ_PROXIES.forEach(p => { if (p.v) push(p.v); });
+        // jina 那条没 key 会 401，没填 key 就别浪费一次请求
+        return out.filter(v => !(v.indexOf('r.jina.ai') >= 0 && !S.key && S.src !== 'jina'));
     }
+    const routeName = v => !v ? '直连'
+        : v === '{u}' ? '直连'
+        : (READ_PROXIES.find(p => p.v === v) || {}).name || v.replace(/^https?:\/\//, '').slice(0, 24);
     function fillRead(tpl, u) {
         return String(tpl).replace(/\{u\}/g, u).replace(/\{U\}/g, encodeURIComponent(u));
     }
+    /* ===================== 🩺 体检：到底哪条路能用 =====================
+       "读正文条数填了 3，记录里还是写着正文没读到"——这件事光看代码是查不出来的，
+       因为参数和逻辑都没错，错的是**那几条路在你这台机器上走不通**：
+       浏览器里直连会被对方网站的 CORS 拦、公共代理会限流或者干脆挂了、
+       Jina 不填 key 直接 401。每条路失败的样子还都不一样。
+
+       所以给一颗按钮：拿一个固定的小网页，把每条路各试一次，
+       挨个报"成了 / 被 CORS 拦了 / 401 要 key / 超时 / HTTP xxx"。
+       哪条成了就一键选它。不猜，直接量。 */
+    const PROBE_URL = 'https://example.com/';
+    let probeRows = [];        // [{name, tpl, ok, msg, ms}]
+    let probing = false;
+    window.gywebProbe = async function () {
+        if (probing) return;
+        probing = true; probeRows = []; renderPanel();
+        const list = [{ v: '{u}', name: '直连' }]
+            .concat(READ_PROXIES.filter(x => x.v).map(x => ({ v: x.v, name: x.name })));
+        const mine = String(S.readUrl || '').trim();
+        if (mine && /\{u\}/i.test(mine) && !list.some(x => x.v === mine)) list.unshift({ v: mine, name: '你自己填的那条' });
+        for (const r of list) {
+            const t0 = Date.now();
+            let ok = false, msg = '';
+            try {
+                const body = await grab(fillRead(r.v, PROBE_URL), 12000);
+                const t = toText(body);
+                if (t.length < 60) { msg = '通了，但只拿到 ' + t.length + ' 个字（多半被反爬页挡了）'; }
+                else { ok = true; msg = '能用，拿到 ' + t.length + ' 个字'; }
+            } catch (e) {
+                const m = String(e.message || e);
+                msg = /Failed to fetch|NetworkError|load failed/i.test(m) ? '被对方网站的 CORS 拦了（浏览器里直连基本都这样）'
+                    : /abort/i.test(m) ? '超时，没等到回应'
+                    : /401/.test(m) ? '401：这条路要 key'
+                    : /429/.test(m) ? '429：被限流了，过会儿再试'
+                    : m;
+            }
+            probeRows.push({ name: r.name, tpl: r.v, ok, msg, ms: Date.now() - t0 });
+            renderPanel();
+        }
+        probing = false;
+        const good = probeRows.find(x => x.ok);
+        if (good && !mine) { S.readUrl = good.tpl === '{u}' ? '' : good.tpl; await save(); }
+        renderPanel();
+    };
+
     let deepInfo = '';     // 上一次"读正文"到底读成了几条，显示在功能页上
     let gotImgs = [];      // 这一轮抓到的图片地址（给"角色存图"用）
 
@@ -201,32 +263,40 @@
         //        readTpl = (S.src === 'custom') ? (S.readUrl || '{u}') : (p.url || '{u}')
         //    而 ddg 那一档的 p.url 是**搜索地址**（.../lite/?q={q}），里面根本没有 {u}。
         //    于是 replace('{u}', …) 什么都没换，每一条"正文"抓的都是同一个搜索结果页——
-        //    读正文条数填几都一样，永远只看得到搜索结果页。现在按 readTplOf() 统一算。
+        //    读正文条数填几都一样，永远只看得到搜索结果页。现在按 readChain() 挨个试。
         const links = pickLinks(raw, deep);
-        const readTpl = readTplOf();
+        const chain = readChain();
         const parts = [], srcs = [];
-        let okN = 0, failN = 0, firstFail = '';
+        let okN = 0, failN = 0, firstFail = '', usedRoute = '';
         gotImgs = pickImgs(raw);        // 搜索结果页上的图先收着
         for (const u of links) {
-            try {
-                const body = await grab(fillRead(readTpl, u), 15000);
-                const t = toText(body);
-                if (t.length < 120) { failN++; if (!firstFail) firstFail = '正文太短（多半是反爬页）'; continue; }
-                gotImgs = gotImgs.concat(pickImgs(body)).slice(0, 12);
-                parts.push(`【${u.split('/')[2]}】${t}`);
-                srcs.push(u);
-                okN++;
-            } catch (e) {
-                failN++;
-                const msg = String(e.message || e);
-                if (!firstFail) firstFail = /Failed to fetch|NetworkError|load failed/i.test(msg)
-                    ? '被对方网站的 CORS 拦了（浏览器里直连别人家网页基本都会）' : msg;
-                lastErr = msg;
+            let got = false;
+            for (const tpl of chain) {          // 一条路不行就换下一条
+                try {
+                    const body = await grab(fillRead(tpl, u), 15000);
+                    const t = toText(body);
+                    if (t.length < 120) { if (!firstFail) firstFail = '正文太短（多半是反爬页）'; continue; }
+                    gotImgs = gotImgs.concat(pickImgs(body)).slice(0, 12);
+                    parts.push(`【${u.split('/')[2]}】${t}`);
+                    srcs.push(u);
+                    okN++; got = true;
+                    usedRoute = routeName(tpl);
+                    S.lastGoodRead = tpl;        // 记住这条能用，下次先试它
+                    break;
+                } catch (e) {
+                    const msg = String(e.message || e);
+                    if (!firstFail) firstFail = /Failed to fetch|NetworkError|load failed/i.test(msg)
+                        ? '直连被对方网站的 CORS 拦了' : msg;
+                    lastErr = msg;
+                }
             }
+            if (!got) failN++;
         }
+        if (okN) { try { save(); } catch (e) {} }    // 把 lastGoodRead 存下来
         // 把"到底读到没读到"记下来，功能页上直说，别让人以为参数没生效
         deepInfo = deep === 0 ? '只读搜索结果页（读正文条数填的 0）'
-                 : `找到 ${links.length} 条外链，正文读成 ${okN} 条${failN ? `、失败 ${failN} 条：${firstFail}` : ''}`;
+                 : `找到 ${links.length} 条外链，正文读成 ${okN} 条${usedRoute ? `（走的「${usedRoute}」）` : ''}`
+                   + (failN ? `、失败 ${failN} 条：${firstFail}${chain.length > 1 ? `（${chain.length} 条路都试过了）` : ''}` : '');
         const joined = parts.length ? parts.join('\n\n') : listText;
         return { text: joined.slice(0, num(S.maxChars, 200, 20000, 1500)),
                  sources: srcs.length ? srcs : ['（正文没读到，只用了搜索结果页）'],
@@ -404,13 +474,33 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
         } catch (e) { return ''; }
     };
 
+    /* 这个角色会不会自己去上网。
+       default 跟全局走 / on 一定去 / off 不去 / self 让 TA 按人设自己决定。
+       self 这一档不调 API：不碰网络、不识字、根本不是现代人的角色本来就不该去。 */
+    window.gywebWants = function (c) {
+        if (!c) return false;
+        const m = c.webMode || 'default';
+        if (m === 'off') return false;
+        if (m === 'on') return true;
+        if (m === 'self') {
+            const p = String(c.persona || '') + ' ' + String(c.bio || '');
+            if (/古代|江湖|武林|仙|修真|中世纪|不识字|文盲|山里|与世隔绝|不碰电子|没有手机/.test(p)) return false;
+            if (/好奇|爱查|爱看|研究|求知|上网|冲浪|资讯|记者|学者|极客|程序/.test(p)) return true;
+            return true;   // 看不出来就当会——跟 default 一致，不平白少掉一个人
+        }
+        return true;
+    };
+
     /* ===================== 自动跑 ===================== */
     async function autoTick() {
         try {
             if (!on('webExplore')) return;
             const gap = num(S.gapMin, 30, 1440, 180) * 60000;
             if (Date.now() - (S.lastRunAt || 0) < gap) return;
-            const cs = chars();
+            /* 🩹 v114：角色资料页上那个「这个角色自己上网看东西」以前**填了完全没用**——
+               存进 char.webMode 之后没有任何代码读它，谁都照样被轮到。现在真的按它筛。
+               多一档 self ＝ 让 TA 自己按人设决定要不要上网（不调 API，看人设关键词）。 */
+            const cs = chars().filter(c => window.gywebWants(c));
             if (!cs.length) return;
             const last = c => { const a = listOf(c.id); return a.length ? a[a.length - 1].at : 0; };
             const pick = cs.slice().sort((a, b) => last(a) - last(b))[0];
@@ -446,6 +536,15 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
     .gyweb-sec h4{margin:0 0 8px;font-size:14px;}
     .gyweb-in{width:100%;padding:8px 10px;border:1px solid rgba(128,128,128,.35);border-radius:8px;
         background:transparent;color:inherit;font-size:13px;box-sizing:border-box;margin-bottom:8px;}
+    .gyweb-probe{border:1px solid rgba(128,128,128,.25);border-radius:10px;overflow:hidden;margin:6px 0 4px;}
+    .gyweb-probe-row{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12px;
+        border-bottom:1px solid rgba(128,128,128,.14);}
+    .gyweb-probe-row:last-child{border-bottom:none;}
+    .gyweb-probe-row.ok{background:rgba(0,186,124,.08);}
+    .gyweb-probe-row.bad{color:#8b98a5;}
+    .gyweb-probe-row b{white-space:nowrap;}
+    .gyweb-probe-row span{flex:1;min-width:0;}
+    .gyweb-probe-row i{font-style:normal;color:var(--gy-accent,#1d9bf0);cursor:pointer;white-space:nowrap;}
     .gyweb-btn{border:1px solid #1d9bf0;color:#1d9bf0;background:transparent;border-radius:999px;
         padding:5px 13px;font-size:13px;cursor:pointer;white-space:nowrap;}
     .gyweb-btn.solid{background:#1d9bf0;color:#fff;}
@@ -542,9 +641,26 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
                         onchange="gywebSet('readUrl', this.value.trim())">
                     <div class="gyweb-hint">
                         搜索结果页拿到的是<b>一串外链</b>，正文得再点进去抓一次。浏览器里直连别人家网页
-                        会被对方的 CORS 拦掉，所以这一步多半要挂个代理；
-                        <b>APK / exe 里没有 CORS 限制，选「直连」就行</b>。
-                    </div>` : ''}
+                        会被对方的 CORS 拦掉，所以这一步多半要挂个代理。
+                    </div>
+                    <div style="margin:8px 0 2px;">
+                        <button class="gyweb-btn" onclick="gywebProbe()" ${probing ? 'disabled' : ''}>
+                            ${probing ? '正在挨个试…' : '🩺 体检：看看哪条路在你这儿能用'}</button>
+                        <span class="gyweb-hint">不调 API，只发几个网络请求。</span>
+                    </div>
+                    ${probeRows.length ? `<div class="gyweb-probe">${probeRows.map(r => `
+                        <div class="gyweb-probe-row ${r.ok ? 'ok' : 'bad'}">
+                            <b>${r.ok ? '✓' : '✗'} ${esc(r.name)}</b>
+                            <span>${esc(r.msg)}　${r.ms} ms</span>
+                            ${r.ok ? `<i onclick="gywebSet('readUrl','${r.tpl === '{u}' ? '' : r.tpl}')">用这条</i>` : ''}
+                        </div>`).join('')}
+                        ${!probing && !probeRows.some(x => x.ok) ? `<div class="gyweb-hint" style="color:#f91880;padding:6px 2px;">
+                            一条都没通。这说明不是参数问题，是网络这一层过不去：<br>
+                            · 公共代理常年限流／时好时坏，过一会儿再体检一次多半就好了<br>
+                            · 或者去 jina.ai 免费注册拿个 key，上面来源选 Jina（最稳）<br>
+                            · 有自己的反代／SearXNG 的话，填在下面那一栏里最靠谱<br>
+                            在这之前，探索照样能跑，只是 TA 读的是搜索结果页那一坨，不是正文。</div>` : ''}
+                    </div>` : ''}` : ''}
                 ${deepInfo ? `<div class="gyweb-hint">上次读正文：${esc(deepInfo)}</div>` : ''}
                 ${lastErr ? `<div class="gyweb-hint" style="color:#f91880;">上次抓取失败：${esc(lastErr)}</div>` : ''}
                 ${S.src !== 'none' ? `<div class="gyweb-hint">⚠️ 抓不到时会自动退回"只用模型知道的"继续写，不会卡住也不会弹错。</div>` : ''}
@@ -604,6 +720,8 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
                                 <b>${esc(x.topic)}</b>　<i>${ago(x.at)}${x.why ? '　·　' + esc(x.why) : ''}${x.src === 'none' ? '　·　没联网' : ''}${x.rounds > 1 ? '　·　搜了 ' + x.rounds + ' 轮' : ''}</i>
                                 <p>${esc(x.text)}</p>
                                 ${(x.sources && x.sources.length) ? `<i style="display:block;margin-top:4px;">看的是：${x.sources.map(u => esc(shortUrl(u))).join('、')}</i>` : ''}
+                                ${(x.deep && /没读到|失败/.test(String(x.sources || ''))) || (x.deep && !(x.sources || []).some(u => /^https?:/.test(u)))
+                                    ? `<i style="display:block;margin-top:2px;opacity:.75;">为什么没读到：${esc(x.deep)}　<u style="cursor:pointer;" onclick="gywebProbe()">去体检</u></i>` : ''}
                             </div>`).join('') : '<div class="gyweb-hint" style="padding:6px 2px;">还没查过什么。</div>') : ''}
                     </div>`;
                 }).join('') : '<div class="gyweb-hint">还没有角色。</div>'}

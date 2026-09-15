@@ -1119,14 +1119,352 @@ async function handleCharCardImport(event) {
         console.error("读取文件异常:", e);
     }
 
+    // 🆕 一张卡/一份 JSON 里可能打包了不止一个角色（少数导出工具会这样），
+    // 这种情况不该只认第一个——弹个勾选框让你自己挑要导入哪几个，一个个走完整流程排队导入。
+    if (charData) {
+        const multiList = detectMultiCharList(charData);
+        if (multiList) {
+            openMultiCardPickerModal(multiList, b64Image);
+            return;
+        }
+    }
+
     if (!charData) {
-        alert("⚠️ 未能从该图片中读取到有效的角色卡数据！\n这可能是一张普通的图片。目前支持自带设定的酒馆(SillyTavern)角色卡(PNG/WEBP) 或 原生 JSON 文件。");
+        // 没读到内嵌的角色卡数据，但如果拖进来的是一张图（没嵌 SillyTavern 数据的普通插画/照片），
+        // 直接判定"失败"太不友好了——多半是想拿这张图当新角色的头像用。顺手帮你把图放进新建表单，
+        // 名字/人设留空让你自己填（或者用"照着人设补全空白资料"）。
+        if (b64Image) {
+            openFormForCreate();
+            tempCropResults.charAvatar = b64Image;
+            const preview = document.getElementById('charAvatarPreview');
+            if (preview) { preview.src = b64Image; preview.style.display = 'block'; }
+            alert('ℹ️ 这张图里没读到内嵌的角色卡数据（应该是张普通插画/照片），已经先当头像放进新角色表单里了——自己填个名字和人设就行，也可以用下面的「✨ 照着人设补全空白资料」。');
+            gyMaybeDetectMultiChar(b64Image, { manual: false });
+            return;
+        }
+        alert("⚠️ 未能从该文件中读取到有效的角色卡数据！\n目前支持自带设定的酒馆(SillyTavern)角色卡(PNG/WEBP) 或 原生 JSON 文件。");
         return;
     }
 
     // 兼容 V1 和 V2 格式规范
     const data = charData.data || charData;
 
+    // 🆕 真正常见的"一张卡好几个人"：卡本身是合规的单卡（一个 name、一份 description），
+    // 但 description 正文里其实写了两个甚至更多角色（双人卡/CP卡，名字往往写成"A&B"）。
+    // 以前这种卡导进来就是一个叫"清衍&淮安"的角色，5000 字人设里塞着两兄弟，
+    // 程序完全不知道那是两个人——聊天、推文、关系网全都当一个人处理。
+    // 现在先按正文结构把人拆开（纯本地，不花一次调用），拆得出来就问你要不要分开导入。
+    if (isAutoOn('cardSplitAsk')) {
+        // ① 正文里就写了好几个人（双人卡/CP卡）
+        const parts = splitCardPersonaByCharacter(data);
+        if (parts && parts.length > 1) {
+            openCardSplitModal(parts, data, b64Image);
+            return;
+        }
+        // ② 正文空/很短，人全在世界书里（世界卡、剧情卡）——这种卡照老办法导，
+        //    只会得到一个人设空白、名字叫"时间病症"的角色，等于没导。
+        const wbFound = findCharsInWorldbook(data);
+        if (wbFound.length) {
+            openCardSplitModal(wbCharsToParts(wbFound, data), data, b64Image, {
+                fromWorldbook: true,
+                sure: wbFound.map(c => !!c.sure),
+                meta: wbFound.map(c => `${c.entries.length} 条词条`)
+            });
+            return;
+        }
+    }
+
+    await fillCharFormFromCardData(data, b64Image);
+    gyMaybeDetectMultiChar(b64Image, { manual: false });
+}
+
+// ==========================================
+// ✂️ 把"一张卡里写了好几个角色"的正文按角色拆开
+// 判断依据全部来自卡片正文本身的结构，纯本地、不调 API：
+//   ① <character_information character="季清衍">…</character_information>（中文卡里最常见的写法）
+//   ② <character name="X">/ <char name="X"> 这类变体
+//   ③ 正文里重复出现 char_name: / CharacterName: / 姓名： 且后面跟着不同的名字
+// 拆不出来就返回 null（这时候不自动弹窗，留给你手动点「让 AI 帮忙拆」）。
+// 块外面的文字（开头的世界观、结尾的通用规则）算"公共部分"，每个人都带一份。
+// ==========================================
+function splitCardPersonaByCharacter(data) {
+    const desc = String((data && data.description) || '');
+    if (desc.length < 400) return null;   // 太短的正文不折腾，多半就是一个人
+
+    // ① / ② 带名字属性的成对标签
+    const tagRe = /<(?:character_information|character|char)\b[^>]*\b(?:character|name)\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:character_information|character|char)>/gi;
+    let m, blocks = [], lastEnd = 0, head = '', tails = [];
+    while ((m = tagRe.exec(desc)) !== null) {
+        if (blocks.length === 0) head = desc.slice(0, m.index);
+        else tails.push(desc.slice(lastEnd, m.index));
+        blocks.push({ name: String(m[1]).trim(), body: String(m[2]).trim() });
+        lastEnd = m.index + m[0].length;
+    }
+    if (blocks.length > 1) {
+        const tail = desc.slice(lastEnd);
+        // 块之间/前后的零碎文字：只有真有内容（不只是空行）才当公共部分带上
+        const sharedBits = [head, ...tails, tail].map(s => String(s).trim()).filter(s => s.length > 30);
+        const shared = sharedBits.join('\n\n');
+        return blocks.map(b => ({ name: b.name, persona: b.body, shared }));
+    }
+
+    // ③ 重复的 char_name: / CharacterName: / 姓名： 标记
+    const markRe = /(?:^|\n)\s*(?:<[^>\n]*>\s*)?(?:CharacterName\s*[:：]\s*)?(?:char_name|角色名|姓名|名字)\s*[:：]\s*(?:name\s*[:：]\s*)?([^\n\r]{1,24})/gi;
+    const marks = [];
+    while ((m = markRe.exec(desc)) !== null) {
+        const nm = String(m[1]).replace(/["'|>]/g, '').trim();
+        if (nm && nm.length <= 20) marks.push({ name: nm, at: m.index });
+    }
+    // 名字去重后至少两个不同的人，且每段都有点分量，才认为是多角色卡
+    const uniq = [];
+    marks.forEach(x => { if (!uniq.some(u => u.name === x.name)) uniq.push(x); });
+    if (uniq.length > 1) {
+        const head2 = desc.slice(0, uniq[0].at).trim();
+        const out = uniq.map((u, i) => ({
+            name: u.name,
+            persona: desc.slice(u.at, i + 1 < uniq.length ? uniq[i + 1].at : desc.length).trim(),
+            shared: head2.length > 30 ? head2 : ''
+        }));
+        if (out.every(o => o.persona.length > 200)) return out;
+    }
+    return null;
+}
+
+// ==========================================
+// 🌍 世界卡：正文是空的，人全住在世界书里
+// 很多剧情卡/世界卡的 description 压根没内容（0 字），26~35 条世界书里才是真东西：
+//   角色/白宴山基础信息、角色/白琛三面性、_24岁林秋壬、【NPC】林忆佑、季景行人设……
+// 这种卡按老逻辑导进来，就是一个叫"时间病症"的角色，人设一个字都没有，等于白导。
+// 这里按词条标题和 keys 认出"世界书里住着哪几个人"，纯本地判断，不调 API。
+// ==========================================
+const GY_WBC = (function () {
+    // 一看就不是人名的词
+    const NOT_NAME = /^(npc|nsfw|sfw|cot|ooc|user|char|性爱|操逼|做爱|亲吻|抚摸|床|性癖|性交|性行为|性事|情欲|剧情|场景|催眠|家人|朋友|兄弟|哥哥|弟弟|姐姐|妹妹|父亲|母亲|爸爸|妈妈|三人|修罗场|新人|体验师|新npc|故事|故事背景|禁止剧透|世界观|状态栏|时间线|设定|规则|总纲|简介|背景|系统|地图|流程|目录|玩法|图鉴|随机|通用|其他|其它)$/i;
+    // 地点/玩法/机制类词条名——世界卡里这类最多，不挡掉会刷一屏假人
+    const NOT_PERSON = /(区$|区域|项目|服务|生成|流程|规则|系统|图鉴|随机|状态栏|界面|总纲|花名册|时间线|地图|目录|玩法|模式|设置|选开|if$|nsfw$|sfw$)/i;
+    // 机构/地名/机制：世界卡里这些词条跟角色词条长得一模一样，只能靠词本身认
+    const NOT_PLACE = /(学院|学校|王国|帝国|公国|教会|公会|商会|军团|拍卖|委托|任务|副本|山脉|森林|沙漠|湖泊|岛$|城$|镇$|村$|国$|港$|街$|殿$|楼$|塔$)/;
+    // 名字里带标点的基本是句子/标题（"色情，什么的"、"给我活起来！"）
+    const PUNCT_IN_NAME = /[，,。！!？?：:；;、…—\-（）()【】\[\]"'“”‘’]/;
+    const TITLE_STRIP = [
+        /^[_\-\s]*/, /^【[^】]*】\s*/, /^\[[^\]]*\]\s*/, /^（[^）]*）\s*/, /^\([^)]*\)\s*/,
+        /^角色[\/／:：]\s*/, /^人物[\/／:：]\s*/, /^NPC[_\-\s:：]*/i, /^\d+岁\s*/, /^第?[一二三四五六七八九十]+[、.]\s*/
+    ];
+    const SUFFIX_STRIP = [
+        /[_\-\s]*人设(强调)?$/, /[_\-\s]*基础信息$/, /[_\-\s]*性格调色盘$/, /[_\-\s]*NSFW调色盘$/i,
+        /[_\-\s]*NSFW指导$/i, /[_\-\s]*三面性$/, /[_\-\s]*二次解释$/, /[_\-\s]*档案$/, /[_\-\s]*设定$/,
+        /[_\-\s]*简介$/, /[_\-\s]*补充$/, /[_\-\s]*详细$/, /[_\-\s]*说明$/, /的sex档案$/i
+    ];
+    function stripTitle(t) {
+        let s = String(t || '').replace(/[\r\n]+/g, ' ').trim(), prev;
+        do { prev = s; TITLE_STRIP.forEach(re => { s = s.replace(re, ''); }); } while (s !== prev);
+        do { prev = s; SUFFIX_STRIP.forEach(re => { s = s.replace(re, ''); }); } while (s !== prev);
+        return s.trim();
+    }
+    function looksLikeName(s) {
+        if (!s) return false;
+        const t = String(s).trim();
+        if (t.length < 2 || t.length > 8) return false;
+        if (NOT_NAME.test(t) || NOT_PERSON.test(t) || NOT_PLACE.test(t) || PUNCT_IN_NAME.test(t)) return false;
+        if (/\d/.test(t)) return false;   // 带数字的基本是玩法/期数（"游乐30日"、"D30"）
+        // ⚠️ 不能用 \W 判断"全是符号"——JS 里中文算 \W，一用就把中文名字全毙了
+        if (!/[一-龥぀-ヿA-Za-z]/.test(t)) return false;
+        return true;
+    }
+    return { stripTitle, looksLikeName };
+})();
+
+function findCharsInWorldbook(data) {
+    // ⚠️ 只有"正文空着"的卡才按世界卡处理。正文里已经写满人设的（普通单人卡，四五千字那种），
+    // 世界书是给这一个人配的背景资料，里面的地名/设定名会被误认成人（"三中"、"丧尸"、"蜂巢"）。
+    // 实测：加上这一条，全库 14 张单人卡的误判一次性全没了。
+    if (String((data || {}).description || '').trim().length > 800) return [];
+    const entries = (((data || {}).character_book || {}).entries || []).filter(e => e && e.content);
+    if (entries.length < 3) return [];
+
+    // 一、收候选名字：每条词条贡献 keys[0]（这类卡里几乎总是本名）和标题脱壳后的残留
+    const cand = new Map();
+    const touch = (name, aliases) => {
+        if (!GY_WBC.looksLikeName(name)) return;
+        if (!cand.has(name)) cand.set(name, { name, aliases: [], entries: [], chars: 0 });
+        const c = cand.get(name);
+        (aliases || []).forEach(a => {
+            a = String(a || '').trim();
+            if (a && a !== name && a.length <= 8 && c.aliases.indexOf(a) < 0) c.aliases.push(a);
+        });
+    };
+    entries.forEach(e => {
+        const keys = (e.keys || []).map(k => String(k).trim()).filter(Boolean);
+        if (keys.length) touch(keys[0], keys.slice(1));
+        touch(GY_WBC.stripTitle(e.comment), []);
+    });
+
+    // 二、分词条。只认名字本身，别名只用来显示——keys 后面那几个位置常躺着别人的名字，
+    // 拿来匹配会把别人的词条算到这个人头上。
+    cand.forEach(c => {
+        entries.forEach(e => {
+            const t = String(e.comment || '');
+            const keys = (e.keys || []).map(k => String(k));
+            if (t.indexOf(c.name) >= 0 || keys.indexOf(c.name) >= 0) {
+                c.entries.push(e); c.chars += String(e.content).length;
+            }
+        });
+    });
+
+    // 三、真角色总会在好几条词条里被提到（人设/性格/NSFW/时间线各一条）；只出现一次的多半是误认
+    let out = [];
+    cand.forEach(c => { if (c.entries.length >= 2) out.push(c); });
+    // 名字互相包含的（林秋壬 vs 林秋壬nsfw），留短的那个
+    out = out.filter(c => !out.some(o => o !== c && o.name.length < c.name.length && c.name.indexOf(o.name) >= 0));
+    out.sort((a, b) => b.chars - a.chars);
+    // 被更强的人完全盖住的，是蹭出来的，不是独立的人
+    out = out.filter(c => !out.some(o => o !== c && o.chars > c.chars * 2 &&
+        c.entries.every(e => o.entries.indexOf(e) >= 0)));
+    // 相对门槛：主角们的词条数是一个量级，地名/机制蹭出来的是另一个量级。
+    // 比如《沉沦法则》八个主角各 21~26 条，而"皇家魔法学院""地下拍卖会"这些只有 2~6 条，
+    // 按"不到头名四分之一就不算人"一刀切下去，16 个假人全没了，8 个真角色一个不少。
+    if (out.length) {
+        const top = out[0].entries.length;
+        const floor = Math.max(2, Math.floor(top / 4));
+        out = out.filter(c => c.entries.length >= floor);
+    }
+    out.forEach(c => { c.sure = c.entries.length >= 3 || c.chars >= 3000; });
+    return out;
+}
+
+// 把认出来的人做成"可以直接导入"的样子。
+// ⚠️ 人设不塞全部词条：世界书整本本来就会导入并挂给每个人（按名字关键词自己会触发），
+// 全塞一遍等于同样的字存两份，还能把人设撑到五万字。这里按大小取到 8000 字为止，
+// 剩下的列个名字说明"在世界书里"。
+function wbCharsToParts(found, data) {
+    return found.map(c => {
+        const sorted = c.entries.slice().sort((a, b) => String(b.content).length - String(a.content).length);
+        const take = [], rest = [];
+        let budget = 8000;
+        sorted.forEach(e => {
+            const len = String(e.content).length;
+            if (take.length === 0 || budget - len > 0) { take.push(e); budget -= len; }
+            else rest.push(e);
+        });
+        let persona = take.map(e => `【${String(e.comment || '设定').trim()}】\n${e.content}`).join('\n\n');
+        if (rest.length) {
+            persona += `\n\n【其余设定在世界书里】\n${rest.map(e => String(e.comment || '').trim()).filter(Boolean).join('、')}`;
+        }
+        if (c.aliases.length) persona = `【也被叫做】${c.aliases.slice(0, 6).join('、')}\n\n` + persona;
+        return { name: c.name, persona, shared: String((data && data.description) || '').trim() };
+    });
+}
+
+// 弹窗：问你这张卡里的几个人要不要分开导入。
+// opts.fromWorldbook=true 表示这些人是从世界书里认出来的（世界卡/剧情卡），措辞和默认勾选都不一样：
+// 世界书认人没有正文拆分那么确定，所以拿不准的那几个默认不勾上。
+function openCardSplitModal(parts, data, b64Image, opts) {
+    opts = opts || {};
+    const wb = !!opts.fromWorldbook;
+    const rows = parts.map((p, i) => {
+        const on = wb ? (opts.sure && opts.sure[i] !== false) : true;
+        const meta = (opts.meta && opts.meta[i]) ? `${opts.meta[i]} · ` : '';
+        return `<label style="display:flex; gap:8px; align-items:flex-start; padding:8px 10px; border:1px solid #eee; border-radius:8px; margin-bottom:6px; font-size:13px; cursor:pointer;">
+        <input type="checkbox" class="gyCardSplitPick" value="${i}"${on ? ' checked' : ''} style="margin-top:3px;">
+        <span><b>${escapeHtml(p.name)}</b> <span style="color:#536471;">（${meta}${p.persona.length} 字人设）</span><br>
+        <span style="color:#536471;">${escapeHtml(p.persona.replace(/\s+/g, ' ').slice(0, 50))}…</span></span>
+    </label>`;
+    }).join('');
+    const wbCount = (data.character_book && data.character_book.entries || []).length;
+    const title = wb ? `🌍 这张卡的人都写在世界书里` : `✂️ 这张卡里写了 ${parts.length} 个角色`;
+    const intro = wb
+        ? `卡名是「${escapeHtml(String(data.name || ''))}」，正文只有 ${String(data.description || '').length} 字——
+           这是张世界卡，真正的人都在那 ${wbCount} 条世界书里。照老办法导的话，你只会得到<b>一个</b>叫
+           「${escapeHtml(String(data.name || ''))}」、人设一片空白的角色。下面这些是认出来的人，
+           拿不准的没帮你勾上，你自己看着挑：`
+        : `卡名是「${escapeHtml(String(data.name || ''))}」，但正文里其实是 ${parts.length} 个人的设定。
+           不拆的话，他们会被当成<b>同一个人</b>导进来（聊天、推文、关系网全都只有一个账号）。`;
+    const note = wb
+        ? `导入之后：每人一份自己的人设（太长的部分留在世界书里，靠名字关键词照样会触发），
+           那 ${wbCount} 条世界书只导入一次、每个人都挂上，头像图先都放进去，你自己再各裁各的。`
+        : `拆开之后：每个人一份自己的人设${wbCount ? `，卡里那 ${wbCount} 条世界书只导入一次、每个人都挂上` : ''}，
+           开场白和公共设定每个人都带一份，头像图先都放进去，你自己再各裁各的。`;
+    const html = `
+    <div id="gyCardSplitModal" style="position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:99999; display:flex; align-items:center; justify-content:center;">
+      <div style="background:#fff; border-radius:14px; max-width:430px; width:92%; max-height:82vh; overflow:auto; padding:18px;">
+        <h3 style="margin:0 0 8px; color:#1d9bf0;">${title}</h3>
+        <div style="font-size:13px; color:#536471; margin-bottom:10px; line-height:1.6;">${intro}</div>
+        ${rows}
+        <div style="font-size:12px; color:#536471; margin:10px 0; line-height:1.6;">${note}</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-post" style="flex:2;" onclick="confirmCardSplit()">${wb ? '👥 把勾上的建成角色' : '✂️ 拆开分别导入'}</button>
+          <button class="btn-secondary" style="flex:1;" onclick="cancelCardSplit()">${wb ? '不用，照老办法导' : '不拆，当一个'}</button>
+        </div>
+      </div>
+    </div>`;
+    const old = document.getElementById('gyCardSplitModal'); if (old) old.remove();
+    document.body.insertAdjacentHTML('beforeend', html);
+    window.__gyCardSplitParts = parts; window.__gyCardSplitData = data; window.__gyCardSplitB64 = b64Image;
+}
+function cancelCardSplit() {
+    const m = document.getElementById('gyCardSplitModal'); if (m) m.remove();
+    const data = window.__gyCardSplitData, b64Image = window.__gyCardSplitB64;
+    if (data) fillCharFormFromCardData(data, b64Image);
+}
+function confirmCardSplit() {
+    const picked = Array.from(document.querySelectorAll('.gyCardSplitPick:checked')).map(c => Number(c.value));
+    const parts = window.__gyCardSplitParts || [], data = window.__gyCardSplitData || {}, b64Image = window.__gyCardSplitB64;
+    const m = document.getElementById('gyCardSplitModal'); if (m) m.remove();
+    const chosen = picked.map(i => parts[i]).filter(Boolean);
+    if (!chosen.length) return;
+    pendingCharImportQueue = buildSplitQueue(chosen, data, b64Image);
+    advanceCharImportQueue();
+}
+
+// 把拆好的几个人做成导入队列：
+// 世界书/正则脚本只跟着第一个人导入一次（不然 21 条词条会被导两遍），
+// 后面几个人靠 shareWb 标记，等表单开好之后把同一批世界书自动勾上。
+function buildSplitQueue(chosen, data, b64Image) {
+    return chosen.map((p, i) => {
+        const one = Object.assign({}, data);
+        one.name = p.name;
+        one.description = (p.shared ? p.shared + '\n\n' : '') + p.persona;
+        if (i > 0) { delete one.character_book; one.extensions = Object.assign({}, one.extensions); delete one.extensions.regex_scripts; }
+        return { type: 'card', data: one, b64Image, shareWb: i > 0 };
+    });
+}
+
+// 🤖 结构拆不出来时的兜底：让 AI 照着正文把人分开（手动点才跑，一次调用）
+async function gyCardSplitAi(data, b64Image) {
+    const api = getApiMain();
+    if (!api || !api.key) { alert('没配 API，没法让 AI 帮忙拆。'); return; }
+    const desc = String((data && data.description) || '');
+    if (!desc.trim()) { alert('这张卡的正文是空的，没什么可拆的。'); return; }
+    alert('正在让 AI 看这张卡里到底有几个人…（正文长的话要等十几秒）');
+    try {
+        const prompt = `下面是一张角色卡的正文。请判断它写的是**几个角色**。
+要求：
+1. 只有确实写了不止一个人才拆；如果通篇就是一个角色（哪怕提到了别人的名字），返回 {"count":1,"chars":[]}。
+2. 拆的时候把属于每个角色的设定**原样搬过去**，不要改写、不要概括、不要补充你自己的话。
+3. 世界观、时代背景、通用规则这类大家共用的内容放进 shared，不要重复塞进每个人。
+只输出合法 JSON：
+{"count":数字,"shared":"公共设定（没有就空字符串）","chars":[{"name":"角色名","persona":"这个角色的全部设定原文"}]}
+
+【卡片正文】
+${desc.slice(0, 6000)}`;
+        const res = await callChatCompletionAPI(api, prompt, 1);
+        if (res && res.error) { alert('拆分失败：' + (res.error.message || '未知错误')); return; }
+        const parsed = parseModelJson(res && res.choices?.[0]?.message?.content || '');
+        const chars = parsed && Array.isArray(parsed.chars) ? parsed.chars.filter(c => c && c.name && c.persona) : [];
+        if (!parsed || chars.length < 2) { alert('AI 看下来这张卡就是一个角色，没拆。'); return; }
+        openCardSplitModal(chars.map(c => ({ name: c.name, persona: String(c.persona), shared: String(parsed.shared || '') })), data, b64Image);
+    } catch (e) {
+        alert('拆分失败：' + (e && e.message || e));
+    }
+}
+
+// 📥 把单个角色的卡片数据（JSON已解析好的 data 对象）真正填进新建角色表单——
+// 原来这段逻辑是写死在 handleCharCardImport 里的，现在拆出来单独成一个函数，
+// 这样"一份文件里打包了好几个角色"的排队导入也能一个个复用它，不用把逻辑抄两遍。
+async function fillCharFormFromCardData(data, b64Image) {
+    // 记一下这张卡的原始数据：万一结构没认出来是双人卡，你还可以在表单里手动点「让 AI 拆开」，
+    // 那时候世界书/开场白这些还能顺着这份原始数据一起带过去。
+    gyLastImportedCardData = data;
     // 1. 打开新建角色表单
     openFormForCreate();
 
@@ -1290,6 +1628,9 @@ ${fullPersona.substring(0, 1500)}
 
     if (importedWbCount > 0 || importedRegexCount > 0) {
         saveAllData();
+        // 🆕 记下这一批世界书的 id：一张双人卡拆开导入时，世界书只在第一个人那儿导入一次，
+        // 后面几个人靠这个记录把同一批世界书自动勾上（他们本来就住在同一个世界里）。
+        gyLastImportedWbIds = importedWbIds.slice();
         // 自动在多选框里把这些新诞生的世界书勾选上
         setTimeout(() => {
             // 合并进已有的勾选集合，而不是整个覆盖——避免把角色卡导入前用户已经手动勾好的其它世界书冲掉
@@ -1302,6 +1643,227 @@ ${fullPersona.substring(0, 1500)}
     }
     
     alert("🎉 角色卡读取成功！请浏览下方表格，没问题后点击最底部的【保存并生成角色】即可。");
+}
+
+// 🆕 头像识图检测的开关：挂进"设置 → 后台自动功能"总控页，跟别的功能同一套规矩——
+// 有额外调用成本的自动检测都默认关着，手动按钮不受限制随时能查。
+(function registerCardImportSwitches() {
+    try {
+        if (typeof AUTO_FEATURE_GROUPS !== 'undefined' && Array.isArray(AUTO_FEATURE_GROUPS)
+            && !AUTO_FEATURE_GROUPS.some(g => g.key === '角色卡')) {
+            AUTO_FEATURE_GROUPS.push({ key: '角色卡', icon: '🪪', title: '导入角色卡 / 头像',
+                note: '导入角色卡、上传头像图片时，要不要顺手多花一次调用去检测点什么。默认关着，导入照样能用，只是少几个智能提示；旁边手动按钮不受这个限制，随时能查。' });
+        }
+        if (typeof AUTO_FEATURE_DEFS !== 'undefined' && Array.isArray(AUTO_FEATURE_DEFS)
+            && !AUTO_FEATURE_DEFS.some(d => d.key === 'charImgMultiDetect')) {
+            AUTO_FEATURE_DEFS.push({
+                key: 'charImgMultiDetect',
+                label: '导入头像时自动检测是否不止一个角色',
+                desc: '选头像图片、或者导入角色卡图片没读到内嵌数据时，顺手识图问一眼"这张图是不是画了不止一个角色"，是的话弹出来问你要不要拆成几个角色分别导入（自己拆 / AI帮忙写草稿 两种都能选）。默认关，不打开就不会多花这次调用；旁边一直有个手动按钮可以随时查，不受这个开关限制。',
+                cost: '每次触发一次识图调用',
+                defaultOff: true,
+                group: '角色卡',
+                where: '角色中心 → 创建/编辑角色 → 头像上传旁边'
+            });
+        }
+        if (typeof AUTO_FEATURE_DEFS !== 'undefined' && Array.isArray(AUTO_FEATURE_DEFS)
+            && !AUTO_FEATURE_DEFS.some(d => d.key === 'cardSplitAsk')) {
+            AUTO_FEATURE_DEFS.push({
+                key: 'cardSplitAsk',
+                label: '双人卡/多人卡自动问"要不要拆开"',
+                desc: '不少角色卡名字写成"A&B"，正文里其实是两个人的完整设定。不拆的话他们会被当成同一个人导进来——一个账号、一套人设、关系网里也只有一个点。打开之后，导入时先按正文结构认一下有几个人（纯本地判断，一次 API 都不调），认出来不止一个就问你要不要分开导入。默认开着，因为它不花钱，而且不问的话你根本不会发现导错了。',
+                cost: '不调 API（纯本地读正文结构）',
+                group: '角色卡',
+                where: '角色中心 → 导入角色卡时自动弹'
+            });
+        }
+    } catch (e) {}
+})();
+
+// ==========================================
+// 📦 多角色导入队列 —— 一次导入里可能要接连建好几个角色
+// （一份卡文件本身打包了多个角色 / 一张图里拆出了多个角色），
+// 存好一个之后自动接着填下一个，不用你自己一遍遍点"创建新角色"再重新走一遍导入。
+// ==========================================
+let pendingCharImportQueue = [];
+let gyLastImportedWbIds = [];   // 拆开导入时，第一个人导进来的那批世界书 id，后面几个人照着勾
+let gyLastImportedCardData = null;  // 最近一次导入的那张卡的原始数据（手动让 AI 拆的时候要用）
+
+// 表单里那颗「✂️ 让 AI 拆开」：拿当前人设框里的文字去拆（所以手动粘进去的长人设也能拆），
+// 如果这段人设是从卡片导进来的，世界书/开场白这些还会顺着原卡数据一起带过去。
+function gyCardSplitAiFromForm() {
+    const persona = (document.getElementById('charPersona') || {}).value || '';
+    if (!persona.trim()) { alert('人设框是空的，没什么可拆的。'); return; }
+    if (persona.length < 300) { alert('这段人设才 ' + persona.length + ' 个字，不太像塞了好几个人。真要拆的话，先把完整设定贴进去。'); return; }
+    const base = gyLastImportedCardData || {};
+    const name = (document.getElementById('charName') || {}).value || base.name || '';
+    const data = Object.assign({}, base, { name, description: persona });
+    // 先本地试一次结构拆分（免费），拆得出来就不花那次调用了
+    const local = splitCardPersonaByCharacter(data);
+    if (local && local.length > 1) { openCardSplitModal(local, data, tempCropResults.charAvatar || null); return; }
+    gyCardSplitAi(data, tempCropResults.charAvatar || null);
+}
+
+function detectMultiCharList(charData) {
+    const looksChar = x => x && typeof x === 'object' && (x.name || (x.data && x.data.name));
+    if (Array.isArray(charData)) {
+        const items = charData.filter(looksChar);
+        return items.length > 1 ? items : null;
+    }
+    if (charData && typeof charData === 'object') {
+        for (const key of ['characters', 'chars', 'cards', 'character_list', 'members']) {
+            if (Array.isArray(charData[key])) {
+                const items = charData[key].filter(looksChar);
+                if (items.length > 1) return items;
+            }
+        }
+    }
+    return null;
+}
+
+function openMultiCardPickerModal(list, b64Image) {
+    const rows = list.map((d, i) => {
+        const nm = (d && (d.name || (d.data && d.data.name))) || `角色${i + 1}`;
+        const rawDesc = (d && (d.description || (d.data && d.data.description))) || '';
+        const desc = String(rawDesc).slice(0, 60) + (String(rawDesc).length > 60 ? '…' : '');
+        return `<label style="display:flex; gap:8px; align-items:flex-start; padding:8px 10px; border:1px solid #eee; border-radius:8px; margin-bottom:6px; font-size:13px; cursor:pointer;">
+            <input type="checkbox" class="gyMultiCardPick" value="${i}" checked style="margin-top:3px;">
+            <span><b>${escapeHtml(nm)}</b><br><span style="color:#536471;">${escapeHtml(desc)}</span></span>
+        </label>`;
+    }).join('');
+    const html = `
+    <div id="gyMultiCardModal" style="position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:99999; display:flex; align-items:center; justify-content:center;">
+      <div style="background:#fff; border-radius:14px; max-width:420px; width:92%; max-height:80vh; overflow:auto; padding:18px;">
+        <h3 style="margin:0 0 8px; color:#1d9bf0;">📦 这份文件里打包了 ${list.length} 个角色</h3>
+        <div style="font-size:13px; color:#536471; margin-bottom:10px;">SillyTavern 规范一张卡本该只有一个角色，但这份文件里检测到不止一个。勾选要导入的——存好一个自动接着填下一个：</div>
+        ${rows}
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="btn-secondary" style="flex:1;" onclick="document.querySelectorAll('.gyMultiCardPick').forEach(c=>c.checked=!c.checked)">反选</button>
+          <button class="btn-post" style="flex:2;" onclick="confirmMultiCardPickerModal()">开始导入选中的</button>
+        </div>
+        <button class="btn-secondary" style="width:100%; margin-top:8px;" onclick="document.getElementById('gyMultiCardModal').remove()">取消，什么都不导</button>
+      </div>
+    </div>`;
+    const old = document.getElementById('gyMultiCardModal'); if (old) old.remove();
+    document.body.insertAdjacentHTML('beforeend', html);
+    window.__gyMultiCardList = list; window.__gyMultiCardB64 = b64Image;
+}
+function confirmMultiCardPickerModal() {
+    const checked = Array.from(document.querySelectorAll('.gyMultiCardPick:checked')).map(c => Number(c.value));
+    const list = window.__gyMultiCardList || [];
+    const b64Image = window.__gyMultiCardB64;
+    const picked = checked.map(i => list[i]).filter(Boolean);
+    const modal = document.getElementById('gyMultiCardModal'); if (modal) modal.remove();
+    if (!picked.length) return;
+    pendingCharImportQueue = picked.map(d => ({ type: 'card', data: (d && d.data) || d, b64Image }));
+    advanceCharImportQueue();
+}
+
+// 🔍 头像图里是不是画了不止一个角色——检测 + 顺手让AI给每个角色起名字写一版人设草稿（同一次调用一起要，不用多花一次钱）。
+// opts.manual=true：手动点按钮触发，不受开关限制、没检测出多个也会弹提示告诉你结果。
+// opts.manual=false（默认）：导入头像时顺带自动查一次，受开关 charImgMultiDetect 控制，默认关；查不出来也安安静静，不打扰你。
+async function gyMaybeDetectMultiChar(b64Image, opts) {
+    opts = opts || {};
+    if (!b64Image) { if (opts.manual) alert('还没有头像图，先选一张图再检测。'); return; }
+    if (!opts.manual && !(typeof isAutoOn === 'function' && isAutoOn('charImgMultiDetect'))) return;
+    const api = getApiMain();
+    if (!api || !api.key) { if (opts.manual) alert('没配 API，没法识图检测。'); return; }
+    const btn = opts.manual ? document.getElementById('gyMultiCharCheckBtn') : null;
+    if (btn) { btn.disabled = true; btn.innerText = '🔍 识图中…'; }
+    try {
+        const prompt = `这是一张虚构角色的插画/头像图。请判断图里到底画了几个不同的角色——同一个角色的不同角度/局部算1个，纯背景装饰或道具不算角色。
+只输出合法 JSON，不要任何其它文字：
+{"count": 数字, "chars": [{"pos":"这个角色在图里的位置，简短方位词，比如'左边'/'后面那个'", "name":"给TA起个2-4字的名字，纯靠画风气质猜，别写未知", "hint":"外观特征一两句话，比如发色瞳色服装氛围", "personaDraft":"以此为基础写一段40到80字的角色人设草稿，正经口吻，不要提这是一张图/插画这类话"}]}
+如果只有1个角色，chars 给1项，pos 写"整张图"。`;
+        const data = await callChatCompletionAPI(api, prompt, 1, [b64Image]);
+        const raw = data && data.choices?.[0]?.message?.content || '';
+        if (data && data.error) { if (opts.manual) alert('识图失败：' + (data.error.message || '未知错误')); return; }
+        const parsed = (typeof parseModelJson === 'function') ? parseModelJson(raw) : JSON.parse(raw);
+        const chars = parsed && Array.isArray(parsed.chars) ? parsed.chars : [];
+        const count = (parsed && Number(parsed.count)) || chars.length;
+        if (!parsed || !count) { if (opts.manual) alert('没识别出来，可能这个接口/模型不支持识图。'); return; }
+        if (count <= 1) { if (opts.manual) alert('看着就是一个角色，没检测出别的人。'); return; }
+        openMultiImgChoiceModal({ count, chars }, b64Image);
+    } catch (e) {
+        if (opts.manual) alert('识图失败：' + (e && e.message || e));
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerText = '🔍 这张图像不止一个角色？'; }
+    }
+}
+
+function openMultiImgChoiceModal(info, b64Image) {
+    const list = Array.isArray(info.chars) ? info.chars : [];
+    const rows = list.map((c, i) => `<div style="padding:8px 10px; border:1px solid #eee; border-radius:8px; margin-bottom:6px; font-size:13px;">
+        <b>${i + 1}. ${escapeHtml(c.name || '角色' + (i + 1))}</b>（${escapeHtml(c.pos || '')}）<br>
+        <span style="color:#536471;">${escapeHtml(c.hint || '')}</span>
+    </div>`).join('');
+    const html = `
+    <div id="gyMultiImgModal" style="position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:99999; display:flex; align-items:center; justify-content:center;">
+      <div style="background:#fff; border-radius:14px; max-width:420px; width:92%; max-height:80vh; overflow:auto; padding:18px;">
+        <h3 style="margin:0 0 8px; color:#1d9bf0;">👀 这张图里好像不止一个角色</h3>
+        <div style="font-size:13px; color:#536471; margin-bottom:10px;">AI 大概看出来 ${list.length} 个：</div>
+        ${rows}
+        <div style="font-size:13px; color:#536471; margin:10px 0;">要拆成 ${list.length} 个角色分别导入吗？同一张图会先放进每个角色的头像格子里，你自己再裁/换图都行。</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button class="btn-post" onclick="gyMultiImgChoice('manual')">🖐️ 我自己来拆（自己起名写人设，先把图放进去占位）</button>
+          <button class="btn-post" style="background:#f91880;" onclick="gyMultiImgChoice('ai')">🤖 AI 帮忙写草稿（名字/人设先猜一版，我再改）</button>
+          <button class="btn-secondary" onclick="gyMultiImgChoice('one')">不用，就当一个角色</button>
+        </div>
+      </div>
+    </div>`;
+    const old = document.getElementById('gyMultiImgModal'); if (old) old.remove();
+    document.body.insertAdjacentHTML('beforeend', html);
+    window.__gyMultiImgInfo = info; window.__gyMultiImgB64 = b64Image;
+}
+function gyMultiImgChoice(mode) {
+    const info = window.__gyMultiImgInfo, b64Image = window.__gyMultiImgB64;
+    const modal = document.getElementById('gyMultiImgModal'); if (modal) modal.remove();
+    if (mode === 'one' || !info) return;
+    const list = Array.isArray(info.chars) ? info.chars : [];
+    if (!list.length) return;
+    pendingCharImportQueue = list.map(c => ({
+        type: 'img',
+        b64Image,
+        prefillName: mode === 'ai' ? (c.name || '') : '',
+        prefillPersona: mode === 'ai' ? (c.personaDraft || '') : '',
+        note: c.pos || ''
+    }));
+    advanceCharImportQueue();
+}
+
+// 从队列里取下一个继续填表单；'card'类型复用整套角色卡填表逻辑，'img'类型（图里拆出来的）
+// 只是把同一张图先放进头像格子，名字/人设看模式有没有AI草稿可用，没有就留空让你自己写。
+function advanceCharImportQueue() {
+    if (!pendingCharImportQueue || !pendingCharImportQueue.length) return;
+    const item = pendingCharImportQueue.shift();
+    const remaining = pendingCharImportQueue.length;
+    if (item.type === 'card') {
+        fillCharFormFromCardData(item.data, item.b64Image);
+        // 同一张双人卡拆出来的第二、第三个人：世界书不再重复导入，
+        // 直接把第一个人那批世界书原样勾上——他们本来就在同一个世界里。
+        if (item.shareWb && gyLastImportedWbIds.length) {
+            setTimeout(() => {
+                try {
+                    gyLastImportedWbIds.forEach(id => charFormWbPendingSelection.add(id));
+                    if (typeof renderCharFormWbCheckboxes === 'function') renderCharFormWbCheckboxes();
+                } catch (e) {}
+            }, 350);
+        }
+    } else {
+        openFormForCreate();
+        if (item.b64Image) {
+            tempCropResults.charAvatar = item.b64Image;
+            const preview = document.getElementById('charAvatarPreview');
+            if (preview) { preview.src = item.b64Image; preview.style.display = 'block'; }
+        }
+        if (item.prefillName) document.getElementById('charName').value = item.prefillName;
+        if (item.prefillPersona) document.getElementById('charPersona').value = item.prefillPersona;
+        setTimeout(() => alert(`📥 继续导入排队里的一个角色${item.note ? '（' + item.note + '）' : ''}。同一张图先帮你放进头像了。${remaining > 0 ? '改完保存，还剩 ' + remaining + ' 个继续排队。' : '这是最后一个了，改完保存就好了。'}`), 300);
+    }
+    setTimeout(() => {
+        const t = document.getElementById('formTitle');
+        if (t && remaining > 0) t.innerText += `（还剩 ${remaining} 个排队导入）`;
+    }, 60);
 }
 
 // ==========================================

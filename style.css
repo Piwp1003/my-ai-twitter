@@ -444,6 +444,10 @@ body.dark-theme .wb-form-resize-handle { background: var(--gy-accent); }
 .md-inlinecode { background: rgba(0,0,0,0.08); border-radius: 4px; padding: 1px 5px; font-family: monospace; font-size: 0.9em; }
 .chat-input-area { display: flex; flex-direction: column; background: rgba(247,247,247,0.8); border-top: 1px solid #e0e0e0; padding: 10px 15px; flex-shrink: 0; }
 .chat-input-row { display: flex; gap: 10px; align-items: center; width: 100%; }
+/* 🖐️「回复」：手动回复模式下才出现。攒着几句没交出去的时候会亮起来 */
+.chat-input-row .chat-reply-now { margin: 0; flex-shrink: 0; white-space: nowrap; }
+.chat-input-row .chat-reply-now.waiting { border-color: var(--gy-accent); color: var(--gy-accent);
+  background: rgba(var(--gy-accent-rgb), .12); font-weight: 600; }
 /* ⋮ 输入框左边的收纳菜单：导演耳语、表情、图片、小游戏、转账、插件动作…全在里面。
    往 #chatToolIconsRow / #chatPluginActionsBar 里塞按钮的老代码一行都不用改，
    按钮上的 title 会被 content:attr(title) 自动变成菜单里的文字。 */

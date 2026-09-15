@@ -782,9 +782,18 @@ const count = Math.floor(Math.random() * npcReplyMaxCount) + 1;
     let forumHint = postType === 'anon' ? "注意：当前处于匿名、抽象且无底线的深渊论坛，请用非常暴躁、极端、抽象、不礼貌的网民语气。" : "";
     const actionStrictRule = allowActionTags ? "" : "评论内容里绝对不要有任何动作、神态或心理描写，不要用括号()或【】，只写路人会打出来的话。";
 
+    /* 👥 v114：这个博主身边真有人的话（世界书里抽出来的 NPC），
+       按比例把其中几条换成熟人来说——以前一个古代角色发推，
+       底下能冒出 @fatui_watcher，跟这个世界一点关系都没有。 */
+    let npcHint = '';
+    try {
+        const ownerId = (post.char && post.char.id !== 'me' && post.char.id !== 'tabloid_admin') ? post.char.id : null;
+        if (ownerId && typeof window.gyNpcCommentHint === 'function') npcHint = window.gyNpcCommentHint(ownerId, count) || '';
+    } catch (e) {}
+
     const prompt = `你现在要模拟${count}个路人NPC网友进行网络评论。
 【重要设定上下文】：
-${postCharContext}
+${postCharContext}${npcHint}
 ${getUserContextPrompt(post.char && post.char.id !== 'me' ? myCharacters.find(c => c.id == post.char.id) : null)}
 生成NPC言论时，你必须严格记忆、区分并遵循上述博主和用户的性别与人设特征，绝不能搞错代词！
 ${forumHint}
@@ -1912,6 +1921,9 @@ async function saveCharacter() {
     // 不用再逼着用户把表单填满才能保存。
     if (!persona.trim()) return alert('「角色人设」是必填项——其它资料留空的话，会照着人设自动补全。');
 
+    // 🆕 多角色排队导入时，这次保存完还要不要自动接着填下一个——存在这，函数末尾读
+    const wasCreatingNew = !editingCharId;
+
     const btn = document.getElementById('saveCharBtn');
 
     // ⚠️ 这里以前会**在保存时顺手调一次 API 去补全空白项**。两个毛病：
@@ -2040,8 +2052,15 @@ async function saveCharacter() {
     }
 
     saveAllData();
-    if (document.getElementById('view-home').style.display !== 'none') renderPosts(); 
+    if (document.getElementById('view-home').style.display !== 'none') renderPosts();
     btn.innerText = "保存并生成角色"; btn.disabled = false;
-    showRoleList(); renderDiaryCharList();
+    renderDiaryCharList();
     updateCharSelects();
+    // 🆕 多角色排队导入：这一个刚存完，队列里还有没导完的，直接接着填下一个，
+    // 不回角色列表页——省得你自己再点一次"创建新角色"重新走一遍导入流程。
+    if (wasCreatingNew && typeof pendingCharImportQueue !== 'undefined' && pendingCharImportQueue.length > 0) {
+        advanceCharImportQueue();
+        return;
+    }
+    showRoleList();
 }

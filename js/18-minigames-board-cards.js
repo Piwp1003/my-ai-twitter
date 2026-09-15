@@ -16,6 +16,17 @@
 
 // ============ 五子棋 ============
 (function () {
+
+    /* 🎲 这个模块里所有"让角色开口"的地方都属于「桌游 / 派对游戏」那一场。
+       模块是个 IIFE、里面十几个函数都是局部的，一个个包太脏；
+       而 prompt 是 buildBasePrompt 同步拼出来的，所以在这儿遮蔽它一次就够——
+       模块内部所有调用都会自动落在 game 这一场里。 */
+    const buildBasePrompt = function () {
+        const a = arguments;
+        if (typeof window.gyInjectInScene === 'function' && typeof window.buildBasePrompt === 'function')
+            return window.gyInjectInScene('game', () => window.buildBasePrompt.apply(null, a));
+        return window.buildBasePrompt ? window.buildBasePrompt.apply(null, a) : '';
+    };
   if (window.__gomokuPluginInstalled) return;
   window.__gomokuPluginInstalled = true;
 

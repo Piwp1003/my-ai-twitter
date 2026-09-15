@@ -1041,6 +1041,7 @@ function switchChatSession(id) {
     renderChatCharList();
     const chatInput = document.getElementById('chatInputArea');
     if(chatInput) chatInput.style.display = 'flex';
+    try { gyPaintReplyBtn(); } catch (e) {}   // 🖐️ 换个人聊，「回复」上攒着几句也跟着换
     // 防御：开场白相关逻辑（角色数据/插件/宏都可能出岔子）如果在这里抛错，之前会导致下面的
     // renderChatMessages()整个都不执行——表现出来就是"新聊天开场白不显示"，其实是连聊天界面都没刷新。
     // 分开try/catch，保证不管开场白那边出不出错，聊天消息区始终会尝试渲染。
@@ -2344,6 +2345,15 @@ async function sendChatMessage() {
     if (!pendingBatchReplyTexts[sessionId]) pendingBatchReplyTexts[sessionId] = [];
     pendingBatchReplyTexts[sessionId].push(triggerText);
     if (pendingBatchReplyTimers[sessionId]) clearTimeout(pendingBatchReplyTimers[sessionId]);
+    /* 🖐️ 手动回复模式：消息照常发出去，但**不自动叫 TA 回**。
+       想让 TA 回的时候点输入框右边那颗「回复」。
+       为什么要有这一档：有时候你想连着说好几句、想先把话说完再等回应，
+       也有时候只是想把一句话记在聊天里，不想立刻花一次调用。 */
+    if (typeof gyChatReplyMode !== 'undefined' && gyChatReplyMode === 'manual') {
+        pendingBatchReplyTimers[sessionId] = null;
+        try { gyPaintReplyBtn(); } catch (e) {}
+        return;
+    }
     pendingBatchReplyTimers[sessionId] = setTimeout(() => {
         const batchTexts = pendingBatchReplyTexts[sessionId] || [];
         pendingBatchReplyTexts[sessionId] = [];
@@ -2352,6 +2362,32 @@ async function sendChatMessage() {
         const combinedText = batchTexts.join('\n');
         triggerAIBatchReply(sessionId, combinedText);
     }, CHAT_BATCH_REPLY_DELAY_MS);
+}
+
+/* 🖐️「回复」：手动模式下把攒着的那几句一次交给 TA。
+   攒了几句就一起给，跟自动模式合批的行为一致——
+   TA 看到的是"你连着说了这几句"，不是分开的几轮。 */
+async function gyChatReplyNow() {
+    const sessionId = currentChatSessionId;
+    if (!sessionId) return;
+    const batch = pendingBatchReplyTexts[sessionId] || [];
+    pendingBatchReplyTexts[sessionId] = [];
+    if (pendingBatchReplyTimers[sessionId]) { clearTimeout(pendingBatchReplyTimers[sessionId]); pendingBatchReplyTimers[sessionId] = null; }
+    try { gyPaintReplyBtn(); } catch (e) {}
+    if (batch.length) return triggerAIBatchReply(sessionId, batch.join('\n'));
+    // 一句新的都没有：当成"再回一次"（比如你想让 TA 接着上一句继续）
+    return retriggerLastReply(sessionId);
+}
+// 手动模式下那颗按钮：有几句等着就标几，没有就淡着
+function gyPaintReplyBtn() {
+    const b = document.getElementById('chatReplyNowBtn');
+    if (!b) return;
+    const manual = (typeof gyChatReplyMode !== 'undefined' && gyChatReplyMode === 'manual');
+    b.style.display = manual ? '' : 'none';
+    if (!manual) return;
+    const n = ((typeof currentChatSessionId !== 'undefined' && pendingBatchReplyTexts[currentChatSessionId]) || []).length;
+    b.innerText = n ? `回复 ${n}` : '回复';
+    b.classList.toggle('waiting', n > 0);
 }
 
 async function triggerAIBatchReply(sessionId, triggerText, aliveCatchUp) {
@@ -2378,6 +2414,23 @@ async function triggerAIBatchReply(sessionId, triggerText, aliveCatchUp) {
             targetChars = groupObj.members.filter(id => !muted.has(id)).map(id => myCharacters.find(c => c.id == id)).filter(Boolean);
             speakOrder = groupObj.speakOrder || 'all';
             if (speakOrder === 'random') { for (let i = targetChars.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [targetChars[i], targetChars[j]] = [targetChars[j], targetChars[i]]; } }
+            /* 🗣️「让角色自己决定谁先开口」：顺序不是固定也不是随机，是**按性格排**。
+               群里谁先说话本来就不是掷骰子——话多的抢先，刚被点名的自然接话，
+               跟你熟的更容易开口，慢热的等别人说完。全是现成数据，不调 API。 */
+            if (speakOrder === 'self') {
+                const txt = String(triggerText || '');
+                const score = c => {
+                    let v = 0;
+                    if (txt.indexOf(c.name) >= 0) v += 40;                       // 刚被提到
+                    try { if (window.gyRel && window.gyRel.score) v += Math.min(30, Number(window.gyRel.score(c.id)) || 0); } catch (e) {}
+                    const p = String(c.persona || '');
+                    if (/话多|聒噪|自来熟|外向|爱说|活泼|热情|八卦/.test(p)) v += 25;
+                    if (/寡言|冷淡|沉默|内向|慢热|不爱说话|少言|面瘫/.test(p)) v -= 25;
+                    v += Math.min(10, ((globalChats[sessionId] || []).filter(m => String(m.sender) === String(c.id)).length) / 5);
+                    return v + Math.random() * 8;                                // 一点点抖动，免得每次一模一样
+                };
+                targetChars.sort((a, b) => score(b) - score(a));
+            }
         }
     } 
     else { let c = myCharacters.find(c => c.id == sessionId); if (c) targetChars = [c]; }

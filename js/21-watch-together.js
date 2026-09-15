@@ -777,7 +777,21 @@
     renderChat(); paintComments(); paintMarks();
   }
 
-  async function askChar(char, ask, sysExtra) {
+    // 报一下场景：这段生成属于「film」那一场，好让「注入内容管理」能单独设它读什么（soft＝外层已经有场景就不抢）
+
+  async function askChar() {
+
+      const a = arguments;
+
+      if (typeof window.gyInjectInSceneSoft === 'function')
+
+          return window.gyInjectInSceneSoft('film', () => askCharInner.apply(null, a));
+
+      return askCharInner.apply(null, a);
+
+  }
+
+  async function askCharInner(char, ask, sysExtra) {
     const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
     if (!api || !api.key) return '';
     try {

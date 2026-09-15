@@ -103,8 +103,17 @@
         try {
             const c = charOf(charId);
             if (!c) return '';
+            // 🧑 对方（用户）身上带着的东西——单独算一段，
+            //    不能被"这个角色自己什么都没有"挡在门外（原来 mine.length 一为 0 就整段 return 了）
+            let yoursOut = '';
+            try {
+                const yours = of('me').filter(i => i.close && (i.state === 'have' || i.state === 'home')).slice(-5);
+                if (yours.length) yoursOut = `\n【${uname(c)}身上带着的东西】\n` + yours.map(i =>
+                    `· ${i.name}${i.desc ? '（' + i.desc + '）' : ''}${i.from && i.from.indexOf('char:') === 0 ? ' —— ' + (i.fromName || '别人') + '送的' : ''}`).join('\n')
+                    + `\n这是你见过、知道的——不用刻意提，但聊到的时候你是认得的。\n`;
+            } catch (e) {}
             const mine = of(charId);
-            if (!mine.length) return '';
+            if (!mine.length) return yoursOut;
             const n = Math.max(1, Math.min(30, parseInt(S.inject) || 8));
             const here = mine.filter(i => i.state === 'have' || i.state === 'home').slice(-n);
             const gone = S.showGone ? mine.filter(i => ['lost', 'broken', 'given', 'used'].indexOf(i.state) >= 0).slice(-4) : [];
@@ -121,6 +130,7 @@
                 out += `【已经不在了的】\n` + gone.map(i =>
                     `· ${i.name} —— ${stName(i.state)}${i.at ? '，' + ago(i.at) + '的事' : ''}${i.note ? '，' + i.note : ''}`).join('\n') + '\n';
             }
+            out += yoursOut;
             const mineFromUser = here.filter(i => i.from === 'user');
             if (mineFromUser.length) out += `${uname(c)}送的那几样你还留着——这件事本身是有分量的，别把它说得像顺手拿的。\n`;
             out += `这些东西是真的在你身上，用到、提到、被问到的时候你记得它们的来历和样子。\n`;
@@ -302,10 +312,51 @@ body.dark-theme .gykit-av{background:#2f3336;color:#e7e9ea;}
             </div>
         </div>`;
     }
+    /* 🧑 你自己的随身物
+       以前这一页只有角色，可"随身物"这件事本来是双向的——
+       角色送你的东西、你自己带在身上的东西，同样是真发生过的。
+       数据结构本来就是按 ownerId 存的，用 'me' 当 ownerId 就行，不用另起一套。
+       角色那边的 prompt 里会带上"对方身上有什么"（只带贴身/常带的那几样，
+       不然等于把你兜里所有东西都念一遍）。 */
+    const meName = () => (typeof currentUser !== 'undefined' && currentUser.name) || '我';
+    function tabMine() {
+        const mine = of('me');
+        const here = mine.filter(i => i.state === 'have' || i.state === 'home');
+        const fromC = mine.filter(i => i.from && i.from.indexOf('char:') === 0).length;
+        const open = openChar === 'me';
+        return `<div class="gykit-sec" style="margin-bottom:8px;">
+          <div class="gykit-c" onclick="gykitPick('me')">
+            <div class="gykit-av">${esc(meName()[0] || '我')}</div>
+            <div class="gykit-c-m"><b>${esc(meName())}（我自己）</b>
+              <span>身上 ${here.length} 样${fromC ? '，其中 ' + fromC + ' 样是角色送的' : ''}${mine.length - here.length ? '　·　' + (mine.length - here.length) + ' 样已经不在了' : ''}</span></div>
+            <span style="color:#8b98a5;font-size:12px;">${open ? '收起' : '展开'}</span>
+          </div>
+          ${open ? `<div style="padding:6px 0 0 46px;">
+            <div style="margin-bottom:10px;">
+              <input class="gykit-in" id="gykitMineName" placeholder="我身上有一样东西：叫什么？" style="margin-bottom:6px;">
+              <input class="gykit-in" id="gykitMineDesc" placeholder="什么样 / 哪来的（可不填）" style="margin-bottom:6px;">
+              <button class="gykit-btn" onclick="gykitAddMine()">＋ 记下来</button>
+            </div>
+            <div class="gykit-hint" style="margin-bottom:8px;">角色会知道你身上有什么——只带<b>贴身</b>的那几样进 prompt，
+              不然等于把你兜里所有东西念一遍。在下面把要让 TA 知道的设成「贴身」。</div>
+            ${mine.length ? mine.slice().reverse().map(itemRow).join('')
+                          : '<div class="gykit-hint">还什么都没记。角色送你的东西收下之后也会自动进这儿。</div>'}
+          </div>` : ''}
+        </div>`;
+    }
+    window.gykitAddMine = async function () {
+        const n = document.getElementById('gykitMineName'), d = document.getElementById('gykitMineDesc');
+        const name = ((n && n.value) || '').trim();
+        if (!name) return tell('先写个名字。');
+        await addItem('me', { name, desc: ((d && d.value) || '').trim(), from: 'self' });
+        if (n) n.value = ''; if (d) d.value = '';
+        renderPanel();
+    };
     function tabList() {
         const cs = chars();
-        if (!cs.length) return '<div class="gykit-hint" style="padding:20px 0;text-align:center;">还没有角色。</div>';
-        return `<div id="gykitStatus" style="font-size:12px;color:#8b98a5;margin-bottom:8px;"></div>` + cs.map(c => {
+        if (!cs.length) return `<div id="gykitStatus" style="font-size:12px;color:#8b98a5;margin-bottom:8px;"></div>`
+            + tabMine() + '<div class="gykit-hint" style="padding:20px 0;text-align:center;">还没有角色。</div>';
+        return `<div id="gykitStatus" style="font-size:12px;color:#8b98a5;margin-bottom:8px;"></div>` + tabMine() + cs.map(c => {
             const mine = of(c.id);
             const here = mine.filter(i => i.state === 'have' || i.state === 'home');
             const fromU = mine.filter(i => i.from === 'user' && (i.state === 'have' || i.state === 'home')).length;
@@ -1160,7 +1211,22 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
                 key: 'day_mark',
                 label: '把某一天记成对自己有意义的日子',
                 hint: '给今天（或者过去某一天）画个圈，以后每年都会惦记',
-                need: () => (typeof isAutoOn === 'function') ? isAutoOn('charOwnDays') : false,
+                /* 🩹 v114：角色资料页上那个「这个角色自己记纪念日」以前**填了完全没用**——
+                   存进 char.ownDaysMode 之后没人读。现在真的按它筛。
+                   self ＝ 按人设决定：把日子记在心上本来就是一种性格。 */
+                need: (char) => {
+                    if (!(typeof isAutoOn === 'function' && isAutoOn('charOwnDays'))) return false;
+                    const m = (char && char.ownDaysMode) || 'default';
+                    if (m === 'off') return false;
+                    if (m === 'on') return true;
+                    if (m === 'self') {
+                        const p = String((char && char.persona) || '');
+                        if (/不在意|无所谓|粗线条|记性差|不记|大大咧咧|冷淡|疏离/.test(p)) return false;
+                        if (/念旧|细腻|敏感|重感情|多愁|执着|记仇|长情|仪式感/.test(p)) return true;
+                        return true;
+                    }
+                    return true;
+                },
                 run: async (char) => {
                     const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
                     if (!api || !api.key) return null;

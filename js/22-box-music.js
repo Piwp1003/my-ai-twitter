@@ -1705,7 +1705,14 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
 
     // 核心：问某个角色说一句
     // reason: 'switch' 换歌 | 'lyric' 唱到某句 | 'end' 听完 | 'ask' 用户主动问 | 'reply' 回用户的话
-    async function askChar(c, reason, extra) {
+        // 报一下场景：这段生成属于「music」那一场，好让「注入内容管理」能单独设它读什么（soft＝外层已经有场景就不抢）
+    async function askChar() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('music', () => askCharInner.apply(null, a));
+        return askCharInner.apply(null, a);
+    }
+    async function askCharInner(c, reason, extra) {
         if (!c || asking) return null;
         if (typeof getApiConfig !== 'function' || typeof callChatCompletionAPI !== 'function') return null;
         const api = getApiConfig(true);
@@ -1856,7 +1863,14 @@ ${chatSoFar()}
     };
 
     // 把这次一起听总结成一段记忆，通过插件的 code 钩子喂回各功能
-    async function summarizeListen(manual) {
+    // 报场景：这段生成属于「music」那一场（soft＝外层已有场景就不抢）
+    async function summarizeListen() {
+        const a = arguments;
+        if (typeof window.gyInjectInSceneSoft === 'function')
+            return window.gyInjectInSceneSoft('music', () => summarizeListenInner.apply(null, a));
+        return summarizeListenInner.apply(null, a);
+    }
+    async function summarizeListenInner(manual) {
         const cs = charsIn();
         if (!cs.length || !(S.chat || []).length) { if (manual) toast('还没什么可记的', '先聊几句再存。'); return; }
         const api = getApiConfig(true);

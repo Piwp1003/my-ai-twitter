@@ -844,7 +844,8 @@ function getScheduleContextPrompt(char) {
     // ✅ 待办清单：还没办的事。这是"角色为什么会突然想起点什么"的依据——
     // 比如答应过的东西买到了、约好的日子快到了，都可能自然地被提起。
     // 只给没办完的，办完的没必要再占 prompt。过期的单独标一下，语气上才对得上。
-    const todos = Array.isArray(char.todos) ? char.todos.filter(t => t && !t.done) : [];
+    // 🔀 待办在「注入内容管理」里已经拆成单独一条（mem.todo），不再跟着日程一起开关
+    const todos = injOn('mem.todo') && Array.isArray(char.todos) ? char.todos.filter(t => t && !t.done) : [];
     if (todos.length) {
         const today = new Date();
         const todayKey = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
@@ -1009,12 +1010,14 @@ function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", o
     // "要不要插入深度位置"和"是否出现在这段固定文本里"两处判断不一致。
     const wbEntries = opts.precomputedWbEntries || getCharacterWorldbookEntries(char, chatHistoryStr, opts.sessionId); // 将聊天记录传给世界书雷达
     const excludeWb = new Set(opts.excludeWorldbookPositions || []);
-    const wbText = (pos) => excludeWb.has(pos) ? '' : formatWorldbookEntriesText(wbEntries, pos);
+    // 🔎 世界书按插入位置分段注入，每个位置在「注入内容管理」里各有一个开关。
+    //    关掉一段不会删任何词条，只是这一轮不塞——所以随时开回来，内容原样都在。
+    const wbText = (pos) => (excludeWb.has(pos) || !injOn('wb.' + pos)) ? '' : formatWorldbookEntriesText(wbEntries, pos);
 
     let prompt = getHumanFeelPromptText();
     prompt += getTpesPromptText();
     prompt += wbText('before_persona');
-    prompt += getActivePresetPromptText(char, !!opts.excludeDepthPresetEntries, opts.sessionId, 'before_persona');
+    if (injOn('preset.before_persona')) prompt += getActivePresetPromptText(char, !!opts.excludeDepthPresetEntries, opts.sessionId, 'before_persona');
     prompt += `你是"${char.name}"，你的核心人设：${char.persona}。\n`;
     prompt += wbText('after_persona'); // 默认插入位置，未设置position的条目都在这里，等价于改造前的行为
     // 本app没有把"示例对话"从人设里单独拆出来存（角色卡导入时mes_example会直接并进人设文本），
@@ -1053,13 +1056,13 @@ function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", o
     prompt += wbText('before_an');
     prompt += wbText('after_an');
     prompt += wbText('at_depth');
-    prompt += getActivePresetPromptText(char, !!opts.excludeDepthPresetEntries, opts.sessionId, 'after_persona'); // 默认插入位置，等价于改造前的行为
+    if (injOn('preset.after_persona')) prompt += getActivePresetPromptText(char, !!opts.excludeDepthPresetEntries, opts.sessionId, 'after_persona'); // 默认插入位置，等价于改造前的行为
     prompt += getPluginPromptText(char); // 插件系统：提示词规则插件注入
     prompt += runPluginScriptHooks(char, chatHistoryStr); // 插件系统：进阶脚本钩子注入
     prompt += wbText('end');
-    prompt += getActivePresetPromptText(char, !!opts.excludeDepthPresetEntries, opts.sessionId, 'end');
+    if (injOn('preset.end')) prompt += getActivePresetPromptText(char, !!opts.excludeDepthPresetEntries, opts.sessionId, 'end');
     let actionRule = allowActionTags ? "你可以使用括号(如()或【】)来进行动作描写和心理描写。" : "不要有多余的动作描写或心理描写，直接输出说话或正文内容。";
-    prompt += `\n【格式规则】：${actionRule}\n`;
+    if (injOn('core.fmt')) prompt += `\n【格式规则】：${actionRule}\n`;
     // 💰 当前时间必须是这份系统提示词里的**最后一段**——它每分钟都在变，放在前面会让它后面
     //    所有内容的输入缓存全部失效（详见 getTpesNowLine 上面的说明）。往这后面再加任何东西之前，
     //    先确认那段内容是不是也会每次都变；固定不变的内容一律加在这一行**之前**。
@@ -1793,7 +1796,41 @@ async function renderMemoryHubVectorMemory(sessionId, isGroup) {
     if (!enableVectorMemory) {
         statsEl.innerHTML = `⚪ 向量记忆总开关当前是关闭的（上面可以打开），已经存过的向量还在，只是不会再被检索使用。`;
     } else {
-        statsEl.innerHTML = `已向量化 ${embedded.length} / ${history.length} 条聊天消息` + (char ? `　·　日记/信件/小说/论坛等：已向量化 ${charEmbedded.length} / ${charCandidates.length} 条（还没算过的会在下次聊天/续写时自动补算，不用手动操作）` : '');
+        // ⚠️ 以前这里只写"已向量化 83 / 260"，然后一句"会自动补算，不用手动操作"——
+        //    可实际上聊天消息只在**发出的那一刻**算一次，你聊到一半才打开向量记忆的，
+        //    之前那几百条永远轮不上；日记那一批要等真的走到检索那一步才补。
+        //    所以数字会停在那儿不动，而且失败了也不说话。现在把话说清楚，并给一个"点了就补"。
+        const short = history.filter(m => m && m.text && !m.embVec && typeof window.gyVecTooShort === 'function' && window.gyVecTooShort(m.text)).length;
+        const todo  = history.filter(m => m && m.text && !m.embVec && !(typeof window.gyVecTooShort === 'function' && window.gyVecTooShort(m.text))).length;
+        const dataTodo = charCandidates.length - charEmbedded.length;
+        statsEl.innerHTML =
+            `聊天消息：已算 <b>${embedded.length}</b> / ${history.length} 条`
+            + (short ? `　·　${short} 条太短（10 字以内，本来就不算）` : '')
+            + (todo ? `　·　<b style="color:var(--gy-warn,#ffad1f);">还差 ${todo} 条</b>` : '')
+            + (char ? `<br>日记 / 信件 / 小说 / 论坛：已算 <b>${charEmbedded.length}</b> / ${charCandidates.length} 条`
+                     + (dataTodo ? `　·　<b style="color:var(--gy-warn,#ffad1f);">还差 ${dataTodo} 条</b>` : '') : '')
+            + ((todo + dataTodo) ? `
+                <div style="margin-top:8px; font-size:12px; color:#8b98a5; line-height:1.8;">
+                  没算上的多半是<b>你打开向量记忆之前就存在的旧内容</b>——聊天消息只在发出的那一刻后台算一次，
+                  不会自己回头补；日记那一批要等真的聊到、走到检索那一步才顺手补。点下面这颗一次补齐。
+                </div>
+                <button type="button" class="btn-edit-small" style="margin-top:8px;"
+                    onclick="gyVecBackfillNow('${sessionId}', ${!!isGroup})">▶ 现在补算这 ${todo + dataTodo} 条</button>
+                ${(() => { const all = (typeof window.gyVecTodoCount === 'function') ? window.gyVecTodoCount() : null;
+                    return (all && all.todo > todo) ? `<button type="button" class="btn-edit-small" style="margin-top:8px;"
+                        onclick="gyVecBackfillAllNow()">▶▶ 所有角色一起补（全项目还差 ${all.todo} 条）</button>` : ''; })()}
+                <span id="memHubVecProg" style="font-size:12px; color:#8b98a5; margin-left:8px;"></span>
+                <div style="margin-top:6px; font-size:12px; color:#8b98a5; line-height:1.8;">
+                  不想每次手动点的话，去 <span style="color:var(--gy-accent);cursor:pointer;text-decoration:underline;"
+                  onclick="switchMainView('settings'); setTimeout(()=>openSettingsPanel('auto'),200);">设置 → 🔌 自动功能 → 记忆</span>
+                  把「向量记忆自动补算旧内容」打开，它会每两分钟悄悄补 8 条，数字自己往上走。
+                </div>`
+              : `<div style="margin-top:6px; font-size:12px; color:#8b98a5;">该算的都算过了。</div>`)
+            + (window.gyVecLastErr ? `<div style="margin-top:8px; padding:8px 10px; border-radius:8px;
+                 background:rgba(249,24,128,.08); border:1px solid rgba(249,24,128,.3); font-size:12px; line-height:1.8;">
+                 ⚠️ 上次算向量失败了：${escapeHtml(window.gyVecLastErr)}<br>
+                 <span style="color:#8b98a5;">Embedding 用的是「向量记忆专用API」（没填就走主 API），模型名要填 embedding 模型
+                 （比如 text-embedding-3-small），填成聊天模型是不行的。</span></div>` : '');
     }
     if (embedded.length === 0 && charEmbedded.length === 0) {
         listEl.innerHTML = '<div style="color:#8b98a5; font-size:13px;">还没有任何内容被记入向量记忆（内容太短，或者还没触发向量化）</div>';
@@ -1821,6 +1858,29 @@ async function renderMemoryHubVectorMemory(sessionId, isGroup) {
     }).join('');
     listEl.innerHTML = html;
 }
+// 「▶▶ 所有角色一起补」
+async function gyVecBackfillAllNow() {
+    const say = m => { const e = document.getElementById('memHubVecProg'); if (e) e.innerText = m; };
+    if (typeof window.gyVecBackfillAll !== 'function') return;
+    say('开始…');
+    const r = await window.gyVecBackfillAll(say);
+    setTimeout(() => { try {
+        const id = (typeof currentMemoryHubTargetId !== 'undefined') ? currentMemoryHubTargetId : null;
+        if (id) renderMemoryHubVectorMemory(id, String(id).indexOf('g_') === 0);
+    } catch (e) {} }, 400);
+    return r;
+}
+// 「▶ 现在补算」：点了就跑，不看自动开关（全 app 一条规矩：点击就生成）
+async function gyVecBackfillNow(sessionId, isGroup) {
+    const prog = () => document.getElementById('memHubVecProg');
+    const say = m => { const e = prog(); if (e) e.innerText = m; };
+    if (typeof window.gyVecBackfill !== 'function') return;
+    say('开始…');
+    const r = await window.gyVecBackfill(sessionId, isGroup, say);
+    setTimeout(() => { try { renderMemoryHubVectorMemory(sessionId, !!isGroup); } catch (e) {} }, 400);
+    return r;
+}
+
 function forgetVectorMemoryEntry(sessionId, idx) {
     const history = globalChats[sessionId];
     if (!history || !history[idx]) return;

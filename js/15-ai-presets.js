@@ -55,7 +55,14 @@ function toggleActivePresetPromptEnabled(promptId, checked) {
 // 把当前勾选启用的小剧场模块内容拼成一段文本，供小说/续写生成时追加到prompt里。
 // char/scopeId 传给 applyMacros 处理 {{setvar}}/{{getvar}}/{{random}} 等宏——scopeId建议传"这本小说的id"，
 // 这样"小剧场规范"这类需要跨模块共享的变量，能在同一本小说的历次生成之间保持连续，不同小说互不干扰。
-function getTheaterPromptInjection(char, scopeId) {
+// 报场景：这段生成属于「theater」那一场（soft＝外层已有场景就不抢）
+function getTheaterPromptInjection() {
+    const a = arguments;
+    if (typeof window.gyInjectInSceneSoft === 'function')
+        return window.gyInjectInSceneSoft('theater', () => getTheaterPromptInjectionInner.apply(null, a));
+    return getTheaterPromptInjectionInner.apply(null, a);
+}
+function getTheaterPromptInjectionInner(char, scopeId) {
     const enabledOnes = getTheaterPresetPrompts().filter(p => p.enabled !== false && (p.content || '').trim());
     if (enabledOnes.length === 0) return '';
     return enabledOnes.map(p => applyMacros(p.content, char, scopeId)).join('\n');
