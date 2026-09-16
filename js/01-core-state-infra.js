@@ -373,6 +373,7 @@ let allowActionTags = false; // 控制是否允许动作描写
 // 🖐️ 聊天回复模式：auto = 消息发出去 TA 就回（一直以来的行为）
 //                 manual = 发完不自动回，想让 TA 回的时候点输入框右边那颗「回复」
 let gyChatReplyMode = 'auto';
+let chatBatchDelaySec = 0;   // 自动模式点发送后等几秒再回（0＝点了就回）
 // 关闭（默认）=现有逻辑：角色对用户评论/推文互动必须按原有规则回应（评论/点赞/NO等）。
 // 开启后：角色在这些场景下多一个选择——可以自主判断"这事儿更适合私下聊"，转而主动发一条私聊消息去找用户聊，
 // 而不是老老实实在推文底下评论。目前接入了"用户评论互动"和"角色对用户新帖子的反应"这两个最主要的场景。
@@ -502,6 +503,11 @@ function pickInteractingChars(candidates, contextText, authorId) {
 let enableScheduleAutoCheck = true; // 日程每日自动检测过期并提醒续写
 let enableAffinitySystem = false; // 好感度数值系统（现在由"好感度系统"插件驱动，这个变量仍会被插件读写）
 let enableTypingIndicator = true; // 正在输入提示/已读状态
+// 💬 聊天里的时间分隔条（微信那种居中灰字）：隔太久就插一条，点一下展开成完整日期
+let chatTimeSepEnabled = true, chatTimeSepMin = 5;
+// 📷 主页顶上那张大图（朋友圈那种封面）。默认关：不开就一个节点都不加，项目原样。
+// ⚠️ 顶层 let 不会挂到 window 上，js/43 里只能写裸名字读它，别写 window.momentsHomeOn。
+let momentsHomeOn = false;
 let enableMiniGameCharSpeech = true; // 小游戏中角色是否发言的总开关（关闭后玩游戏时全程只有系统状态消息，角色不再评论/吐槽）
 let chatListViewMode = 'row'; // 聊天联系人展示模式：'row'=横向头像条（原样式），'list'=竖排列表（头像+名字+最后消息预览+时间）
 let pinnedSessionIds = []; // 置顶的角色/群聊会话id列表（可置顶多个）
@@ -665,6 +671,62 @@ window.gyStore = function (name, storeName) {
         async iterate(fn) { if (lf) { try { return await lf.iterate(fn); } catch (e) {} } }
     };
 };
+
+/* ============================================================
+   📣 接口出错要说话 —— 全局兜底
+   ------------------------------------------------------------
+   查下来有 12 个小功能模块（一起看电影、八卦、随身物、日子、商城、邀请、
+   包裹、钱包、外卖、手机、换装、冷落、NPC）**从来不看接口返回里的 error**：
+       const d = await callChatCompletionAPI(...);
+       const t = d.choices?.[0]?.message?.content || '';
+       if (!t) return;            ← key 过期 / 限流 / 模型名写错，全在这一行悄悄没了
+   结果就是"角色怎么不说话了"、"点了没反应"，而你永远不知道是接口报错。
+   与其去改十二个文件（还会漏、以后新增的又得记得写），不如在**唯一的出口**上
+   兜一次：返回里带 error 就弹一次提示，说清是哪一场、什么错。
+   只提示、不改返回值——各模块原来的逻辑一行都不用动。
+   ============================================================ */
+(function wrapApiErrorNotice() {
+    const SCENE_NAME = {
+        chat: '私聊', group: '群聊', post: '发推文', comment: '评论', forum: '论坛',
+        diary: '写日记', letter: '写信', react: '看日记反应', novel: '小说/续写',
+        proactive: '主动找你', schedule: '排日程', autonomy: '自主模式',
+        theater: '小剧场', web: '联网探索', silence: '很久没回消息',
+        phoneTalk: '手机里那些人', dress: '换装', invite: '邀请', film: '一起看电影',
+        read: '一起阅读', music: '音乐盒', map: '行程与天气', gossip: '八卦网',
+        kit: '随身物', days: '日子', mall: '商城', wallet: '钱包', takeout: '外卖',
+        phoneAct: '手机', game: '桌游', custom: '指定回复', welcome: '群欢迎'
+    };
+    let lastMsg = '', lastAt = 0;
+    function notice(d) {
+        try {
+            if (!d || !d.error) return;
+            const raw = d.error.message || d.error.type || String(d.error);
+            let where = '';
+            try {
+                const k = (typeof window.gyInjectScene === 'function') ? window.gyInjectScene() : '';
+                if (k && SCENE_NAME[k]) where = '「' + SCENE_NAME[k] + '」那边';
+            } catch (e) {}
+            const msg = where + '接口报错：' + String(raw).slice(0, 120);
+            const now = Date.now();
+            if (msg === lastMsg && now - lastAt < 30000) return;   // 同一个错 30 秒内只说一次
+            lastMsg = msg; lastAt = now;
+            const full = (typeof enhanceNetworkErrorMessage === 'function') ? enhanceNetworkErrorMessage(msg) : msg;
+            console.warn('[接口]', full);
+            if (typeof showToast === 'function') showToast('', '接口报错', full.split('\n')[0], null, null, false);
+        } catch (e) {}
+    }
+    ['callChatCompletionAPI', 'sendChatRequest'].forEach(name => {
+        const orig = window[name];
+        if (typeof orig !== 'function' || orig.__gyErrNotice) return;
+        const w = async function () {
+            const r = await orig.apply(this, arguments);
+            notice(r);
+            return r;
+        };
+        w.__gyErrNotice = true; w.__gyOrig = orig;
+        window[name] = w;
+    });
+})();
 
 // 全局自定义CSS
 let globalCustomCSS = "";
@@ -1239,6 +1301,27 @@ function enhanceNetworkErrorMessage(rawMessage) {
     if (!isNativeApp && /Failed to fetch|NetworkError when attempting to fetch|Load failed|network request failed/i.test(msg)) {
         return msg + '\n\n💡这种笼统的网络错误，网页版最常见的原因是CORS跨域被浏览器拦截了（出于安全规范，浏览器不会告诉网页"具体是不是CORS"，看着都一样）。可以打开浏览器控制台（F12→Console）确认报错里是否有"CORS"字样；如果是，换一家支持CORS的API/中转服务商，或者用打包好的APK版本（走手机原生网络通道，不受此限制）。';
     }
+    // HTTP 状态码翻译成人话。以前只会甩一句「HTTP 错误代码: 502」，
+    // 用户没法判断是自己填错了、还是对面挂了、还是该等一会儿再试。
+    const code = (msg.match(/(?:错误代码|status|HTTP)\D{0,3}(\d{3})/i) || [])[1];
+    if (code) {
+        const tip = {
+            '400': '请求本身不合法。多半是模型名填错了，或者这家中转不认这个参数。',
+            '401': '密钥不对或者已经失效。重新复制一遍 key，注意别带空格。',
+            '402': '余额不够了（或者这个 key 的额度用完了）。',
+            '403': '这个 key 没有访问这个模型/接口的权限。',
+            '404': '地址不对。多数中转要填到 /v1 为止，检查一下结尾。',
+            '408': '对面处理超时了，等一下再试。',
+            '413': '发过去的内容太长了。可以在「注入内容管理」里砍掉几段，或者把聊天总结条数调小。',
+            '429': '被限流了——请求太密，或者这个 key 的额度用到上限了。等几分钟再试。',
+            '500': '对面服务器自己出错了，不是你这边的问题。',
+            '502': '中转站到上游那一段断了（网关错误）。**不是你配置的问题**，通常等几分钟就好；一直这样就是这家中转不稳，换一家或换个模型试试。',
+            '503': '对面暂时不可用（过载或在维护），等一会儿再试。',
+            '504': '中转站等上游超时了。换个响应快的模型，或者过一会儿再试。'
+        }[code];
+        if (tip) return msg + '\n\n💡 ' + tip;
+        if (/^5/.test(code)) return msg + '\n\n💡 5 开头的都是**对面服务器**的问题，不是你配置错了。等一会儿再试，或者换一家中转。';
+    }
     return msg;
 }
 function isStructuredMessages(content) {
@@ -1276,7 +1359,7 @@ let tweetTimeAbs = false;
 let gyMainWidth = 600;
 let gyLeftWidth = 275;
 let gyFontSize = 15;
-const GY_APP_VERSION = 'v127';
+const GY_APP_VERSION = 'v151';
 
 const GY_FEATURE_MAP = {
     // 聊天
@@ -3443,4 +3526,108 @@ async function handleDataBankFileUpload(event) {
         if (!e) return;
         notice('异步操作出错', e.reason);
     });
+})();
+
+/* ============================================================
+   数字框守卫 —— "我明明改了，怎么没保存"
+   ------------------------------------------------------------
+   小功能页里那些数字框（联网探索的"自动探索的节奏"、日程、NPC、商城、
+   钱包、外卖、手机、图库、关系账本…… 十几个模块）都是这么写的：
+
+       <input type="number" min="30" max="1440"
+              onchange="gywebSetNum('gapMin', this.value, 30, 1440, 180)">
+
+   两个毛病，实测都能复现：
+
+   ① **onchange 只在失焦时触发**。敲完 60 直接点关闭、或者直接点别处把
+      弹窗关掉，这一下根本没存。你以为改了，其实一个字都没进去。
+
+   ② **超出上下限会被悄悄夹回去**。在下限 30 的框里敲 10，存进去的是 30，
+      可框里还显示着 10（代码没回填）。等你下次打开——变成 30 了。
+      于是看着就是"它自己改回去了 / 存不住"。其实存住了，只是存的
+      不是你敲的那个数，而且没人告诉你。
+
+   这里不去改那十几个模块，而是在 document 上蹲一层：
+   · 敲字停下 600ms 就先存一次（哪怕你没失焦、没关窗口）
+   · 失焦时把框里的数回填成**真正生效的那个数**
+   · 如果回填的跟你敲的不一样，弹一句说明白为什么
+
+   只管带着 onchange、又有 min/max 的 number / range 框，别的一律不碰。
+   ============================================================ */
+(function numBoxGuard() {
+    'use strict';
+    const isNum = el => el && el.tagName === 'INPUT'
+        && (el.type === 'number' || el.type === 'range')
+        && typeof el.onchange === 'function';
+
+    const fire = el => { try { el.onchange.call(el, new Event('change')); } catch (e) { console.warn('[谷雨] 数字框存档失败', e); } };
+
+    // ① 敲字停下来就先存，不等失焦。
+    //    有些模块的存档函数会顺手重画一遍面板，框会被换掉、焦点会丢——
+    //    所以存完看一眼：框要是没了，就把同一个位置的新框找回来，
+    //    焦点和光标位置一起还回去，让人感觉不到刚才重画过。
+    let t = null, pending = null;
+    document.addEventListener('input', function (e) {
+        const el = e.target;
+        if (!isNum(el)) return;
+        if (el.value === '') return;                 // 清空的过程中别存，等他敲完
+        clearTimeout(t);
+        pending = el;
+        t = setTimeout(() => {
+            if (!document.contains(el)) return;      // 已经被换掉了，这一下不用管
+            const focused = document.activeElement === el;
+            const sig = el.getAttribute('onchange') || '';
+            const val = el.value;
+            let pos = null;
+            try { pos = el.selectionStart; } catch (e2) {}
+            fire(el);
+            if (!focused || document.contains(el)) return;
+            // 框被重画掉了：按 onchange 的原文找回同一个框
+            const back = [...document.querySelectorAll('input[onchange]')]
+                .find(x => (x.getAttribute('onchange') || '') === sig);
+            if (!back) return;
+            try {
+                back.value = val; back.focus();
+                if (pos != null && back.setSelectionRange) back.setSelectionRange(pos, pos);
+            } catch (e3) {}
+            pending = null;
+        }, 600);
+    }, true);
+
+    // 敲完立刻去点「关闭」的话，600ms 还没到，那一下就白敲了。
+    // 所以只要手指一按下别的地方，就把等着的那一次立刻存掉——
+    // 这比等失焦更早，关窗口那种"元素直接从页面上消失、change 根本不触发"也拦得住。
+    ['pointerdown', 'mousedown', 'touchstart'].forEach(ev =>
+        document.addEventListener(ev, function (e) {
+            if (!pending || e.target === pending) return;
+            clearTimeout(t);
+            const el = pending; pending = null;
+            if (document.contains(el)) fire(el);
+        }, true));
+
+    // ② 失焦时把框里的数改成真正生效的那个，并说明白
+    document.addEventListener('change', function (e) {
+        const el = e.target;
+        if (!isNum(el)) return;
+        const raw = String(el.value).trim();
+        if (raw === '') return;
+        const lo = el.min === '' ? -Infinity : Number(el.min);
+        const hi = el.max === '' ? Infinity : Number(el.max);
+        const n = Number(raw);
+        if (!isFinite(n)) return;
+        const fixed = Math.max(lo, Math.min(hi, n));
+        if (fixed === n) return;                     // 没越界，什么都不用做
+        el.value = String(fixed);                    // 回填成真正生效的值
+        try {
+            const label = (el.closest('.gyweb-num, .input-group, label, div') || {}).innerText || '';
+            const name = String(label).replace(/\s+/g, ' ').trim().slice(0, 12) || '这一项';
+            if (typeof showToast === 'function')
+                showToast('<div class="avatar" style="width:40px;height:40px;background:#ffad1f;color:#fff;font-size:20px;">🎚️</div>',
+                    '这个数超出范围了',
+                    `${name}只能填 ${isFinite(lo) ? lo : '不限'}～${isFinite(hi) ? hi : '不限'}，你填的 ${n} 已经按 ${fixed} 存下了。`,
+                    null, null, false);
+        } catch (e2) {}
+        // 不用自己再存一次：这是**捕获阶段**，框上原本那个 onchange 随后才跑，
+        // 到时候读到的就是回填后的值了。
+    }, true);
 })();

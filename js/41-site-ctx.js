@@ -27,6 +27,7 @@
         try { localStorage.setItem(LSK, JSON.stringify(S)); } catch (e) {}
         return { n: S.n, chars: S.chars };
     };
+    window.gySiteCtxRead = function () { return { n: S.n, chars: S.chars }; };
 
     const on = k => { try { return !window.gyInjectOn || window.gyInjectOn(k); } catch (e) { return true; } };
     const cut = t => String(t == null ? '' : t).replace(/\s+/g, ' ').trim().slice(0, S.chars);
@@ -188,6 +189,125 @@
         });
         return out;
     };
+
+    /* ============================================================
+       「每类取几条 / 每条最多多少字」的界面
+       ------------------------------------------------------------
+       这两个数以前只能在控制台敲 gySiteCtxCfg(8, 600)，等于没有。
+       现在做进「注入内容管理 → 🌍 全站内容」那一组的开头，拖着调。
+       顺手带了「试算」：按你现在勾着的那几条，实际会往 prompt 里塞多少字。
+       因为这两个数一动，长度是**成倍**变的（条数 × 每条字数 × 勾了几类），
+       光看两个数字根本没感觉，非得有个实数摆在旁边才知道自己在干什么。
+       ============================================================ */
+    let probeId = '';
+    function chars() { try { return myCharacters || []; } catch (e) { return []; } }
+    function probeChar() {
+        const list = chars();
+        return list.find(c => String(c.id) === String(probeId)) || list[0] || null;
+    }
+    function estimate(id) {
+        try {
+            const t = window.__gySiteCtxFor(id) || '';
+            return { chars: t.length, blocks: (t.match(/\n【/g) || []).length };
+        } catch (e) { return { chars: 0, blocks: 0, bad: true }; }
+    }
+    function estHtml() {
+        const c = probeChar();
+        if (!c) return '还没有角色，建一个再来试算。';
+        const e = estimate(c.id);
+        if (!e.blocks) return `按 <b>${esch(c.name)}</b> 算：这一组<b>一条都没勾</b>（或者那些数据本来是空的），现在往 prompt 里塞 <b>0</b> 字。`;
+        const warn = e.chars > 6000 ? '　⚠️ 这已经很长了，模型可能顾不上前面的正事'
+                   : e.chars > 3000 ? '　⚠️ 有点长了' : '';
+        return `按 <b>${esch(c.name)}</b> 算：现在勾着 <b>${e.blocks}</b> 类，`
+             + `往 prompt 里塞 <b style="color:${e.chars > 6000 ? '#f4212e' : e.chars > 3000 ? '#ffad1f' : '#00ba7c'}">${e.chars}</b> 字`
+             + `<span style="color:#8b98a5">${warn}</span>`;
+    }
+    function esch(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m])); }
+
+    // 「按功能看」那个视图里可以同时展开好几个功能，这块设置就会同时出现好几份。
+    // 所以这里一律用 class 找、一次全更新，不用 id——不然是重复 id，只有第一份会动。
+    const each = (sel, fn) => { try { document.querySelectorAll(sel).forEach(fn); } catch (e) {} };
+    function refreshEst() {
+        const h = estHtml();
+        each('.gysitecfg-est', el => { el.innerHTML = h; });
+    }
+    function syncLabels() {
+        each('.gysitecfg-nl', el => { el.textContent = S.n + ' 条'; });
+        each('.gysitecfg-cl', el => { el.textContent = S.chars + ' 字'; });
+        refreshEst();
+    }
+    window.gySiteCtxProbe = function (id) {
+        probeId = id || '';
+        each('.gysitecfg-sel', el => { if (el.value !== String(probeId)) el.value = String(probeId); });
+        refreshEst();
+    };
+    // 拖动的时候只改旁边的数字和试算，**不重画整页**——
+    // 整页重画会把展开的分组收回去、还会把页面弹回顶上，拖都拖不动
+    window.gySiteCtxSet = function (field, v) {
+        if (field === 'n') window.gySiteCtxCfg(v, undefined);
+        else window.gySiteCtxCfg(undefined, v);
+        each(field === 'n' ? '.gysitecfg-rn' : '.gysitecfg-rc', el => { if (el.value !== String(field === 'n' ? S.n : S.chars)) el.value = String(field === 'n' ? S.n : S.chars); });
+        syncLabels();
+    };
+    window.gySiteCtxReset = function () {
+        window.gySiteCtxCfg(5, 400);
+        each('.gysitecfg-rn', el => { el.value = String(S.n); });
+        each('.gysitecfg-rc', el => { el.value = String(S.chars); });
+        syncLabels();
+    };
+    // js/37 在「全站内容」这一组的说明底下调这个（g.ctrl）
+    window.gySiteCtxCfgUI = function () {
+        const list = chars();
+        const cur = probeChar();
+        return `<div class="gysitecfg">
+          <div class="gysitecfg-hd">🎚️ 这一组取多少</div>
+          <div class="gysitecfg-r">
+            <span class="gysitecfg-k">每类取几条</span>
+            <input class="gysitecfg-rn" type="range" min="1" max="30" step="1" value="${S.n}"
+                   oninput="gySiteCtxSet('n', this.value)">
+            <b class="gysitecfg-nl">${S.n} 条</b>
+          </div>
+          <div class="gysitecfg-r">
+            <span class="gysitecfg-k">每条最多</span>
+            <input class="gysitecfg-rc" type="range" min="80" max="2000" step="20" value="${S.chars}"
+                   oninput="gySiteCtxSet('chars', this.value)">
+            <b class="gysitecfg-cl">${S.chars} 字</b>
+          </div>
+          <div class="gysitecfg-e gysitecfg-est">${estHtml()}</div>
+          <div class="gysitecfg-f">
+            ${list.length > 1 ? `按谁试算：<select class="gysitecfg-sel" onchange="gySiteCtxProbe(this.value)">
+              ${list.map(c => `<option value="${esch(c.id)}"${cur && String(cur.id) === String(c.id) ? ' selected' : ''}>${esch(c.name)}</option>`).join('')}
+            </select>　` : ''}
+            <span class="gysitecfg-rs" onclick="gySiteCtxReset()">↺ 恢复默认（5 条 / 400 字）</span>
+          </div>
+          <div class="gysitecfg-n">这两个数对<b>这一组的每一条</b>都生效，不分场景。
+            想让发推文读得多、私聊读得少，做不到——那得靠上面勾/不勾来分。
+            （表情包清单至少给 10 条，群聊原话给两倍，因为这两样太少了没用。）</div>
+        </div>`;
+    };
+    // 样式跟着这块走，省得改 js/37 的 CSS
+    (function css() {
+        if (document.getElementById('gySiteCtxCss')) return;
+        const s = document.createElement('style');
+        s.id = 'gySiteCtxCss';
+        s.textContent = `
+        .gysitecfg{border:1px solid var(--gy-border,#cfd9de);border-radius:12px;padding:10px 12px;margin:6px 0 12px;
+          background:rgba(29,155,240,.04);}
+        .gysitecfg-hd{font-size:13px;font-weight:700;margin-bottom:8px;}
+        .gysitecfg-r{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:12px;}
+        .gysitecfg-k{color:#8b98a5;min-width:72px;flex:none;}
+        .gysitecfg-r input[type=range]{flex:1;min-width:90px;accent-color:#1d9bf0;}
+        .gysitecfg-r b{min-width:52px;text-align:right;flex:none;font-size:12px;color:#1d9bf0;}
+        .gysitecfg-e{font-size:12px;line-height:1.7;margin:8px 0 4px;padding:6px 8px;border-radius:8px;
+          background:rgba(128,128,128,.08);}
+        .gysitecfg-f{font-size:12px;color:#8b98a5;margin:6px 0 2px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;}
+        .gysitecfg-f select{font-size:12px;padding:2px 4px;border-radius:6px;border:1px solid var(--gy-border,#cfd9de);
+          background:transparent;color:inherit;}
+        .gysitecfg-rs{cursor:pointer;color:#1d9bf0;}
+        .gysitecfg-rs:hover{text-decoration:underline;}
+        .gysitecfg-n{font-size:11px;color:#8b98a5;line-height:1.7;}`;
+        document.head.appendChild(s);
+    })();
 
     function hook() {
         try {

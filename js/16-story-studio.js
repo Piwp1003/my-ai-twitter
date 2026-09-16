@@ -712,8 +712,10 @@ function ssSwitchOpening(charId, swipeIdx, opts) {
 // ---------------------------------------------------------------- 生成
 
 function ssGetApi(session) {
-    // 'sub' 走 getApiConfig(true)：有副API就用副API，没配自动回落主API（跟旧版行为一致）
-    return getApiConfig(session.apiMode !== 'main');
+    // v107：续写归「主 API」那一档（方案 A：你会逐字读的内容走好模型）。
+    // 会话自己选了 'sub' 才走副 API；没选过的默认就是主 API 优先。
+    if (session && session.apiMode === 'sub') return getApiConfig(true);
+    return (typeof getApiMain === 'function') ? getApiMain() : getApiConfig(false);
 }
 
 // 把一段 AI 原始输出跑完整条后处理链：思维链 → 正则 → MVU 补丁 → 记忆召回

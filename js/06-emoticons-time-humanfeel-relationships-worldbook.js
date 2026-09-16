@@ -1000,6 +1000,70 @@ function getLetterAwarenessPrompt(char, maxLetters = 4, perLetterChars = 90) {
 // 字符串拼接，套不了壳，所以在这儿显式问一句。js/37 没加载时永远返回 true，行为不变。
 const injOn = k => { try { return typeof window.gyInjectOn !== 'function' || window.gyInjectOn(k); } catch (e) { return true; } };
 
+/* ============================================================
+   开场白：只带**这一轮真正在用的那条**，不要把全部候选都糊进人设
+   ------------------------------------------------------------
+   很多角色卡（尤其带"开场白目录"的那种）会把七八条开场白整段写进 description 里，
+   导入之后它们就长在 char.persona 上。于是**每一个功能**——发推文、写日记、
+   联网探索、小剧场——都在读那七八条互相矛盾的剧情开头：
+   一条写"你在酒馆遇见他"，一条写"你是他的上司"，模型只能各取一点乱拼。
+
+   现在：
+   · 人设里那几大段开场白**剥掉**（只在拼 prompt 时剥，存档里一个字不动）
+   · 换成**你这一局实际用的那条**——你在聊天里挑的那条、或者 AI 生成的那条
+     （就是这个会话里角色说的第一句，不用另外记账，删了重开自动就跟着变）
+   · 你没选开场白（直接开口聊的）就一条都不带
+   两件事各有开关，在「注入内容管理 → 核心」里。
+   ============================================================ */
+// 人设里像"开场白"的那些段落，从标题一直剥到下一个同级标题
+function gyStripGreetingBlocks(text) {
+    let t = String(text || '');
+    if (!t) return t;
+    // ① 成对标签：<greetings>…</greetings>、<first_mes>…</first_mes>
+    t = t.replace(/<\s*(greetings?|first[_-]?mes(?:sage)?|开场白)\s*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '\n');
+    // ② 标题式：【角色开场白 / First Message】、## 开场白、开场白一：…
+    //    从标题一直剥到下一个"看着像新标题"的地方（【…】/ ## …）为止
+    const HEAD_CN = /(?:^|\n)[ \t]*(?:#{1,4}[ \t]*)?[【\[<]?\s*(?:角色)?开场白[^\n】\]>]{0,20}[】\]>]?[ \t]*[:：]?[ \t]*(?=\n)/gi;
+    const HEAD_EN = /(?:^|\n)[ \t]*(?:#{1,4}[ \t]*)?[【\[<]?\s*(?:first[ _-]?mes(?:sage)?|greetings?)[^\n】\]>]{0,20}[】\]>]?[ \t]*[:：]?[ \t]*(?=\n)/gi;
+    const cut = (src, re) => {
+        let out = '', last = 0, m;
+        re.lastIndex = 0;
+        while ((m = re.exec(src))) {
+            const start = m.index + (m[0].charAt(0) === '\n' ? 1 : 0);
+            if (start < last) continue;
+            const rest = src.slice(re.lastIndex);
+            const nx = rest.search(/\n[ \t]*(?:#{1,4}[ \t]*\S|[【\[][^\n】\]]{1,20}[】\]])/);
+            const end = nx < 0 ? src.length : re.lastIndex + nx;
+            out += src.slice(last, start);
+            last = end;
+            re.lastIndex = end;
+        }
+        out += src.slice(last);
+        return out;
+    };
+    t = cut(t, HEAD_CN);
+    t = cut(t, HEAD_EN);
+    return t.replace(/\n{3,}/g, '\n\n').trim();
+}
+// 这一局实际在用的那条开场白＝这个会话里角色说的第一句
+// （用户挑的、AI 生成的、卡里自带的，走的都是同一条路——都是被 push 进聊天的第一条角色消息）
+function gyActiveGreeting(char) {
+    try {
+        if (!char) return '';
+        const arr = (typeof globalChats !== 'undefined' && globalChats[String(char.id)]) || [];
+        for (let i = 0; i < Math.min(arr.length, 3); i++) {
+            const m = arr[i];
+            if (!m || m.sender === 'me' || m.sender === 'system') continue;
+            if (String(m.sender) !== String(char.id)) continue;
+            const t = String(m.text || '').trim();
+            return t ? t.slice(0, 1200) : '';
+        }
+    } catch (e) {}
+    return '';
+}
+window.gyStripGreetingBlocks = gyStripGreetingBlocks;
+window.gyActiveGreeting = gyActiveGreeting;
+
 function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", options = null) {
     const opts = options || {};
     // 世界书条目和预设模块都各自能设置"插入位置"，这里先各自算好一份数据/文本，再按位置分段拼进最终prompt里，
@@ -1018,7 +1082,13 @@ function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", o
     prompt += getTpesPromptText();
     prompt += wbText('before_persona');
     if (injOn('preset.before_persona')) prompt += getActivePresetPromptText(char, !!opts.excludeDepthPresetEntries, opts.sessionId, 'before_persona');
-    prompt += `你是"${char.name}"，你的核心人设：${char.persona}。\n`;
+    // 🎬 人设里那几大段开场白剥掉，换成这一局真正在用的那条（见上面那段说明）
+    const __persona = injOn('core.gstrip') ? gyStripGreetingBlocks(char.persona) : String(char.persona || '');
+    prompt += `你是"${char.name}"，你的核心人设：${__persona}。\n`;
+    if (injOn('core.greet')) {
+        const __g = gyActiveGreeting(char);
+        if (__g) prompt += `\n【你们这一局是这么开始的（你说的第一句）】\n${__g}\n`;
+    }
     prompt += wbText('after_persona'); // 默认插入位置，未设置position的条目都在这里，等价于改造前的行为
     // 本app没有把"示例对话"从人设里单独拆出来存（角色卡导入时mes_example会直接并进人设文本），
     // 所以"示例消息之前/之后"这两个位置目前只能就近落在人设块的外侧，跟人设紧挨着，不是完全独立的一段。

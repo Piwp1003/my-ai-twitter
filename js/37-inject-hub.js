@@ -66,6 +66,10 @@
 
     const esc = s => (typeof escapeHtml === 'function') ? escapeHtml(String(s == null ? '' : s))
         : String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    // 说明文字里写的 **重点** 一直是原样显示成星号的（写的时候当 markdown 写，
+    // 页面上却是 esc 过的纯文本）。转义之后再把这一对星号变成粗体——顺序不能反，
+    // 反了就等于允许说明文字往页面里塞标签。
+    const mk = s => esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
     const chars = () => (typeof myCharacters !== 'undefined' && Array.isArray(myCharacters)) ? myCharacters : [];
 
     /* ================= 目录 =================
@@ -82,6 +86,13 @@
             items: [
                 { k: 'core.persona', label: '角色人设正文', always: true,
                   desc: '角色卡/资料页里那段人设。这是"TA 是谁"的本体，关掉角色就不存在了，所以这一条永远带着、关不掉——列在这儿是为了让你看到完整的清单，知道 prompt 里到底有什么。' },
+                { k: 'core.gstrip', label: '人设里那几大段开场白，拼 prompt 时剥掉',
+                  desc: '很多角色卡把七八条开场白整段写进人设里。不剥的话，**每一个功能**（发推文、写日记、联网探索）都在读七八条互相矛盾的剧情开头——'
+                      + '一条写"你在酒馆遇见他"，一条写"你是他的上司"，模型只能各取一点乱拼。'
+                      + '只在拼 prompt 的时候剥，**存档里一个字都不会动**，关掉就恢复原样。' },
+                { k: 'core.greet', label: '你们这一局是怎么开始的（当前那条开场白）',
+                  desc: '上面剥掉之后，换成**你这一局真正在用的那条**——你在聊天里挑的、或者 AI 生成的那条（就是这个会话里角色说的第一句）。'
+                      + '你没选开场白、直接开口聊的，这里就什么都不带。' },
                 { k: 'core.user', label: '我在 TA 面前是谁', fn: 'getUserContextPrompt',
                   desc: '你给这个角色单独设的用户人设（没单独设就用默认那份）。关掉之后 TA 不知道在跟谁说话。' },
                 { k: 'core.voice', label: '语言指纹（TA 自己的打字习惯）', fn: 'aliveVoicePrompt',
@@ -272,6 +283,8 @@
                 + '⚠️ 整组默认关着——它们以前一段都没进过 prompt，默认打开等于偷偷把你的 prompt 撑大一倍。'
                 + '而且别忘了这一页最上面可以**按场景分别设**：私聊时不带小说，发推文时带上，是可以的。',
             box: '__gySiteCtxFor',
+            // 这一组开头挂一小块设置（每类取几条 / 每条多少字），由 js/41 画
+            ctrl: 'gySiteCtxCfgUI',
             items: [
                 { k: 'site.posts', label: 'TA 自己发过的推文（原话）', box: '__gySiteCtxFor', head: '你自己发过的推文', defaultOff: true,
                   desc: '跟上面「推文记忆总结」是两回事：那个是压缩过的几句话，这个是原文。想让 TA 记得自己具体说过什么就开这条。' },
@@ -293,6 +306,16 @@
                   desc: '把表情包清单和含义递过去，TA 才知道自己能发什么。' },
                 { k: 'site.grouptalk', label: '群里最近说的话（原话）', box: '__gySiteCtxFor', head: '群里最近说的话', defaultOff: true,
                   desc: '跟上面「参与过的群聊话题」不同：那个是总结出来的话题，这个是原话。' }
+            ]
+        },
+        {
+            key: 'photo', icon: '📷', title: '角色发图片', box: '__gyPhotoCtxFor',
+            note: '告诉模型"你可以发图，这么写"的那几句。关掉之后 TA 不会再主动发图了——'
+                + '聊天框 ⋮ 里那颗 📷 是手动的，照样能用。发图走哪条路（只发卡片 / 图库里挑 / 现画 / 网上搜）'
+                + '在「小功能 → 📷 角色发图片」里定。',
+            items: [
+                { k: 'photo.howto', label: '发图片的写法（[IMG:一句话描述]）', box: '__gyPhotoCtxFor', head: '发图片',
+                  desc: '不带这一段，模型压根不知道自己能发图。「从图库里挑」那档还会顺带把 TA 手里真有的那些图的标签报给它，免得它描述一张不存在的图。' }
             ]
         },
         {
@@ -416,6 +439,12 @@
         { k: 'silence',   icon: '🕯️', title: '你很久没回消息时', srcOnly: true, note: '' },
         { k: 'phoneTalk', icon: '📱', title: 'TA 手机里那些人发来的消息', srcOnly: true, note: '' },
         { k: 'dress',     icon: '🎀', title: '有人注意到你换了样子', srcOnly: true, note: '' },
+        { k: 'groupTalk', icon: '👥', title: 'TA 自己去群里说话', srcOnly: true,
+          note: '自主模式里那个「去某个群里说句话」。它要看几个群最近聊到哪儿了，读得越多越贵。' },
+        { k: 'call',      icon: '📞', title: '打电话（手动点的那次）',
+          note: '你在聊天框 ⋮ 里点了 📞。电话里句子短、来回快，一通电话是好几次请求——注入越省越好。' },
+        { k: 'photo',     icon: '📷', title: '发图片（手动点的那次）',
+          note: '你在聊天框 ⋮ 里点了 📷，问 TA "现在想给我看什么"的那一次。TA 自己在回复里带 [IMG:] 的那种不走这一场——那是聊天那一场顺带的。' },
         // ⬇️ 小功能自己那些"角色开口"的地方。以前一个都没挂场景——它们照样读整份 prompt，
         //    只是你在这一页上看不见、也分不开设。（漏了六十多个，v125 一次补齐。）
         { k: 'invite',    icon: '🎟️', title: '邀请：看电影 / 听歌 / 阅读 / 约出去',
@@ -877,7 +906,7 @@
                   <div class="gyinj-t">${esc(it.label)}
                     <span class="gyinj-tag own">永远带着 · 关不掉</span>
                   </div>
-                  ${it.desc ? `<div class="gyinj-d">${esc(it.desc)}</div>` : ''}
+                  ${it.desc ? `<div class="gyinj-d">${mk(it.desc)}</div>` : ''}
                 </div>
             </label>`;
         }
@@ -891,12 +920,19 @@
                       : (sc ? `<span class="gyinj-tag dim">跟总设置一样（${base ? '带' : '不带'}）</span>` : '')}
                 <span class="gyinj-tag ${live ? 'live' : 'dim'}">${live ? '现在有内容' : '现在是空的'}</span>
               </div>
-              ${it.desc ? `<div class="gyinj-d">${esc(it.desc)}</div>` : ''}
+              ${it.desc ? `<div class="gyinj-d">${mk(it.desc)}</div>` : ''}
             </div>
             ${own ? `<span class="gyinj-peek" onclick="event.preventDefault();event.stopPropagation();gyInjectSameIn('${sc}','${it.k}')">跟总设置</span>` : ''}
             <span class="gyinj-peek" onclick="event.preventDefault();event.stopPropagation();gyInjectPeek('${it.k}')">看一眼</span>
         </label>`;
     }
+
+    // 有些组自带一小块设置（比如「全站内容」的取多少条），由那个组自己的文件画。
+    // 这里只负责在组的说明底下把它插进来；画不出来就当没有，不能带崩整页。
+    const ctrlHtml = g => {
+        try { const f = g && g.ctrl && window[g.ctrl]; return typeof f === 'function' ? (f() || '') : ''; }
+        catch (e) { return ''; }
+    };
 
     window.renderInjectPanel = function renderInjectPanel() {
         const box = document.getElementById('gyinjList');
@@ -923,7 +959,8 @@
                 <span class="gyinj-gc">${open ? '收起 ⌃' : '展开 ⌄'}</span>
               </div>
               ${open ? `<div class="gyinj-gb">
-                ${g.note ? `<div class="gyinj-gnote">${esc(g.note)}</div>` : ''}
+                ${g.note ? `<div class="gyinj-gnote">${mk(g.note)}</div>` : ''}
+                ${ctrlHtml(g)}
                 ${shown.map(it => rowHtml(it, has)).join('')}
               </div>` : ''}
             </div>`;
@@ -949,7 +986,7 @@
                 <span class="gyinj-gc">${open ? '收起 ⌃' : '展开 ⌄'}</span>
               </div>
               ${open ? `<div class="gyinj-gb">
-                ${g.note ? `<div class="gyinj-gnote">${esc(g.note)}</div>` : ''}
+                ${g.note ? `<div class="gyinj-gnote">${mk(g.note)}</div>` : ''}
                 ${shown.map(it => {
                     const isOn = window.gyInjectSrc.on(g.feat, it.k, viewScene);
                     const own = viewScene && scVal(viewScene, 'src:' + g.feat + ':' + it.k) !== undefined;
@@ -961,7 +998,7 @@
                           ${own ? '<span class="gyinj-tag own">这一场单独设的</span>'
                                 : (viewScene ? `<span class="gyinj-tag dim">跟总设置一样（${base ? '读' : '不读'}）</span>` : '')}
                         </div>
-                        ${it.desc ? `<div class="gyinj-d">${esc(it.desc)}</div>` : ''}
+                        ${it.desc ? `<div class="gyinj-d">${mk(it.desc)}</div>` : ''}
                       </div>
                       ${own ? `<span class="gyinj-peek" onclick="event.preventDefault();event.stopPropagation();gyInjectSrcSame('${g.feat}','${it.k}')">跟总设置</span>` : ''}
                     </label>`;
@@ -1011,7 +1048,7 @@
                 const mine = Object.keys((S.sc && S.sc[sc.k]) || {}).length;
                 const open = openF[sc.k];
                 const body = !open ? '' : `<div class="gyinj-gb">
-                    ${sc.note ? `<div class="gyinj-gnote">${esc(sc.note)}</div>` : ''}
+                    ${sc.note ? `<div class="gyinj-gnote">${mk(sc.note)}</div>` : ''}
                     <div class="gyinj-gnote">
                       下面是<b>这个功能读的全部东西</b>，就地勾就是给这一场单独设，别的场景不受影响。
                       ${mine ? `已经单独设过 ${mine} 条　<span class="gyinj-scn-reset" onclick="gyInjectSceneResetOf('${sc.k}')">↺ 全撤掉</span>` : '现在全部跟总设置走。'}
@@ -1024,7 +1061,7 @@
                           <input type="checkbox" ${isOn ? 'checked' : ''} onchange="gyInjectSrcSetIn('${sc.k}','${g.feat}','${it.k}', this.checked)">
                           <div class="gyinj-body"><div class="gyinj-t">${esc(it.label)}
                             ${own ? '<span class="gyinj-tag own">这一场单独设的</span>' : ''}</div>
-                            ${it.desc ? `<div class="gyinj-d">${esc(it.desc)}</div>` : ''}</div>
+                            ${it.desc ? `<div class="gyinj-d">${mk(it.desc)}</div>` : ''}</div>
                         </label>`; }).join('')}`).join('')}
                     ${/* ⚠️ 这里原来写的是 sc.srcOnly ? '' : …，把那 5 个"程序替角色编内容"的功能
                           整份清单藏了，只留它们自己那几项——于是页面上看着像"这几个功能只读 4 项"。
@@ -1035,6 +1072,7 @@
                         const items = g.items.concat(extraItemsOf(g));
                         const n = items.filter(x => itemOn(x, sc.k)).length;
                         return `<div class="gyinj-fsec">${g.icon} ${esc(g.title)} <i>${n}/${items.length}</i></div>
+                                ${ctrlHtml(g)}
                                 ${items.map(it => rowHtml(it, has, sc.k)).join('')}`;
                     }).join('')}
                   </div>`;

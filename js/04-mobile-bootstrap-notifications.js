@@ -687,7 +687,7 @@ function getFullDataSnapshot() {
     return {
         myApiUrl, myApiKey, myModel, subApiUrl, subApiKey, subModel, vecApiUrl, vecApiKey, lastWorkingModel, lastWorkingSubModel, quietHoursEnabled, quietHoursStart, quietHoursEnd, samplerTemperature, samplerTopP, samplerFrequencyPenalty, samplerPresencePenalty, samplerTopK, samplerMaxTokens,
         myCharacters, globalPosts, anonPosts, characterGroups, factionColors, charRelationships, relationshipTypePresets, statusTypes, globalEmoticons, worldbooks, worldbookCategories, globalChats, groupChats, currentUser, tabloidAccount, trendingTags,
-        globalBgImage, globalBgOpacity, allowActionTags, gyChatReplyMode, humanFeelEnabled, tpesEnabled, autoRenderStatusChips, showStatusInPosts, showStatusInComments, showStatusInDiary, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, commentWordLimit, chatMsgCountMin, chatMsgCountMax, chatReplyStyleMode, chatSummaryInterval, groupSummaryInterval, postMemoryInterval, chatListViewMode, pinnedSessionIds,
+        globalBgImage, globalBgOpacity, allowActionTags, gyChatReplyMode, chatBatchDelaySec, humanFeelEnabled, tpesEnabled, autoRenderStatusChips, showStatusInPosts, showStatusInComments, showStatusInDiary, enableScheduleAutoCheck, enableAffinitySystem, enableTypingIndicator, chatTimeSepEnabled, chatTimeSepMin, momentsHomeOn, enableMiniGameCharSpeech, enableAnniversary, memoryAlbum, chatWordLimit, postWordLimit, diaryWordLimit, letterWordLimit, commentWordLimit, chatMsgCountMin, chatMsgCountMax, chatReplyStyleMode, chatSummaryInterval, groupSummaryInterval, postMemoryInterval, chatListViewMode, pinnedSessionIds,
         letterReplyDelayMin, letterReplyDelayMax, globalUserDiaries,
         globalNovels, storySessions, novelCustomCSS, globalCustomCSS, tabloidPosts, siteLogoImg,
         forumThreads,
@@ -840,6 +840,10 @@ async function loadAllData() {
                 if (parsed.samplerMaxTokens !== undefined) samplerMaxTokens = parsed.samplerMaxTokens;
                 if (parsed.allowActionTags !== undefined) allowActionTags = parsed.allowActionTags;
                 if (parsed.gyChatReplyMode !== undefined) gyChatReplyMode = parsed.gyChatReplyMode === 'manual' ? 'manual' : 'auto';
+                if (parsed.chatBatchDelaySec !== undefined) {
+                    chatBatchDelaySec = parsed.chatBatchDelaySec;
+                    try { if (typeof window.gySetChatBatchDelay === 'function') window.gySetChatBatchDelay(chatBatchDelaySec); } catch (e) {}
+                }
                 if (parsed.enableCharMoveToChat !== undefined) enableCharMoveToChat = parsed.enableCharMoveToChat;
                 if (parsed.showNovelReasoning !== undefined) showNovelReasoning = parsed.showNovelReasoning;
                 if (parsed.showNovelFloorNumber !== undefined) showNovelFloorNumber = parsed.showNovelFloorNumber;
@@ -854,6 +858,9 @@ async function loadAllData() {
                 if (parsed.enableAffinitySystem !== undefined) enableAffinitySystem = parsed.enableAffinitySystem;
                 // 兼容旧版单开关
                 if (parsed.enableTypingIndicator !== undefined) enableTypingIndicator = parsed.enableTypingIndicator;
+                if (parsed.chatTimeSepEnabled !== undefined) chatTimeSepEnabled = parsed.chatTimeSepEnabled;
+                if (parsed.chatTimeSepMin !== undefined) chatTimeSepMin = parsed.chatTimeSepMin;
+                if (parsed.momentsHomeOn !== undefined) momentsHomeOn = parsed.momentsHomeOn;
                 if (parsed.enableMiniGameCharSpeech !== undefined) enableMiniGameCharSpeech = parsed.enableMiniGameCharSpeech;
                 if (parsed.chatListViewMode !== undefined) chatListViewMode = parsed.chatListViewMode;
                 if (parsed.pinnedSessionIds !== undefined) pinnedSessionIds = parsed.pinnedSessionIds;
@@ -942,6 +949,7 @@ async function loadAllData() {
                 });
                 if (document.getElementById('allowActionTags')) document.getElementById('allowActionTags').checked = allowActionTags;
                 if (document.getElementById('gyChatReplyModeSel')) document.getElementById('gyChatReplyModeSel').value = gyChatReplyMode;
+                if (document.getElementById('chatBatchDelaySec')) document.getElementById('chatBatchDelaySec').value = chatBatchDelaySec;
                 try { if (typeof gyPaintReplyBtn === 'function') gyPaintReplyBtn(); } catch (e) {}
                 if (document.getElementById('enableCharMoveToChat')) document.getElementById('enableCharMoveToChat').checked = enableCharMoveToChat;
                 if (document.getElementById('showNovelReasoning')) document.getElementById('showNovelReasoning').checked = showNovelReasoning;
@@ -956,6 +964,10 @@ async function loadAllData() {
                 if (document.getElementById('enableScheduleAutoCheck')) document.getElementById('enableScheduleAutoCheck').checked = enableScheduleAutoCheck;
                 if (document.getElementById('enableAffinitySystem')) document.getElementById('enableAffinitySystem').checked = enableAffinitySystem;
                 if (document.getElementById('enableTypingIndicator')) document.getElementById('enableTypingIndicator').checked = enableTypingIndicator;
+                if (document.getElementById('chatTimeSepEnabled')) document.getElementById('chatTimeSepEnabled').checked = chatTimeSepEnabled;
+                if (document.getElementById('chatTimeSepMin')) document.getElementById('chatTimeSepMin').value = chatTimeSepMin;
+                if (document.getElementById('momentsHomeToggle')) document.getElementById('momentsHomeToggle').checked = momentsHomeOn;
+                try { if (typeof window.gyMoSync === 'function') window.gyMoSync(); } catch (e) {}
                 if (document.getElementById('enableMiniGameCharSpeech')) document.getElementById('enableMiniGameCharSpeech').checked = enableMiniGameCharSpeech;
                 if (document.getElementById('quietHoursEnabled')) document.getElementById('quietHoursEnabled').checked = quietHoursEnabled;
                 if (document.getElementById('quietHoursStart')) document.getElementById('quietHoursStart').value = quietHoursStart;
@@ -1076,7 +1088,13 @@ async function fetchModelListFrom(url, key) {
     if (!u || !k) throw new Error('接口地址和密钥都要填');
     if (u.endsWith('/')) u = u.slice(0, -1);
     const res = await smartFetch(`${u}/models`, { method: 'GET', headers: { 'Authorization': `Bearer ${k}` } });
-    if (!res.ok) throw new Error(`HTTP 错误代码: ${res.status}`);
+    if (!res.ok) {
+        // 对面返回的正文里常常写着真正原因（"model not found"、"insufficient quota"…），
+        // 以前直接丢掉，只剩一个光秃秃的状态码。
+        let detail = '';
+        try { detail = (await res.text() || '').replace(/\s+/g, ' ').slice(0, 160); } catch (e) {}
+        throw new Error(`HTTP 错误代码: ${res.status}` + (detail ? `　对面说：${detail}` : ''));
+    }
     const data = await res.json();
     if (!data || !Array.isArray(data.data)) throw new Error('接口返回的数据格式不符合标准。');
     return data.data;
@@ -1248,6 +1266,12 @@ function saveSettings() {
     showStatusInDiary = document.getElementById('showStatusInDiary')?.checked ?? true;
     enableScheduleAutoCheck = document.getElementById('enableScheduleAutoCheck').checked;
     enableTypingIndicator = document.getElementById('enableTypingIndicator').checked;
+    chatBatchDelaySec = Math.max(0, Math.min(30, parseInt(document.getElementById('chatBatchDelaySec')?.value) || 0));
+    try { if (typeof window.gySetChatBatchDelay === 'function') window.gySetChatBatchDelay(chatBatchDelaySec); } catch (e) {}
+    chatTimeSepEnabled = document.getElementById('chatTimeSepEnabled')?.checked ?? true;
+    chatTimeSepMin = Math.max(0, Math.min(1440, parseInt(document.getElementById('chatTimeSepMin')?.value) || 5));
+    momentsHomeOn = document.getElementById('momentsHomeToggle')?.checked ?? false;
+    try { if (typeof window.gyMoSync === 'function') window.gyMoSync(); } catch (e) {}
     enableMiniGameCharSpeech = document.getElementById('enableMiniGameCharSpeech')?.checked ?? true;
     quietHoursEnabled = document.getElementById('quietHoursEnabled')?.checked ?? false;
     quietHoursStart = document.getElementById('quietHoursStart')?.value || '23:00';

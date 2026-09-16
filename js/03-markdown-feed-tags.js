@@ -1228,6 +1228,10 @@ function renderQuotePreviewInModal() {
 
 function generatePostHTML(posts) {
     return posts.map(post => {
+        // 少了 stats 的帖子（很旧的备份、手工导进来的、别的地方 push 忘了带）
+        // 会让下面 post.stats.comments 直接抛错——**整条时间线一条都渲染不出来**，
+        // 页面看着像白屏。补一个空的，宁可显示 0 也不能让一条坏数据拖垮整页。
+        if (!post.stats) post.stats = { comments: 0, retweets: 0, likes: 0, views: 0 };
         let char = post.char;
         let isMe = char.id === 'me';
         let verifiedIcon = char.verified ? verifiedSVG : '';

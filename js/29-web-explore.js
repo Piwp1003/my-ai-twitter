@@ -83,6 +83,7 @@
         lastRunAt: 0,
         gapMin: 180,        // 自动跑的最小间隔（分钟）
         lastGoodRead: '',   // 上次真的读到正文的那条路（下次先试它）
+        lastLink: '',       // 上次搜到的第一条外链（体检拿它当靶子，比 example.com 真实）
         log: {}             // { 角色id: [{id, at, topic, why, text, src, rounds, sources}] }
     };
     // 自主模式（js/14 的 GY_AUTONOMY_ACTIONS）跑的就是这一份 S，不另起一套参数。
@@ -108,7 +109,7 @@
     const listOf = id => { const k = String(id); if (!Array.isArray(S.log[k])) S.log[k] = []; return S.log[k]; };
 
     /* ===================== 抓取 ===================== */
-    let lastErr = '';      // 上一次抓取失败的原因，显示在功能页上（以前只在控制台里）
+    let lastErr = '';      // 上一次没成的原因（抓网页失败 / 接口报错 / 模型没按格式回），显示在功能页上
 
     function headers() {
         const p = presetOf(S.src);
@@ -146,25 +147,43 @@
         }
         return out;
     }
-    // 从搜索结果页里把外链抠出来（DDG lite 会把真实网址包在 uddg= 参数里）
+    /* 从搜索结果页里把外链抠出来（DDG lite 会把真实网址包在 uddg= 参数里）。
+       ⚠️ 以前这里**只认 href="..."**，也就是只认网页 HTML。
+       可 Jina 那一档（app 自己写着"质量最好 · 最稳"的那个）回的是 **markdown 纯文本**：
+           1. [漕运 - 维基百科](https://zh.wikipedia.org/wiki/漕运)
+       一个 href 都没有 → 抠出 0 条外链 → 读正文那个循环**一次都没进去** →
+       记录里永远是「正文没读到，只用了搜索结果页」。
+       而体检查的是"这条路能不能读网页"，跟抠不抠得出链接是两回事，所以体检全绿也没用。
+       现在：先按 HTML 抠，一条都没抠到就按 markdown / 裸网址再抠一遍。 */
     function pickLinks(raw, n) {
         const out = [], seen = new Set();
-        const re = /href\s*=\s*["']([^"']+)["']/gi;
-        let m;
-        while ((m = re.exec(String(raw))) && out.length < n * 4) {
-            let u = m[1];
+        const add = (u) => {
             try {
-                const dd = u.match(/[?&]uddg=([^&]+)/);
+                const dd = String(u).match(/[?&]uddg=([^&]+)/);
                 if (dd) u = decodeURIComponent(dd[1]);
             } catch (e) {}
-            if (!/^https?:\/\//i.test(u)) continue;
-            if (/duckduckgo\.com|jina\.ai|w3\.org|\.(css|js|png|jpg|jpeg|gif|svg|ico)(\?|$)/i.test(u)) continue;
+            u = String(u).replace(/[)\]，。、,.;；]+$/, '');        // markdown 里常把标点粘在网址屁股上
+            if (!/^https?:\/\//i.test(u)) return false;
+            if (/duckduckgo\.com|jina\.ai|w3\.org|\.(css|js|png|jpg|jpeg|gif|svg|ico)(\?|$)/i.test(u)) return false;
             const host = u.split('/')[2] || u;
-            if (seen.has(host)) continue;      // 一个站只取一条，免得三条都来自同一个页面
+            if (seen.has(host)) return false;   // 一个站只取一条，免得三条都来自同一个页面
             seen.add(host);
             out.push(u);
-            if (out.length >= n) break;
-        }
+            return out.length >= n;
+        };
+        const s = String(raw || '');
+        let m;
+        // ① 网页 HTML
+        const re = /href\s*=\s*["']([^"']+)["']/gi;
+        while ((m = re.exec(s)) && out.length < n * 4) { if (add(m[1])) break; }
+        if (out.length) return out;
+        // ② markdown：[标题](网址)
+        const re2 = /\]\(\s*(https?:\/\/[^\s)]+)\s*\)/g;
+        while ((m = re2.exec(s)) && out.length < n * 4) { if (add(m[1])) break; }
+        if (out.length) return out;
+        // ③ 实在没有就抠裸网址（纯文本反代、SearXNG 的 json 之类）
+        const re3 = /https?:\/\/[^\s"'<>)\]\\]+/g;
+        while ((m = re3.exec(s)) && out.length < n * 4) { if (add(m[0])) break; }
         return out;
     }
 
@@ -183,14 +202,19 @@
     function readChain() {
         const out = [];
         const push = v => { if (v && out.indexOf(v) < 0) out.push(v); };
-        push(S.lastGoodRead);                       // 上次成功的那条排最前
         const mine = String(S.readUrl || '').trim();
+        push(S.lastGoodRead);                       // 上次成功的那条排最前
         if (mine && /\{u\}/i.test(mine)) push(mine);
         if (S.src === 'jina') push('https://r.jina.ai/{u}');
         push('{u}');                                 // 直连（APK / exe 里可能行）
         READ_PROXIES.forEach(p => { if (p.v) push(p.v); });
-        // jina 那条没 key 会 401，没填 key 就别浪费一次请求
-        return out.filter(v => !(v.indexOf('r.jina.ai') >= 0 && !S.key && S.src !== 'jina'));
+        // jina 那条没 key 会 401，没填 key 就别浪费一次请求。
+        // ⚠️ 但**你自己填的那条、和上次真成过的那条，不能替你删掉**——
+        //    以前在「读正文地址」里填 r.jina.ai 又没填 key 的话，这一条会被悄悄滤掉，
+        //    于是"我明明填了地址"却连一个请求都没发出去，页面上还什么都不说。
+        //    现在照发，401 了会明明白白告诉你"这条路要 key"。
+        return out.filter(v => v === mine || v === S.lastGoodRead
+            || !(v.indexOf('r.jina.ai') >= 0 && !S.key && S.src !== 'jina'));
     }
     const routeName = v => !v ? '直连'
         : v === '{u}' ? '直连'
@@ -207,12 +231,20 @@
        所以给一颗按钮：拿一个固定的小网页，把每条路各试一次，
        挨个报"成了 / 被 CORS 拦了 / 401 要 key / 超时 / HTTP xxx"。
        哪条成了就一键选它。不猜，直接量。 */
+    /* ⚠️ 体检以前只打 example.com 这一个地址。可"能不能读 example.com"
+       跟"能不能读你真要读的那个站"是两回事：CORS 头、反爬、代理黑名单
+       全是**按站**来的。于是就有了"体检全绿，记录里还是正文没读到"。
+       现在优先拿**上一次真搜到的那条外链**来体检，没有再退回 example.com，
+       并且把测的是哪个地址写在结果上面。 */
     const PROBE_URL = 'https://example.com/';
     let probeRows = [];        // [{name, tpl, ok, msg, ms}]
+    let probeUrl = '';         // 这次体检打的是哪个地址
     let probing = false;
     window.gywebProbe = async function () {
         if (probing) return;
         probing = true; probeRows = []; renderPanel();
+        const target = String(S.lastLink || '').trim() || PROBE_URL;
+        probeUrl = target;
         const list = [{ v: '{u}', name: '直连' }]
             .concat(READ_PROXIES.filter(x => x.v).map(x => ({ v: x.v, name: x.name })));
         const mine = String(S.readUrl || '').trim();
@@ -221,7 +253,7 @@
             const t0 = Date.now();
             let ok = false, msg = '';
             try {
-                const body = await grab(fillRead(r.v, PROBE_URL), 12000);
+                const body = await grab(fillRead(r.v, target), 12000);
                 const t = toText(body);
                 if (t.length < 60) { msg = '通了，但只拿到 ' + t.length + ' 个字（多半被反爬页挡了）'; }
                 else { ok = true; msg = '能用，拿到 ' + t.length + ' 个字'; }
@@ -240,6 +272,38 @@
         const good = probeRows.find(x => x.ok);
         if (good && !mine) { S.readUrl = good.tpl === '{u}' ? '' : good.tpl; await save(); }
         renderPanel();
+    };
+
+    /* 📷 给 js/42（角色发图 · 「网上搜一张」那档）用：按关键词抓一张现成的图。
+       复用这儿现成的两样东西：搜索来源（p.search）和读正文的那条代理链（readChain），
+       别处再写一遍就是第二份要维护的抓取逻辑。
+       路子：搜一页 → 先从结果页上抠图 → 没有就点进第一条外链再抠 → 还没有就算了。
+       抓不到返回空字符串，**不抛错**——发图那边会安安静静退回文字卡片。 */
+    window.gyWebPickImg = async function (q) {
+        try {
+            const kw = String(q || '').trim();
+            if (!kw || S.src === 'none') return '';
+            const p = presetOf(S.src);
+            const tpl = (S.src === 'custom') ? S.url : (p.search || p.url);
+            if (!tpl || tpl.indexOf('{q}') < 0) return '';
+            const ok = u => u && /^https?:\/\//i.test(u);
+            let raw = '';
+            try { raw = await grab(tpl.replace('{q}', encodeURIComponent(kw + ' 图片')), 15000); } catch (e) { return ''; }
+            const first = pickImgs(raw).filter(ok);
+            if (first.length) return first[0];
+            const links = pickLinks(raw, 2);
+            for (const u of links) {
+                for (const t of readChain()) {
+                    try {
+                        const body = await grab(fillRead(t, u), 12000);
+                        const imgs = pickImgs(body).filter(ok);
+                        if (imgs.length) return imgs[0];
+                        break;                 // 这条外链读到了但没图，换下一条外链
+                    } catch (e) { /* 这条路不通，换下一条 */ }
+                }
+            }
+            return '';
+        } catch (e) { return ''; }
     };
 
     let deepInfo = '';     // 上一次"读正文"到底读成了几条，显示在功能页上
@@ -267,9 +331,16 @@
         //    于是 replace('{u}', …) 什么都没换，每一条"正文"抓的都是同一个搜索结果页——
         //    读正文条数填几都一样，永远只看得到搜索结果页。现在按 readChain() 挨个试。
         const links = pickLinks(raw, deep);
+        if (links[0]) S.lastLink = links[0];     // 体检拿它当靶子，比 example.com 说明问题
         const chain = readChain();
         const parts = [], srcs = [];
-        let okN = 0, failN = 0, firstFail = '', usedRoute = '';
+        let okN = 0, failN = 0, usedRoute = '';
+        // 每条路各自为什么没成，分开记。
+        // ⚠️ 以前只留第一条失败原因（而第一条几乎永远是"直连被 CORS 拦"），
+        //    于是代理被限流、代理 403、反爬页这些真原因一个都看不见——
+        //    页面上永远写着"直连被拦了"，你换多少条代理都还是这句话。
+        const why = {};   // { '路的名字': '原因' }
+        const note = (tpl, msg) => { const k = routeName(tpl); if (!why[k]) why[k] = msg; };
         gotImgs = pickImgs(raw);        // 搜索结果页上的图先收着
         for (const u of links) {
             let got = false;
@@ -277,7 +348,7 @@
                 try {
                     const body = await grab(fillRead(tpl, u), 15000);
                     const t = toText(body);
-                    if (t.length < 120) { if (!firstFail) firstFail = '正文太短（多半是反爬页）'; continue; }
+                    if (t.length < 120) { note(tpl, `通了但只回了 ${t.length} 个字（多半是反爬页或者代理在限流）`); continue; }
                     gotImgs = gotImgs.concat(pickImgs(body)).slice(0, 12);
                     parts.push(`【${u.split('/')[2]}】${t}`);
                     srcs.push(u);
@@ -287,18 +358,27 @@
                     break;
                 } catch (e) {
                     const msg = String(e.message || e);
-                    if (!firstFail) firstFail = /Failed to fetch|NetworkError|load failed/i.test(msg)
-                        ? '直连被对方网站的 CORS 拦了' : msg;
+                    // 同样一句 Failed to fetch，直连和代理的意思完全不同，别都说成"对方的 CORS"
+                    const net = /Failed to fetch|NetworkError|load failed/i.test(msg);
+                    note(tpl, !net ? msg
+                        : (tpl === '{u}' || !tpl) ? '被对方网站的 CORS 拦了（浏览器里直连基本都这样）'
+                        : '这个代理没通（挂了、限流、或者它自己没给 CORS 头）');
                     lastErr = msg;
                 }
             }
             if (!got) failN++;
         }
         if (okN) { try { save(); } catch (e) {} }    // 把 lastGoodRead 存下来
+        const whyTxt = Object.keys(why).slice(0, 2).map(k => `「${k}」${why[k]}`).join('；')
+                     + (Object.keys(why).length > 2 ? `；另外 ${Object.keys(why).length - 2} 条也没通` : '');
         // 把"到底读到没读到"记下来，功能页上直说，别让人以为参数没生效
         deepInfo = deep === 0 ? '只读搜索结果页（读正文条数填的 0）'
+                 // 一条外链都没抠出来：读正文那一步**根本没跑**，跟路通不通没关系。
+                 // 这种情况以前只写"找到 0 条外链"，谁也看不出是什么意思。
+                 : !links.length ? '这一页里一条外链都没抠出来，所以读正文那步根本没跑'
+                   + '（这个来源回的可能不是网页 HTML，或者它压根没给外链——换成 DuckDuckGo 那档试试）'
                  : `找到 ${links.length} 条外链，正文读成 ${okN} 条${usedRoute ? `（走的「${usedRoute}」）` : ''}`
-                   + (failN ? `、失败 ${failN} 条：${firstFail}${chain.length > 1 ? `（${chain.length} 条路都试过了）` : ''}` : '');
+                   + (failN ? `、失败 ${failN} 条：${whyTxt}${chain.length > 1 ? `（${chain.length} 条路都试过了）` : ''}` : '');
         const joined = parts.length ? parts.join('\n\n') : listText;
         return { text: joined.slice(0, num(S.maxChars, 200, 20000, 1500)),
                  sources: srcs.length ? srcs : ['（正文没读到，只用了搜索结果页）'],
@@ -308,6 +388,35 @@
     /* ===================== 一次完整的探索 ===================== */
     let busy = false;
     const tell = m => { const e = document.getElementById('gywebStatus'); if (e) e.innerText = m; };
+
+    /* ⚠️ 这个模块以前**从来没看过接口返回里的 error**，也没看过模型到底回了什么。
+       于是 key 过期、限流、模型名写错、网络断、模型回了一段大白话……
+       最后全都显示成同一句「没想出要搜什么」——你只会以为是角色不想搜，
+       其实是请求就没成功。现在把真实原因抠出来告诉你。 */
+    function apiFail(d) {
+        if (!d) return '接口没有任何返回（多半是网络断了或者被挡了）';
+        if (d.error) return '接口报错：' + (d.error.message || d.error.type || JSON.stringify(d.error).slice(0, 80));
+        const msg = d.choices && d.choices[0] && d.choices[0].message;
+        if (!msg) return '接口返回里没有内容（结构对不上，可能是中转站的问题）';
+        const t = String(msg.content || '').trim();
+        if (!t) return '模型回了个空的（有时候是被安全策略挡了，或者上下文太长）';
+        return '';
+    }
+    // 模型不按 JSON 格式回的时候，尽量从大白话里把要搜的词捞出来，别整轮作废
+    function salvageTopic(raw) {
+        let t = String(raw || '');
+        if (typeof stripReasoningBlocks === 'function') t = stripReasoningBlocks(t);
+        t = t.replace(/```[a-z]*|```/gi, '').trim();
+        let m = t.match(/"q"\s*[:：]\s*"([^"]{1,40})"/);            // JSON 坏了但字段还在
+        if (m) return m[1].trim();
+        m = t.match(/[「“"']([^」“”"']{2,30})[」”"']/);                 // 引号里的那个词
+        if (m) return m[1].trim();
+        m = t.match(/(?:想搜|搜索|搜一下|查一下|查查|了解一下)[：: ]*([^\n。，,]{2,30})/);
+        if (m) return m[1].trim();
+        const first = t.split(/[\n。！!？?]/).map(x => x.trim()).filter(Boolean)[0] || '';
+        if (first && first.length <= 30 && !/^[{\[]/.test(first)) return first;
+        return '';
+    }
 
     // 🎬 报场景（Soft：自主模式调过来的时候不抢）——注入页里"自动跑"和"手动点"能分开设
     window.gywebRun = async function (charId, opts) {
@@ -350,11 +459,21 @@
 ${hint}${had ? `你最近已经查过这些，别重复：\n${had}\n` : ''}
 只输出 JSON，不要解释：{"q":"你要搜的关键词，越具体越好，不超过20字","why":"你为什么想看这个，不超过20字"}`;
             const d1 = await callChatCompletionAPI(api, buildStructuredMessages(buildBasePrompt(c, false, ''), [], ask1));
-            let r1 = (typeof parseModelJson === 'function') ? parseModelJson(d1.choices?.[0]?.message?.content || '') : null;
+            const bad1 = apiFail(d1);
+            if (bad1) { lastErr = bad1; tell('挑题目这一步就没成：' + bad1); return null; }
+            const raw1 = String(d1.choices[0].message.content || '');
+            let r1 = (typeof parseModelJson === 'function') ? parseModelJson(raw1) : null;
             if (Array.isArray(r1)) r1 = r1[0];
             let topic = String((r1 && r1.q) || '').trim().slice(0, 30);
             const why = String((r1 && r1.why) || '').trim().slice(0, 30);
-            if (!topic) { tell('没想出要搜什么。'); return null; }
+            // JSON 没解析出来不代表模型没说——它可能就是用大白话回的，先捞一把
+            if (!topic) topic = salvageTopic(raw1).slice(0, 30);
+            if (!topic) {
+                const say = raw1.replace(/\s+/g, ' ').trim().slice(0, 60);
+                lastErr = '模型没按格式回，它说的是：' + (say || '（空）');
+                tell('没读懂模型想搜什么。它回的是：' + (say || '（空）'));
+                return null;
+            }
 
             // ②③ 搜（可以多轮：读完觉得没读明白就换个词再搜）
             const maxRounds = num(S.rounds, 1, 5, 1);
@@ -393,6 +512,8 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
 · 如果内容一看就是广告、乱码或者跟你要搜的东西对不上，就直说"没搜到什么有用的"，别硬编。
 · ${nChars} 字以内，像人说话，不要引号不要旁白。`;
             const d2 = await callChatCompletionAPI(apiSay, buildStructuredMessages(buildBasePrompt(c, false, ''), [], ask2));
+            const bad2 = apiFail(d2);
+            if (bad2) { lastErr = bad2; tell('搜完了，但写感想这一步没成：' + bad2); return null; }
             let text = (d2.choices?.[0]?.message?.content || '').trim().replace(/^["'“”「」]+|["'“”「」]+$/g, '');
             if (typeof stripReasoningBlocks === 'function') text = stripReasoningBlocks(text);
             if (typeof applyRegexScripts === 'function') { try { text = applyRegexScripts(text, 'ai_output', c.id); } catch (e) {} }
@@ -650,7 +771,10 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
                             ${probing ? '正在挨个试…' : '🩺 体检：看看哪条路在你这儿能用'}</button>
                         <span class="gyweb-hint">不调 API，只发几个网络请求。</span>
                     </div>
-                    ${probeRows.length ? `<div class="gyweb-probe">${probeRows.map(r => `
+                    ${probeRows.length ? `<div class="gyweb-probe">
+                        <div class="gyweb-hint" style="padding:2px 2px 6px;">这次打的是
+                          <b>${esc(shortUrl(probeUrl))}</b>${probeUrl === PROBE_URL ? '（还没搜过，先拿个示例站试；<b>能读它不代表能读别的站</b>——CORS 和反爬是按站来的）' : '（上次真搜到的那条外链）'}</div>
+                        ${probeRows.map(r => `
                         <div class="gyweb-probe-row ${r.ok ? 'ok' : 'bad'}">
                             <b>${r.ok ? '✓' : '✗'} ${esc(r.name)}</b>
                             <span>${esc(r.msg)}　${r.ms} ms</span>
@@ -664,7 +788,7 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
                             在这之前，探索照样能跑，只是 TA 读的是搜索结果页那一坨，不是正文。</div>` : ''}
                     </div>` : ''}` : ''}
                 ${deepInfo ? `<div class="gyweb-hint">上次读正文：${esc(deepInfo)}</div>` : ''}
-                ${lastErr ? `<div class="gyweb-hint" style="color:#f91880;">上次抓取失败：${esc(lastErr)}</div>` : ''}
+                ${lastErr ? `<div class="gyweb-hint" style="color:#f91880;">上次没成的原因：${esc(lastErr)}</div>` : ''}
                 ${S.src !== 'none' ? `<div class="gyweb-hint">⚠️ 抓不到时会自动退回"只用模型知道的"继续写，不会卡住也不会弹错。</div>` : ''}
             </div>
 

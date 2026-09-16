@@ -444,6 +444,15 @@ ${getChatMultiReplyBlock()}`;
             const mvuResult = processMvuPatchInText(repText, sessionId);
             repText = mvuResult.cleanText;
 
+            // 📷 主动找你说话的时候也能发图（js/42）。跟聊天页那条路走同一套。
+            let __photoDesc = '', __photoSelf = false;
+            try {
+                if (typeof window.gyPhotoScan === 'function') {
+                    const r0 = window.gyPhotoScan(repText);
+                    repText = r0.text; __photoDesc = r0.desc; __photoSelf = r0.self;
+                }
+            } catch (e) {}
+
             if (repText || repMediaUrl) {
                 globalChats[sessionId].push({ sender: char.id, text: repText, timestamp: Date.now(), mediaUrl: repMediaUrl, readBy: [], mvuSnapshot: mvuResult.snapshot });
                 
@@ -456,6 +465,9 @@ ${getChatMultiReplyBlock()}`;
                     unreadNotifs++; updateNotifBadge(); renderChatCharList();
                 }
                 saveAllData(); checkAndAutoSummarizeChat(sessionId);
+            }
+            if (__photoDesc && typeof window.gyPhotoFromReply === 'function') {
+                try { window.gyPhotoFromReply(char.id, sessionId, __photoDesc, __photoSelf); } catch (e) {}
             }
         }
     } catch(e) { console.error("主动发送消息网络请求失败:", e); }

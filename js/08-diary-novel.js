@@ -2320,6 +2320,18 @@ function gyGlobalBack() {
         closeSettingsPanel();
         return;
     }
+    // 正在某个聊天里（竖排列表模式）→ 先退回联系人列表，而不是直接跳出聊天页。
+    // 页面顶上那条「← 联系人列表」已经藏了，这个 ‹ 就得担起那个活儿。
+    try {
+        const chatOpen = document.getElementById('view-chat')
+            && document.getElementById('view-chat').style.display !== 'none';
+        if (chatOpen && typeof chatListViewMode !== 'undefined' && chatListViewMode !== 'row'
+            && typeof chatListShowingList !== 'undefined' && !chatListShowingList
+            && typeof backToContactList === 'function') {
+            backToContactList();
+            return;
+        }
+    } catch (e) {}
     if (typeof goBackToPreviousView === 'function') goBackToPreviousView();
 }
 

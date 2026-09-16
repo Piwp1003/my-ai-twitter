@@ -101,9 +101,9 @@
     <!-- ⚠️ 改了 style.css 一定要把这个 ?v= 数字 +1，并且同步改 service-worker.js 里的那一份。
          浏览器是按"完整URL字符串"缓存的，数字不变就会一直用旧样式——新加的界面会因此排版全乱（踩过一次：
          日历的网格样式改了但用户那边一直是竖着排的一列）。 -->
-    <link rel="stylesheet" href="./style.css?v=127">
-    <script src="./js/vendor/localforage.min.js?v=127"></script>
-    <script src="./js/vendor/mammoth.browser.min.js?v=127"></script>
+    <link rel="stylesheet" href="./style.css?v=151">
+    <script src="./js/vendor/localforage.min.js?v=151"></script>
+    <script src="./js/vendor/mammoth.browser.min.js?v=151"></script>
 </head>
 <body>
 
@@ -137,7 +137,7 @@
 
     <div class="mtb-center" id="mtbCenterTitle" style="display:none;"></div>
     <div class="mtb-center" id="mtbCenterSearch" style="display:none; flex:1; margin-left: 15px;">
-        <input type="text" id="mobileSearchInput" placeholder="全站搜索：推文、聊天、日记、小说、论坛..." onkeypress="if(event.key==='Enter' && this.value.trim()){switchMainView('search', this.value.trim()); toggleMobileSearch();}">
+        <input type="text" id="mobileSearchInput" placeholder="全站搜索：功能、推文、聊天、日记、小说、论坛..." onkeypress="if(event.key==='Enter' && this.value.trim()){switchMainView('search', this.value.trim()); toggleMobileSearch();}">
     </div>
 
     <div class="mtb-right" style="display: flex; align-items: center; gap: 15px;">
@@ -703,7 +703,9 @@
 
             <div id="aliveBar" style="display:none;"></div>
 
-            <div style="display:flex; align-items:center; justify-content:flex-end; padding:6px 15px; gap:8px;">
+            <!-- 进到具体某个聊天里之后，这一整行会被藏起来（js/05 的 renderChatCharList 管），
+                 返回联系人列表用左上角那个 ‹ 就行——顶上摆一排按钮不好看。 -->
+            <div id="chatTopBar" style="display:flex; align-items:center; justify-content:flex-end; padding:6px 15px; gap:8px;">
                 <button id="chatListBackBtn" class="btn-edit-small" style="display:none; margin-right:auto;" onclick="backToContactList()">← 联系人列表</button>
                 <button id="chatListViewToggleBtn" class="btn-edit-small" style="flex-shrink:0;" onclick="toggleChatListViewMode()">☰ 列表</button>
                 <button class="btn-edit-small" style="flex-shrink:0;" onclick="openCreateGroupModal()">➕ </button>
@@ -743,17 +745,23 @@
                     <button class="btn-edit-small" title="估算 prompt 体积" onclick="estimateCurrentPromptSize()">📊</button>
                     <!-- v108：转账/红包。钱包总开关关着的时候这颗按钮自己藏起来（js/31 管） -->
                     <button class="btn-edit-small" id="gywlSendBtn" title="转账 / 发红包" style="display:none;" onclick="gyWalletSendUI()">💸</button>
+                    <!-- v132：让 TA 发一张图。手动点的，不受发图开关/频率限制（点了就发）。
+                         走哪条路（只发卡片 / 图库里挑 / 现画 / 网上搜）在「小功能 → 📷 角色发图片」里定。 -->
+                    <button class="btn-edit-small" title="让 TA 发张图" onclick="gyPhotoAsk()">📷</button>
                 </div>
                 </div>
                 <div class="chat-input-row">
                     <span class="chat-more-wrap"><button type="button" class="btn-edit-small chat-more" id="chatMoreBtn" title="更多" onclick="gyChatMoreToggle(event)">⋮</button></span>
-                    <input type="text" id="chatInput" placeholder="输入消息..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
-                    <button class="btn-edit-small" title="语音输入" style="margin:0;" onclick="toggleVoiceInput('chatInput', this)">🎤</button>
-                    <!-- 🖐️ 手动回复模式下才出现：发完消息不自动回，点这颗 TA 才开口。
-                         上面有几句攒着就在按钮上标几。设置 → 💬 互动与描写 里切模式。 -->
-                    <button class="btn-edit-small chat-reply-now" id="chatReplyNowBtn" style="display:none;"
-                        title="让 TA 现在回" onclick="gyChatReplyNow()">回复</button>
-                    <button class="btn-post" onclick="sendChatMessage()">发送</button>
+                    <!-- 🎤 麦克风塞进输入框里面（贴右边），不再单独占一格——照微信那样。
+                         图标是黑白线稿 SVG，跟着文字颜色走；录音时加 .rec 变红闪，
+                         不再把 innerHTML 换成一个红点 emoji（换了就没法保持这个图标）。 -->
+                    <span class="chat-in-wrap">
+                        <input type="text" id="chatInput" placeholder="输入消息..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
+                        <button type="button" class="chat-mic" id="chatMicBtn" title="语音输入" onclick="toggleVoiceInput('chatInput', this)">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"/><path d="M18 11a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.92V19H8.5a1 1 0 1 0 0 2h7a1 1 0 1 0 0-2H13v-2.08A6 6 0 0 0 18 11z"/></svg>
+                        </button>
+                    </span>
+                    <button class="btn-post" id="chatSendBtn" onclick="sendChatMessage()">发送</button>
                 </div>
                 <!-- 导演耳语 (Author's Note)：文本 + 频率(每N条消息生效一次) + 深度(插到倒数第几条消息位置，0=固定在prompt末尾) -->
                 <div id="chatAuthorsNoteBox" style="display:none; margin-top:8px; border:1px dashed #f91880; background:rgba(249,24,128,0.05); border-radius:8px; padding:8px 12px;">
@@ -1430,18 +1438,130 @@
                     <div id="charReplyToggleList" style="display:flex; flex-direction:column; gap:8px; max-height:150px; overflow-y:auto; background:white; padding:10px; border-radius:6px; border:1px solid #eff3f4;"></div>
                 </div>
 
+                <!-- 💬 聊天补丁（js/49）：四件小事，各自独立 -->
+                <div class="input-group" style="margin-top:15px; border-top:1px dashed #1d9bf0; padding-top:15px;">
+                    <label style="font-size:15px;">💬 聊天补丁</label>
+                    <div style="font-size:12px; color:#536471; line-height:1.8; margin-bottom:10px;">
+                        四件小事，各开各的。前一个和最后一个也在「注入内容管理」里列着，能单独关。
+                    </div>
+                    <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:10px;">
+                        <input type="checkbox" id="gyCpOne" checked style="width:16px; height:16px; margin-top:3px; cursor:pointer;" onchange="gyChatPlusSet('one', this.checked)">
+                        <div>🖐️ <b>手动模式下，攒着的几句当一条回</b><br>
+                        <span style="color:#536471; font-size:12px;">你连着说了三四句再让 TA 回，以前 TA 常常一句一句分开答，结果是几条车轱辘话。
+                        开着的话会明确告诉它：这几句是一口气说完的，整体回一次。</span></div>
+                    </label>
+                    <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:10px;">
+                        <input type="checkbox" id="gyCpAt" checked style="width:16px; height:16px; margin-top:3px; cursor:pointer;" onchange="gyChatPlusSet('at', this.checked)">
+                        <div>👥 <b>群聊里打 @ 弹人名</b><br>
+                        <span style="color:#536471; font-size:12px;">在群聊输入框打一个 @，底下弹出这个群的成员和「所有人」，点一下补全。
+                        群里人一多，手打名字很容易打错——打错了那个人就不会被叫到。</span></div>
+                    </label>
+                    <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:10px;">
+                        <input type="checkbox" id="gyCpGroupTalk" style="width:16px; height:16px; margin-top:3px; cursor:pointer;" onchange="gyChatPlusSet('groupTalk', this.checked)">
+                        <div>🧭 <b>TA 也可以去群里说话，不是只能来找你</b>（默认关）<br>
+                        <span style="color:#536471; font-size:12px;">自主模式的动作表里多一项：TA 挑一个此刻合适的群，在里面说一句——
+                        对着群里另一个角色说，或者只是感慨一句。要这个角色开了自主模式才会发生。</span></div>
+                    </label>
+                    <div style="border-top:1px dashed #cfd9de; margin-top:12px; padding-top:12px;">
+                        <div style="font-size:14px; color:#0f1419; margin-bottom:4px;">🖼️ <b>推文 / 日记 / 信件配图</b>（默认都关）</div>
+                        <div style="color:#536471; font-size:12px; line-height:1.8; margin-bottom:8px;">
+                            跟聊天发图<b>同一条路</b>：图源、接口、参考图那些设置都在「📷 角色发图片」里，这儿不用再配一遍。<br>
+                            <b>不让模型在正文里写标记</b>——内容写完之后单独问一次"这条要配什么图"，再照那句描述取图，
+                            所以正文永远是干净的，也不会出现"模型忘了写标记就没图"。
+                        </div>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:6px;">
+                            <input type="checkbox" id="gyCpArtPost" style="width:16px; height:16px; cursor:pointer;" onchange="gyChatPlusSet('artPost', this.checked)">
+                            <div>推文配图</div>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:6px;">
+                            <input type="checkbox" id="gyCpArtDiary" style="width:16px; height:16px; cursor:pointer;" onchange="gyChatPlusSet('artDiary', this.checked)">
+                            <div>日记配图</div>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:10px;">
+                            <input type="checkbox" id="gyCpArtLetter" style="width:16px; height:16px; cursor:pointer;" onchange="gyChatPlusSet('artLetter', this.checked)">
+                            <div>信件配图</div>
+                        </label>
+                        <label>用哪一档取图</label>
+                        <select id="gyCpArtMode" onchange="gyChatPlusSet('artMode', this.value)">
+                            <option value="same">跟聊天一样（这个角色在 📷 里设的那档）</option>
+                            <option value="bank">从你喂的图库里挑</option>
+                            <option value="gen">真调接口生图</option>
+                            <option value="web">网上搜一张现成的</option>
+                        </select>
+                        <div style="color:#536471; font-size:12px; line-height:1.8; margin-top:6px;">
+                            ⚠️「只发卡片」那一档是纯文字描述，配图没意义——选了它（或者关着）这儿就不配图。
+                        </div>
+                        <label style="margin-top:8px;">多少条配一次（%）</label>
+                        <input type="number" id="gyCpArtRate" min="1" max="100" step="1" value="100" style="width:120px;"
+                               onchange="gyChatPlusSet('artRate', this.value)">
+                        <div style="color:#536471; font-size:12px; line-height:1.8; margin-top:6px;">
+                            100 = 每条都配；30 = 大概三条里配一条。生图那档很花钱，建议调低。
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 📞 打电话 -->
+                <div class="input-group" style="margin-top:15px; border-top:1px dashed #1d9bf0; padding-top:15px;">
+                    <label style="font-size:15px;">📞 打电话</label>
+                    <div style="font-size:12px; color:#536471; line-height:1.8; margin-bottom:8px;">
+                        在聊天框 <b>⋮</b> 里点 📞 就能给 TA 打电话（点了就打，不受这个开关拦——
+                        这个开关只管那颗按钮显不显示）。通话内容<b>会进聊天记录</b>，前后各加一条
+                        「📞 通话开始/结束」，所以挂断之后 TA 还记得你们在电话里说了什么。<br>
+                        三档随时切，通话界面右上角 ⚙️ 里也能切：
+                    </div>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:8px;">
+                        <input type="checkbox" id="gyCallOn" checked style="width:16px; height:16px; cursor:pointer;" onchange="gyCallOnSet(this.checked)">
+                        <div>在 ⋮ 里显示那颗 📞</div>
+                    </label>
+                    <select id="gyCallModeSel" onchange="gyCallSet('mode', this.value)">
+                        <option value="text">① 纯文字：界面是通话的样子，内容还是打字（不用任何额外接口）</option>
+                        <option value="tts">② 加朗读：TA 说的话念出来（浏览器自带 或 你自己的 TTS 接口）</option>
+                        <option value="voice">③ 我也说话：再加上麦克风转文字</option>
+                    </select>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-top:10px;">
+                        <input type="checkbox" id="gyCallAsk" checked style="width:16px; height:16px; cursor:pointer;" onchange="gyCallSet('askAnswer', this.checked)">
+                        <div>让 TA 自己决定接不接（只对<b>开了自主模式</b>的角色；没开的默认就接）</div>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-top:6px;">
+                        <input type="checkbox" id="gyCallInvite" style="width:16px; height:16px; cursor:pointer;" onchange="gyCallSet('invite', this.checked)">
+                        <div>允许 TA 主动打给我（挂在自主模式的动作表里，<b>默认关</b>）</div>
+                    </label>
+                    <label style="margin-top:8px;">来电响多少秒没人接算未接</label>
+                    <input type="number" id="gyCallRing" min="5" max="120" step="1" value="20" style="width:120px;"
+                           onchange="gyCallSet('ringSec', Math.max(5, Math.min(120, parseInt(this.value) || 20)))">
+                    <div style="font-size:12px; color:#536471; line-height:1.8; margin-top:8px;">
+                        不管哪一档，模型都知道"现在是在讲电话"：句子短、口语、不写动作和心理描写。<br>
+                        <b>接不接</b>：你打过去的时候，开了自主模式的角色会按此刻的处境决定接不接——
+                        再开了「日程自动核对」，TA 还会拿今天的日程和现在几点当理由（"在开会""刚躺下"）。
+                        没接通的话聊天里记一条「📞 呼叫未接通」，TA 会把理由补一句过来。<br>
+                        <b>TA 打过来</b>：直接全屏弹出来，跟真的来电一样，接听/挂断两颗大键；
+                        响够上面那个秒数没人接就算未接来电，聊天里也会记一条。<br>
+                        <b>小窗</b>：通话界面右上角那颗 ▁ 把电话缩成右下角一个小条，通话不断；
+                        TA 这时候说话，小条上面会冒一个气泡，点小条回到通话。<br>
+                        ② 的接口地址/密钥/音色在通话界面的 ⚙️ 里填（OpenAI 格式的 <code>/v1/audio/speech</code>）。<br>
+                        ③ 用的是浏览器自带的语音识别，准不准看浏览器；<b>打包成 APK 之后多半用不了</b>，那时退回打字就行。
+                    </div>
+                </div>
+
                 <!-- 🖐️ 什么时候让 TA 回 -->
                 <div class="input-group" style="margin-top:15px; border-top:1px dashed #1d9bf0; padding-top:15px;">
                     <label style="font-size:15px;">什么时候让 TA 回</label>
                     <select id="gyChatReplyModeSel" onchange="gySetChatReplyMode(this.value)" style="margin-top:8px;">
                         <option value="auto">消息发出去，TA 就回（默认）</option>
-                        <option value="manual">发完不自动回，我点「回复」才开始</option>
+                        <option value="manual">发完不自动回，我再点一次发送才开始</option>
                     </select>
                     <div style="font-size:12px; color:#536471; line-height:1.8; margin-top:8px;">
-                        选第二种之后，输入框右边会多一颗「回复」。你可以连着说好几句、把话说完再让 TA 开口，
-                        按钮上会标着有几句等着（一起交给 TA，跟自动模式合批的行为一样）。
-                        也可以只是把一句话记在聊天里，不花这一次调用。<br>
-                        <span style="color:#8b98a5;">一句新的都没有时点「回复」＝让 TA 再回一次（接着上一句继续）。</span>
+                        第一种：点发送 TA 就开始回，不用等。<br>
+                        第二种：发出去的话先攒着，<b>把输入框空着再点一次「发送」</b>，TA 才开口——
+                        不额外多一颗按钮。你可以连着说好几句、把话说完再让 TA 回（几句一起交给 TA，
+                        跟自动模式合批的行为一样）；也可以只是把一句话记在聊天里，不花这一次调用。
+                        攒了几句会写在输入框的提示文字里。<br>
+                        <span style="color:#8b98a5;">一句新的都没攒着时点发送＝让 TA 再回一次（接着上一句继续）。</span>
+                    </div>
+                    <div class="input-group" style="margin-top:10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <label style="font-size:13px; color:#536471; margin:0;">第一种模式下，点发送后等</label>
+                        <input type="number" id="chatBatchDelaySec" min="0" max="30" value="0" style="width:70px; padding:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:13px;">
+                        <span style="font-size:12px; color:#8b98a5;">秒再让 TA 开口。<b>0 ＝ 点了就回</b>；调大的话，这几秒里你连发的几句会合并成一次回复（省一次调用，代价是每句都要干等）。</span>
                     </div>
                 </div>
 
@@ -1503,6 +1623,15 @@
                     <div class="input-group checkbox-group" style="margin-bottom:8px;">
                         <input type="checkbox" id="enableTypingIndicator" checked>
                         <label style="margin:0; font-size:14px; color:#536471;">正在输入提示 / 已读状态</label>
+                    </div>
+                    <div class="input-group checkbox-group" style="margin-bottom:8px;">
+                        <input type="checkbox" id="chatTimeSepEnabled" checked>
+                        <label style="margin:0; font-size:14px; color:#536471;">🕰️ 聊天里的时间分隔条（隔太久就像微信那样插一条居中的灰字，点一下展开成"几月几日 星期几"）</label>
+                    </div>
+                    <div class="input-group" style="margin-bottom:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-left:24px;">
+                        <label style="font-size:13px; color:#536471; white-space:nowrap;">隔满</label>
+                        <input type="number" id="chatTimeSepMin" min="0" max="1440" value="5" style="width:80px; padding:6px; border:1px solid #1d9bf0; border-radius:4px; font-size:13px;">
+                        <span style="font-size:12px; color:#8b98a5;">分钟就插一条。填 0 = 每条消息上面都插（会很密）。</span>
                     </div>
                     <div class="input-group checkbox-group" style="margin-bottom:8px;">
                         <input type="checkbox" id="enableMiniGameCharSpeech" checked>
@@ -1682,6 +1811,100 @@
                 <option value="0">全部都弹（老行为）</option>
                 <option value="-1">一条都不弹，只进通知页</option>
             </select>
+        </div>
+        <!-- 🎨 皮肤盒子：存好的 CSS 点一下就换。默认开。 -->
+        <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
+            <label style="font-size:16px;">🎨 皮肤盒子</label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                把上面框里的 CSS <b>存成一张皮肤</b>，自己起名字；以后<b>点一下就换</b>，不用再复制粘贴。
+                也可以直接<b>选一个 .css 文件</b>存进来。顶上那条「原样」是不用皮肤。<br>
+                皮肤存在浏览器本地，同时<b>跟着存档走</b>——导出存档会带上，换设备导入就还在。
+                🧩 小功能里也有一个「🎨 皮肤」入口，不进设置也能换。
+            </div>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:10px;">
+                <input type="checkbox" id="gySkinBoxOn" checked style="width:16px; height:16px; cursor:pointer;" onchange="gySkinBoxSet(this.checked)">
+                <div>用皮肤盒子</div>
+            </label>
+            <div id="gySkinBox"></div>
+        </div>
+        <!-- 📅 右边那块「今天」。默认开。 -->
+        <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
+            <label style="font-size:16px;">📅 右边放一块「今天」</label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                把项目里本来就有、但散在各处的东西汇到右边一页：今天几号、今天和明天的日程、
+                最近要到的纪念日和生日、谁有未读消息（点一下直接进那个聊天）、TA 们刚发的几条。
+                全是读现成数据，不生成、不请求接口、不写存档。窗口窄于 1100px 时自动不显示。
+                <b>默认关</b>，不开就一个节点都不建，右侧栏还是原来的样子。
+            </div>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419;">
+                <input type="checkbox" id="gyTodayOn" style="width:16px; height:16px; cursor:pointer;" onchange="gyTodaySet(this.checked)">
+                <div>显示「今天」</div>
+            </label>
+        </div>
+        <!-- 🔎 搜索里也搜功能。默认开。 -->
+        <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
+            <label style="font-size:16px;">🔎 搜索里也搜功能</label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                全站搜索的结果最上面多一块「功能」：搜到了直接点，<b>点了就跳过去</b>。
+                索引是现场从页面里扫出来的（侧边栏、设置目录、🧩 小功能、自动化开关表），
+                所以装了插件、加了新功能，不用改代码也搜得到。
+            </div>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419;">
+                <input type="checkbox" id="gyFeatSearchOn" checked style="width:16px; height:16px; cursor:pointer;" onchange="gyFeatSearchSet(this.checked)">
+                <div>搜索里显示「功能」这一块</div>
+            </label>
+        </div>
+        <!-- 💬 聊天页顶栏：返回键 + 对方昵称。默认开。 -->
+        <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
+            <label style="font-size:16px;">💬 聊天页顶上显示对方昵称和返回键</label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                进到某个聊天之后，顶上补一条：<b>左边返回、中间头像 + 对方昵称</b>（群聊带人数）。
+                电脑端本来没有返回的地方，这条补上了；点中间的名字可以去 TA 的资料页。
+                排法参考微信，颜色跟着你自己的主题走。
+            </div>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419;">
+                <input type="checkbox" id="gyChatHeadOn" checked style="width:16px; height:16px; cursor:pointer;" onchange="gyChatHeadSet(this.checked)">
+                <div>显示这条顶栏</div>
+            </label>
+        </div>
+        <!-- 🎞️ 动图和视频：头像/背景/配图都能动。默认开。 -->
+        <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
+            <label style="font-size:16px;">🎞️ 动图和视频</label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                开着的时候，凡是能传图的地方都能传 <b>GIF 和视频</b>：角色头像、我的头像、群头像、
+                资料页背景图、主页大图、全局背景图、表情包、聊天里发的图、帖子配图……
+                GIF 不再被压成静止图，视频会<b>循环播放、静音、不显示控件</b>。<br>
+                视频单独存一个本地库，<b>存档里只留一个编号</b>，所以存档不会被撑大；导出存档时会自动把用到的一起打包带走。
+            </div>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:8px;">
+                <input type="checkbox" id="gyLiveOn" checked style="width:16px; height:16px; cursor:pointer;" onchange="gyLiveSet('on', this.checked)">
+                <div>让它们动起来（关掉就退回原样：GIF 压成静止图、视频不让传）</div>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419; margin-bottom:8px;">
+                <input type="checkbox" id="gyLiveSound" style="width:16px; height:16px; cursor:pointer;" onchange="gyLiveSet('sound', this.checked)">
+                <div>视频带声音（多数浏览器会拒绝带声音的自动播放，可能得手动点一下）</div>
+            </label>
+            <label style="margin-top:4px;">单个文件最大（MB）</label>
+            <input type="number" id="gyLiveMaxMB" min="1" max="200" step="1" value="30"
+                   style="width:120px;" onchange="gyLiveSet('maxMB', Math.max(1, Math.min(200, parseInt(this.value) || 30)))">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px;">
+                <span id="gyLiveStat" style="font-size:12px; color:#536471;">本地媒体库：还是空的</span>
+                <button type="button" class="btn-edit-small" style="margin:0;" onclick="gyLiveClean()">清掉没在用的</button>
+            </div>
+        </div>
+        <!-- 📷 主页顶上的大图（朋友圈那种封面）。默认关，不开一个节点都不加。 -->
+        <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
+            <label style="font-size:16px;">📷 主页顶上放一张大图</label>
+            <div class="form-hint" style="margin-bottom:8px;">
+                像朋友圈那样，在主页时间线最上面放一张封面大图，右下角压着你的名字和头像。
+                用的就是<b>你资料页的背景图</b>（在「个人资料」里换；没设就用你的主题色），点大图直接去资料页。
+                关掉就整块拿走，一点痕迹不留。<br>
+                💡 配「微信风」那张 CSS 皮肤用最像：那张皮肤会把发帖按钮挪到右上角变成相机，正好压在大图角上。
+            </div>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; color:#0f1419;">
+                <input type="checkbox" id="momentsHomeToggle" style="width:16px; height:16px; cursor:pointer;" onchange="gyMoToggle(this)">
+                <div>开启主页大图</div>
+            </label>
         </div>
         <div class="input-group" style="margin-top:20px; border-top:1px solid #1d9bf0; padding-top:15px;">
             <label style="font-size:16px;">🖱️ 点击特效</label>
@@ -2374,7 +2597,7 @@
         <div class="sidebar-right-content">
             <div class="search-box">
                 <svg class="blue-line-icon" style="width:18px;height:18px;" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                <input type="text" id="globalSearchInput" placeholder="全站搜索：推文、聊天、日记、小说、论坛..." onkeypress="if(event.key === 'Enter') switchMainView('search', this.value)">
+                <input type="text" id="globalSearchInput" placeholder="全站搜索：功能、推文、聊天、日记、小说、论坛..." onkeypress="if(event.key === 'Enter') switchMainView('search', this.value)">
             </div>
             <div class="info-card" id="rightPanelTrend">
                 <h3>有什么新鲜事</h3>
@@ -3013,47 +3236,56 @@
 </style>
 
     <!-- EJS模板引擎：本地打包(vendor)而不用CDN，离线(PWA)时也能正常渲染带<%%>语法的提示词/世界书 -->
-    <script src="./js/vendor/ejs.min.js?v=127"></script>
-    <script src="./js/01-core-state-infra.js?v=127"></script>
-    <script src="./js/02-databank-plugins-minigames.js?v=127"></script>
-    <script src="./js/03-markdown-feed-tags.js?v=127"></script>
-    <script src="./js/04-mobile-bootstrap-notifications.js?v=127"></script>
-    <script src="./js/05-anniversary-memory.js?v=127"></script>
-    <script src="./js/06-emoticons-time-humanfeel-relationships-worldbook.js?v=127"></script>
-    <script src="./js/07-proactive-cloudsync.js?v=127"></script>
-    <script src="./js/08-diary-novel.js?v=127"></script>
-    <script src="./js/09-memories-search-postfixes.js?v=127"></script>
-    <script src="./js/10-comments-npc-forum-reply.js?v=127"></script>
-    <script src="./js/11-tabloid-story-forum-engine.js?v=127"></script>
-    <script src="./js/12-worldbook-import-appexport.js?v=127"></script>
-    <script src="./js/13-charreply-groupchat-faction-cardimport.js?v=127"></script>
-    <script src="./js/14-settings-archive.js?v=127"></script>
-    <script src="./js/15-ai-presets.js?v=127"></script>
-<script src="./js/16-story-studio.js?v=127"></script>
-<script src="./js/17-tavern-bridge.js?v=127"></script>
-<script src="./js/18-minigames-board-cards.js?v=127"></script>
-<script src="./js/19-minigames-party.js?v=127"></script>
-<script src="./js/20-reading-together.js?v=127"></script>
-<script src="./js/21-watch-together.js?v=127"></script>
-<script src="./js/22-box-music.js?v=127"></script>
-<script src="./js/23-box-map.js?v=127"></script>
-<script src="./js/24-box-relations.js?v=127"></script>
-<script src="./js/25-box-life.js?v=127"></script>
-<script src="./js/26-box-mall.js?v=127"></script>
-<script src="./js/27-feature-pages.js?v=127"></script>
-<script src="./js/28-invite-in-chat.js?v=127"></script>
-<script src="./js/29-web-explore.js?v=127"></script>
-<script src="./js/30-parcel-cards.js?v=127"></script>
-<script src="./js/31-wallet.js?v=127"></script>
-<script src="./js/32-takeout.js?v=127"></script>
-<script src="./js/33-phone.js?v=127"></script>
-<script src="./js/34-gallery.js?v=127"></script>
-<script src="./js/35-dressup.js?v=127"></script>
-<script src="./js/36-silence.js?v=127"></script>
-<script src="./js/37-inject-hub.js?v=127"></script>
-<script src="./js/38-my-days.js?v=127"></script>
-<script src="./js/39-npcs.js?v=127"></script>
-<script src="./js/40-nav-groups.js?v=127"></script>
-<script src="./js/41-site-ctx.js?v=127"></script>
+    <script src="./js/vendor/ejs.min.js?v=151"></script>
+    <script src="./js/01-core-state-infra.js?v=151"></script>
+    <script src="./js/02-databank-plugins-minigames.js?v=151"></script>
+    <script src="./js/03-markdown-feed-tags.js?v=151"></script>
+    <script src="./js/04-mobile-bootstrap-notifications.js?v=151"></script>
+    <script src="./js/05-anniversary-memory.js?v=151"></script>
+    <script src="./js/06-emoticons-time-humanfeel-relationships-worldbook.js?v=151"></script>
+    <script src="./js/07-proactive-cloudsync.js?v=151"></script>
+    <script src="./js/08-diary-novel.js?v=151"></script>
+    <script src="./js/09-memories-search-postfixes.js?v=151"></script>
+    <script src="./js/10-comments-npc-forum-reply.js?v=151"></script>
+    <script src="./js/11-tabloid-story-forum-engine.js?v=151"></script>
+    <script src="./js/12-worldbook-import-appexport.js?v=151"></script>
+    <script src="./js/13-charreply-groupchat-faction-cardimport.js?v=151"></script>
+    <script src="./js/14-settings-archive.js?v=151"></script>
+    <script src="./js/15-ai-presets.js?v=151"></script>
+<script src="./js/16-story-studio.js?v=151"></script>
+<script src="./js/17-tavern-bridge.js?v=151"></script>
+<script src="./js/18-minigames-board-cards.js?v=151"></script>
+<script src="./js/19-minigames-party.js?v=151"></script>
+<script src="./js/20-reading-together.js?v=151"></script>
+<script src="./js/21-watch-together.js?v=151"></script>
+<script src="./js/22-box-music.js?v=151"></script>
+<script src="./js/23-box-map.js?v=151"></script>
+<script src="./js/24-box-relations.js?v=151"></script>
+<script src="./js/25-box-life.js?v=151"></script>
+<script src="./js/26-box-mall.js?v=151"></script>
+<script src="./js/27-feature-pages.js?v=151"></script>
+<script src="./js/28-invite-in-chat.js?v=151"></script>
+<script src="./js/29-web-explore.js?v=151"></script>
+<script src="./js/30-parcel-cards.js?v=151"></script>
+<script src="./js/31-wallet.js?v=151"></script>
+<script src="./js/32-takeout.js?v=151"></script>
+<script src="./js/33-phone.js?v=151"></script>
+<script src="./js/34-gallery.js?v=151"></script>
+<script src="./js/35-dressup.js?v=151"></script>
+<script src="./js/36-silence.js?v=151"></script>
+<script src="./js/37-inject-hub.js?v=151"></script>
+<script src="./js/38-my-days.js?v=151"></script>
+<script src="./js/39-npcs.js?v=151"></script>
+<script src="./js/40-nav-groups.js?v=151"></script>
+<script src="./js/41-site-ctx.js?v=151"></script>
+<script src="./js/42-char-photo.js?v=151"></script>
+<script src="./js/43-moments-home.js?v=151"></script>
+<script src="./js/44-live-media.js?v=151"></script>
+<script src="./js/45-chat-headbar.js?v=151"></script>
+<script src="./js/46-today-panel.js?v=151"></script>
+<script src="./js/47-call.js?v=151"></script>
+<script src="./js/48-feature-search.js?v=151"></script>
+<script src="./js/49-chat-plus.js?v=151"></script>
+<script src="./js/50-skin-box.js?v=151"></script>
 </body>
 </html>

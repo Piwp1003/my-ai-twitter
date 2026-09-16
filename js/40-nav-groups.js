@@ -62,10 +62,35 @@
             try { tab.go(); } catch (err) { console.warn('[侧边栏分组] 切换出错：', err); }
         });
 
-        // 挂在这一页的标题栏下面（没有标题栏就挂最前面）
-        const hd = host.querySelector('.header-title');
-        if (hd && hd.parentNode === host) hd.insertAdjacentElement('afterend', bar);
-        else host.insertAdjacentElement('afterbegin', bar);
+        /* 挂在哪儿：**优先挂进这一页自己的滚动区里**，当它的第一行。
+           ⚠️ 原来是挂在标题栏后面、并且自己也写了 position:sticky;top:0。
+           可页面的 .header-title 同样是 sticky;top:0，z-index 还比它大（10 vs 5），
+           于是两条贴在同一个位置、标签栏整条被压在标题栏底下——
+           页面上只剩一条白带子，看着就是"上面的切换栏不见了"。
+           窄窗口下必现（那时候整页是滚着的，标题栏一直钉在顶上）。
+           挂进滚动区里就彻底没这个问题：它跟着内容走，谁也盖不住它。 */
+        const scroller = [...host.children].find(el => {
+            const o = getComputedStyle(el).overflowY;
+            return (o === 'auto' || o === 'scroll') && el.clientHeight > 40;
+        });
+        if (scroller) {
+            scroller.insertAdjacentElement('afterbegin', bar);
+            /* 这一页的 .header-title 是 sticky 的、z-index 10，而滚动区的顶边在它**底下**：
+               窄窗口下滚动区最上面那几十像素本来就压在标题栏后面。
+               所以挂进去还不够，还得量一量差了多少、把自己让开——
+               不让的话标签栏整条藏在标题栏后面，看着就是"切换栏不见了"。 */
+            try {
+                const hd0 = host.querySelector('.header-title');
+                if (hd0) {
+                    const need = Math.round(hd0.getBoundingClientRect().bottom - bar.getBoundingClientRect().top);
+                    if (need > 0) bar.style.marginTop = need + 'px';
+                }
+            } catch (e) {}
+        } else {
+            const hd = host.querySelector('.header-title');
+            if (hd && hd.parentNode === host) hd.insertAdjacentElement('afterend', bar);
+            else host.insertAdjacentElement('afterbegin', bar);
+        }
 
         // 侧边栏那一项的高亮：组里任何一页都算这一项亮着
         const nav = document.getElementById(g.nav);
@@ -151,9 +176,14 @@
     };
 
     const CSS = `
+    /* ⚠️ 这里原来写的是 position:sticky;top:0;z-index:5。
+       可页面自己的 .header-title 也是 sticky;top:0，而且 z-index:10 ——
+       两个都往同一个 top:0 上贴，标签栏就整条被标题栏盖在底下，
+       页面上只剩一条白带子，看着就是"切换栏没了"。（窄窗口下必现。）
+       它本来就在滚动区外面、不会被滚走，根本不需要 sticky，去掉即可。 */
     .gynavg-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:10px 20px;
-        border-bottom:1px solid var(--gy-border,#eff3f4);position:sticky;top:0;z-index:5;
-        background:var(--gy-bg,#fff);}
+        border-bottom:1px solid var(--gy-border,#eff3f4);position:relative;z-index:4;
+        background:var(--gy-bg,#fff);flex-shrink:0;}
     .gynavg-tab{border:1px solid var(--gy-border,#dfe4e8);background:transparent;
         color:var(--gy-sub,#536471);font-size:13px;padding:5px 14px;border-radius:999px;
         cursor:pointer;line-height:1.6;transition:.15s;}

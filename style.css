@@ -427,9 +427,13 @@ body.dark-theme .wb-form-resize-handle { background: var(--gy-accent); }
 .chat-msg-row { display: flex; gap: 10px; width: 100%; align-items: flex-start; }
 .chat-msg-row.me { justify-content: flex-end; }
 .chat-msg-row.other { justify-content: flex-start; }
-.chat-bubble-wrapper { display: flex; flex-direction: column; max-width: 65%; }
+/* 气泡最宽不超过聊天区的 70%（v151：原来是 65%）。
+   百分比是照**聊天区**算的不是屏幕，所以侧边栏收起、窗口拉大拉小它都自己跟着变。 */
+.chat-bubble-wrapper { display: flex; flex-direction: column; max-width: 70%; }
 .chat-msg-row.me .chat-bubble-wrapper { align-items: flex-end; }
 .chat-sender-name { font-size: 12px; color: #888; margin-bottom: 4px; margin-left: 2px; }
+/* 气泡边上那个小时间单独包一层，皮肤要藏它的时候不会把群里的名字一起藏掉 */
+.chat-msg-time { font-style: normal; }
 .chat-bubble { padding: 10px 14px; border-radius: 8px; font-size: 15px; line-height: 1.5; word-wrap: break-word; position: relative; white-space: pre-wrap; overflow-x: auto; }
 .chat-bubble.me { background-color: rgba(255,255,255,0.9); color: #0f1419; border: 1px solid #e0e0e0; border-top-right-radius: 2px; }
 .chat-bubble.other { background-color: var(--gy-accent); color: #ffffff; border-top-left-radius: 2px; }
@@ -478,6 +482,19 @@ body.dark-theme .gyca-grid button { background: rgba(255,255,255,.04); }
 .chat-more-menu #chatToolIconsRow > button::after { content: attr(title); font-size: 12.5px; color: inherit;
   opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-more-menu #chatToolIconsRow > button:hover { background: rgba(var(--gy-accent-rgb), .12); }
+/* 🎤 麦克风贴在输入框里面的右边（微信那样），不单独占一格 */
+.chat-in-wrap { position: relative; flex: 1 1 auto; display: flex; align-items: center; min-width: 0; }
+.chat-in-wrap input { width: 100%; padding-right: 40px !important; }
+.chat-mic { position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    background: transparent; border: none; padding: 2px; margin: 0; cursor: pointer; line-height: 0;
+    color: #8b98a5; opacity: .8; transition: color .15s, opacity .15s; }
+.chat-mic:hover { opacity: 1; color: #536471; }
+.chat-mic svg { width: 19px; height: 19px; fill: currentColor; display: block; }
+.chat-mic.rec { color: #f4212e; opacity: 1; animation: gy-mic-blink 1s infinite; }
+@keyframes gy-mic-blink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+body.dark-theme .chat-mic { color: #71767b; }
+body.dark-theme .chat-mic:hover { color: #e7e9ea; }
+
 .chat-input-row input { flex-grow: 1; border: 2px solid var(--gy-accent); border-radius: 9999px; padding: 10px 18px; outline: none; font-size: 15px; color: var(--gy-accent); background: rgba(255,255,255,0.8);}
 
 .chat-quote-preview { background: rgba(0,0,0,0.05); padding: 8px 12px; border-left: 3px solid var(--gy-accent); font-size: 12px; color: #536471; margin-bottom: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
@@ -488,6 +505,16 @@ body.dark-theme .gyca-grid button { background: rgba(255,255,255,.04); }
 body.dark-theme .chat-quote-bubble.tweet-quote-card { background: rgba(var(--gy-accent-rgb),0.14); border-color: rgba(var(--gy-accent-rgb),0.35); }
 
 /* 系统消息 (拍一拍) */
+/* 🕰️ 时间分隔条：微信那种居中的灰字。点一下展开成完整日期（.full） */
+.chat-time-sep { text-align: center; margin: 14px 0 8px; user-select: none; }
+.chat-time-sep span {
+    font-size: 12px; color: #a0a4a8; background: transparent;
+    padding: 2px 8px; border-radius: 4px; cursor: pointer;
+    transition: background .15s, color .15s;
+}
+.chat-time-sep span:hover { background: rgba(128,128,128,.12); color: #7a7f85; }
+.chat-time-sep.full span { background: rgba(128,128,128,.14); color: #6e7378; }
+
 .chat-system-msg { text-align: center; margin: 10px 0; }
 .chat-system-msg span { font-size: 12px; color: #888; background: rgba(0,0,0,0.05); padding: 4px 10px; border-radius: 4px; }
 

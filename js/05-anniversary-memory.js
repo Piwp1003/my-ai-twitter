@@ -807,8 +807,13 @@ function renderChatCharList() {
     const rowContainer = document.getElementById('chatCharRow');
     const listContainer = document.getElementById('chatListVertical');
     const backBtn = document.getElementById('chatListBackBtn');
+    const topBar = document.getElementById('chatTopBar');
     const messagesArea = document.getElementById('chatMessagesArea');
     const inputArea = document.getElementById('chatInputArea');
+    // 进到具体某个聊天里之后，顶上那一行（← 联系人列表 / ▦ 头像条 / ＋）整条藏掉。
+    // 返回用左上角的 ‹ 就够了，顶着一排按钮占地方也不好看。
+    const inOneChat = (chatListViewMode !== 'row') && !chatListShowingList;
+    if (topBar) topBar.style.display = inOneChat ? 'none' : 'flex';
 
     if (chatListViewMode === 'row') {
         // 头像条模式：联系人条和聊天内容一直同时显示，跟以前一样
@@ -1707,17 +1712,38 @@ function renderChatMessages() {
     // 主线程占住近2秒，这段时间里键盘敲的字全丢，就是"对面一发消息就打不了字"的直接原因。
     // 现在改成：先记个标记，整轮渲染完只存一次（saveAllData 本身也已经改成合并写入了，双保险）。
     let __markedAnyRead = false;
+    /* 🕰️ 时间分隔条（微信那种居中灰字）
+       以前每个气泡旁边都挂着一个 HH:MM，一屏十几个时间，看着乱，
+       而且"这两句中间隔了三天"完全看不出来。
+       现在按微信的规矩：隔满 N 分钟才插一条居中的时间，气泡边上那个就不用盯着了。
+       写法也按微信来：今天只写时分，昨天写"昨天 HH:MM"，一周内写"星期X HH:MM"，
+       再远写"M月D日 HH:MM"，跨年才写年份。点一下展开成完整的"X年X月X日 星期X HH:MM"。 */
+    let __lastSepAt = 0;
+    const sepHtml = (ts) => {
+        if (!chatTimeSepEnabled || !ts) return '';
+        const gap = Math.max(0, parseInt(chatTimeSepMin)) * 60000;
+        if (__lastSepAt && (ts - __lastSepAt) < gap) return '';
+        __lastSepAt = ts;
+        return `<div class="chat-time-sep" data-ts="${ts}" onclick="gyChatSepToggle(this)" title="点一下看完整日期"><span>${gyChatSepText(ts, false)}</span></div>`;
+    };
     container.innerHTML = history.map((msg, idx) => {
         try {
-            if (msg.sender === 'system') return `<div class="chat-system-msg"><span>${msg.text}</span></div>`;
+            const __sep = sepHtml(msg.timestamp);
+            if (msg.sender === 'system') return __sep + `<div class="chat-system-msg"><span>${msg.text}</span></div>`;
             // 📨 邀请卡片（js/28）：一起看电影 / 一起听歌 / 一起阅读 / 约出去，
             //    都是聊天里的一张卡，不是气泡。谁发起的、答没答应、TA 说了什么，全在卡上。
             if (msg.type === 'invite' && msg.invite && typeof gyInviteCardHtml === 'function') {
-                return gyInviteCardHtml(msg, idx);
+                return __sep + gyInviteCardHtml(msg, idx);
             }
             // 📦 包裹卡片（js/30）：下单 / 到货 / 收货。跟邀请卡是两种卡，样子也不一样。
             if (msg.type === 'parcel' && msg.parcel && typeof gyParcelCardHtml === 'function') {
-                return gyParcelCardHtml(msg, idx);
+                return __sep + gyParcelCardHtml(msg, idx);
+            }
+            // 📷 角色发的图（js/42）：图 + TA 对这张图说的那句话。
+            //    四种路子（只发卡片 / 图库里挑 / 现画 / 网上搜）出来的都是这一张卡，
+            //    一张图都没出的时候卡照样在，上面是文字描述——不会变成一个裂开的图标。
+            if (msg.type === 'photo' && msg.photo && typeof gyPhotoCardHtml === 'function') {
+                return __sep + gyPhotoCardHtml(msg, idx);
             }
             let isMe = msg.sender === 'me', senderChar = isMe ? currentUser : myCharacters.find(c => c.id == msg.sender), timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             if (!isMe && (!msg.readBy || !msg.readBy.includes('me'))) { if(!msg.readBy) msg.readBy=[]; msg.readBy.push('me'); __markedAnyRead = true; }
@@ -1734,15 +1760,15 @@ function renderChatMessages() {
                 const isMe0 = msg.sender === 'me';
                 const sc = isMe0 ? currentUser : myCharacters.find(c => c.id == msg.sender);
                 const av = isMe0 ? '' : `<div>${getAvatarHTML(sc, 40)}</div>`;
-                return `<div class="chat-msg-row other">${av}
+                return __sep + `<div class="chat-msg-row other">${av}
                     <div class="chat-bubble-wrapper" style="align-items:flex-start;">
-                        <div class="chat-sender-name" style="font-size:10px;">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div class="chat-sender-name" style="font-size:10px;"><i class="chat-msg-time">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</i></div>
                         ${gyWebLinkHtml(msg, idx)}
                     </div></div>`;
             }
             // 🎀 换装卡（js/35）：换头像/背景/壁纸要先问一声，卡上直接把那张图放出来。
             if (msg.type === 'dress' && msg.dress && typeof gyDressCardHtml === 'function') {
-                return gyDressCardHtml(msg, idx);
+                return __sep + gyDressCardHtml(msg, idx);
             }
             // 💸 转账 / 红包（js/31）：不是居中的一张卡，而是**一条谁发出来的消息**——
             //    跟气泡一样左右分边、带头像，只是气泡里装的是转账单。所以放在这儿，
@@ -1771,11 +1797,11 @@ function renderChatMessages() {
             }
 
             if (msg.type === 'money' && msg.money && typeof gyMoneyCardHtml === 'function') {
-                return `
+                return __sep + `
                 <div class="chat-msg-row ${isMe ? 'me' : 'other'}">
                     ${!isMe ? avatarHtml : ''}
                     <div class="chat-bubble-wrapper" style="align-items: ${isMe ? 'flex-end' : 'flex-start'};">
-                        <div class="chat-sender-name" style="font-size:10px;">${!isMe && isGroup ? (senderChar && senderChar.name) || '' : ''} ${timeStr}</div>
+                        <div class="chat-sender-name" style="font-size:10px;">${!isMe && isGroup ? (senderChar && senderChar.name) || '' : ''} <i class="chat-msg-time">${timeStr}</i></div>
                         ${gyMoneyCardHtml(msg, idx)}
                         ${isMe ? readStatusHtml : ''}
                     </div>
@@ -1787,11 +1813,11 @@ function renderChatMessages() {
             // renderMarkdownLite（会保留卡/正则里原样的HTML标签）用在聊天正文上——统一换成
             // renderPlainChatText，只剥离标签取纯文字。注意：mvuSnapshot/recallHtml 等后台数据
             // 处理（变量追踪、记忆库更新）完全不受影响，只是不再画出来。
-            return `
+            return __sep + `
                 <div class="chat-msg-row ${isMe ? 'me' : 'other'}">
                     ${!isMe ? avatarHtml : ''}
                     <div class="chat-bubble-wrapper" style="align-items: ${isMe ? 'flex-end' : 'flex-start'};">
-                        <div class="chat-sender-name" style="font-size:10px;">${!isMe && isGroup ? senderChar?.name : ''} ${timeStr}</div>
+                        <div class="chat-sender-name" style="font-size:10px;">${!isMe && isGroup ? senderChar?.name : ''} <i class="chat-msg-time">${timeStr}</i></div>
                         <div class="chat-bubble ${isMe ? 'me' : 'other'}" oncontextmenu="showChatContextMenu(event, ${idx})" ontouchstart="chatBubbleTouchStart(event, ${idx})" ontouchend="chatBubbleTouchEnd(event)" ontouchmove="chatBubbleTouchEnd(event)">${msg.quote ? `<div class="chat-quote-bubble${msg.quote.type === 'tweet' ? ' tweet-quote-card' : ''}">${msg.quote.type === 'tweet' ? '<div class="tweet-quote-label">🐦 分享的推文</div>' : ''}<b>${msg.quote.name}</b>: ${renderPlainChatText(msg.quote.text)}</div>` : ''}${renderPlainChatText(displayText)}${msg.mediaUrl ? `<img src="${msg.mediaUrl}">` : ''}${swipeHtml}</div>
                         ${isMe ? readStatusHtml : ''}
                     </div>
@@ -1809,9 +1835,14 @@ function renderChatMessages() {
     // 只在真的可用（最后一条是你说的）而且输入框空着的时候改提示文字。
     const inputEl = document.getElementById('chatInput');
     if (inputEl && !inputEl.value) {
-        inputEl.placeholder = collectTrailingMyTexts(history).length > 0
-            ? '输入消息…（留空点发送＝让TA重新回一次）'
-            : '输入消息...';
+        const manual0 = (typeof gyChatReplyMode !== 'undefined' && gyChatReplyMode === 'manual');
+        const waiting = ((typeof pendingBatchReplyTexts !== 'undefined'
+            && pendingBatchReplyTexts[currentChatSessionId]) || []).length;
+        inputEl.placeholder = manual0
+            ? (waiting ? `攒了 ${waiting} 句 · 再点发送就让 TA 回` : '输入消息…（空着点发送＝让 TA 回）')
+            : (collectTrailingMyTexts(history).length > 0
+                ? '输入消息…（留空点发送＝让TA重新回一次）'
+                : '输入消息...');
     }
     // 💡 聊天气泡现在统一是纯文本渲染（renderPlainChatText），不会再有真实HTML/<script>标签进到DOM里，
     // 这里以前的"聊天注入脚本执行"调用已经是死代码了，去掉。脚本执行开关(enableChatScriptExecution)本身
@@ -1889,8 +1920,16 @@ function toggleVoiceInput(targetInputId, btnEl) {
     rec.lang = 'zh-CN'; rec.continuous = false; rec.interimResults = false;
 
     const input = document.getElementById(targetInputId);
+    // ⚠️ 以前录音时把按钮的 innerHTML 换成一个 🔴。现在聊天那颗是 SVG 图标，
+    //    换掉就回不来了（而且样子也不统一）。改成加一个 .rec 类，由 CSS 让它变红闪。
+    //    别处那些还是 emoji 的按钮也照顾到：没有 SVG 的才退回换字符。
     const originalBtnHtml = btnEl ? btnEl.innerHTML : '';
-    if (btnEl) { btnEl.innerHTML = '🔴'; btnEl.title = '正在聆听...点击停止'; }
+    const isIcon = !!(btnEl && btnEl.querySelector('svg'));
+    if (btnEl) {
+        btnEl.title = '正在聆听...点击停止';
+        if (isIcon) btnEl.classList.add('rec');
+        else btnEl.innerHTML = '🔴';
+    }
 
     rec.onresult = (event) => {
         let text = '';
@@ -1902,10 +1941,20 @@ function toggleVoiceInput(targetInputId, btnEl) {
             alert('语音识别出错：' + event.error + (event.error === 'not-allowed' ? '\n（请检查是否已授权麦克风权限）' : ''));
         }
     };
-    rec.onend = () => { activeSpeechRecognition = null; if (btnEl) { btnEl.innerHTML = originalBtnHtml || '🎤'; btnEl.title = '语音输入'; } };
+    rec.onend = () => {
+        activeSpeechRecognition = null;
+        if (!btnEl) return;
+        btnEl.title = '语音输入';
+        if (isIcon) btnEl.classList.remove('rec');
+        else btnEl.innerHTML = originalBtnHtml || '🎤';
+    };
 
     activeSpeechRecognition = rec;
-    try { rec.start(); } catch (e) { alert('启动语音识别失败：' + e.message); activeSpeechRecognition = null; if (btnEl) btnEl.innerHTML = originalBtnHtml || '🎤'; }
+    try { rec.start(); } catch (e) {
+        alert('启动语音识别失败：' + e.message);
+        activeSpeechRecognition = null;
+        if (btnEl) { if (isIcon) btnEl.classList.remove('rec'); else btnEl.innerHTML = originalBtnHtml || '🎤'; }
+    }
 }
 
 // 朗读一段文字：自动剥掉Markdown符号/HTML标签/代码块，只念纯文本，不然会把 **、<div> 这些符号也念出来
@@ -2292,7 +2341,18 @@ function clearChatQuote() { pendingChatQuote = null; document.getElementById('ch
 // 按会话id分别计时：连续发消息会不断重置这个计时器，真正停下来不再发之后，稍等一下才会统一触发。
 let pendingBatchReplyTimers = {};
 let pendingBatchReplyTexts = {};
-const CHAT_BATCH_REPLY_DELAY_MS = 5000; // 用户5秒内连发的消息会合并成一次触发AI回复
+/* 自动模式下点了发送要等多久才让 TA 开口。
+   以前写死 5000ms：连着说几句会合并成一次回复，代价是**每一句都要干等五秒**，
+   而绝大多数时候你就发一句，那五秒纯属白等。
+   现在默认 0＝点了就回。想恢复"等一会儿合并"就把下面这个数调大
+   （设置 → 💬 互动与描写 → 什么时候让 TA 回）。 */
+let CHAT_BATCH_REPLY_DELAY_MS = 0;
+window.gySetChatBatchDelay = function (sec) {
+    const n = Math.max(0, Math.min(30, parseInt(sec) || 0));
+    CHAT_BATCH_REPLY_DELAY_MS = n * 1000;
+    try { window.gyChatBatchDelaySec = n; if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+    return n;
+};
 
 // 🔁 输入框空着点「发送」＝ 让 AI 把上一轮重新回一次。
 //
@@ -2333,6 +2393,13 @@ async function retriggerLastReply(sessionId) {
 
 async function sendChatMessage() {
     if (!currentChatSessionId) return; const sessionId = currentChatSessionId; const input = document.getElementById('chatInput'); let text = input.value.trim();
+    /* 🖐️ 手动模式：输入框空着再点一次发送＝"好了，你回吧"。
+       以前这件事挂在输入框右边一颗单独的「回复」按钮上，白占一格。
+       攒着的那几句一起交给 TA（跟自动模式合批一样）；一句都没攒就当"再回一次"。 */
+    if (!text && !pendingChatAttachment
+        && typeof gyChatReplyMode !== 'undefined' && gyChatReplyMode === 'manual') {
+        return gyChatReplyNow();
+    }
     if (!text && !pendingChatAttachment) return retriggerLastReply(sessionId);
     text = applyRegexScripts(text, 'user_input');
     if (!globalChats[sessionId]) globalChats[sessionId] = [];
@@ -2378,16 +2445,25 @@ async function gyChatReplyNow() {
     // 一句新的都没有：当成"再回一次"（比如你想让 TA 接着上一句继续）
     return retriggerLastReply(sessionId);
 }
-// 手动模式下那颗按钮：有几句等着就标几，没有就淡着
+/* 手动模式下"攒了几句"写在哪儿。
+   以前是输入框右边那颗「回复」按钮上标个数字——那颗按钮已经去掉了（空着点发送就是回复），
+   所以改成写进输入框的提示文字里：不多占地方，又能让人知道现在按发送会发生什么。
+   （那颗按钮的 id 万一还在页面上，也顺手照旧维护一下，不至于变成死按钮。） */
 function gyPaintReplyBtn() {
-    const b = document.getElementById('chatReplyNowBtn');
-    if (!b) return;
     const manual = (typeof gyChatReplyMode !== 'undefined' && gyChatReplyMode === 'manual');
-    b.style.display = manual ? '' : 'none';
-    if (!manual) return;
     const n = ((typeof currentChatSessionId !== 'undefined' && pendingBatchReplyTexts[currentChatSessionId]) || []).length;
-    b.innerText = n ? `回复 ${n}` : '回复';
-    b.classList.toggle('waiting', n > 0);
+    const b = document.getElementById('chatReplyNowBtn');
+    if (b) {
+        b.style.display = manual ? '' : 'none';
+        b.innerText = n ? `回复 ${n}` : '回复';
+        b.classList.toggle('waiting', n > 0);
+    }
+    const input = document.getElementById('chatInput');
+    if (input && !input.value) {
+        input.placeholder = manual
+            ? (n ? `攒了 ${n} 句 · 再点发送就让 TA 回` : '输入消息…（空着点发送＝让 TA 回）')
+            : '输入消息...';
+    }
 }
 
 async function triggerAIBatchReply(sessionId, triggerText, aliveCatchUp) {
@@ -2510,7 +2586,9 @@ async function triggerAIBatchReply(sessionId, triggerText, aliveCatchUp) {
         // 合并后的内容"（见 sendChatMessage 的合并发送去抖逻辑），不再只取 globalChats 最后一条——
         // 不然合并逻辑再怎么做，这里最终提醒AI的还是只有最后一句，等于白合并。
         let latestMsgText = `${currentUser.name}：${triggerText}`;
-        let latestEmphasis = `\n\n【⚠️最新消息 - 请务必围绕这些来回复（如果是好几条连着发的，说明用户是一口气说完的，要整体理解、一起回应，不要只挑最后一句），不要无视它、也不要延续更早之前已经聊完的旧话题】：\n${latestMsgText}\n`;
+        let latestEmphasis = `\n\n【⚠️最新消息 - 请务必围绕这些来回复（如果是好几条连着发的，说明用户是一口气说完的，要整体理解、一起回应，不要只挑最后一句），不要无视它、也不要延续更早之前已经聊完的旧话题】：\n${latestMsgText}\n` +
+            // 🖐️ 手动模式下攒了好几句时，再补一句"这是一条话，别一句一句分开答"（js/49，可关）
+            ((typeof window.gyBatchOneNote === 'function') ? window.gyBatchOneNote(triggerText) : '');
 
         // ⚠️ 修复"开启了动作/心理描写开关，但角色还是没有动作描写"的bug：
         // 之前这条规则只在 buildBasePrompt 里出现一次，位置偏早，容易被后面"真人聊天铁律"里大段
@@ -2728,6 +2806,17 @@ ${multiReplyBlock}${(typeof aliveMoodFormatNote === 'function') ? aliveMoodForma
                 const recallResult = processRecallBlockInText(repText, sessionId);
                 repText = recallResult.cleanText;
 
+                // 📷 回复里写了 [IMG:一句话] 就单独发一张图（js/42）。
+                //    先把标记从正文里摘掉，免得气泡里出现一行 [IMG:…]；
+                //    图是异步取的（生图要等十几秒），所以不 await，先让这句话进聊天。
+                let __photoDesc = '', __photoSelf = false;
+                try {
+                    if (typeof window.gyPhotoScan === 'function') {
+                        const r0 = window.gyPhotoScan(repText);
+                        repText = r0.text; __photoDesc = r0.desc; __photoSelf = r0.self;
+                    }
+                } catch (e) {}
+
                 if (repText || repMediaUrl) {
                     const aiMsg = { sender: char.id, text: repText, timestamp: Date.now(), mediaUrl: repMediaUrl, readBy: [], mvuSnapshot: mvuResult.snapshot, recallHtml: recallResult.recallHtml, quote: repQuote };
                     globalChats[sessionId].push(aiMsg); anyCharReplied = true; currentBatchText += `\n${char.name}: ${repText}`;
@@ -2739,6 +2828,9 @@ ${multiReplyBlock}${(typeof aliveMoodFormatNote === 'function') ? aliveMoodForma
                         globalNotifications.unshift({ text: `<b>${char.name}</b> 给您发来消息`, postId: null, chatCharId: sessionId, timestamp: Date.now() }); unreadNotifs++; updateNotifBadge(); renderChatCharList();
                     }
                     saveAllData(); checkAndAutoSummarizeChat(sessionId);
+                }
+                if (__photoDesc && typeof window.gyPhotoFromReply === 'function') {
+                    try { window.gyPhotoFromReply(char.id, sessionId, __photoDesc, __photoSelf); } catch (e) {}
                 }
             }
             await producing;
@@ -2793,3 +2885,46 @@ async function handleEmoticonUpload(event) {
     for(let file of files.slice(0, 99)) { globalEmoticons.push({ id: 'emo_' + Date.now() + Math.floor(Math.random()*1000), url: await fileToBase64(file), desc: "" }); }
     renderEmoticonManagerGallery(); event.target.value = ''; saveAllData();
 }
+/* ============================================================
+   🕰️ 聊天里的时间分隔条 —— 微信那一套写法
+   ------------------------------------------------------------
+   微信的规矩是"越近写得越省"：
+       今天      → 13:03
+       昨天      → 昨天 13:03
+       一周之内  → 星期四 13:03
+       今年      → 9月11日 13:03
+       跨年      → 2025年9月11日 13:03
+   点一下展开成完整的 "2026年9月11日 星期四 13:03"，再点收回去。
+   （这就是那条小红书里说的"点一下能具体到几月几日星期几"。）
+   ============================================================ */
+window.gyChatSepText = function (ts, full) {
+    const d = new Date(Number(ts) || 0);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    const week = '星期' + '日一二三四五六'[d.getDay()];
+    const ymd = d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
+    if (full) return `${ymd} ${week} ${hm}`;
+    // 按"自然天"算差几天，不是按 24 小时——不然昨晚 23:00 到今早 01:00 会被算成"今天"
+    const day0 = t => new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
+    const diff = Math.round((day0(now) - day0(d)) / 86400000);
+    if (diff === 0) return hm;
+    if (diff === 1) return '昨天 ' + hm;
+    if (diff === 2) return '前天 ' + hm;
+    if (diff > 2 && diff < 7) return week + ' ' + hm;
+    if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + hm;
+    return ymd + ' ' + hm;
+};
+// 点一下展开 / 收回。展开状态只记在这一条上，不写存档——
+// 这是"看一眼"的动作，不该变成需要同步的设置。
+window.gyChatSepToggle = function (el) {
+    try {
+        const box = el.closest ? el.closest('.chat-time-sep') : el;
+        if (!box) return;
+        const span = box.querySelector('span'); if (!span) return;
+        const ts = Number(box.getAttribute('data-ts') || 0);
+        const full = box.classList.toggle('full');
+        if (ts) span.textContent = window.gyChatSepText(ts, full);
+    } catch (e) {}
+};

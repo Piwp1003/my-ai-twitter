@@ -1330,9 +1330,16 @@ ${had ? `你已经记过的（别重复）：\n${had}\n` : ''}
     // 别的插件的存档，能读到就读，读不到就说"没装"
     let ext = { map: null, music: null, gossip: null, kit: null, at: 0 };
     async function loadExt() {
-        if (typeof localforage === 'undefined') return;
+        // ⚠️ 以前这里第一行是 `if (typeof localforage === 'undefined') return;`——
+        //    localforage 一不可用（打包环境、无痕模式）就直接空手而归，
+        //    于是下面每一项都判成"插件没装"，明明装着的功能全被说成缺失。
+        //    现在走带兜底的存档口（gyStore：localforage 不行就退 localStorage）。
         const get = async (name, store, key) => {
-            try { return await localforage.createInstance({ name, storeName: store }).getItem(key); } catch (e) { return null; }
+            try {
+                if (typeof window.gyStore === 'function') return await window.gyStore(name, store).getItem(key);
+                if (typeof localforage !== 'undefined') return await localforage.createInstance({ name, storeName: store }).getItem(key);
+            } catch (e) {}
+            return null;
         };
         ext.map = await get('gyMapBox', 'maps', 'gyMap_state');
         ext.music = await get('gyMusicBox', 'tracks', 'gyMusic_state');
@@ -1359,7 +1366,8 @@ ${had ? `你已经记过的（别重复）：\n${had}\n` : ''}
             const cur = ((ext.map.date && ext.map.date.logs) || []).find(l =>
                 l.ok && l.until && l.until > Date.now() && String(l.charId) === id);
             if (cur) o.together = `正跟你在「${cur.spot}」${cur.act ? '，' + cur.act : ''}，还剩 ${fmtMin((cur.until - Date.now()) / 60000)}`;
-        } else o.miss.push('行程与天气插件');
+        } else if (typeof window.gymapOpen !== 'function') o.miss.push('行程与天气插件');
+        // 模块在、只是还没用过（没有存档）——那不是缺失，什么都不说
 
         // 在干嘛（主程序的状态气泡）
         const ls = c.lifeState || {};
@@ -1409,7 +1417,7 @@ ${had ? `你已经记过的（别重复）：\n${had}\n` : ''}
         if (window.gyRel && typeof gyRel.score === 'function') {
             const sc = gyRel.score(c.id), bk = gyRel.book(c.id);
             o.rel = { sc, stage: gyRel.stage(c.id), n: bk.length, last: bk.length ? bk[bk.length - 1] : null };
-        } else o.miss.push('关系账本插件');
+        } else if (typeof window.gyrelOpen !== 'function') o.miss.push('关系账本插件');
 
         // 八卦：外面在传关于 TA 的
         if (ext.gossip) {
@@ -1417,7 +1425,7 @@ ${had ? `你已经记过的（别重复）：\n${had}\n` : ''}
             const byMe = (ext.gossip.rumors || []).filter(r => r.told && String(r.told.by) === id);
             if (about.length) o.gossipAbout = about[about.length - 1];
             if (byMe.length) o.gossipBy = byMe.length;
-        } else o.miss.push('八卦网插件');
+        } else if (typeof window.gygsOpen !== 'function') o.miss.push('八卦网插件');
 
         // 🎒 随身物
         if (window.gyKit && typeof gyKit.list === 'function') {
@@ -1435,14 +1443,14 @@ ${had ? `你已经记过的（别重复）：\n${had}\n` : ''}
             const all = (ext.kit.items || []).filter(i => String(i.ownerId) === id);
             if (all.length) o.kit = { n: all.filter(i => i.state === 'have' || i.state === 'home').length,
                 fromU: all.filter(i => i.from === 'user').length, gone: 0, close: [], mine: [] };
-        } else o.miss.push('随身物插件');
+        } else if (typeof window.gykitOpen !== 'function') o.miss.push('随身物插件');
 
         // 📅 这几天的日子
         if (typeof window.__gyDaysCtxFor === 'function') {
             const t = window.__gyDaysCtxFor(c.id) || '';
             const lines = t.split('\n').filter(x => x.indexOf('· ') === 0).map(x => x.slice(2).trim());
             if (lines.length) o.days = lines.slice(0, 4);
-        } else o.miss.push('日子插件');
+        } else if (typeof window.gydayOpen !== 'function') o.miss.push('日子插件');
 
         // 一起听
         if (ext.music && ext.music.stats && ext.music.stats.byChar && ext.music.stats.byChar[id]) {
