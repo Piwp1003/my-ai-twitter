@@ -548,7 +548,7 @@ ${sched ? '\n' + sched + '\n' : ''}
         if (!s || s.isGroup) return false;
         if (C || IN) return false;                     // 已经在通话/已经在响了就别叠
         const m = ensureIn();
-        IN = { id: String(s.raw.id), char: s.raw, left: Math.max(5, S.ringSec | 0 || 20) };
+        IN = { id: String(s.raw.id), char: s.raw, left: Math.max(1, Math.round(gyNum(S.ringSec, 20))) };
         document.getElementById('gyInName').innerText = s.raw.name || '';
         document.getElementById('gyInWhy').innerText = why ? '“' + String(why).slice(0, 40) + '”' : '';
         try { document.getElementById('gyInAv').innerHTML = (typeof getAvatarHTML === 'function') ? getAvatarHTML(s.raw, 120) : ''; } catch (e) {}

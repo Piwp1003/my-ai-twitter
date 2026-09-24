@@ -123,9 +123,9 @@
         if (!last) return null;
         const gap = Date.now() - last;
         if (gap < 30 * 60000) return null;                    // 半小时以内不算
-        if (Date.now() - (S.last[String(c.id)] || 0) < Math.max(1, Number(S.cool) || 6) * 3600000) return null;
+        if (Date.now() - (S.last[String(c.id)] || 0) < gyNum(S.cool, 6) * 3600000) return null;
         if (S.mode === 'fixed') {
-            return gap >= Math.max(1, Number(S.hours) || 12) * 3600000 ? { gap, t } : null;
+            return gap >= gyNum(S.hours, 12) * 3600000 ? { gap, t } : null;
         }
         /* feel 模式：不给固定时长，用**平时的节奏**折出一个门槛。
            平时五分钟一来一回的人，停 6 小时就很反常；
@@ -200,8 +200,8 @@
 
         // 情绪落到活人感那套里（如果开着），这样后面几轮的语气都会带着
         try {
-            if (mood && typeof window.gyAliveSetMood === 'function') window.gyAliveSetMood(c.id, mood, why);
-            else if (mood) { c.__mood = mood; c.__moodWhy = why; }
+            const took = mood && typeof window.gyAliveSetMood === 'function' && window.gyAliveSetMood(c.id, mood, why);
+            if (!took && mood) { c.__mood = mood; c.__moodWhy = why; }
         } catch (e) {}
 
         if (act !== 'cold' && line && typeof deliverCharMoveToChatMessage === 'function') {
@@ -267,6 +267,15 @@
     const toast = m => { try { if (typeof showToast === 'function') showToast('', '🕯️', m, null, null, false); } catch (e) {} };
 
     window.gySilenceLog = id => logOf(id).slice();
+    // 🗑️ 记忆总览里删一条（删了就不再进 prompt）
+    window.gySilenceDel = async function (charId, entryId) {
+        const arr = logOf(charId);
+        const i = arr.findIndex(x => x.id === entryId);
+        if (i < 0) return;
+        arr.splice(i, 1);
+        await save();
+        try { renderMemHub(); } catch (e) {}
+    };
     window.gySilenceCfg = () => JSON.parse(JSON.stringify({ mode: S.mode, hours: S.hours, cool: S.cool }));
     window.gySilenceSet = async function (k, v) {
         S[k] = (k === 'mode') ? String(v) : parseInt(v);
@@ -296,7 +305,7 @@
           <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;">
           ${arr.length ? arr.map(x => `
             <div style="background:white;padding:8px 10px;border-radius:6px;border:1px solid #eff3f4;">
-              <div style="font-size:13px;"><b>${esc(x.why)}</b>
+              <div style="font-size:13px;"><span style="color:#f91880;cursor:pointer;float:right;font-size:12px;" onclick="gySilenceDel('${charId}','${x.id}')">删除</span><b>${esc(x.why)}</b>
                 <span style="font-size:11px;color:#8b98a5;">　${esc(x.mood)}　·　等了 ${x.gapH >= 24 ? Math.round(x.gapH / 24) + ' 天' : x.gapH + ' 小时'}　·　${esc(ACTS[x.act] || '')}</span></div>
               ${x.line ? `<div style="font-size:13px;color:#536471;line-height:1.7;margin-top:2px;">「${esc(x.line)}」</div>` : '<div style="font-size:12px;color:#8b98a5;margin-top:2px;">（什么都没说）</div>'}
             </div>`).join('') : '<div style="color:#8b98a5;font-size:13px;">还没有过</div>'}

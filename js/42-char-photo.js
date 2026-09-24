@@ -754,7 +754,7 @@ ${persona}`;
 
     window.gyPhotoSet = async function (k, v) { S[k] = v; await save(); render(); };
     window.gyPhotoSetNum = async function (k, v, lo, hi, dft) {
-        const n = parseInt(v); S[k] = isNaN(n) ? dft : Math.max(lo, Math.min(hi, n)); await save();
+        S[k] = gyNum(v, dft); await save();   // 不设上下限
     };
     window.gyPhotoSetChar = async function (id, v) {
         if (!v) delete S.charMode[String(id)]; else S.charMode[String(id)] = v;

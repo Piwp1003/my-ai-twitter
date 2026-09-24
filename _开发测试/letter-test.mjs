@@ -1,9 +1,10 @@
 // 专测「用户给角色写信 → 角色回信」这条链路，以及角色在别处记不记得这件事
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 
 const root = process.cwd();
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('dialog', d => d.accept());
 
@@ -22,7 +23,7 @@ await page.route('**/chat/completions', async route => {
   });
 });
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => typeof window.sendUserLetter === 'function', { timeout: 15000 });
 await page.waitForTimeout(400);
 

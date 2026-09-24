@@ -1,8 +1,9 @@
 // 验证启动自检：正常启动不打扰，出问题时把原因画到屏幕上
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 const root = process.cwd();
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const results = [];
 const check = (n, ok, extra='') => results.push({n, ok, extra});
 
@@ -10,7 +11,7 @@ async function boot(mutate) {
   const page = await browser.newPage({ viewport:{width:420,height:820} });
   page.on('dialog', d=>d.accept());
   if (mutate) await mutate(page);
-  await page.goto('file://' + path.join(root,'index.html'));
+  await page.goto(fileUrl(path.join(root,'index.html')));
   await page.waitForTimeout(2000);
   return page;
 }
@@ -23,12 +24,12 @@ let page = await boot(async p => {
 check('离线也能启动（不再依赖 cdnjs）', await page.evaluate(()=>window.__guyuBooted === true));
 check('localforage 是本地加载的', await page.evaluate(()=>typeof localforage !== 'undefined'));
 check('正常启动时不弹自检面板', !(await page.evaluate(()=>document.body.innerText.includes('谷雨启动失败'))));
-check('侧边栏渲染出来了', (await page.locator('#nav-storystudio').count()) === 1);
+check('侧边栏渲染出来了', (await page.locator('#nav-home').count()) === 1);   // 续写入口已经并进「故事」页顶上，所以看主页那一项
 await page.close();
 
 // ---- 2. 关键脚本 404：自检要报出是哪个文件 ----
 page = await boot(async p => {
-  await p.route('**/js/01-core-state-infra.js', r => r.abort());
+  await p.route('**/js/01-core-state-infra.js*', r => r.abort());   // 带着 ?v=版本号，所以末尾要有 *
 });
 const t404 = await page.evaluate(()=>document.body.innerText);
 check('脚本丢失时弹出自检面板', t404.includes('谷雨启动失败'), t404.slice(0,120));

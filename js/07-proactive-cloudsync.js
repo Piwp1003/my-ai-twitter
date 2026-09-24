@@ -26,10 +26,11 @@ async function checkAndTriggerProactiveChats() {
     // 找出需要发消息的角色
     let due = myCharacters.filter(char => {
         // 如果没设置频率，直接跳过
-        if (!char.chatFreq || !char.chatFreq.interval || char.chatFreq.interval <= 0) return false;
+        const __ta = typeof gyTaCharOn === 'function' && gyTaCharOn(char, 'chatFreqInterval');
+        if (!__ta && (!char.chatFreq || !char.chatFreq.interval || char.chatFreq.interval <= 0)) return false;
         
-        // 计算间隔毫秒数
-        let reqMs = char.chatFreq.interval * (char.chatFreq.unit === 'minute' ? 60000 : char.chatFreq.unit === 'hour' ? 3600000 : 86400000);
+        // 计算间隔毫秒数（🎲 TA 定的话，用 TA 自己说的"下次隔多久"，见 js/53）
+        let reqMs = __ta ? gyTaGapMs(char, 'chat', Infinity) : char.chatFreq.interval * (char.chatFreq.unit === 'minute' ? 60000 : char.chatFreq.unit === 'hour' ? 3600000 : 86400000);
         
         // 核心：直接去聊天记录里找“最后一句话”的时间
         let sessionId = String(char.id);
@@ -59,6 +60,7 @@ async function checkAndTriggerProactiveChats() {
             // 触发前，更新一下时间记录
             char.lastChatProactiveTime = now;
             await sendProactiveChatMessage(char);
+            if (typeof gyTaAfter === 'function') gyTaAfter(char, 'chat');
         }
     } catch (e) {
         console.error('主动聊天流程异常中断：', e);
@@ -81,8 +83,9 @@ async function checkAndTriggerProactiveLetters() {
 
     let now = Date.now();
     let due = myCharacters.filter(char => {
-        if (!char.letterFreq || !char.letterFreq.interval || char.letterFreq.interval <= 0) return false;
-        let reqMs = char.letterFreq.interval * (char.letterFreq.unit === 'minute' ? 60000 : char.letterFreq.unit === 'hour' ? 3600000 : 86400000);
+        const __ta = typeof gyTaCharOn === 'function' && gyTaCharOn(char, 'letterFreqInterval');
+        if (!__ta && (!char.letterFreq || !char.letterFreq.interval || char.letterFreq.interval <= 0)) return false;
+        let reqMs = __ta ? gyTaGapMs(char, 'letter', Infinity) : char.letterFreq.interval * (char.letterFreq.unit === 'minute' ? 60000 : char.letterFreq.unit === 'hour' ? 3600000 : 86400000);
         let letters = (char.diaryData && char.diaryData.letters) || [];
         let lastProactive = letters.find(l => l.author !== 'user' && !l.replyToId);
         let lastTime = lastProactive ? lastProactive.date : now;
@@ -96,6 +99,7 @@ async function checkAndTriggerProactiveLetters() {
         for (let char of due.slice(0, 2)) {
             char.lastLetterProactiveTime = now;
             await generateProactiveLetter(char);
+            if (typeof gyTaAfter === 'function') gyTaAfter(char, 'letter');
         }
     } catch (e) {
         console.error('主动写信流程异常中断：', e);
@@ -384,7 +388,7 @@ ${recentHistory || '(暂无记录)'}
 你可以通过输出 [NUDGE] 主动拍一拍用户。
 ${emoPrompt}
 ${actionTagReminder}
-${getChatMultiReplyBlock()}`;
+${getChatMultiReplyBlock()}${(typeof window.gyChatActsPrompt === 'function') ? window.gyChatActsPrompt(char, false) : ''}`;
 
         let data = await sendChatRequest(api, prompt);
         if (data.error) return;
@@ -432,6 +436,11 @@ ${getChatMultiReplyBlock()}`;
                 repText = repText.replace(emoMatch[0], '').trim(); 
             }
             
+            // 💬 说到做到（js/52）：主动找你的时候说"我给你打个电话"也一样会真的打
+            let __acts = [];
+            if (typeof window.gyChatActsExtract === 'function') { const __ex = window.gyChatActsExtract(repText, char); repText = __ex.text; __acts = __ex.acts; }
+            if (__acts.length && typeof window.gyChatActsRun === 'function') setTimeout(() => { try { window.gyChatActsRun(char, sessionId, __acts); } catch (e) {} }, 300);
+
             if (repText.includes("[NUDGE]")) {
                 repText = repText.replace(/\[NUDGE\]/ig, '').trim();
                 globalChats[sessionId].push({ sender: 'system', text: `"${char.name}" 拍了拍 "${currentUser.name}" ${currentUser.nudgeText || '的脑袋'}`, timestamp: Date.now() });
@@ -455,6 +464,7 @@ ${getChatMultiReplyBlock()}`;
 
             if (repText || repMediaUrl) {
                 globalChats[sessionId].push({ sender: char.id, text: repText, timestamp: Date.now(), mediaUrl: repMediaUrl, readBy: [], mvuSnapshot: mvuResult.snapshot });
+                try { const __sf = (typeof gyFindStatusSegment === 'function') ? gyFindStatusSegment(repText, char.id) : null; if (__sf && typeof gyStatusLogAdd === 'function') gyStatusLogAdd(char, { seg: __sf.seg, src: 'chat' }); } catch (e) {}
                 
                 if (currentChatSessionId === sessionId && document.getElementById('view-chat').style.display !== 'none') { 
                     renderChatMessages(); 
@@ -658,6 +668,7 @@ function switchMainView(viewId, param = null) {
         const groupIntEl = document.getElementById('memHubGroupSummaryInterval'); if (groupIntEl) groupIntEl.value = groupSummaryInterval;
         const postIntEl = document.getElementById('memHubPostMemoryInterval'); if (postIntEl) postIntEl.value = postMemoryInterval;
         const schKeepEl = document.getElementById('memHubScheduleKeep'); if (schKeepEl) schKeepEl.value = (typeof scheduleHistoryKeep === 'number' ? scheduleHistoryKeep : 14);
+        const stKeepEl = document.getElementById('memHubStatusKeep'); if (stKeepEl && typeof statusLogKeepDays !== 'undefined') stKeepEl.value = statusLogKeepDays;
         const thKeepEl = document.getElementById('memHubTheaterKeep'); if (thKeepEl) thKeepEl.value = (typeof theaterLogKeep === 'number' ? theaterLogKeep : 0);
         if (typeof renderMemoryHubTargetOptions === 'function') renderMemoryHubTargetOptions();
     }

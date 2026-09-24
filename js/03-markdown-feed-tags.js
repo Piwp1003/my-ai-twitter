@@ -749,8 +749,16 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
       var n = Math.min(all.length, 4000);
       for (var i = 0; i < n; i++) {
         var el = all[i];
-        var pos = getComputedStyle(el).position;
+        var cs = getComputedStyle(el);
+        var pos = cs.position;
         if (pos !== 'absolute' && pos !== 'fixed') continue;
+        // 藏着的弹窗/遮罩（visibility:hidden、透明度 0）不算——不然一个没弹出来的确认框就把卡片撑出一大片空白
+        if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+        var hid = false;
+        for (var up = el; up && up !== b; up = up.parentElement) { if (parseFloat(getComputedStyle(up).opacity) === 0) { hid = true; break; } }
+        if (hid) continue;
+        // 收着的 <details> 里面的东西看不见，也不算
+        try { var dt = el.closest('details:not([open])'); if (dt && !el.closest('summary')) continue; } catch (e) {}
         var rect = el.getBoundingClientRect();
         if (rect.height <= 0) continue;
         var bottom = rect.bottom + (window.scrollY || 0);
@@ -1083,6 +1091,10 @@ function renderMarkdownLite(text, charId, depth, opts) {
 
 function formatPostText(text, charId, opts) {
 if (!text) return '';
+// 💭 渲染侧兜底：修好之前存进来的旧推文/评论里还带着思考（<think>… 或"好的，我来梳理一下……"），
+//    这里显示前摘掉；思维链收纳盒开着的话，摘下来的放进正文上方一个很小的可折叠 💭。只影响显示，不改存档。
+let __rsnHtml = '';
+if (typeof gyPeelReasoningForDisplay === 'function') { const __pr = gyPeelReasoningForDisplay(text); text = __pr.rest; __rsnHtml = __pr.html; }
 let html = renderMarkdownLite(text, charId, 0, opts);
 
 // 💡 修复：#话题标签 / @提及 高亮的正则之前是对整个渲染后的HTML字符串做全局替换，没有跳过HTML标签本身。
@@ -1111,7 +1123,7 @@ html = html.replace(/#(\S+)/g, (m, tag) =>
            .replace(/@(\S+)/g, '<span class="mention-tag" onclick="event.stopPropagation();">@$1</span>');
 
 html = html.replace(/___TAG_PLACEHOLDER_(\d+)___/g, (m, idx) => protectedTags[idx]);
-return html;
+return __rsnHtml + html;
 }
 
 // ==========================================
@@ -1311,6 +1323,15 @@ window.gyPostMenu = function (e, postId) {
     rows.push(`<button class="context-btn" onclick="gyPostMenuDo('quote','${postId}')">💬 引用推文</button>`);
     rows.push(`<button class="context-btn" onclick="gyPostMenuDo('share','${postId}')">📤 分享到私聊</button>`);
     rows.push(`<button class="context-btn" onclick="gyPostMenuDo('star','${postId}')">${starred ? '⭐ 从回忆相册移出' : '☆ 收藏进回忆相册'}</button>`);
+    // 🖼️ 推文里的图：换一张 / 删掉 / 没图的加一张
+    if (!isTabloid) {
+        if (post.mediaUrl) {
+            rows.push(`<button class="context-btn" onclick="gyPostMenuDo('imgSwap','${postId}')">🖼️ 换张图片</button>`);
+            rows.push(`<button class="context-btn" onclick="gyPostMenuDo('imgDel','${postId}')">🧹 删掉图片</button>`);
+        } else {
+            rows.push(`<button class="context-btn" onclick="gyPostMenuDo('imgSwap','${postId}')">🖼️ 加张图片</button>`);
+        }
+    }
     if (isMe) {
         rows.push(`<button class="context-btn" onclick="gyPostMenuDo('edit','${postId}')">✏️ 修改这条推文</button>`);
         rows.push(`<button class="context-btn" style="color:#f91880;" onclick="gyPostMenuDo('del','${postId}')">🗑️ 删除</button>`);
@@ -1325,6 +1346,54 @@ window.gyPostMenu = function (e, postId) {
     if (y + rows.length * 42 > window.innerHeight) y = Math.max(8, window.innerHeight - rows.length * 42 - 10);
     menu.style.left = x + 'px'; menu.style.top = y + 'px';
 };
+// 🖼️ 换 / 删推文里的图。选的图先压一下（长边 1280），不然存档一下子就胖了
+function gyPostRefresh(postId) {
+    try {
+        const vis = id => { const v = document.getElementById(id); return v && v.style.display !== 'none'; };
+        if (vis('view-home') && typeof renderPosts === 'function') renderPosts();
+        if (vis('view-profile') && typeof renderProfileFeed === 'function') renderProfileFeed();
+        const det = document.getElementById('postDetailSection');
+        if (det && det.offsetParent !== null && typeof switchMainView === 'function') switchMainView('postDetail', postId);
+    } catch (e) {}
+}
+async function gyPostImage(post, act) {
+    if (act === 'imgDel') {
+        const ok = (typeof appConfirm === 'function') ? await appConfirm('把这条推文里的图片删掉？文字不动。') : confirm('把这条推文里的图片删掉？');
+        if (!ok) return;
+        delete post.mediaUrl;
+        if (typeof saveAllData === 'function') saveAllData();
+        return gyPostRefresh(post.id);
+    }
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = () => {
+        const f = inp.files && inp.files[0]; if (!f) return;
+        const rd = new FileReader();
+        rd.onload = () => {
+            const img = new Image();
+            img.onload = () => {
+                let src = rd.result;
+                try {
+                    const k = Math.min(1, 1280 / Math.max(img.width, img.height));
+                    if (k < 1 || String(src).length > 600000) {
+                        const cv = document.createElement('canvas');
+                        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+                        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+                        src = cv.toDataURL('image/jpeg', 0.86);
+                    }
+                } catch (e) {}
+                post.mediaUrl = src;
+                if (typeof saveAllData === 'function') saveAllData();
+                gyPostRefresh(post.id);
+            };
+            img.onerror = () => { try { appAlert('这张图片打不开，换一张试试？'); } catch (e) {} };
+            img.src = rd.result;
+        };
+        rd.readAsDataURL(f);
+    };
+    inp.click();
+}
+window.gyPostImage = gyPostImage;
 window.gyPostMenuDo = function (act, postId) {
     const menu = document.getElementById('chatContextMenu');
     if (menu) menu.style.display = 'none';
@@ -1332,6 +1401,7 @@ window.gyPostMenuDo = function (act, postId) {
     const post = isTabloid ? (typeof tabloidPosts !== 'undefined' ? tabloidPosts : []).find(p => p.id == postId)
                            : globalPosts.find(p => p.id == postId);
     if (!post) return;
+    if (act === 'imgDel' || act === 'imgSwap') return gyPostImage(post, act);
     if (act === 'quote' && typeof openQuoteComposer === 'function') return openQuoteComposer(postId);
     if (act === 'share' && typeof openShareToChatModal === 'function') return openShareToChatModal(postId);
     if (act === 'star' && typeof toggleMemoryStar === 'function') {
@@ -1393,9 +1463,10 @@ if (!globalNotifications || globalNotifications.length === 0) {
     container.innerHTML = `<div class="empty-state">暂无新通知</div>`;
     return;
 }
-container.innerHTML = globalNotifications.map(n => {
+container.innerHTML = globalNotifications.map((n, ni) => {
     let actionAttr = '';
-    if (n.chatCharId) actionAttr = `onclick="switchMainView('chat'); switchChatSession('${n.chatCharId}')"`;
+    if (n.jump && typeof window.gyJump === 'function') actionAttr = `onclick="gyJump(globalNotifications[${ni}].jump)"`;
+    else if (n.chatCharId) actionAttr = `onclick="switchMainView('chat'); switchChatSession('${n.chatCharId}')"`;
     else if (n.postId) actionAttr = `onclick="switchMainView('postDetail', '${n.postId}')"`;
     else if (n.feature) actionAttr = `onclick="gyOpenFeaturePage('${n.feature}')"`;
     else if (n.view) actionAttr = `onclick="switchMainView('${n.view}'${n.param ? ", '" + n.param + "'" : ''})"`;

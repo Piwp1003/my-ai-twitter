@@ -1,12 +1,12 @@
 // 浮层式滚动条：平时透明，鼠标移上去/正在滚动时浮现
 // ⚠️ 无头 Chromium 默认带 --hide-scrollbars，不关掉的话这个测试永远是绿的（因为压根没滚动条）
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 import fs from 'fs';
 
 const root = process.cwd();
-const browser = await chromium.launch({
-  executablePath: '/opt/pw-browsers/chromium',
+const browser = await launchBrowser(chromium, {
   ignoreDefaultArgs: ['--hide-scrollbars'],
 });
 const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
@@ -18,7 +18,7 @@ await page.route('**/localforage*.js', r => r.fulfill({
 }));
 await page.route('**/mammoth*.js', r => r.fulfill({ contentType: 'application/javascript', body: 'window.mammoth={};' }));
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => typeof window.switchChatSession === 'function', { timeout: 15000 });
 await page.waitForTimeout(400);
 

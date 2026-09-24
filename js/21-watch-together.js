@@ -348,6 +348,7 @@
           <div class="fb-top-actions">
             <button type="button" class="fb-btn solid" onclick="fbPickVideo()">📂 打开片子</button>
             <button type="button" class="fb-btn" onclick="fbOpenLibrary()">🎞️ 片库</button>
+            <button type="button" class="fb-btn" onclick="if(window.gyResOpen) gyResOpen('film')">🌐 在线找片</button>
             <button type="button" class="fb-btn" onclick="fbOpenWatchers()">👥 一起看</button>
             <button type="button" class="fb-btn" onclick="fbOpenSettings()">⚙️ 设置</button>
             <button type="button" class="fb-btn" onclick="fbAskNow()">🗣️ 问问 TA</button>
@@ -362,6 +363,7 @@
             <div>选一个本地视频文件开始。<br>
               <span style="font-size:12px;">片子本身不会被存进来——只记片名、封面、字幕、看到哪儿和你们说过的话。</span></div>
             <button type="button" class="fb-btn solid" onclick="fbPickVideo()">📂 打开片子</button>
+            <button type="button" class="fb-btn" onclick="if(window.gyResOpen) gyResOpen('film')">🌐 在线找片（不用自己上传）</button>
           </div>
           <div class="fb-danmu" id="fbDanmu"></div>
           <div class="fb-fs-bar">
@@ -709,8 +711,44 @@
     inp.click();
   };
 
+  // 🌐 在线的片子（js/59 在线找资源）：不用选文件，直接放链接。进度、字幕、评论跟本地片子一样记
+  window.fbOpenUrl = async function (url, title, extra) {
+    if (!url) return null;
+    ensureVideo();
+    if (curUrl) { try { URL.revokeObjectURL(curUrl); } catch (e) {} curUrl = null; }
+    let f = S.films.find(x => x.url === url);
+    if (!f) {
+      f = { id: 'f' + Date.now().toString(36), title: String(title || '在线影片').slice(0, 80), file: '', url,
+            subs: [], comments: [], chat: [], pos: 0, dur: 0, cover: (extra && extra.cover) || '', addedAt: Date.now(), online: true, note: (extra && extra.note) || '' };
+      S.films.unshift(f);
+      if (!S.stats) S.stats = { total: { ms: 0, films: 0 }, byChar: {} };
+      S.stats.total.films++;
+    }
+    video.src = url;
+    S.cur = f.id;
+    (f.comments || []).forEach(c => { delete c.__shown; });
+    lastSceneAt = -1;
+    await save();
+    paintAll();
+    toast('打开了《' + f.title + '》', '在线播放，进度和评论照样记');
+    return f;
+  };
+  // 只加进片库，先不打开
+  window.fbAddUrl = async function (url, title, extra) {
+    if (!url) return null;
+    let f = S.films.find(x => x.url === url);
+    if (!f) {
+      f = { id: 'f' + Date.now().toString(36), title: String(title || '在线影片').slice(0, 80), file: '', url,
+            subs: [], comments: [], chat: [], pos: 0, dur: 0, cover: (extra && extra.cover) || '', addedAt: Date.now(), online: true, note: (extra && extra.note) || '' };
+      S.films.unshift(f);
+      await save(); try { paintAll(); } catch (e) {}
+    }
+    return f;
+  };
   // 片库里点"接着看"：电脑上能直接恢复，手机上要重选一次
   window.fbResume = async function (id) {
+    const fu = S.films.find(x => x.id === id);
+    if (fu && fu.url) { await window.fbOpenUrl(fu.url, fu.title); try { if (fu.pos && video) video.currentTime = fu.pos; } catch (e) {} return; }
     const h = fileHandles[id];
     if (h && h.getFile) {
       try {
@@ -815,7 +853,7 @@
     if (!f || !f.subs || !f.subs.length) return;       // 没字幕就是纯陪看，不调 API
     const cs = watchers();
     if (!cs.length) return;
-    const gap = Math.max(1, +S.watch.sceneMin || 5) * 60;
+    const gap = Math.max(0.05, gyNum(S.watch.sceneMin, 5)) * 60;
     if (lastSceneAt < 0) { lastSceneAt = video.currentTime; return; }
     if (video.currentTime - lastSceneAt < gap) return;
 
@@ -1145,7 +1183,7 @@ ${hist}
           <label class="fb-row" style="cursor:pointer;"><input type="checkbox" ${on('filmScene') ? 'checked' : ''} onchange="fbSetAuto('filmScene',this.checked)" style="width:16px;height:16px;">
             <span style="flex:1;"><b>看到有想法的地方自己开口</b><br><span style="font-size:11.5px;color:#8b98a5;">每隔一段把这段字幕给 TA 看一眼，有感触才说。没字幕的片子不会触发。<b>这是主要开销</b>。</span></span></label>
           <div class="fb-row"><span style="font-size:13px;flex:1;">隔几分钟看一段</span>
-            <input type="number" min="1" max="30" value="${w.sceneMin}" onchange="fbSet('sceneMin',Math.max(1,Math.min(30,+this.value||5)))" style="width:70px;padding:5px 8px;border:1px solid #cfd9de;border-radius:6px;">
+            <input type="number" value="${w.sceneMin}" onchange="fbSet('sceneMin',gyNum(this.value,5))" style="width:70px;padding:5px 8px;border:1px solid #cfd9de;border-radius:6px;">
             <span style="font-size:12px;color:#8b98a5;">分钟</span></div>
           <label class="fb-row" style="cursor:pointer;"><input type="checkbox" ${on('filmPause') ? 'checked' : ''} onchange="fbSetAuto('filmPause',this.checked)" style="width:16px;height:16px;">
             <span style="flex:1;"><b>你一暂停 TA 接一句</b><br><span style="font-size:11.5px;color:#8b98a5;">每次暂停一次调用。</span></span></label>
@@ -1186,7 +1224,11 @@ ${hist}
     fbOpenSettings();
   };
   window.fbSet = function (k, v) { S.watch[k] = v; save(); if (k === 'sceneMin') lastSceneAt = video ? video.currentTime : -1; };
+  window.fbGet = k => (S.watch || {})[k]; // 🎛️ 给「全部开关」页读（js/54）
   window.fbSetSkin = function (k) { S.skin = k; save(); paintHead(); fbOpenSettings(); };
+  // 记忆总览（js/65）用：读 / 改 / 删「一起看的记忆」
+  window.fbMemGet = id => ((S.memory || {})[String(id)] || '');
+  window.fbMemSet = function (id, v) { S.memory = S.memory || {}; v = String(v || '').trim(); if (v) S.memory[String(id)] = v; else delete S.memory[String(id)]; save(); };
   window.fbForget = function (id) { if (S.memory) delete S.memory[String(id)]; save(); fbOpenSettings(); };
 
   window.fbOpenLibrary = function () {

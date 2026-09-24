@@ -115,8 +115,8 @@
     // 按收货人/下单人的世界书写四句物流文案（一单一次调用，开关：mallTimeline）
     function worldbookTextOf(char) {
         try {
-            if (!char || typeof getWorldbookForChar !== 'function') return '';
-            const t = getWorldbookForChar(char);
+            if (!char || typeof getCharacterWorldbookText !== 'function') return '';
+            const t = getCharacterWorldbookText(char);
             return typeof t === 'string' ? t.slice(0, 1200) : '';
         } catch (e) { return ''; }
     }
@@ -376,13 +376,14 @@
             return window.gyInjectInSceneSoft('mall', () => charListProductInner.apply(null, a));
         return charListProductInner.apply(null, a);
     }
-    async function charListProductInner() {
-        if (!on('mallCharSell')) return null;
+    // sellerId：指定谁来上架（自主模式里 TA 自己决定去卖东西，js/58）；指定了就不看 mallCharSell 那个"随机上架"开关
+    async function charListProductInner(sellerId) {
+        if (!sellerId && !on('mallCharSell')) return null;
         const cs = chars();
         if (!cs.length) return null;
         const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
         if (!api || !api.key) return null;
-        const seller = cs[Math.floor(Math.random() * cs.length)];
+        const seller = (sellerId != null && cs.find(c => String(c.id) === String(sellerId))) || cs[Math.floor(Math.random() * cs.length)];
         const had = S.products.filter(p => String(p.ownerId) === String(seller.id))
             .slice(-5).map(p => '· ' + p.name).join('\n');
         try {
@@ -850,7 +851,7 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         o.shipNoted = true;                  // 都到了就别再补一句"仓库已发出"
         await save();
         await tick();
-        render();
+        try { renderAll(); } catch (e) {}
         try { if (typeof showToast === 'function') showToast('', '🛍️ 商城', o.productSnapshot.name + ' 到了。', null, null, false); } catch (e) {}
     };
 
@@ -1058,6 +1059,28 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
     }
     window.gymallOpen = openView;
     window.gymallOnEnterView = renderAll;   // js/07 的 mall 分支进来时调
+
+    // 💬 聊天里角色说"我给你买了个××"时真的下单（js/52 调）。hint 是 TA 说的东西，
+    //    货架上有名字对得上的就买那件，对不上就挑一件——买不起（钱包开着、卡里不够）就不成立，返回 null。
+    window.gymallCharBuy = async function (charId, forWhom, hint, reason) {
+        const buyer = charOf(charId);
+        if (!buyer || !S.products.length) return null;
+        const h = String(hint || '').trim();
+        let product = null;
+        if (h) product = S.products.find(p => p && p.name && (p.name.indexOf(h) !== -1 || h.indexOf(p.name) !== -1))
+            || S.products.find(p => p && ((p.name || '') + (p.description || '')).split('').filter(ch => h.indexOf(ch) !== -1).length >= Math.min(2, h.length));
+        if (!product) product = S.products[Math.floor(Math.random() * S.products.length)];
+        const to = forWhom || 'me';
+        const o = newOrder(product, to, buyer.id, reason || (to === 'me' ? (buyer.name + '给你买了「' + product.name + '」') : (buyer.name + '买了「' + product.name + '」')));
+        if (!(await chargeFor(o))) return null;
+        S.orders.unshift(o);
+        makeParcel(o);
+        await save();
+        genTimeline(o, buyer);
+        paintBadge();
+        return product.name;
+    };
+    window.gymallHasProducts = () => S.products.length > 0;
 
     // 排查/自测用的把手。业务代码别用它——正经入口都在上面挂着了。
     window.__gyMall = { get S() { return S; }, tick, putIntoKit, genTimeline, randomPurchase };

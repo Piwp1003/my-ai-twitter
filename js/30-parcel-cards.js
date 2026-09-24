@@ -402,12 +402,24 @@
           <div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;">
           ${arr.length ? arr.slice(0, 30).map(p => `
             <div style="background:white;padding:8px 10px;border-radius:6px;border:1px solid #eff3f4;">
-              <div style="font-size:13px;"><b>${esc(p.emoji || '📦')} ${esc(p.name)}</b>
+              <div style="font-size:13px;"><span style="color:#f91880;cursor:pointer;float:right;font-size:12px;" onclick="gyParcelForget('${esc(p.__sid)}','${esc(p.id)}')">删除</span><b>${esc(p.emoji || '📦')} ${esc(p.name)}</b>
                 <span style="font-size:11px;color:#8b98a5;">　${esc(nameOf(p.from))} → ${esc(nameOf(p.to))}　·　${STAGES[stageIdx(p)]}${p.status === 'declined' ? '（没收）' : ''}</span></div>
               ${p.line ? `<div style="font-size:13px;color:#536471;line-height:1.7;margin-top:2px;">${esc(p.line)}</div>` : ''}
             </div>`).join('') : '<div style="color:#8b98a5;font-size:13px;">还没有包裹往来</div>'}
           </div>`;
     }
+    // 🗑️ 记忆总览里删一个包裹：把私聊里那张包裹卡一起删掉（聊天记录里没了，TA 也就不记得了）。
+    //    还在路上的也能删，删了就不会再到货。
+    window.gyParcelForget = function (sid, pid) {
+        const arr = (typeof globalChats !== 'undefined' && globalChats[String(sid)]) || [];
+        const i = arr.findIndex(m => m && m.type === 'parcel' && m.parcel && m.parcel.id === pid);
+        if (i < 0) return;
+        if (!confirm('删掉这个包裹？私聊里那张包裹卡也会一起删掉，TA 就不记得这件事了。')) return;
+        arr.splice(i, 1);
+        try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+        try { renderParcelTab(); renderMemHub(); } catch (e) {}
+        try { if (typeof renderChatMessages === 'function' && String(currentChatSessionId) === String(sid)) renderChatMessages(); } catch (e) {}
+    };
     function renderMemHub() {
         const host = document.getElementById('memoryHubContent');
         if (!host) return;

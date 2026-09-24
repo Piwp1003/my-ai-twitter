@@ -27,7 +27,7 @@ document.head.appendChild(rtStyle);
 var rtOverlay = document.createElement('div');
 rtOverlay.id = 'rtOverlay';
 rtOverlay.className = 'rt-overlay';
-rtOverlay.innerHTML = "<button id='rtFsExitBtn' class='rt-fs-exit-btn' title='退出全屏'>⛶ 退出全屏</button><div class='rt-topbar'><div class='rt-title' id='rtBookTitle'>📖 一起阅读</div><div><button id='rtLibraryBtn'>📚 书架</button><button id='rtImportBtn'>📥 导入</button><button id='rtCompanionBtn'>👤 搭子</button><button id='rtReflectionGenBtn'>🏁 写读后感</button><button id='rtReflectionListBtn'>📝 读后感列表</button><button id='rtFullscreenBtn' title='全屏'>⛶ 全屏</button><button id='rtCollapseBtn' title='收起/展开'>—</button><button id='rtCloseBtn'>✕ 关闭</button></div></div><div class='rt-loading' id='rtLoadingHint' style='display:none;'>TA正在思考中...</div><div class='rt-body' id='rtReaderBody'></div><div class='rt-nav-row'><button id='rtPrevBtn'>◀ 上一部分</button><span id='rtChapterLabel'>0 / 0</span><select id='rtChapterJump'></select><button id='rtNextBtn'>下一部分 ▶</button></div><div class='rt-discuss-dock'><div class='rt-discuss-title'><span>💬 和TA聊聊这段</span><button id='rtQuoteSelectBtn' class='rt-quote-select-btn'>🔖 引用选中文字</button></div><div class='rt-discuss-area' id='rtDiscussArea'></div><div class='rt-quote-preview' id='rtQuotePreview' style='display:none;'><div class='rt-quote-preview-text' id='rtQuotePreviewText'></div><span class='rt-quote-preview-close' id='rtQuotePreviewClose'>✕</span></div><div class='rt-input-row'><input type='text' id='rtDiscussInput' placeholder='说说你的想法...'><button id='rtDiscussSendBtn'>发送</button></div></div>";
+rtOverlay.innerHTML = "<button id='rtFsExitBtn' class='rt-fs-exit-btn' title='退出全屏'>⛶ 退出全屏</button><div class='rt-topbar'><div class='rt-title' id='rtBookTitle'>📖 一起阅读</div><div><button id='rtLibraryBtn'>📚 书架</button><button id='rtImportBtn'>📥 导入</button><button id='rtOnlineBtn' onclick=\"if(window.gyResOpen) gyResOpen('book')\">🌐 在线找书</button><button id='rtCompanionBtn'>👤 搭子</button><button id='rtReflectionGenBtn'>🏁 写读后感</button><button id='rtReflectionListBtn'>📝 读后感列表</button><button id='rtFullscreenBtn' title='全屏'>⛶ 全屏</button><button id='rtCollapseBtn' title='收起/展开'>—</button><button id='rtCloseBtn'>✕ 关闭</button></div></div><div class='rt-loading' id='rtLoadingHint' style='display:none;'>TA正在思考中...</div><div class='rt-body' id='rtReaderBody'></div><div class='rt-nav-row'><button id='rtPrevBtn'>◀ 上一部分</button><span id='rtChapterLabel'>0 / 0</span><select id='rtChapterJump'></select><button id='rtNextBtn'>下一部分 ▶</button></div><div class='rt-discuss-dock'><div class='rt-discuss-title'><span>💬 和TA聊聊这段</span><button id='rtQuoteSelectBtn' class='rt-quote-select-btn'>🔖 引用选中文字</button></div><div class='rt-discuss-area' id='rtDiscussArea'></div><div class='rt-quote-preview' id='rtQuotePreview' style='display:none;'><div class='rt-quote-preview-text' id='rtQuotePreviewText'></div><span class='rt-quote-preview-close' id='rtQuotePreviewClose'>✕</span></div><div class='rt-input-row'><input type='text' id='rtDiscussInput' placeholder='说说你的想法...'><button id='rtDiscussSendBtn'>发送</button></div></div>";
 document.body.appendChild(rtOverlay);
 
 var rtImportModal = document.createElement('div');
@@ -389,6 +389,20 @@ window.rtOpenImportModal = function(){
   document.getElementById('rtImportStatus').innerText = '';
   document.getElementById('rtFileNameLabel').innerText = '';
   if(typeof openModal==='function'){ openModal('rtImportModal'); }
+};
+// 🌐 在线找到的书（js/59）：拿到纯文本就直接变成一本书，跟导入 txt 走同一套分章
+window.rtImportText = async function(title, text, meta){
+  if(!text || !String(text).trim()) return null;
+  var file = new File([String(text)], (title || '在线书籍').replace(/[\\/:*?"<>|]/g,'') + '.txt', { type: 'text/plain' });
+  var result = await rtParseFile(file, 'txt');
+  if(!result.chapters || !result.chapters.length) return null;
+  var lastCompanion = window.__rtState.books.length ? window.__rtState.books[window.__rtState.books.length-1].companionCharId : null;
+  var book = { id: 'book_' + Date.now(), title: title || result.title || '在线书籍', format: 'txt', addedAt: Date.now(),
+    chapters: result.chapters, currentChapterIndex: 0, companionCharId: lastCompanion || (myCharacters[0] && myCharacters[0].id) || null,
+    comments: {}, discussion: {}, finished: false, online: (meta && meta.src) || true };
+  window.__rtState.books.push(book);
+  rtSaveState();
+  return book;
 };
 window.rtConfirmImport = async function(){
   var fileInput = document.getElementById('rtImportFileInput');

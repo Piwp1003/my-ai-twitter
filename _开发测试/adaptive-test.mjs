@@ -1,10 +1,11 @@
 // 专测「提示词里不许写死用户名字、不许写死可自定义的时间」
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 import fs from 'fs';
 
 const root = process.cwd();
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('dialog', d => d.accept());
 
@@ -21,7 +22,7 @@ await page.route('**/chat/completions', async route => {
     body: JSON.stringify({ choices: [{ message: { content: '{"title":"回信","content":"收到了。"}' } }] }) });
 });
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => typeof window.userDisplayName === 'function', { timeout: 15000 });
 await page.waitForTimeout(400);
 
@@ -39,8 +40,9 @@ for (const f of jsFiles) {
   const txt = fs.readFileSync(path.join(root, 'js', f), 'utf8');
   txt.split('\n').forEach((line, i) => {
     if (!line.includes('林')) return;
-    if (/森林|竹林|园林|林立|林荫/.test(line)) return;
+    if (/森林|竹林|园林|林立|林荫|武林|少林|山林|树林|林间|丛林/.test(line)) return;
     if (line.includes('制作')) return;              // 作者署名，允许
+    if (/\/[^\/\n]*\|林\|[^\/\n]*\//.test(line)) return;   // 关键词正则里单独一个「林」（树林的林），不是人名
     if (line.trim().startsWith('//')) return;       // 注释里提到没关系
     badLines.push(`${f}:${i + 1}  ${line.trim().slice(0, 90)}`);
   });

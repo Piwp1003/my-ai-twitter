@@ -123,7 +123,7 @@
                 .map(it => ({ it, n: dayOff(it.date) }))
                 .filter(x => x.n >= past && x.n <= ahead)
                 .sort((a, b) => Math.abs(a.n) - Math.abs(b.n))
-                .slice(0, Math.max(1, Number(S.inject) || 4));
+                .slice(0, Math.max(0, Math.round(gyNum(S.inject, 4))));
             if (!mine.length) return '';
             const uname = (typeof userDisplayName === 'function') ? userDisplayName(charOf(charId)) : '对方';
             return `\n【${uname}这几天的安排（你是知道的）】\n`
@@ -276,6 +276,8 @@
         } catch (e) {}
         return out;
     }
+    // 只读：某一天有什么（小手机的「日历」App 用）
+    window.gyMyCalDay = k => dayData(k);
     function renderCal() {
         const box = document.getElementById('gymcBody');
         if (!box) return;

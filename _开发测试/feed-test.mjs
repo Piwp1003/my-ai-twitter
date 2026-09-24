@@ -4,13 +4,14 @@
 //
 // 用法：node _test/feed-test.mjs
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 
 const root = process.cwd();
 const results = [];
 const check = (n, ok, extra = '') => results.push({ n, ok, extra });
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 430, height: 900 } });
 page.setDefaultTimeout(15000);
 const pageErrors = [];
@@ -55,7 +56,7 @@ await page.route('**/chat/completions', route => {
     body: JSON.stringify({ choices: [{ message: { content: aiReply } }] }) });
 });
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => window.__guyuBooted === true, { timeout: 20000 });
 
 await page.evaluate(() => {

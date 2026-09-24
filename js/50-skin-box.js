@@ -80,11 +80,13 @@
         toast('已换成「' + sk.name + '」');
     };
 
-    window.gySkinSaveNew = function (presetCss, presetName) {
+    // 打包成 exe（Electron）之后原生 prompt() 是死的——用项目自己的输入框（js/12 的 appPrompt）
+    const ask = (msg, dft) => (typeof appPrompt === 'function') ? appPrompt(msg, dft) : Promise.resolve(window.prompt(msg, dft));
+    window.gySkinSaveNew = async function (presetCss, presetName) {
         const css = (typeof presetCss === 'string' && presetCss) ? presetCss : curCss();
         if (!String(css).trim()) return alert('框里是空的，没东西可存。\n先把 CSS 贴进上面那个框，或者用下面的「选个 .css 文件」。');
         let name = presetName;
-        if (!name) name = prompt('给这张皮肤起个名字：', '我的皮肤 ' + (LIST.length + 1));
+        if (!name) name = await ask('给这张皮肤起个名字：', '我的皮肤 ' + (LIST.length + 1));
         if (name === null) return;
         name = String(name).trim() || ('皮肤 ' + (LIST.length + 1));
         const sk = { id: newId(), name, css: String(css), at: Date.now() };
@@ -94,9 +96,9 @@
         toast('存好了：' + name);
     };
 
-    window.gySkinRename = function (id) {
+    window.gySkinRename = async function (id) {
         const sk = LIST.find(x => x.id === id); if (!sk) return;
-        const n = prompt('改个名字：', sk.name);
+        const n = await ask('改个名字：', sk.name);
         if (n === null) return;
         sk.name = String(n).trim() || sk.name;
         saveList(); render();
@@ -265,6 +267,8 @@
         let rec = null;
         try { rec = await localforage.getItem('myTwitterAppData'); } catch (e) { return; }
         if (!rec || !Array.isArray(rec.__gySkins)) return;
+        // 存档里的大图是引用（增量保存），换回原图再用
+        try { if (typeof window.gyResolveImgRefs === 'function') await window.gyResolveImgRefs(rec.__gySkins); } catch (e) {}
         let n = 0;
         rec.__gySkins.forEach(sk => {
             if (!sk || !sk.id || LIST.find(x => x.id === sk.id)) return;

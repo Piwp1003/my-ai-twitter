@@ -9,13 +9,14 @@
 //
 // 用法：node _test/tavern-bridge-test.mjs
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 
 const root = process.cwd();
 const results = [];
 const check = (n, ok, extra = '') => results.push({ n, ok, extra });
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 430, height: 900 } });
 const pageErrors = [];
 page.on('pageerror', e => pageErrors.push(e.message));
@@ -40,7 +41,7 @@ await page.route('**/chat/completions', async route => {
     body: JSON.stringify({ choices: [{ message: { content: reply } }] }) });
 });
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => window.__guyuBooted === true, { timeout: 20000 });
 
 // —— 造一个带多个开场白的角色 + 一段续写 ——
@@ -654,7 +655,7 @@ const second = await page.evaluate(() => {
   const box = document.getElementById('greetingPickerList');
   return {
     pretty: !!box.querySelector('.ss-greet-pretty'),
-    cards: box.querySelectorAll('.wb-card').length,
+    cards: box.querySelectorAll('.wb-card:not(#randomGreetingBtn)').length,
     text: box.textContent.includes('乙的开场'),
   };
 });

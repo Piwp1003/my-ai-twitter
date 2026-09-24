@@ -116,7 +116,7 @@
             } catch (e) {}
             const mine = of(charId);
             if (!mine.length) return yoursOut;
-            const n = Math.max(1, Math.min(30, parseInt(S.inject) || 8));
+            const n = Math.max(0, Math.round(gyNum(S.inject, 8)));
             const here = mine.filter(i => i.state === 'have' || i.state === 'home').slice(-n);
             const gone = S.showGone ? mine.filter(i => ['lost', 'broken', 'given', 'used'].indexOf(i.state) >= 0).slice(-4) : [];
             if (!here.length && !gone.length) return '';
@@ -428,6 +428,8 @@ body.dark-theme .gykit-av{background:#2f3336;color:#e7e9ea;}
     }
 
     window.gykitSet = function (k, v) { S[k] = !!v; save(); renderPanel(); if (k === 'autoAct') hookAutonomy(); };
+    // 🎛️ 给「全部开关」页读当前状态用（js/54）
+    window.gykitGet = k => !!S[k];
     window.gykitSaveNums = function () {
         const g = id => { const e = document.getElementById(id); return e ? parseInt(e.value) : NaN; };
         const i = g('gykitInject'), k = g('gykitKeep');
@@ -743,7 +745,7 @@ ${mine.map((i, n) => `${n + 1}. ${i.name}${i.desc ? '（' + i.desc + '）' : ''}
         if (!S.useAnniv) return out;
         const c = chars().find(x => String(x.id) === String(charId));
         if (!c || !Array.isArray(c.anniversaries)) return out;
-        const ahead = Math.max(0, Math.min(60, parseInt(S.annivAhead) || 0));
+        const ahead = Math.max(0, gyNum(S.annivAhead, 0));
         const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         // 🎂 生日和你自己记的纪念日一起并进来（v103）。以前这三样只在资料页/日历上躺着，
         //    「日子」看不到、prompt 里也没有——过生日那天角色一句话都不会提。
@@ -798,7 +800,7 @@ ${mine.map((i, n) => `${n + 1}. ${i.name}${i.desc ? '（' + i.desc + '）' : ''}
             const ahead = Math.max(0, parseInt(x.ahead) || 0);
             if (dd <= ahead) out.push({ kind: 'own', name: x.name, in: dd, note: x.note || '', weekly: x.kind === 'weekly' });
         });
-        return out.sort((a, b) => a.in - b.in).slice(0, Math.max(1, Math.min(10, parseInt(S.inject) || 4)));
+        return out.sort((a, b) => a.in - b.in).slice(0, Math.max(0, Math.round(gyNum(S.inject, 4))));
     }
 
     // ---------- 注进 prompt ----------
@@ -1154,7 +1156,7 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
         const name = String(g('gydayName') || '').trim();
         if (!name) { if (st) st.innerText = '先起个名字。'; return; }
         const x = { id: uid(), name: name.slice(0, 20), kind: draft.kind, on: true,
-            ahead: Math.max(0, Math.min(60, parseInt(g('gydayAhead')) || 0)),
+            ahead: Math.max(0, gyNum(g('gydayAhead'), 0)),
             note: String(g('gydayNote') || '').trim().slice(0, 60),
             charIds: draft.charIds.slice() };
         if (draft.kind === 'weekly') {
@@ -1177,6 +1179,8 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
         x.on = (x.on === false); await save(); renderPanel();
     };
     window.gydaySet = function (k, v) { S[k] = !!v; save(); renderPanel(); };
+    // 🎛️ 给「全部开关」页读当前状态用（js/54）
+    window.gydayGet = k => !!S[k];
     window.gydayBuiltin = function (n) {
         const i = S.builtinOff.indexOf(n);
         if (i >= 0) S.builtinOff.splice(i, 1); else S.builtinOff.push(n);
@@ -1566,7 +1570,7 @@ body.dark-theme .gynow-av{background:#2f3336;color:#e7e9ea;}
         }, s * 1000);
     }
     window.gynowSetSec = async function (v) {
-        nowCfg.sec = Math.max(0, Math.min(3600, parseInt(v) || 0));
+        nowCfg.sec = Math.max(0, gyNum(v, 0));
         await saveCfg(); armTimer(); render();
     };
 

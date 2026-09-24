@@ -197,7 +197,7 @@ ${have.length ? `【已经抽过这些，别重复】${have.join('、')}\n` : ''
     window.__gyNpcCtxFor = function (charId) {
         try {
             if (!on('npcOn') || !on('npcInject')) return '';
-            const arr = listOf(charId).slice(0, Math.max(1, Number(S.inject) || 5));
+            const arr = listOf(charId).slice(0, Math.max(0, Math.round(gyNum(S.inject, 5))));
             if (!arr.length) return '';
             return `\n【你身边的这些人（是真的存在，不是设定里一笔带过的名字）】\n`
                 + arr.map(n => `· ${n.name}${n.who ? '，' + n.who : ''}${n.tie ? '——' + n.tie : ''}`).join('\n')

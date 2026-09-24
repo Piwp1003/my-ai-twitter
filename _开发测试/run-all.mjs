@@ -1,0 +1,63 @@
+// 一次把所有测试跑完，最后汇总哪个过了、哪个没过。
+// 用法（在项目根目录，也就是 index.html 那一层）：
+//   node _开发测试/run-all.mjs
+// 或者直接双击 _开发测试/自测.bat
+import { spawnSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, '..');
+const TESTS = [
+  ['features-0923-test.mjs', '9/23 新功能（版本号/思维链/状态栏/卡片手机/TA定/今天/开关/推文图/角色卡）'],
+  ['save-preset-test.mjs',   '增量保存（大图只存一次）+ 一键配置 / 我的配置'],
+  ['peer-life-test.mjs',     '角色之间自己来往 + 时间管理大师列出所有功能'],
+  ['life-dice-test.mjs',     '生活里的意外 + 今天面板能上下滑'],
+  ['more-acts-test.mjs',     '自主模式接上各个小功能'],
+  ['today-mobile-test.mjs',  '手机上的「今天」'],
+  ['online-notify-test.mjs', '在线找资源 + 第二批动作 + 通知能跳'],
+  ['peek-bio-test.mjs',      '偷翻日记 + 过往签名 + 论坛/匿名回帖 + 朋友圈'],
+  ['wechat-mode-test.mjs',   '微信模式切换'],
+  ['phone-mode-test.mjs',    '小手机模式'],
+  ['post-regen-test.mjs',    '让 TA 重新写推文'],
+  ['memhub-extra-test.mjs',  '记忆总览：其它记忆能改能删'],
+  ['boot-test.mjs',          '启动自检'],
+  ['binding-test.mjs',       '按钮有没有绑到不存在的函数'],
+  ['input-test.mjs',         '输入框永远能打字'],
+  ['leak-test.mjs',          'JSON/思维链不外泄 + 流式'],
+  ['stream-group-test.mjs',  '聊天流式 + 群聊转私聊'],
+  ['retrigger-test.mjs',     '聊天：空着点发送＝重生成'],
+  ['recomment-test.mjs',     '评论：空着点回复＝重生成'],
+  ['letter-test.mjs',        '写信/回信'],
+  ['feed-test.mjs',          '推特流 / 路人 NPC'],
+  ['relationship-test.mjs',  '关系网影响回复'],
+  ['adaptive-test.mjs',      '名字/时间不写死'],
+  ['scrollbar-test.mjs',     '浮层式滚动条'],
+  ['tavern-bridge-test.mjs', '酒馆助手兼容层'],
+  ['run.mjs',                '续写工作台全链路'],
+];
+// 需要额外素材的：有素材才跑
+if (fs.existsSync(path.join(root, '_test', 'card-闻述-状态栏.json'))) TESTS.push(['card-test.mjs', '角色卡状态栏']);
+
+const only = process.argv.slice(2);
+const list = only.length ? TESTS.filter(t => only.some(o => t[0].includes(o))) : TESTS;
+const out = [];
+const t0 = Date.now();
+for (const [file, label] of list) {
+  process.stdout.write(`▶ ${label}（${file}）… `);
+  const s = Date.now();
+  const r = spawnSync(process.execPath, [path.join('_开发测试', file)], { cwd: root, encoding: 'utf8', timeout: 5 * 60000 });
+  const txt = (r.stdout || '') + (r.stderr || '');
+  const sum = (txt.match(/(\d+)\/(\d+)\s*通过/) || [])[0] || (/全部通过/.test(txt) ? '全部通过' : '');
+  const ok = r.status === 0;
+  console.log(`${ok ? '✅' : '❌'} ${sum}  ${((Date.now() - s) / 1000).toFixed(0)}s`);
+  if (!ok) console.log(txt.split('\n').filter(l => /❌|→|Error|错误/.test(l)).slice(0, 12).map(l => '     ' + l.trim()).join('\n'));
+  out.push({ file, label, ok, sum });
+}
+const bad = out.filter(x => !x.ok);
+console.log(`\n${out.length - bad.length}/${out.length} 组通过，用时 ${((Date.now() - t0) / 1000).toFixed(0)} 秒`);
+if (bad.length) console.log('没过的：' + bad.map(b => b.label).join('、'));
+fs.writeFileSync(path.join(here, '自测结果.txt'),
+  `谷雨自测 ${new Date().toLocaleString('zh-CN')}\n\n` + out.map(x => `${x.ok ? '✅' : '❌'} ${x.label}  ${x.sum}`).join('\n') + '\n', 'utf8');
+process.exit(bad.length ? 1 : 0);

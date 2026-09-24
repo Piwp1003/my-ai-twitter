@@ -208,6 +208,14 @@
 
     const fetcher = (u) => (typeof smartFetch === 'function') ? smartFetch(u) : fetch(u);
 
+    // 只读：你这边的天气（小手机的「天气」小组件用）。没设城市 / 还没拉到就是 null
+    window.gymapWeatherInfo = function () {
+        try {
+            const r = S.weather && S.weather.real; if (!r) return null;
+            return { city: S.user.city || '', now: r.tnow, max: r.tmax, min: r.tmin, rain: r.rain, desc: wDesc(r.code), icon: FSVG[fIcoKey(r.code)] };
+        } catch (e) { return null; }
+    };
+
     // 城市名 → 经纬度
     async function geocode(name) {
         const u = 'https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(name) + '&count=5&language=zh&format=json';
@@ -1897,6 +1905,8 @@ ${req.trim() ? '【我的要求（以这个为准）】\n' + req.trim() + '\n' :
         </div>`;
     }
     window.gymapSetMove = function (k, v) { S.move[k] = !!v; save(); renderPanel(); };
+    // 🎛️ 给「全部开关」页读当前状态用（js/54）
+    window.gymapGetMove = k => !!(S.move && S.move[k]);
 
     // 按日程文本把角色挪到对应地点：找出日程里"当前时间段"那一行，看里面提到了哪个地点名
     function syncBySchedule() {
@@ -2009,6 +2019,8 @@ ${req.trim() ? '【我的要求（以这个为准）】\n' + req.trim() + '\n' :
     }
     window.gymapSetWMode = function (m) { S.weather.mode = m; save(); renderPanel(); };
     window.gymapSetRemind = function (v) { S.weather.remind = !!v; save(); renderPanel(); };
+    // 🎛️ 给「全部开关」页读当前状态用（js/54）
+    window.gymapGetRemind = () => !!(S.weather && S.weather.remind);
 
     // ===== 天气弹窗 =====
     let saidBy = null, saidText = '';
@@ -2199,7 +2211,7 @@ ${req.trim() ? '【我的要求（以这个为准）】\n' + req.trim() + '\n' :
     window.gymapDateSet = function (k, v) {
         if (!dateDraft) return;
         // 换选项之前先把已经填的留住，不然一点按钮输入框就白填了
-        const mi = document.getElementById('gymapDateMins'); if (mi) dateDraft.mins = Math.max(5, parseInt(mi.value) || 60);
+        const mi = document.getElementById('gymapDateMins'); if (mi) dateDraft.mins = gyNum(mi.value, 60);
         const ai = document.getElementById('gymapDateAct'); if (ai) dateDraft.act = ai.value;
         dateDraft[k] = v;
         renderDateForm();
@@ -2208,7 +2220,7 @@ ${req.trim() ? '【我的要求（以这个为准）】\n' + req.trim() + '\n' :
     // 只是"问 TA 去不去"这一步的呈现从"行程页上的一个小状态"变成了私聊里的一张卡。
     window.gymapSendDate = async function () {
         const d = dateDraft; if (!d) return;
-        const mi = document.getElementById('gymapDateMins'); if (mi) d.mins = Math.max(5, Math.min(1440, parseInt(mi.value) || 60));
+        const mi = document.getElementById('gymapDateMins'); if (mi) d.mins = gyNum(mi.value, 60);
         const ai = document.getElementById('gymapDateAct'); if (ai) d.act = ai.value.trim();
         const sp = spotById(d.spotId), c = chars().find(x => String(x.id) === d.charId);
         const st = document.getElementById('gymapDateStatus');
@@ -2253,7 +2265,7 @@ ${(() => { const cur = activeDate(c.id); return cur ? `注意：你这会儿正�
             let line = String(r.line || '').trim().replace(/^["'“”「」]+|["'“”「」]+$/g, '');
             if (typeof applyRegexScripts === 'function') { try { line = applyRegexScripts(line, 'ai_output', c.id); } catch (e) {} }
             const ok = r.ok !== false;
-            const mins = mine ? d.mins : Math.max(5, Math.min(1440, parseInt(r.mins) || 60));
+            const mins = mine ? d.mins : Math.max(1, gyNum(r.mins, 60));
             const act = mine ? (d.act || String(r.act || '').trim()) : String(r.act || '').trim();
             await settleDate({ char: c, sp, by: 'me', ok, line, mins, act });
         } catch (e) {
@@ -2350,7 +2362,7 @@ ${letChar ? '待多久、去干什么，你自己定。' : '待多久和干什�
             if (!sp) return null;
             let line = String(r.line || '').trim().replace(/^["'“”「」]+|["'“”「」]+$/g, '');
             if (typeof applyRegexScripts === 'function') { try { line = applyRegexScripts(line, 'ai_output', c.id); } catch (e) {} }
-            const mins = letChar ? Math.max(5, Math.min(1440, parseInt(r.mins) || 60)) : 60;
+            const mins = letChar ? Math.max(1, gyNum(r.mins, 60)) : 60;
             const act = letChar ? String(r.act || '').trim() : '';
             showInvitePop(c, sp, line, mins, act, letChar);
             if (typeof addNotification === 'function') addNotification(`<b>${c.name}</b> 约你去「${sp.name}」🤝`, null, c.id, c, line);
@@ -2537,7 +2549,7 @@ ${letChar ? '待多久、去干什么，你自己定。' : '待多久和干什�
     window.gymapSaveMemKeep = async function () {
         const el = document.getElementById('gymapMemKeep');
         const v = el ? parseInt(el.value) : 0;
-        S.date.keep = (isNaN(v) || v <= 0) ? 0 : Math.min(9999, Math.max(DATE_KEEP_MIN, v));
+        S.date.keep = (isNaN(v) || v <= 0) ? 0 : v;
         const list = dateLogs();
         if (S.date.keep > 0 && list.length > S.date.keep) list.splice(0, list.length - S.date.keep);
         await save(); renderMemHub();

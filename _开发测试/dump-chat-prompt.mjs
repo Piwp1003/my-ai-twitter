@@ -1,10 +1,11 @@
 // 把聊天真正发给模型的那份 prompt 原样抓下来（不是读代码猜的，是拦请求拿到的）
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 import fs from 'fs';
 
 const root = process.cwd();
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('dialog', d => d.accept());
 
@@ -21,7 +22,7 @@ await page.route('**/chat/completions', async route => {
     body: JSON.stringify({ choices: [{ message: { content: '{"replies":[{"delay":1,"text":"嗯。"}]}' } }] }) });
 });
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => typeof window.triggerAIBatchReply === 'function', { timeout: 15000 });
 await page.waitForTimeout(500);
 

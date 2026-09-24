@@ -1,9 +1,10 @@
 // 「删掉角色在帖子下的评论之后，评论框空着点回复 = 让角色重新评论一次」
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 
 const root = process.cwd();
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('dialog', d => d.accept());
 
@@ -28,7 +29,7 @@ await page.route('**/chat/completions', async route => {
 // 每个测试自己决定角色"回了什么"：默认就是普通一句话
 let nextReply = (n) => '角色的新评论 ' + n;
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => typeof window.postUserComment === 'function', { timeout: 15000 });
 await page.waitForTimeout(400);
 
@@ -84,6 +85,8 @@ check('拿的是最后一条评论，不是第一条',
 // ---- 3. 我一条评论都没发过 → 不该硬生成，要说清楚为什么 ----
 calls = [];
 await seed([]);
+// 通知条最多同时显示 2 条（设置里可调），前面两轮留下的"回复了您的评论"会把名额占满——先清掉
+await page.evaluate(() => { document.getElementById('toastContainer').innerHTML = ''; });
 await page.evaluate(() => postUserComment('5001'));
 await page.waitForTimeout(900);
 check('没有我的评论时不触发生成', calls.length === 0, '却发了 ' + calls.length + ' 次');

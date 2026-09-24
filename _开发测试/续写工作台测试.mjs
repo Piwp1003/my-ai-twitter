@@ -1,11 +1,12 @@
 // 在无头浏览器里真正把谷雨跑起来，验证「续写工作台」这个新功能的完整链路。
 // CDN 依赖（localforage / mammoth）离线时用本地桩顶上，AI 请求全部拦截成假响应。
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 import fs from 'fs';
 
 const root = process.cwd();
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 
 const errors = [];
@@ -53,7 +54,7 @@ await page.route('**/chat/completions', async route => {
 });
 await page.route('**/v1/messages', route => route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: [DONE]\n\n' }));
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => typeof window.saveAllData === 'function' && typeof window.renderStoryStudio === 'function', { timeout: 15000 });
 await page.waitForTimeout(600);
 

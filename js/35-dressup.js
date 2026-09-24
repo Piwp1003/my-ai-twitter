@@ -519,7 +519,7 @@
        爱打扮的人两三天就想换一张，冷淡的人半年不动一次，
        这本来就不该是所有角色一个数。本地算，不调 API。 */
     function gapHoursFor(c) {
-        if (S.gapMode !== 'self') return Math.max(1, Number(S.everyGapH) || 72);
+        if (S.gapMode !== 'self') return gyNum(S.everyGapH, 72);
         const per = String((c && c.persona) || '') + ' ' + String((c && c.bio) || '');
         let h = 72;
         if (/爱美|讲究|精致|臭美|时髦|潮|自恋|爱打扮|少女|活泼|跳脱|善变/.test(per)) h = 30;
@@ -581,7 +581,8 @@
             if (typeof window.gyChatActionAdd === 'function' && typeof window.gyGalleryOpen === 'function') {
                 window.gyChatActionAdd({
                     id: 'dress', icon: '🎀', label: '给 TA 换张头像 / 背景', sub: '从图库挑，TA 同意才换',
-                    show: () => on('dressAsk'),
+                    // 图库里一张图都没有就不显示——提了也换不了
+                    show: () => on('dressAsk') && !!(window.gyGallery && window.gyGallery.all().length),
                     run: () => window.gyGalleryOpen()
                 });
                 return;

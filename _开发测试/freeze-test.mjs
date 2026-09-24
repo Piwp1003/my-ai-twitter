@@ -1,9 +1,10 @@
 // 量「对面一发消息就卡住打不了字」到底卡在哪：把主线程被占住的时间直接测出来。
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 
 const root = process.cwd();
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('dialog', d => d.accept());
 
@@ -25,7 +26,7 @@ await page.route('**/localforage*.js', r => r.fulfill({
 }));
 await page.route('**/mammoth*.js', r => r.fulfill({ contentType: 'application/javascript', body: 'window.mammoth={};' }));
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => typeof window.saveAllData === 'function', { timeout: 15000 });
 await page.waitForTimeout(500);
 

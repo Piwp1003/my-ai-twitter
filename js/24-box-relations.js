@@ -260,7 +260,7 @@
             const b = book(charId);
             const sc = score(charId);
             if (!b.length && sc === 0) return '';
-            const n = Math.max(0, Math.min(20, parseInt(S.inject) || 6));
+            const n = Math.max(0, Math.round(gyNum(S.inject, 6)));
             const recent = b.slice(-n).reverse();
             const day = t => { const x = new Date(t); const d = Math.floor((Date.now() - t) / 86400000);
                 return d <= 0 ? '今天' : d === 1 ? '昨天' : d < 30 ? d + ' 天前' : `${x.getMonth() + 1}月${x.getDate()}日`; };
@@ -509,6 +509,8 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
     }
 
     window.gyrelSet = function (k, v) { S[k] = !!v; save(); if (k === 'syncAffinity' && v) syncAll(); renderPanel(); };
+    // 🎛️ 给「全部开关」页读当前状态用（js/54）
+    window.gyrelGet = k => !!S[k];
     window.gyrelSaveNums = function () {
         const g = id => { const e = document.getElementById(id); return e ? parseInt(e.value) : NaN; };
         const i = g('gyrelInject'), k = g('gyrelKeep');
@@ -792,6 +794,11 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
     function tell(msg) { const e = document.getElementById('gygsStatus'); if (e) e.innerText = msg;
         else if (typeof showToast === 'function') showToast('', '八卦网', msg, null, null, false); }
 
+    // 自主模式「跟你八卦」（js/58）：这个角色能讲给你听的传闻（TA 听说过、又不是当事人）
+    window.gygsRumorsFor = function (charId) {
+        try { return (S.rumors || []).filter(r => r && !r.told && hearers(r).some(c => String(c.id) === String(charId))).map(r => ({ id: r.id, text: r.text || r.truth || '', names: r.names || [] })); }
+        catch (e) { return []; }
+    };
     window.gygsTell = async function (rumorId, byId) {
         if (busy) { tell('还在生成上一条，等一下。'); return null; }
         const r = S.rumors.find(x => x.id === rumorId);
@@ -894,7 +901,7 @@ ${S.distort ? '注意对方拿到的版本跟实际有出入——你心里清�
     window.__gyGossipCtxFor = function (charId) {
         try {
             const id = String(charId);
-            const n = Math.max(0, Math.min(10, parseInt(S.inject) || 3));
+            const n = Math.max(0, Math.round(gyNum(S.inject, 3)));
             if (!n) return '';
             let out = '';
             const mine = S.rumors.filter(r => r.told).slice(-20).reverse();
@@ -1109,6 +1116,8 @@ body.dark-theme .gygs-box{background:#16181c;color:#e7e9ea;}
     }
 
     window.gygsSet = function (k, v) { S[k] = !!v; save(); renderPanel(); };
+    // 🎛️ 给「全部开关」页读当前状态用（js/54）
+    window.gygsGet = k => !!S[k];
     window.gygsLevel = function (k) { S.distortLevel = k; save(); renderPanel(); };
     window.gygsSaveNums = function () {
         const g = id => { const e = document.getElementById(id); return e ? parseInt(e.value) : NaN; };
@@ -1140,7 +1149,7 @@ body.dark-theme .gygs-box{background:#16181c;color:#e7e9ea;}
     async function autoTick() {
         try {
             if (!S.auto) return;
-            const gap = Math.max(1, parseInt(S.autoHours) || 6) * 3600000;
+            const gap = Math.max(0, gyNum(S.autoHours, 6)) * 3600000;
             if (Date.now() - (S.lastAuto || 0) < gap) return;
             await collect();
             const pool = S.rumors.filter(r => !r.told);
@@ -1172,9 +1181,8 @@ body.dark-theme .gygs-box{background:#16181c;color:#e7e9ea;}
         const sw = window.switchMainView;
         if (typeof sw === 'function' && !sw.__gygsPatched) {
             window.switchMainView = function () {
-                // 进任何一页之前先把好感度对一遍（有变化才写），这样「关系网」那一页
-                // 一进去看到的就是账本里的最新数字，不用退出去再进来
-                try { syncAll(); } catch (e) {}
+                // （好感度同步由上面关系账本自己的切页钩子做；这里以前抄了一行 syncAll()，
+                //  但那个函数不在这个模块里，每次切页都白抛一次错，删了）
                 const r = sw.apply(this, arguments);
                 try { setTimeout(addEntries, 0); } catch (e) {}
                 return r;

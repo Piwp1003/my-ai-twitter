@@ -94,7 +94,8 @@
     const charOf = id => chars().find(c => String(c.id) === String(id)) || null;
     const uid = () => 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const on = k => (typeof isAutoOn === 'function') ? isAutoOn(k) : false;
-    const num = (v, lo, hi, dft) => { const n = parseInt(v); return isNaN(n) ? dft : Math.max(lo, Math.min(hi, n)); };
+    // 不设上下限：用户填多少就是多少（只挡不是数字的情况）。lo/hi 两个参数留着是为了不改调用处。
+    const num = (v, lo, hi, dft) => { const n = parseFloat(v); return isFinite(n) ? n : dft; };
     // 记录里"看的是哪几个站"——URL 太长，只留域名+一小截
     const shortUrl = u => String(u || '').replace(/^https?:\/\//i, '').slice(0, 40);
     const ago = t => { const d = Math.floor((Date.now() - t) / 86400000);
@@ -504,7 +505,8 @@ ${web ? `这是搜到的内容：\n${web.slice(0, 800)}\n` : '（这一轮什么
 
             // ④ 写感想
             tell(`${c.name} 正在看…`);
-            const nChars = num(S.sayChars, 20, 600, 80);
+            // 🎲 感想字数设成「TA 定」：给个占位数，发请求前 js/53 会把"xx字以内"换成"长短你自己定"
+            const nChars = (typeof gyTaFieldOn === 'function' && gyTaFieldOn(c, 'web.sayChars')) ? 91008 : num(S.sayChars, 20, 600, 80);
             const ask2 = `你刚刚上网搜了「${topic}」${why ? `（因为${why}）` : ''}。
 ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看）：\n${web}\n` : '（这次没能联网，就按你自己知道的写。）'}
 用你自己的口吻写一段"我看到了什么、我怎么想"。要求：
@@ -618,16 +620,34 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
     async function autoTick() {
         try {
             if (!on('webExplore')) return;
+            // 🎲 间隔「TA 定」（全局按钮打开、或者角色是「由 TA 自己决定」模式）：每分钟看一眼，谁按自己说的节奏到点了谁去；
+            //    其余角色照旧按全局间隔
+            const gapTa = c => typeof gyTaFieldOn === 'function' && (gyTaFieldOn(c, 'web.gapMin') || gyTaFieldOn(c, 'charWebGap'));
             const gap = num(S.gapMin, 30, 1440, 180) * 60000;
-            if (Date.now() - (S.lastRunAt || 0) < gap) return;
+            const gOk = Date.now() - (S.lastRunAt || 0) >= gap;
+            if (!gOk && !chars().some(gapTa)) return;
             /* 🩹 v114：角色资料页上那个「这个角色自己上网看东西」以前**填了完全没用**——
                存进 char.webMode 之后没有任何代码读它，谁都照样被轮到。现在真的按它筛。
                多一档 self ＝ 让 TA 自己按人设决定要不要上网（不调 API，看人设关键词）。 */
-            const cs = chars().filter(c => window.gywebWants(c));
-            if (!cs.length) return;
             const last = c => { const a = listOf(c.id); return a.length ? a[a.length - 1].at : 0; };
+            const todayN = c => { const d0 = new Date(); d0.setHours(0, 0, 0, 0); return listOf(c.id).filter(x => x.at >= d0.getTime()).length; };
+            const cTa = (c, k) => typeof gyTaCharOn === 'function' && gyTaCharOn(c, k);
+            // 🩹 角色资料页上的「最短间隔 / 一天最多」以前存了没人读，现在真的按它筛；设成 TA 定的按 TA 自己说的来
+            const cs = chars().filter(c => window.gywebWants(c)).filter(c => {
+                let g = gyNum(c.webGapMin, 0) > 0 ? gyNum(c.webGapMin, 0) * 60000 : 0;
+                if (gapTa(c)) g = gyTaGapMs(c, 'web', g || gap);
+                else if (!gOk) return false;
+                if (g && Date.now() - last(c) < g) return false;
+                const pd = cTa(c, 'charWebPerDay') ? (typeof gyTaCount === 'function' ? gyTaCount(c, 'webPerDay', 0) : 0) : gyNum(c.webPerDay, 0);
+                if (pd > 0 && todayN(c) >= pd) return false;
+                return true;
+            });
+            if (!cs.length) return;
             const pick = cs.slice().sort((a, b) => last(a) - last(b))[0];
-            if (pick) await window.gywebRun(pick.id);
+            if (pick) {
+                await window.gywebRun(pick.id);
+                if (typeof gyTaAfter === 'function' && gapTa(pick)) gyTaAfter(pick, 'web');
+            }
         } catch (e) { console.warn('[联网探索] 自动跑出错：', e); }
     }
 
@@ -920,13 +940,24 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
           <div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;">
           ${arr.length ? arr.slice().reverse().slice(0, 30).map(x => `
             <div style="background:white;padding:8px 10px;border-radius:6px;border:1px solid #eff3f4;">
-              <div style="font-size:13px;"><b>${esc(x.topic)}</b>　<span style="font-size:11px;color:#8b98a5;">${ago(x.at)}${x.src === 'none' ? '　·　没联网' : ''}</span></div>
+              <div style="font-size:13px;"><b>${esc(x.topic)}</b>　<span style="font-size:11px;color:#8b98a5;">${ago(x.at)}${x.src === 'none' ? '　·　没联网' : ''}</span>
+                <span style="color:#f91880;cursor:pointer;float:right;font-size:12px;" onclick="gywebDelEntry('${charId}','${x.id}')">删除</span></div>
               <div style="font-size:13px;color:#536471;line-height:1.7;margin-top:2px;">${esc(x.text)}</div>
               ${(x.sources || []).some(u => /^https?:/i.test(u))
                 ? `<div style="margin-top:5px;"><button type="button" class="btn-edit-small" onclick="gywebShareEntry('${charId}','${x.id}')">🔗 让 TA 把这个网页转给我</button></div>` : ''}
             </div>`).join('') : '<div style="color:#8b98a5;font-size:13px;">还没有记录</div>'}
           </div>`;
     }
+    // 🗑️ 记忆总览里删一条探索记录（删了就不再进 prompt）
+    window.gywebDelEntry = async function (charId, entryId) {
+        const arr = listOf(charId);
+        const i = arr.findIndex(x => x.id === entryId);
+        if (i < 0) return;
+        if (!confirm('删掉这条探索记录？删了 TA 就不记得看过这个了。')) return;
+        arr.splice(i, 1);
+        await save();
+        renderMemHub();
+    };
     function renderMemHub() {
         const host = document.getElementById('memoryHubContent');
         if (!host) return;

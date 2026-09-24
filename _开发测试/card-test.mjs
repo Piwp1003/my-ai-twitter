@@ -5,13 +5,14 @@
 //
 // 卡片数据是从用户给的 PNG 角色卡里解出来的（tEXt 块里的 chara/ccv3）。
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 import fs from 'fs';
 
 const root = process.cwd();
 const card = JSON.parse(fs.readFileSync('_test/card-闻述-状态栏.json', 'utf-8'));
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const errors = [];
 page.on('pageerror', e => errors.push('PAGEERROR: ' + e.message));
@@ -44,7 +45,7 @@ const statusText = `<闻述状态>
 评价来源：旁观者
 </闻述状态>`;
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => typeof renderStoryStudio === 'function', { timeout: 15000 });
 await page.waitForTimeout(500);
 

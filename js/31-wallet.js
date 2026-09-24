@@ -43,6 +43,8 @@
     const meName = () => (typeof currentUser !== 'undefined' && currentUser && currentUser.name) ? currentUser.name : '我';
     const nameOf = id => String(id) === 'me' ? meName() : ((charOf(id) || {}).name || '某人');
     const on = k => (typeof isAutoOn === 'function') ? isAutoOn(k) : false;
+    // 🩹 这个文件里一直在调 toast()，但从来没定义过——「让 TA 现在想」一点就报错。补上。
+    const toast = m => { try { if (typeof showToast === 'function') showToast('', '💳 钱包', m, null, null, false); } catch (e) {} };
     const uid = p => (p || 'w') + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const money = n => (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
     const day = t => new Date(t || Date.now()).toISOString().slice(0, 10);
@@ -844,6 +846,7 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
         profOpen = true;
         try { if (typeof closeModal === 'function') closeModal('userProfileModal'); } catch (e) {}
         try { if (typeof switchMainView === 'function') switchMainView('profile', String(charId)); } catch (e) {}
+        setTimeout(() => { try { window.gyWalletProfOpen(charId); } catch (e) {} }, 150);   // 钱包现在是个弹窗
         setTimeout(() => { try { const b = document.getElementById('gywlProfBox'); if (b) b.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {} }, 420);
     };
     window.gyWalletSet = async function (k, v) {
@@ -862,13 +865,20 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
     }
 
     /* ================= 角色那边的钱包（记忆总览里）================= */
-    let profOpen = false;
+    let profOpen = true;   // 现在收在资料页 ⋮ 菜单里、打开就是一个弹窗，里面直接展开
     window.gyWalletProfToggle = function () { profOpen = !profOpen; renderCharWallet(); };
     function profileHtml(charId) {
         ensureCards(charId);
         const w = walletOf(charId);
         const c = charOf(charId) || {};
         const job = (w.job && w.job.title) ? w.job.title : '';
+        const autoMode = (typeof getCharActMode === 'function') && getCharActMode(c) === 'auto';
+        const taRow = `
+          <div class="gywl-prof-self" style="margin-bottom:10px;">
+            <div>${w.taSet ? '🎲 这份钱包是 TA 自己定的' + (w.taSet.why ? '：' + esc(w.taSet.why) : '') + '（' + new Date(w.taSet.at).toLocaleDateString('zh-CN') + '）'
+                : (autoMode ? '🎲 TA 是「自己决定」模式：打开这里时 TA 会按人设自己定职业、收入、卡里有多少钱。' : '想让 TA 按自己的人设定职业、收入、各张卡里有多少钱？')}</div>
+            <button type="button" class="btn-edit-small" onclick="gyWalletTaDecide('${charId}')">${w.taSet ? '让 TA 重新定一次' : '🎲 让 TA 自己定'}</button>
+          </div>`;
         return `
           <div class="gywl-prof-hd" onclick="gyWalletProfToggle()">
             <span class="gywl-prof-ico">💳</span>
@@ -880,6 +890,7 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
           </div>
           ${profOpen ? `
           <div class="gywl-prof-b">
+            ${taRow}
             <div class="gywl-sum">
               <div><em>可用</em><b>￥${money(totalOf(charId))}</b></div>
               <div><em>欠款</em><b class="bad">￥${money(debtOf(charId))}</b></div>
@@ -925,21 +936,86 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
     /* ⚠️ 角色的钱包只有一份实现：上面那个可展开收起的 profileHtml，
        挂在 TA 的个人资料页上（简介下面）。别再加第二份——加过一次，
        结果两块钱包同时出现在资料页上。 */
+    // 💳 以前钱包直接铺在资料页简介下面，占一大块。现在收进资料页右上角的 ⋮ 菜单，点开是一个弹窗。
     function renderCharWallet() {
-        const view = document.getElementById('view-profile');
-        const anchor = view ? view.querySelector('.profile-details') : null;
-        let box = document.getElementById('gywlProfBox');
-        const id = (typeof currentProfileId !== 'undefined') ? currentProfileId : null;
-        const isChar = id && String(id) !== 'me' && !!charOf(id);
-        if (!anchor || !isChar || !on('walletOn')) { if (box) box.remove(); return; }
-        if (!box) {
-            box = document.createElement('div');
-            box.id = 'gywlProfBox'; box.className = 'gywl-prof';
-            anchor.insertAdjacentElement('afterend', box);
-        }
-        box.innerHTML = profileHtml(id);
+        const old = document.getElementById('gywlProfBox'); if (old) old.remove();
+        const m = document.getElementById('gywlProfModal');
+        if (!m) return;
+        const id = m.dataset.charId;
+        if (!id || !charOf(id) || !on('walletOn')) { m.remove(); return; }
+        const body = m.querySelector('.gywl-prof');
+        if (body) body.innerHTML = profileHtml(id);
     }
+    window.gyWalletProfOpen = function (charId) {
+        const c = charOf(charId); if (!c) return;
+        let m = document.getElementById('gywlProfModal');
+        if (m) m.remove();
+        m = document.createElement('div');
+        m.id = 'gywlProfModal'; m.className = 'modal-overlay'; m.style.display = 'flex'; m.style.zIndex = '3100';
+        m.dataset.charId = String(charId);
+        m.innerHTML = `<div class="modal-box" style="width:520px; max-width:94vw; max-height:88vh; overflow-y:auto;">
+            <h2 style="margin-top:0;">💳 ${esc(c.name)} 的钱包</h2>
+            <div class="gywl-prof"></div>
+            <div style="text-align:right; margin-top:12px;"><button type="button" class="btn-cancel" onclick="document.getElementById('gywlProfModal').remove()">关闭</button></div>
+          </div>`;
+        m.addEventListener('click', ev => { if (ev.target === m) m.remove(); });
+        document.body.appendChild(m);
+        profOpen = true;
+        renderCharWallet();
+        // 「TA 自己决定」模式、还没定过：打开就让 TA 定
+        try { if (typeof getCharActMode === 'function' && getCharActMode(c) === 'auto' && !walletOf(charId).taSet) window.gyWalletTaDecide(charId, true); } catch (e) {}
+    };
+
+    // 🎲 让 TA 自己定钱包：职业、收入节奏、各张卡里有多少钱、信用额度
+    const taBusy = {};
+    window.gyWalletTaDecide = async function (charId, quiet) {
+        const c = charOf(charId); if (!c) return;
+        const id = String(charId);
+        if (taBusy[id]) return; taBusy[id] = true;
+        try {
+            const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+            if (!api || !api.key) { if (!quiet) toast('还没配 API'); return; }
+            if (!quiet) toast(c.name + ' 正在想自己的钱包…');
+            const base = (typeof buildBasePrompt === 'function') ? buildBasePrompt(c, false, '') : ('你是' + c.name + '。' + (c.persona || ''));
+            const ask = `按你的人设、身份、年龄和生活处境，说说你现在的经济状况——像真人一样，别凑整数，别都是有钱人也别都是穷光蛋。
+只输出 JSON，不要解释：
+{"job":"职业，没有固定工作就写空字符串","mode":"day|week|month|irregular（钱怎么进来）","per":每次到手多少,"payday":按月写几号、按周写星期几、其它写0,
+ "debit":储蓄卡里现在有多少,"cash":手机零钱/现金有多少,"creditLimit":信用卡额度（没有信用卡写0）,"owe":信用卡已经欠了多少,
+ "why":"一句话说说你的经济状况，20字以内，你自己的口气"}`;
+            const msgs = (typeof buildStructuredMessages === 'function') ? buildStructuredMessages(base, [], ask) : [{ role: 'user', content: base + '\n' + ask }];
+            const d = await callChatCompletionAPI(api, msgs);
+            let t = (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content || '').trim();
+            if (typeof extractAfterFinalMarker === 'function') t = extractAfterFinalMarker(t).trim();
+            const o = (typeof parseModelJson === 'function') ? parseModelJson(t) : ((typeof extractJsonObject === 'function') ? extractJsonObject(t) : null);
+            if (!o) { if (!quiet) toast('没想出来，回头再试'); return; }
+            const n = v => { const x = Number(v); return isFinite(x) && x >= 0 ? Math.round(x * 100) / 100 : 0; };
+            const w = ensureCards(id);
+            const byKind = k => w.cards.find(x => x.kind === k);
+            const deb = byKind('debit'), cash = byKind('balance'), cr = byKind('credit');
+            if (deb) deb.balance = n(o.debit);
+            if (cash) cash.balance = n(o.cash);
+            if (cr) { cr.limit = n(o.creditLimit); cr.balance = Math.min(cr.limit, n(o.owe)); }
+            const job = String(o.job || '').trim().slice(0, 30);
+            if (job) {
+                const mode = ['day', 'week', 'month', 'irregular'].indexOf(o.mode) >= 0 ? o.mode : 'month';
+                w.job = { title: job, pay: n(o.per), cycle: 'self', payday: 15,
+                          self: { mode, per: Math.max(1, Math.round(n(o.per) || 1)), payday: Math.max(0, Math.min(28, parseInt(o.payday) || 0)), label: '进账', why: '', at: Date.now() } };
+            } else w.job = null;
+            w.taSet = { at: Date.now(), why: String(o.why || '').slice(0, 40) };
+            await save();
+            renderCharWallet();
+            if (!quiet) toast('定好了' + (w.taSet.why ? '：' + w.taSet.why : ''));
+        } catch (e) { console.warn('[钱包] TA 自己定失败：', e); if (!quiet) toast('没想出来，回头再试'); }
+        finally { taBusy[id] = false; }
+    };
     function hookProfile() {
+        try {
+            if (typeof window.gyProfMenuAdd === 'function') window.gyProfMenuAdd({
+                id: 'wallet', icon: '💳', label: '钱包与工作', sub: '卡、收入、账单',
+                show: id => on('walletOn') && id && String(id) !== 'me' && !!charOf(id),
+                run: id => window.gyWalletProfOpen(id)
+            });
+        } catch (e) {}
         try {
             const f = window.renderProfilePage;
             if (typeof f !== 'function' || f.__gywlPatched) return;
@@ -1262,6 +1338,14 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
         setTimeout(addProfileMenu, 900);
         await load();
         startBeat();
+        // 🎲「TA 自己决定」模式的角色，钱包还没自己定过的：开机后悄悄让 TA 定（一次最多两个，别一下子刷一堆请求）
+        setTimeout(() => {
+            try {
+                if (!on('walletOn') || typeof getCharActMode !== 'function') return;
+                chars().filter(c => getCharActMode(c) === 'auto' && !walletOf(c.id).taSet).slice(0, 2)
+                    .forEach((c, i) => setTimeout(() => window.gyWalletTaDecide(c.id, true), i * 4000));
+            } catch (e) {}
+        }, 20000);
         paintSendBtn();
         // 开关是随时能改的，所以切页时对一遍 + 一个慢心跳兜底
         try {

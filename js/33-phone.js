@@ -81,12 +81,15 @@
         // 📇 按人设生成的通讯录：{ 角色id: {at, list:[{n, ico, who, src, talk:[...] }]} }
         // 十二个固定联系人（妈妈/爸/房东…）对谁都一样，可现实里有人没家人、
         // 有人不上班、有人手机里只有工作群。这一份是让模型照着人设和世界书开的。
-        ppl: {}
+        ppl: {},
+        card: {},       // 🃏 卡片格式收进来的：{ 角色id: {msgs, notes, moments} }
+        icons: {},      // 🎨 照人设设计的图标：{ 角色id: {motif, deco, c1, c2, apps:{key:emoji}} }
+        skinSrc: {}     // 手机配色跟谁：'card' 跟卡片 / 'persona' 跟人设
     };
     async function save() { try { if (LF) await LF.setItem(KEY, JSON.parse(JSON.stringify(S))); } catch (e) { console.warn('[手机] 存档失败', e); } }
     async function load() {
         try { if (LF) { const d = await LF.getItem(KEY); if (d && typeof d === 'object') S = Object.assign(S, d); } } catch (e) {}
-        ['notif', 'wall', 'allow', 'lastGen', 'grant', 'mine', 'askedAt', 'seen', 'seenMe', 'iconSkin', 'iconTint', 'manual', 'ppl'].forEach(k => { if (!S[k] || typeof S[k] !== 'object') S[k] = {}; });
+        ['notif', 'wall', 'allow', 'lastGen', 'grant', 'mine', 'askedAt', 'seen', 'seenMe', 'iconSkin', 'iconTint', 'manual', 'ppl', 'card', 'icons', 'skinSrc'].forEach(k => { if (!S[k] || typeof S[k] !== 'object') S[k] = {}; });
         if (typeof S.grantMin !== 'number') S.grantMin = 60;
         if (!S.float || typeof S.float !== 'object') S.float = { open: false, mini: false, charId: '', x: 24, y: 24 };
         if (!S.need || typeof S.need !== 'object') S.need = { mid: 20, deep: 50 };
@@ -153,7 +156,8 @@
         const c = charOf(charId);
         if (!c) return null;
         const st = styleOf(c);
-        const [h1, h2] = st.hue;
+        let [h1, h2] = st.hue;
+        try { if (skinSrcOf(charId) === 'card') { const p = cardPalette(charId); if (p) { h1 = p.hue; h2 = p.hue2; } } } catch (e) {}
         const h = Math.round(h1 + (h2 - h1) * (n > 1 ? i / (n - 1) : 0.5));
         const s2 = 42 + Math.round(seed(charId, 'sat' + i) * 26);
         return [`hsl(${h} ${s2}% 62%)`, `hsl(${h} ${s2 + 6}% 40%)`];
@@ -201,8 +205,21 @@
         { key: 'photo',  ico: '🖼️', name: '相册',   lock: 'deep',  c: ['#ffd36e', '#f0913a'], render: appPhoto },
         { key: 'note',   ico: '📝', name: '备忘录', lock: 'mid',   c: ['#ffe27a', '#e0b33a'], render: appNote },
         { key: 'time',   ico: '⏱️', name: '屏幕时间', lock: 'base', c: ['#8f9bff', '#4b56c9'], render: appTime },
-        { key: 'day',    ico: '🎂', name: '日子',   lock: 'mid',   c: ['#c69bff', '#7b45c9'], render: appDay }
+        { key: 'day',    ico: '🎂', name: '日子',   lock: 'mid',   c: ['#c69bff', '#7b45c9'], render: appDay },
+        // 🃏 这两个只有卡片里写过（或者按卡片格式生成过）才出现在桌面上
+        { key: 'rednote', ico: '📕', name: '小红书', lock: 'mid', c: ['#ff5a6e', '#e02444'], render: c => appRednote(c),
+          show: c => !!(S.card[String(c.id)] && S.card[String(c.id)].notes.length) },
+        { key: 'moment', ico: '🌀', name: '朋友圈', lock: 'mid', c: ['#7bd88f', '#2f9e55'], render: c => appMoment(c),
+          show: c => !!(S.card[String(c.id)] && S.card[String(c.id)].moments.length) || peerMoments(c).length > 0 },
+        // 📨 开了小剧场之后，角色彼此之间的来往（js/56）：有过才出现在桌面上
+        { key: 'mail', ico: '✉️', name: '信件', lock: 'deep', c: ['#f6c177', '#d08a2e'], render: c => appMail(c),
+          show: c => peerMails(c).length > 0 },
+        { key: 'calls', ico: '📞', name: '通话', lock: 'mid', c: ['#6fe39a', '#1f9d55'], render: c => appCalls(c),
+          show: c => peerCalls(c).length > 0 }
     ];
+    const peerMails = c => { try { return typeof window.gyPeerMails === 'function' ? window.gyPeerMails(c.id) : []; } catch (e) { return []; } };
+    const peerCalls = c => { try { return typeof window.gyPeerCalls === 'function' ? window.gyPeerCalls(c.id) : []; } catch (e) { return []; } };
+    const peerMoments = c => { try { return typeof window.gyPeerMoments === 'function' ? window.gyPeerMoments(c.id) : []; } catch (e) { return []; } };
     const appOf = k => APPS.find(a => a.key === k);
 
     /* 翻开一个 app，记一条"看到了什么"。
@@ -249,6 +266,13 @@
         await save();
     }
     window.gyPhoneSeen = id => (S.seen[String(id)] || []).slice();
+    // 🗑️ 记忆总览里删一条（你翻过 TA 的 / TA 翻过你的）
+    window.gyPhoneDelSeen = async function (id, which, i) {
+        const arr = (S[which] || {})[String(id)];
+        if (!Array.isArray(arr) || !arr[i]) return;
+        arr.splice(i, 1);
+        await save(); paint(); renderMemHub();
+    };
     window.gyPhoneClearSeen = async function (id) { delete S.seen[String(id)]; delete S.seenMe[String(id)]; await save(); paint(); renderMemHub(); };
 
     /* 注进 prompt：TA 知道你看过 TA 的手机，也知道你看到了什么。 */
@@ -403,14 +427,16 @@
                 out.push({ n: oc.name, ico: (oc.name || '?').slice(0, 1), peer: oc.id, rel: r.label || '' });
             });
         } catch (e) {}
-        return out.slice(0, 5);
+        // 最近真有来往的排前面（js/56）
+        try { if (typeof window.gyPeerLastBetween === 'function') out.sort((x, y) => window.gyPeerLastBetween(c.id, y.peer) - window.gyPeerLastBetween(c.id, x.peer)); } catch (e) {}
+        return out.slice(0, 6);
     }
     // 两个角色之间真发生过的事 → 手机里那条对话
     function peerThread(c, peerId, peerName) {
         const bits = [];
         try {
             (typeof globalTheaterLogs !== 'undefined' ? globalTheaterLogs : [])
-                .filter(l => l && ((String(l.charAId) === String(c.id) && String(l.charBId) === String(peerId))
+                .filter(l => l && !l.peer && ((String(l.charAId) === String(c.id) && String(l.charBId) === String(peerId))
                                 || (String(l.charBId) === String(c.id) && String(l.charAId) === String(peerId))))
                 .slice(-3).forEach(l => {
                     bits.push({ at: l.at, w: '我', t: String(l.summary || '').slice(0, 30) });
@@ -421,11 +447,19 @@
             if (typeof window.gyDressBetween === 'function')
                 window.gyDressBetween(c.id, peerId, 2).forEach(x => bits.push({ at: x.at, w: peerName, t: x.text.replace(/^[^前]*前/, '') }));
         } catch (e) {}
-        return bits.sort((a, b) => a.at - b.at).slice(-8).map(x => [x.w, x.t]);
+        // 📨 两个人用手机来往过的（私聊的原话、转账、送的东西、打过的电话…）
+        try { if (typeof window.gyPeerBits === 'function') window.gyPeerBits(c.id, peerId).forEach(x => bits.push(x)); } catch (e) {}
+        return bits.sort((a, b) => a.at - b.at).slice(-40).map(x => [x.w, x.t]);
     }
 
     // 消息列表：你是其中一个联系人，其余是"你不认识的人"（本地生成的联系人）
     function contactsOf(c) {
+        // 卡片里写过的那些人排最前面——那是真发生过的对话
+        const cp = cardPeers(c).map(p => ({ n: p.n, ico: String(p.n).replace(/^群\s*/, '').slice(0, 1) || '💬', unread: 0, card: true }));
+        const base = contactsOf0(c).filter(x => !cp.some(y => y.n === x.n));
+        return cp.concat(base);
+    }
+    function contactsOf0(c) {
         const n = seedInt(c.id, 'ct', 3, 6);
         const out = [];
         const used = new Set();
@@ -721,6 +755,8 @@ ${info}
     // 数据变了就重算（换了日程、下了单、换了头像…）
     window.gyPhoneForgetThreads = function () { threadCache = { key: '', map: null }; };
     function threadOf(c, who) {
+        const ct = cardThread(c, who);
+        if (ct && ct.length) return ct;
         // 关系网上的人：用真发生过的事，不用模板
         const p = peersOf(c).find(x => x.n === who);
         if (p) {
@@ -1048,6 +1084,29 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
               读人设和世界书生成，一个角色只花一次调用，开好就存着。
               读哪几样在 <b>设置 → 🧾 注入内容管理 → ② 生成时读什么 → 📇 手机通讯录</b> 里挑。
             </div>
+            <div class="gyph-side-hd" style="margin-top:14px;">🃏 卡片里的手机</div>
+            <div class="gyph-side-p">
+              ${(() => { const b = S.card[curId]; const n = b ? b.msgs.length + b.notes.length + b.moments.length : 0;
+                 return n ? `已经收了 <b>${b.msgs.length}</b> 条消息、<b>${b.notes.length}</b> 篇小红书、<b>${b.moments.length}</b> 条朋友圈——聊天里 TA 用卡片格式写的「手机里的事」都在这儿。`
+                          : `聊天里 TA 用卡片格式写「手机里的事」（&lt;msg&gt;、小红书、朋友圈、[消息-谁]…）时，会收进这台手机；发给你的直接变成真消息。`; })()}
+              ${cardFormatSpec(c) ? '这张卡自带手机格式，生成时照它来。' : ''}
+            </div>
+            ${on('phoneCardGen') ? `<div style="margin-bottom:10px;"><button class="gyph-btn" onclick="gyPhoneCardGen('${curId}')">✨ 按卡片格式让手机动起来</button></div>` : ''}
+            <div class="gyph-need">
+              <span>手机配色</span>
+              <select class="gyph-in" style="width:auto;margin:0;" onchange="gyPhoneSkinSrc('${curId}', this.value)">
+                <option value="card"${skinSrcOf(curId) === 'card' ? ' selected' : ''}${cardPalette(curId) ? '' : ' disabled'}>跟卡片的样式${cardPalette(curId) ? '' : '（这张卡没带样式）'}</option>
+                <option value="persona"${skinSrcOf(curId) === 'persona' ? ' selected' : ''}>跟人设推</option>
+              </select>
+            </div>
+            <div class="gyph-side-hd" style="margin-top:14px;">🎨 图标</div>
+            <div class="gyph-side-p">${S.icons[curId]
+                ? `现在是照人设设计的一套：<b>${esc(S.icons[curId].motif || '')}</b>${S.icons[curId].why ? '——' + esc(S.icons[curId].why) : ''}`
+                : '可以让 TA 按自己的人设设计一套图标：从人设里挑一个最像 TA 的元素，整套图标围着它来。点一次一次调用。'}</div>
+            <div style="margin-bottom:10px;">
+              <button class="gyph-btn" onclick="gyPhoneIconAi('${curId}')">${S.icons[curId] ? '↻ 重新设计' : '🎨 照人设设计图标'}</button>
+              ${S.icons[curId] ? `<button class="gyph-btn ghost" onclick="gyPhoneIconReset('${curId}')">用回默认的</button>` : ''}
+            </div>
             <div class="gyph-side-hd" style="margin-top:14px;">壁纸与图标</div>
             <div class="gyph-side-p">
               这台手机默认是<b>按 ${esc(c.name)} 的人设推出来的</b>——${esc(gyPhoneStyleOf(curId).tag)}。
@@ -1055,7 +1114,7 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
             </div>
             <div class="gyph-walls">
               ${WALLS.map(w => `<span class="gyph-w ${w} ${String(S.wall[curId]) === w ? 'on' : ''}" onclick="gyPhoneSetWall('${curId}','${w}');gyPhoneRepaint()"></span>`).join('')}
-              ${typeof window.gyGalleryOpen === 'function'
+              ${(typeof window.gyGalleryOpen === 'function' && window.gyGallery && window.gyGallery.seenBy(curId).length)
                 ? `<span class="gyph-w pick" onclick="gyPhonePickWall()" title="从图库挑一张">🖼️</span>` : ''}
               ${(S.wall[curId] || S.iconSkin[curId] || S.iconTint[curId])
                 ? `<span class="gyph-w pick" onclick="gyPhoneAutoStyle('${curId}')" title="恢复成按人设推">↺</span>` : ''}
@@ -1115,9 +1174,12 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
         const w = String(wallOf(curId));
         const isImg = w.indexOf('img:') === 0;
         const skin = skinOf(curId);
+        // 🃏 配色跟卡片：没手动挑过壁纸的，用卡片自己样式里的两个主色铺一层渐变
+        const pal = (!isImg && !S.wall[String(curId)] && skinSrcOf(curId) === 'card') ? cardPalette(curId) : null;
+        const palStyle = pal ? `style="background:linear-gradient(168deg, ${pal.a} 0%, color-mix(in srgb, ${pal.b} 70%, #000) 55%, color-mix(in srgb, ${pal.b} 35%, #000) 100%)"` : '';
         return `
           <div class="gyph-dev ${isImg ? 'photo' : esc(w)} skin-${esc(skin)}"
-               ${isImg ? `style="background-image:url('${esc(w.slice(4)).replace(/'/g, "\\'")}')"` : ''}>
+               ${isImg ? `style="background-image:url('${esc(w.slice(4)).replace(/'/g, "\\'")}')"` : palStyle}>
             <div class="gyph-status">
               <span class="gyph-t">${hh}</span>
               <span class="gyph-notch"></span>
@@ -1138,8 +1200,9 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
         const unread = notif.filter(x => x.unread).length;
         const now = new Date();
         const week = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][now.getDay()];
-        const grid = APPS.filter(a => !a.dock);
-        const dock = APPS.filter(a => a.dock);
+        const vis = a => !a.show || a.show(c);
+        const grid = APPS.filter(a => !a.dock && vis(a));
+        const dock = APPS.filter(a => a.dock && vis(a));
         return `
         <div class="gyph-screen">
           <div class="gyph-clock">
@@ -1160,10 +1223,13 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
         // 图标配色：跟着这个人的风格走（personal 模式），或者用每个 app 自己那对颜色
         const i = APPS.findIndex(x => x.key === a.key);
         const tint = (S.iconTint[String(curId)] === 'app') ? null : tintOf(curId, i, APPS.length);
-        const c1 = tint ? tint[0] : a.c[0], c2 = tint ? tint[1] : a.c[1];
+        let c1 = tint ? tint[0] : a.c[0], c2 = tint ? tint[1] : a.c[1];
+        const ic = S.icons[String(curId)];
+        if (ic && S.iconTint[String(curId)] !== 'app' && ic.c1) { const k = i % 2; c1 = k ? (ic.c2 || ic.c1) : ic.c1; c2 = k ? ic.c1 : (ic.c2 || ic.c1); }
+        const glyph = (ic && ic.apps && ic.apps[a.key]) || a.ico;
         return `<div class="gyph-app${ok ? '' : ' locked'}" onclick="gyPhoneApp('${a.key}')" title="${ok ? esc(a.name) : esc(lockHint(a))}">
-            <div class="gyph-icon" style="--c1:${c1};--c2:${c2}">
-                <span>${a.ico}</span>
+            <div class="gyph-icon${ic ? ' themed' : ''}" style="--c1:${c1};--c2:${c2}">
+                <span>${esc(glyph)}</span>${ic && ic.deco ? `<i class="gyph-deco">${esc(ic.deco)}</i>` : ''}
                 ${!ok ? '<i class="gyph-lk">🔒</i>' : ''}${bd ? `<i class="gyph-bd">${bd}</i>` : ''}
             </div>
             <span class="gyph-an">${esc(a.name)}</span></div>`;
@@ -1540,14 +1606,16 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
             ${seen.length || mine.length ? `<button type="button" class="btn-edit-small" onclick="gyPhoneClearSeen('${charId}')">清空</button>` : ''}
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;">
-          ${seen.length ? seen.map(x => `
+          ${seen.length ? seen.map((x, i) => `
             <div style="background:white;padding:8px 10px;border-radius:6px;border:1px solid #eff3f4;">
               <div style="font-size:13px;"><b>${esc(x.name)}</b>
-                <span style="font-size:11px;color:#8b98a5;">　${esc(ago(x.at))}</span></div>
+                <span style="font-size:11px;color:#8b98a5;">　${esc(ago(x.at))}</span>
+                <span style="color:#f91880;cursor:pointer;float:right;font-size:12px;" onclick="gyPhoneDelSeen('${charId}','seen',${i})">删除</span></div>
               <div style="font-size:13px;color:#536471;line-height:1.7;margin-top:2px;">${esc(x.gist || '')}</div>
             </div>`).join('') : '<div style="color:#8b98a5;font-size:13px;">还没翻过 TA 的手机</div>'}
-          ${mine.map(x => `<div style="background:rgba(128,128,128,.06);padding:8px 10px;border-radius:6px;border:1px dashed #cfd9de;">
-              <div style="font-size:13px;color:#536471;">${esc(x.gist)}<span style="font-size:11px;color:#8b98a5;">　${esc(ago(x.at))}</span></div>
+          ${mine.map((x, i) => `<div style="background:rgba(128,128,128,.06);padding:8px 10px;border-radius:6px;border:1px dashed #cfd9de;">
+              <div style="font-size:13px;color:#536471;">${esc(x.gist)}<span style="font-size:11px;color:#8b98a5;">　${esc(ago(x.at))}</span>
+                <span style="color:#f91880;cursor:pointer;float:right;font-size:12px;" onclick="gyPhoneDelSeen('${charId}','seenMe',${i})">删除</span></div>
             </div>`).join('')}
           </div>`;
     }
@@ -1599,9 +1667,326 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
                   desc: '不用本地模板，而是按人设和最近发生的事写一批通知——会出现只属于这个角色的人和事（"排练室老周：周三还来吗"）。手机页上多一颗「✨ 让 TA 的手机活过来」，**只在你点它的时候才调**。',
                   cost: '点一次一次调用', defaultOff: true, group: '手机', where: '角色资料页 → 📱 → 右边那颗 ✨' }
             ];
+            defs.push(
+                { key: 'phoneCardIntake', label: '卡片里的"手机里的事"收进 TA 的手机',
+                  desc: '角色卡教模型写的 <msg>发送|接收|内容|时间</msg>、小红书、朋友圈、[消息-谁] 这些格式：发给你的变成 TA 真发给你的消息（转账走钱包），跟别人的收进 TA 手机对应的 app，聊天里只留一张「📱 TA 刚在手机上…」小卡。',
+                  cost: '不调 API', group: '手机', where: '聊天 → 📱 小卡；TA 的手机 → 消息/小红书/朋友圈' },
+                { key: 'phoneCardGen', label: '按卡片格式让手机动起来',
+                  desc: '手机侧栏多一颗「✨ 按卡片格式让手机动起来」：照这张卡自己写的手机格式（没有就用通用格式），让模型写一批 TA 最近跟别人的聊天、小红书、朋友圈，收进手机里。只在你点的时候调。',
+                  cost: '点一次一次调用', defaultOff: true, group: '手机', where: 'TA 的手机 → 侧栏' }
+            );
             defs.forEach(d => { if (!AUTO_FEATURE_DEFS.some(x => x.key === d.key)) AUTO_FEATURE_DEFS.push(d); });
         } catch (e) { console.warn('[手机] 注册开关失败：', e); }
     }
+
+    /* ================= 🃏 角色卡里的手机 =================
+       很多卡在世界书里教模型写"手机里发生的事"：
+         <msg>发送人|接收人|内容|时间</msg>、<rednote>…</rednote>（小红书）、
+         [消息-谁]: …、[语音-谁|时长]: …、[转账-谁]: …、<朋友圈>…</朋友圈>
+       以前这些要么是一坨方括号、要么靠酒馆插件才画得出来。现在：
+         · 发给你的 → 变成谷雨里 TA 真发给你的消息（转账走钱包，语音/表情/图片照样是一条消息）
+         · 跟别人的 → 收进 TA 手机对应的 app（消息 / 小红书 / 朋友圈）
+         · 聊天里只留一张小卡「📱 TA 刚在手机上…」，点开直接跳到那一页
+       另外：手机配色可以跟卡片走（从卡自带的状态栏/小组件样式里取色），图标可以照人设重画一套。 */
+    const CARD_CAP = { msgs: 300, notes: 60, moments: 80 };
+    const cardOf = id => {
+        const k = String(id);
+        if (!S.card[k]) S.card[k] = { msgs: [], notes: [], moments: [] };
+        ['msgs', 'notes', 'moments'].forEach(x => { if (!Array.isArray(S.card[k][x])) S.card[k][x] = []; });
+        return S.card[k];
+    };
+    const userNames = () => {
+        const n = [meName(), '{{user}}', 'user', '你', '我方', 'User'];
+        try { if (typeof userDisplayName === 'function') n.push(userDisplayName()); } catch (e) {}
+        try { if (currentUser && currentUser.handle) n.push(String(currentUser.handle).replace('@', '')); } catch (e) {}
+        return n.filter(Boolean).map(x => String(x).trim().toLowerCase());
+    };
+    const isUser = s => { const t = String(s || '').trim().toLowerCase(); return !!t && userNames().some(u => u && (t === u || t.indexOf(u) !== -1 && u.length >= 2)); };
+    // 名字对不对得上：卡里常写简称（季清衍 → 清衍）
+    const isChar = (c, s) => {
+        const t = String(s || '').trim(); if (!t) return false;
+        const n = String(c.name || '');
+        if (t === n || n.indexOf(t) !== -1 || t.indexOf(n) !== -1) return t.length >= 1;
+        if (t === '{{char}}' || t === 'char') return true;
+        const bits = n.split(/[_&＆\s·・]+/).filter(x => x.length >= 2);
+        return bits.some(b => t.indexOf(b) !== -1 || b.indexOf(t) !== -1 && t.length >= 2);
+    };
+    // 一条"消息内容"里的特殊格式：转账/语音/表情/图片
+    function specialOf(t) {
+        const s = String(t || '').trim();
+        let m;
+        if ((m = s.match(/^\[?\s*zz\s*[-：:]\s*([\d.]+)\s*元?\s*\]?$/i))) return { kind: 'money', amt: parseFloat(m[1]) };
+        if ((m = s.match(/^\[?\s*yy\s*[-：:]\s*([\s\S]+?)\]?$/i))) return { kind: 'voice', text: m[1] };
+        if ((m = s.match(/^\[?\s*bqb\s*[-：:]\s*([\s\S]+?)\]?$/i))) return { kind: 'sticker', text: m[1] };
+        if ((m = s.match(/^\[?\s*img\s*[-：:]\s*([\s\S]+?)\]?$/i))) return { kind: 'img', text: m[1] };
+        if ((m = s.match(/^\[?\s*music\s*[-：:]\s*([\s\S]+?)\]?$/i))) return { kind: 'music', text: m[1].replace('$', ' - ') };
+        return { kind: 'text', text: s };
+    }
+    const showOf = sp => sp.kind === 'money' ? `［转账］￥${sp.amt}` : sp.kind === 'voice' ? `🎤 ${sp.text}` : sp.kind === 'sticker' ? `［表情］${sp.text}`
+        : sp.kind === 'img' ? `［图片］${sp.text}` : sp.kind === 'music' ? `🎵 ${sp.text}` : sp.text;
+
+    // 从一段回复里把手机格式都拿出来。opts.phoneOnly：只收进手机（按卡生成手机内容时用）
+    window.gyPhoneIntake = function (c, text, opts) {
+        const res = { text: String(text || ''), toMe: [], logged: { msg: 0, note: 0, moment: 0 }, apps: [] };
+        try {
+            if (!c || !text || !on('phoneCardIntake')) return res;
+            const o = opts || {};
+            const box = cardOf(c.id);
+            const now = Date.now();
+            let t = res.text;
+            const toMeOk = !o.phoneOnly;
+            const log = (a, b, raw, time) => {
+                const sp = specialOf(raw);
+                box.msgs.push({ at: now + box.msgs.length % 1000, a: String(a).trim(), b: String(b).trim(), t: showOf(sp), time: String(time || '').trim() });
+                res.logged.msg++;
+            };
+            // ① <msg>发送|接收|内容|时间</msg>
+            t = t.replace(/<msg>([\s\S]*?)<\/msg>/gi, (m0, inner) => {
+                const p = inner.split('|');
+                if (p.length < 3) return m0;
+                const [a, b, body, time] = [p[0], p[1], p.slice(2, p.length >= 4 ? p.length - 1 : p.length).join('|'), p.length >= 4 ? p[p.length - 1] : ''];
+                if (isUser(a)) return '';                                   // 你那边说的话，模型复述的，不收
+                if (toMeOk && isChar(c, a) && isUser(b)) { res.toMe.push(specialOf(body)); return ''; }
+                log(a, b, body, time); return '';
+            });
+            // ② [消息-谁]: … / [语音-谁|时长]: … / [转账-谁]: …（小爪机那一套）
+            t = t.replace(/\[(消息|语音|转账)[-|]([^\]|]+)(?:\|([^\]]*))?\]\s*[:：]\s*([^\n]+)/g, (m0, kind, who, extra, body) => {
+                if (isUser(who)) return '';
+                const sp = kind === '转账' ? { kind: 'money', amt: parseFloat(String(body).replace(/[^\d.]/g, '')) || 0 }
+                    : kind === '语音' ? { kind: 'voice', text: body.trim() } : specialOf(body);
+                if (toMeOk && isChar(c, who)) { res.toMe.push(sp); return ''; }
+                box.msgs.push({ at: now + box.msgs.length % 1000, a: who.trim(), b: c.name, t: showOf(sp), time: '' });
+                res.logged.msg++; return '';
+            });
+            // ③ 小红书：帖子 9 段 / 评论 5 段
+            t = t.replace(/<rednote>([\s\S]*?)<\/rednote>/gi, (m0, inner) => {
+                const p = inner.split('|').map(x => x.trim());
+                if (p.length >= 8) {
+                    const [id, by, title, sub, body, time, likes, favs, cmts] = p;
+                    let n = box.notes.find(x => x.id === id);
+                    if (!n) { n = { id, at: now, comments: [] }; box.notes.push(n); }
+                    Object.assign(n, { by, title, sub, body, time, likes, favs, cmts });
+                    res.logged.note++; return '';
+                }
+                if (p.length >= 3) {
+                    const [id, by, body, time, likes] = p;
+                    let n = box.notes.find(x => x.id === id);
+                    if (!n) { n = { id, at: now, by: '', title: '（没看到原帖）', comments: [] }; box.notes.push(n); }
+                    n.comments.push({ by, t: body, time: time || '', likes: likes || '' });
+                    res.logged.note++; return '';
+                }
+                return m0;
+            });
+            // ④ 朋友圈
+            t = t.replace(/[<＜]朋友圈[>＞]([\s\S]*?)[<＜]\/朋友圈[>＞]/g, (m0, inner) => {
+                const body = String(inner).trim(); if (!body) return '';
+                box.moments.push({ at: now, by: c.name, t: body.replace(/<[^>]+>/g, ' ').slice(0, 800) });
+                res.logged.moment++; return '';
+            });
+            // 去掉卡片为了"画手机"塞的代码块壳子
+            t = t.replace(/```\s*```/g, '').replace(/\n{3,}/g, '\n\n').trim();
+            res.text = t;
+            if (res.logged.msg) res.apps.push('msg');
+            if (res.logged.note) res.apps.push('rednote');
+            if (res.logged.moment) res.apps.push('moment');
+            if (res.logged.msg + res.logged.note + res.logged.moment) {
+                Object.keys(CARD_CAP).forEach(k => { if (box[k].length > CARD_CAP[k]) box[k].splice(0, box[k].length - CARD_CAP[k]); });
+                save();
+            }
+        } catch (e) { console.warn('[卡片手机] 跳过：', e); }
+        return res;
+    };
+    // 聊天里那张"TA 刚在手机上…"小卡
+    window.gyPhonePeekHtml = function (msg) {
+        const p = msg.phone || {};
+        const bits = [];
+        if (p.msg) bits.push(`跟别人聊了 ${p.msg} 条`);
+        if (p.note) bits.push(`小红书动了 ${p.note} 下`);
+        if (p.moment) bits.push(`发了 ${p.moment} 条朋友圈`);
+        const app = (p.apps && p.apps[0]) || 'msg';
+        return `<div class="gyph-peekcard" onclick="event.stopPropagation(); gyPhoneOpenApp('${esc(msg.sender)}','${esc(app)}')">
+            <span class="gyph-pk-i">📱</span><span class="gyph-pk-t"><b>TA 刚在手机上</b>${esc(bits.join('，') || '有点动静')}</span><span class="gyph-pk-go">看看 ›</span></div>`;
+    };
+    window.gyPhoneOpenApp = async function (charId, app) {
+        if (!on('phoneOn')) return toast('先去 🎛️ 全部开关 → 📱 手机 打开「TA 的手机」');
+        await window.gyPhoneOpen(charId);
+        const a = appOf(app);
+        if (a && canSee(curId, a)) { curApp = app; msgWho = null; paint(); }
+        else if (a) toast('这个还点不开——' + lockHint(a));
+    };
+    // 卡里跟别人的对话：按"对方是谁"分组
+    function cardPeers(c) {
+        const box = S.card[String(c.id)]; if (!box) return [];
+        const map = new Map();
+        box.msgs.forEach(m => {
+            const other = isChar(c, m.a) ? m.b : m.a;
+            if (!other || isUser(other)) return;
+            const k = String(other).replace(/^群[:：]/, '群 ');
+            if (!map.has(k)) map.set(k, []);
+            map.get(k).push(m);
+        });
+        return Array.from(map.entries()).map(([n, list]) => ({ n, list, last: list[list.length - 1].at }))
+            .sort((a, b) => b.last - a.last);
+    }
+    function cardThread(c, who) {
+        const p = cardPeers(c).find(x => x.n === who);
+        if (!p) return null;
+        return p.list.slice(-40).map(m => [isChar(c, m.a) ? '我' : m.a, m.t + (m.time ? `  · ${m.time}` : '')]);
+    }
+    function appRednote(c) {
+        const box = S.card[String(c.id)];
+        const notes = box ? box.notes.slice().reverse() : [];
+        if (!notes.length) return empty('还没刷到什么。');
+        return notes.map(n => `<div class="gyph-rn">
+            <div class="gyph-rn-h"><b>${esc(n.title || '')}</b>${n.sub ? `<span>${esc(n.sub)}</span>` : ''}</div>
+            <div class="gyph-rn-by">${esc(n.by || '')}${n.time ? ' · ' + esc(n.time) : ''}</div>
+            ${n.body ? `<div class="gyph-rn-b">${esc(n.body).replace(/\[img-([^\]]+)\]/gi, '<span class="gyph-rn-img">🖼️ $1</span>')}</div>` : ''}
+            ${(n.likes || n.favs || n.cmts) ? `<div class="gyph-rn-st">♡ ${esc(n.likes || 0)}　☆ ${esc(n.favs || 0)}　💬 ${esc(n.cmts || n.comments.length)}</div>` : ''}
+            ${n.comments.length ? `<div class="gyph-rn-cm">${n.comments.slice(-6).map(x => `<div><b>${esc(x.by)}</b>${esc(x.t)}</div>`).join('')}</div>` : ''}
+        </div>`).join('');
+    }
+    function appMoment(c) {
+        const box = S.card[String(c.id)];
+        const ms = (box ? box.moments.slice() : []).concat(peerMoments(c)).sort((a, b) => (b.at || 0) - (a.at || 0));
+        if (!ms.length) return empty('朋友圈还是空的。');
+        return ms.map(m => `<div class="gyph-mo"><div class="gyph-av">${esc(String(m.by || c.name).slice(0, 1))}</div>
+            <div><b>${esc(m.by || c.name)}</b><div class="gyph-mo-t">${esc(m.t)}</div><em>${esc(ago(m.at))}</em>
+            ${(m.cm && m.cm.length) ? `<div class="gyph-mo-cm">${m.cm.map(x => `<div><b>${esc(x.by)}</b>：${esc(x.t)}</div>`).join('')}</div>` : ''}</div></div>`).join('');
+    }
+    // ✉️ 跟别的角色之间的信（js/56）
+    function appMail(c) {
+        const ls = peerMails(c).slice().reverse();
+        if (!ls.length) return empty('信箱是空的。');
+        return ls.map(m => `<details class="gyph-mail"><summary><span class="gyph-mail-d">${m.out ? '寄给' : '来自'}</span><b>${esc(m.who)}</b>
+            <span class="gyph-mail-t">《${esc(m.title || '无题')}》</span><em>${esc(ago(m.at))}</em></summary>
+            <div class="gyph-mail-b">${esc(m.body || '')}</div></details>`).join('');
+    }
+    // 📞 通话记录（js/56）
+    function appCalls(c) {
+        const ls = peerCalls(c).slice().reverse();
+        if (!ls.length) return empty('没有通话记录。');
+        return ls.map(m => `<details class="gyph-call"><summary><span class="gyph-call-d ${m.out ? 'out' : 'in'}">${m.out ? '↗' : '↙'}</span><b>${esc(m.who)}</b>
+            <span class="gyph-call-t">${esc(m.minutes)} 分钟 · ${esc(m.summary || '')}</span><em>${esc(ago(m.at))}</em></summary>
+            ${(m.lines || []).map(([w, t]) => `<div class="gyph-bub ${w === '我' ? 'self' : 'them'}">${esc(t)}</div>`).join('')}</details>`).join('');
+    }
+
+    /* ---------- 按卡片格式让手机动起来（一次调用，手动点）---------- */
+    function cardFormatSpec(c) {
+        let spec = '';
+        try {
+            const wbs = (typeof worldbooks !== 'undefined' && Array.isArray(worldbooks)) ? worldbooks : [];
+            (c.worldbooks || []).forEach(id => {
+                const w = wbs.find(x => x.id === id);
+                if (w && /<msg>|<rednote>|\[消息[-|]|朋友圈[>＞]|\[语音[-|]/.test(w.content || '') && spec.length < 3000) spec += '\n' + String(w.content).slice(0, 2400);
+            });
+        } catch (e) {}
+        return spec.trim();
+    }
+    window.gyPhoneCardGen = async function (charId) {
+        const c = charOf(charId); if (!c) return;
+        const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+        if (!api || !api.key) return toast('还没配 API');
+        const spec = cardFormatSpec(c);
+        const fmt = spec || `<msg>发送人|接收人|消息内容|MM月DD日 HH:MM</msg>
+<rednote>帖子ID|发布者|一级标题|二级标题|帖子内容|MM-DD HH:MM|点赞数|收藏数|评论数</rednote>
+<rednote>帖子ID|评论人|评论内容|MM-DD HH:MM|点赞数</rednote>
+<朋友圈>一条朋友圈的正文</朋友圈>`;
+        toast(`正在翻 ${c.name} 的手机…`);
+        try {
+            const base = (typeof buildBasePrompt === 'function') ? buildBasePrompt(c, false, '') : ('你是' + c.name);
+            const now = new Date().toLocaleString('zh-CN', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const ask = `现在是${now}。这一次**不是**在跟对方聊天——写出你手机里最近半天自然发生的事：你跟别人（朋友、家人、同事、群里）的聊天，你刷到或发的小红书，你发的朋友圈。
+要求：像真实的手机，零碎、有来有回；按你的人设、处境和世界观来，人物用世界书里真实存在的，没有就合理编；不要写你跟对方（{{user}}）的聊天。
+一共 8~16 条，**严格按下面的格式**，一条一行，不要别的文字、不要解释：
+${fmt}`;
+            const msgs = (typeof buildStructuredMessages === 'function') ? buildStructuredMessages(base, [], ask) : [{ role: 'user', content: base + '\n' + ask }];
+            const data = await callChatCompletionAPI(api, msgs);
+            const raw = (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+            const r = window.gyPhoneIntake(c, raw, { phoneOnly: true });
+            const n = r.logged.msg + r.logged.note + r.logged.moment;
+            toast(n ? `${c.name} 的手机里多了 ${n} 条` : '这次没写出能认的格式，再点一次试试');
+            paint();
+        } catch (e) { toast('没翻成：' + (e.message || e)); }
+    };
+
+    /* ---------- 手机配色跟卡片走 ---------- */
+    const palCache = {};
+    function hexOf(s) {
+        s = String(s).trim();
+        let m = s.match(/^#([0-9a-f]{3})$/i); if (m) return '#' + m[1].split('').map(x => x + x).join('');
+        m = s.match(/^#([0-9a-f]{6})$/i); if (m) return '#' + m[1].toLowerCase();
+        m = s.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+        if (m) return '#' + [m[1], m[2], m[3]].map(x => Math.min(255, +x).toString(16).padStart(2, '0')).join('');
+        return null;
+    }
+    function hsl(hex) {
+        const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+        let h = 0, s = 0;
+        if (mx !== mn) {
+            const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+            h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60;
+        }
+        return { h, s, l };
+    }
+    function cardPalette(charId) {
+        const k = String(charId);
+        if (palCache[k] && Date.now() - palCache[k].at < 60000) return palCache[k].p;
+        let p = null;
+        try {
+            const list = (typeof regexScripts !== 'undefined' ? regexScripts : []).filter(rs => rs && Array.isArray(rs.charScope)
+                && rs.charScope.map(String).includes(k) && typeof rs.replace === 'string' && rs.replace.length > 200);
+            const cnt = {};
+            list.forEach(rs => {
+                (rs.replace.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgba?\([^)]+\)/g) || []).forEach(x => {
+                    const h = hexOf(x); if (!h) return;
+                    const q = hsl(h);
+                    if (q.s < 0.25 || q.l < 0.12 || q.l > 0.88) return;       // 黑白灰不算"卡片的颜色"
+                    cnt[h] = (cnt[h] || 0) + 1;
+                });
+            });
+            const top = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]);
+            if (top.length) {
+                const a = top[0];
+                const hA = hsl(a).h;
+                const b = top.find(x => Math.abs(hsl(x).h - hA) > 25) || top[1] || a;
+                p = { a, b, hue: Math.round(hA), hue2: Math.round(hsl(b).h) };
+            }
+        } catch (e) {}
+        palCache[k] = { at: Date.now(), p };
+        return p;
+    }
+    const skinSrcOf = id => S.skinSrc[String(id)] || (cardPalette(id) ? 'card' : 'persona');
+    window.gyPhoneSkinSrc = async function (charId, v) { S.skinSrc[String(charId)] = v; await save(); paint(); };
+
+    /* ---------- 图标照人设重画 ---------- */
+    window.gyPhoneIconAi = async function (charId) {
+        const c = charOf(charId); if (!c) return;
+        const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+        if (!api || !api.key) return toast('还没配 API');
+        toast(`在照 ${c.name} 的人设设计图标…`);
+        try {
+            const keys = APPS.map(a => `${a.key}（${a.name}）`).join('、');
+            const persona = String((c.persona || '') + '\n' + (c.bio || '')).slice(0, 2500);
+            const prompt = `下面是一个角色的人设。请为 TA 的手机设计一套图标主题：从人设里挑出最能代表 TA 的一个元素（喜欢的东西、职业、性格、审美都行，要具体，不要泛泛的"可爱"），整套图标围绕它。
+每个 app 用**一个 emoji** 做图标主体，尽量既像这个 app 的用途、又带着主题元素；再给一个贯穿整套的小装饰 emoji，和两种主题色。
+app 列表：${keys}
+【人设】
+${persona}
+只输出 JSON：{"motif":"主题元素，10字以内","why":"为什么，20字以内","deco":"一个装饰emoji","c1":"#十六进制颜色","c2":"#十六进制颜色","apps":{"msg":"emoji", ...每个 app 一个}}`;
+            const data = await callChatCompletionAPI(api, [{ role: 'user', content: prompt }]);
+            let r = (typeof parseModelJson === 'function') ? parseModelJson(data.choices?.[0]?.message?.content || '') : null;
+            if (Array.isArray(r)) r = r[0];
+            if (!r || !r.apps) return toast('这次没设计出来，再点一次试试');
+            const apps = {};
+            Object.keys(r.apps).forEach(k => { const v = String(r.apps[k] || '').trim(); if (appOf(k) && v && v.length <= 8) apps[k] = v; });
+            S.icons[String(charId)] = { at: Date.now(), motif: String(r.motif || '').slice(0, 16), why: String(r.why || '').slice(0, 30),
+                deco: String(r.deco || '').slice(0, 4), c1: hexOf(r.c1) || null, c2: hexOf(r.c2) || null, apps };
+            await save(); paint();
+            toast(`换好了：${S.icons[String(charId)].motif || '新图标'}`);
+        } catch (e) { toast('没设计成：' + (e.message || e)); }
+    };
+    window.gyPhoneIconReset = async function (charId) { delete S.icons[String(charId)]; await save(); paint(); };
 
     /* ---------- 样式 ---------- */
     const CSS = `
@@ -1742,6 +2127,42 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
     .gyph-pin{font-size:38px;filter:drop-shadow(0 3px 8px rgba(0,0,0,.3));}
     .gyph-map b{display:block;font-size:15.5px;margin-top:8px;}
     .gyph-map span{font-size:11px;opacity:.6;}
+    .gyph-icon.themed{position:relative;}
+    .gyph-deco{position:absolute;right:-4px;bottom:-4px;font-size:12px;font-style:normal;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));}
+    .gyph-rn{background:rgba(255,255,255,.1);border-radius:12px;padding:10px 11px;margin-bottom:9px;}
+    .gyph-rn-h b{display:block;font-size:13px;line-height:1.4;}
+    .gyph-rn-h span{display:block;font-size:11px;opacity:.75;margin-top:2px;}
+    .gyph-rn-by{font-size:10.5px;opacity:.6;margin:4px 0;}
+    .gyph-rn-b{font-size:11.5px;line-height:1.6;opacity:.92;}
+    .gyph-rn-img{display:inline-block;margin:4px 0;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.14);font-size:11px;}
+    .gyph-rn-st{font-size:10.5px;opacity:.65;margin-top:6px;}
+    .gyph-rn-cm{margin-top:7px;border-top:1px solid rgba(255,255,255,.12);padding-top:6px;display:flex;flex-direction:column;gap:4px;}
+    .gyph-rn-cm div{font-size:11px;line-height:1.5;opacity:.88;}
+    .gyph-rn-cm b{margin-right:5px;}
+    .gyph-mo{display:flex;gap:10px;padding:10px 2px;border-bottom:1px solid rgba(255,255,255,.09);}
+    .gyph-mo-cm{margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.07);font-size:11.5px;line-height:1.6;}
+    .gyph-mail,.gyph-call{padding:9px 2px;border-bottom:1px solid rgba(255,255,255,.09);font-size:12.5px;}
+    .gyph-mail summary,.gyph-call summary{display:flex;align-items:baseline;gap:6px;cursor:pointer;list-style:none;flex-wrap:wrap;}
+    .gyph-mail summary::-webkit-details-marker,.gyph-call summary::-webkit-details-marker{display:none;}
+    .gyph-mail-d{font-size:11px;opacity:.6;}
+    .gyph-mail-t,.gyph-call-t{flex:1;min-width:0;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .gyph-mail em,.gyph-call em{font-style:normal;font-size:10.5px;opacity:.5;}
+    .gyph-mail-b{margin-top:8px;padding:10px 12px;border-radius:10px;background:rgba(255,248,230,.93);color:#4a3b22;line-height:1.8;white-space:pre-wrap;font-family:serif;}
+    .gyph-call-d{font-weight:700;}
+    .gyph-call-d.out{color:#5ad06a;}
+    .gyph-call-d.in{color:#63b3ff;}
+    .gyph-call .gyph-bub{margin-top:6px;}
+    .gyph-mo>div:nth-child(2){flex:1;min-width:0;}
+    .gyph-mo b{font-size:12px;}
+    .gyph-mo-t{font-size:11.5px;line-height:1.6;margin-top:3px;white-space:pre-wrap;}
+    .gyph-mo em{font-size:10px;opacity:.55;font-style:normal;}
+    .gyph-peekcard{display:inline-flex;align-items:center;gap:10px;margin-top:4px;padding:9px 12px;border-radius:14px;cursor:pointer;
+        background:linear-gradient(135deg,#1f2733,#2d3a4d);color:#fff;max-width:300px;box-shadow:0 4px 12px rgba(0,0,0,.12);}
+    .gyph-peekcard:hover{filter:brightness(1.1);}
+    .gyph-pk-i{font-size:20px;}
+    .gyph-pk-t{display:flex;flex-direction:column;font-size:12px;line-height:1.45;opacity:.92;}
+    .gyph-pk-t b{font-size:12.5px;}
+    .gyph-pk-go{font-size:11.5px;opacity:.75;white-space:nowrap;}
     .gyph-msg{display:flex;align-items:center;gap:11px;padding:10px 2px;
         border-bottom:1px solid rgba(255,255,255,.09);}
     .gyph-av{width:36px;height:36px;border-radius:50%;flex-shrink:0;

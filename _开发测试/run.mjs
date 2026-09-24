@@ -1,11 +1,12 @@
 // 在无头浏览器里真正把谷雨跑起来，验证「续写工作台」这个新功能的完整链路。
 // CDN 依赖（localforage / mammoth）离线时用本地桩顶上，AI 请求全部拦截成假响应。
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 import fs from 'fs';
 
 const root = process.cwd();
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 
 const errors = [];
@@ -53,7 +54,7 @@ await page.route('**/chat/completions', async route => {
 });
 await page.route('**/v1/messages', route => route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: [DONE]\n\n' }));
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => typeof window.saveAllData === 'function' && typeof window.renderStoryStudio === 'function', { timeout: 15000 });
 await page.waitForTimeout(600);
 
@@ -66,7 +67,7 @@ check('js/16 已加载', await page.evaluate(() => typeof renderStoryStudio === 
 check('storySessions 全局已声明', await page.evaluate(() => Array.isArray(storySessions)));
 check('存档快照包含 storySessions', await page.evaluate(() =>
   Object.prototype.hasOwnProperty.call(getFullDataSnapshot(), 'storySessions')));
-check('导航栏有「续写」入口', (await page.locator('#nav-storystudio').count()) === 1);
+check('「故事」页里有「续写」入口', (await page.locator('#nav-novel').count()) === 1 && (await page.locator('#view-story-studio').count()) === 1);   // 续写并进了「故事」页顶上的切换
 check('mobileViewTitles 已注册', await page.evaluate(() => mobileViewTitles.storyStudio === '续写'));
 
 // ---------- 2. 旧入口确实删干净了 ----------
@@ -90,12 +91,12 @@ await page.evaluate(() => {
 });
 
 // ---------- 4. 进入续写工作台 ----------
-await page.click('#nav-storystudio');
+await page.evaluate(() => switchMainView('storyStudio'));
 await page.waitForTimeout(400);
 check('续写视图已显示', await page.evaluate(() =>
   document.getElementById('view-story-studio').style.display === 'block'));
-check('导航项高亮', await page.evaluate(() =>
-  document.getElementById('nav-storystudio').className.includes('active')));
+check('导航项高亮（续写归在「故事」下面）', await page.evaluate(() =>
+  document.getElementById('nav-novel').className.includes('active')));
 check('空态提示显示', (await page.locator('#storyStudioList .ss-empty').count()) === 1);
 
 // ---------- 5. 新建会话 ----------
@@ -151,10 +152,10 @@ check('开场白弹窗打开', await page.evaluate(() =>
   document.getElementById('greetingPickerModal').style.display === 'flex'));
 check('弹窗标题说明是第一轮', (await page.textContent('#greetingPickerTitle')).includes('续写第一轮'));
 check('列出了 2 个候选（firstMessage + alternate）',
-  (await page.locator('#greetingPickerList > div').count()) === 2);
+  (await page.locator('#greetingPickerList > div:not(#randomGreetingBtn)').count()) === 2);   // 最上面那张「🎲 随机生成一条」不算候选
 check('picker mode 是 storyStudio', await page.evaluate(() => window.__greetingPickerMode === 'storyStudio'));
 
-await page.locator('#greetingPickerList > div').first().click();
+await page.locator('#greetingPickerList > div:not(#randomGreetingBtn)').first().click();
 await page.waitForTimeout(500);
 check('开场白落成第一轮', await page.evaluate(() => storySessions[0].turns.length === 1));
 check('第一轮是 AI 角色的', await page.evaluate(() =>
@@ -308,7 +309,7 @@ await page.evaluate(() => {
   });
   saveAllData();
 });
-await page.click('#nav-storystudio');
+await page.evaluate(() => switchMainView('storyStudio'));
 await page.waitForTimeout(600);
 check('旧 storyTurns 已迁移成会话', await page.evaluate(() =>
   storySessions.some(s => s.id === 'ss_migrated_777' && s.turns.length === 2)));
@@ -348,7 +349,7 @@ await page.waitForTimeout(400);
 check('小说开场白 picker mode 仍是 novelOutline', await page.evaluate(() =>
   window.__greetingPickerMode === 'novelOutline'));
 check('小说开场白弹窗标题是"作为一章内容"', (await page.textContent('#greetingPickerTitle')).includes('一章内容'));
-await page.locator('#greetingPickerList > div').first().click();
+await page.locator('#greetingPickerList > div:not(#randomGreetingBtn)').first().click();
 await page.waitForTimeout(400);
 check('小说开场白进了章节预览区', await page.evaluate(() =>
   document.getElementById('novelTempArea').style.display === 'block' &&
@@ -401,7 +402,7 @@ const otherCharHtml = await page.evaluate(() =>
 check('状态栏·别的角色不会误触发', !otherCharHtml.includes('test-statusbar'));
 
 // 端到端：在续写工作台里真的生成一轮带状态栏的正文
-await page.click('#nav-storystudio');
+await page.evaluate(() => switchMainView('storyStudio'));
 await page.waitForTimeout(300);
 await page.evaluate(() => {
   const s = storySessions.find(x => x.title === '旧书店的第七天');

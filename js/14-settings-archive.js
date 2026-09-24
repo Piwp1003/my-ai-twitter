@@ -122,14 +122,14 @@ function addTheaterLog(entry) {
     if ((tries || 0) < 12) setTimeout(() => regTheaterSrc((tries || 0) + 1), 500);
 })(0);
 
-async function runTheaterScene(manual) {
+async function runTheaterScene(manual, forChar) {
     // 🎬 报一下场景：自主模式调过来的时候外面已经定了场景，这里不抢（Soft）。
     //    所以"自动跑"和"你手动点这一次"能在注入页里分开设。
     if (typeof window.gyInjectInSceneSoft === 'function')
-        return window.gyInjectInSceneSoft('theater', () => runTheaterSceneInner(manual));
-    return runTheaterSceneInner(manual);
+        return window.gyInjectInSceneSoft('theater', () => runTheaterSceneInner(manual, forChar));
+    return runTheaterSceneInner(manual, forChar);
 }
-async function runTheaterSceneInner(manual) {
+async function runTheaterSceneInner(manual, forChar) {
     if (!manual && typeof isAutoOn === 'function' && !isAutoOn('charTheater')) return { blocked: 'switch' };
     if (!isGlobalCharInteractionEnabled()) return { blocked: 'interaction' };
     if (!manual) {
@@ -144,7 +144,19 @@ async function runTheaterSceneInner(manual) {
     for (let rel of charRelationships) {
         let charA = myCharacters.find(c => c.id == rel.fromId);
         let charB = myCharacters.find(c => c.id == rel.toId);
-        if (charA && charB && charA.id !== charB.id) relatedPairs.push({ charA, charB, relation: rel.label || '认识' });
+        if (charA && charB && charA.id !== charB.id) {
+            // 关系是有方向的（A 暗恋 B ≠ B 暗恋 A）：两个方向都写上，对调 A/B 也不会把意思弄反
+            const back = charRelationships.find(r2 => r2 !== rel && r2.fromId == rel.toId && r2.toId == rel.fromId);
+            const relation = `${charA.name}→${charB.name}：${rel.label || '认识'}` + (back ? `；${charB.name}→${charA.name}：${back.label || '认识'}` : '');
+            if (!relatedPairs.some(p => (p.charA === charB && p.charB === charA))) relatedPairs.push({ charA, charB, relation });
+        }
+    }
+    // 自主模式里 TA 自己选了"去找关系网里的某个人"：以前这里还是全员随便抽一对，
+    // 结果常常演的是另外两个人的事。现在只在跟 TA 有关系的那几对里抽。
+    if (forChar) {
+        const mine = relatedPairs.filter(p => String(p.charA.id) === String(forChar.id) || String(p.charB.id) === String(forChar.id))
+            .map(p => String(p.charA.id) === String(forChar.id) ? p : { charA: p.charB, charB: p.charA, relation: p.relation });
+        if (mine.length) relatedPairs = mine; else return null;
     }
     if (relatedPairs.length === 0) return null;
 
@@ -473,7 +485,7 @@ const GY_AUTONOMY_ACTIONS = [
             && (typeof isGlobalCharInteractionEnabled !== 'function' || isGlobalCharInteractionEnabled())
             && Array.isArray(charRelationships) && charRelationships.length > 0,
         run: async (char) => {
-            const r = await runTheaterScene(true);
+            const r = await runTheaterScene(true, char);   // 是 TA 自己去找人，所以这一场里一定有 TA
             if (!r || r.blocked) return null;
             return '跟人碰了个面';
         }
@@ -513,6 +525,9 @@ async function runAutonomyTurn(char, manual) {
     try {
         // 只把此刻真的做得成的动作摆上桌：条件不满足的（比如没有待办可划、小剧场开关关着）
         // 直接不出现在选项里，省得模型选了个做不了的，白花一次调用。
+        // 🎲 没有"没到间隔就不许做"这回事：做得成的事全摆上桌，TA 自己掂量。
+        //    时间管理大师卡上的数（上次说过大概多久做一次、上次是什么时候）只是附在旁边给 TA 参考。
+        const lifeEvs = (typeof window.gyTaEventsFor === 'function') ? window.gyTaEventsFor(char) : [];
         const avail = GY_AUTONOMY_ACTIONS.filter(a => { try { return a.need(char); } catch (e) { return false; } });
         if (avail.length === 0) return { blocked: 'noaction' };
 
@@ -531,18 +546,17 @@ async function runAutonomyTurn(char, manual) {
                 .join('\n');
         }
 
-        const menu = avail.map(a => `- ${a.key}：${a.label}（${a.hint}）`).join('\n');
+        const menu = avail.map(a => `- ${a.key}：${a.label}（${a.hint}${(typeof window.gyTaActNote === 'function') ? window.gyTaActNote(char, a.key) : ''}）`).join('\n');
+        const later = (char.autoQueue || []).filter(q => q && q.at > Date.now());
 
-        const { minM, maxM } = gyAutonomyBounds(char);
         const ask = `现在的真实时间：${nowStr}。
 
 停一下，想想你自己：这个点，你手头在忙什么，心里搁着什么事，有没有什么想说、想做、想找谁。
-然后从下面这张表里挑**一件**你现在真的会去做的事。
 
-【你现在可以做的事】
+【你能做的事】
 ${menu}
 
-【你还没办完的事】
+${lifeEvs.length ? `【上次之后，你身上发生了这些事】\n${lifeEvs.slice(-6).map(e => '· ' + e.t).join('\n')}\n\n` : ''}${later.length ? `【你之前打算待会儿做的】\n${later.map(q => '· ' + q.label + '（' + Math.max(1, Math.round((q.at - Date.now()) / 60000)) + ' 分钟后）' + (q.reason ? '：' + q.reason : '')).join('\n')}\n（还想做就不用再写一遍；改主意了也可以不管它）\n\n` : ''}【你还没办完的事】
 ${openTodos.length ? openTodos.map(t => `· ${t.text}${t.date ? `（${t.date}）` : ''}`).join('\n') : '（清单是空的）'}
 
 【你和${who}最近聊到哪儿了】
@@ -551,67 +565,119 @@ ${recentChat ? recentChat.slice(-800) : '（最近没怎么说话）'}
 【首页上别人刚发的】
 ${othersFeed || '（没什么新东西）'}
 
-${recentActs.length ? `【你刚做过这些，别一直重复同一件】\n${recentActs.map(a => '· ' + a).join('\n')}\n` : ''}
-挑选原则：
-1. 按你的性格和此刻的处境来，不要因为"该轮到发推文了"就发推文——真人不是这样的。
-2. 大部分时候人是不做什么的。如果这个点你正忙、或者确实没什么想说的，就老实选 nothing，这不丢人。
-3. 别老找${who}。一个人一天里绝大多数时间跟另一个人无关。
-4. 选了什么就当真去做，理由要具体到"因为刚才/因为待办上那件/因为日程里这一段"，不要写"因为我很在意ta"这种空话。
+${recentActs.length ? `【你最近做过这些】\n${recentActs.map(a => '· ' + a).join('\n')}\n` : ''}
+像个真人一样决定：
+1. 做不做、做什么、做几件、什么时候做，全由你自己定，没有规定。
+   · 可以什么都不做——大部分时候人就是在过自己的日子。
+   · 可以只做一件。
+   · 也可以好几件：一件事常常会勾出另一件，做哪几件、先后顺序、怎么搭配，都看你此刻的心情和遇到的事，别套固定的组合。
+2. 每件事什么时候做也由你定：想到就立刻做（after 填 0），或者先放着，等有空了再做（after 填过多少分钟，多久都行）。
+3. 按你的性格和此刻的处境来，不要因为"好久没发推了"就发推。理由要具体到"因为刚才/因为待办上那件/因为日程里这一段"，不要写空话。
+4. 别老找${who}。一个人一天里绝大多数时间跟另一个人无关。
 
-还有一件事：做完这件之后，你大概隔多久才会再想起来做点什么？按你的性格和今天的安排自己定，别定成一个整齐的固定值——
-正忙着/心情不好/没什么事发生，就隔久一点（几个小时甚至更久）；刚跟人吵完、正等着谁回话、手头这事没完，就隔短一点。
-填在 nextIn 里，单位是分钟，范围 ${minM} 到 ${maxM} 分钟。
+另外：
+· nextIn：这些都做完（或者什么都不做）之后，你大概过多久会再停下来想想要不要做点什么？分钟数，多久都行，按你的性子和今天的安排来，别凑整数。
+· 每件事的 nextSame：这件事做完之后，下次再做同一件事大概隔多久（分钟，多久都行；几乎不会再做就填 0）；sameWhy 一句你自己的说法（12 字以内）。
 
-请严格只返回 JSON，不要用 \`\`\` 包裹，不要写别的：
-{"action":"上表里的 key","reason":"一句话，你为什么现在要做这个（20字内）","param":"看情况填：换状态就填新状态；办掉待办就填那条待办的原文；记新待办就填要记的事；匿名发帖/递料可以填个话题；其余留空字符串","nextIn":${minM} 到 ${maxM} 之间的一个数字}`;
+请严格只返回 JSON，不要用 \`\`\` 包裹，不要写别的。什么都不做就让 plan 是空数组：
+{"plan":[{"action":"上表里的 key","after":0,"reason":"一句话，为什么要做（20字内）","param":"看情况填：换状态就填新状态；办掉待办就填那条待办的原文；记新待办就填要记的事；匿名发帖/递料可以填个话题；其余留空","nextSame":分钟数,"sameWhy":""}],"nextIn":分钟数}`;
 
         const messages = buildStructuredMessages(buildBasePrompt(char, true, recentChat), [], ask);
         const data = await callChatCompletionAPI(api, messages);
         let raw = (data.choices?.[0]?.message?.content || '').trim();
         raw = raw.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
-        const decision = (typeof parseModelJson === 'function') ? parseModelJson(raw) : null;
-        if (!decision || !decision.action) return { blocked: 'parse', raw: raw.slice(0, 120) };
+        let decision = (typeof parseModelJson === 'function') ? parseModelJson(raw) : null;
+        if (Array.isArray(decision)) decision = { plan: decision };
+        if (!decision || (!Array.isArray(decision.plan) && !decision.action)) return { blocked: 'parse', raw: raw.slice(0, 120) };
+        // 老格式（一次只挑一件）也认
+        const plan0 = Array.isArray(decision.plan) ? decision.plan : [decision];
+        const plan = plan0.filter(x => x && x.action && String(x.action).trim() !== 'nothing')
+            .map(x => ({ x, act: avail.find(a => a.key === String(x.action).trim()) }))
+            .filter(y => y.act).slice(0, 6);
+        if (plan0.some(x => x && x.action && String(x.action).trim() !== 'nothing') && !plan.length)
+            return { blocked: 'unknown', raw: String((plan0[0] || {}).action || '').slice(0, 40) };
 
-        const picked = avail.find(a => a.key === String(decision.action).trim());
-        if (!picked) return { blocked: 'unknown', raw: String(decision.action).slice(0, 40) };
-
-        const entry = {
-            at: Date.now(), charId: char.id, charName: char.name,
-            action: picked.key, label: picked.label,
-            reason: String(decision.reason || '').slice(0, 60),
-            result: '', ok: false
-        };
-
-        // 🎲 节奏也由 TA 自己定：TA 说多久之后再想起来，就多久之后。
-        // 说得离谱或者干脆没说，gyClampAutonomyGap 会回落到那个偏短的随机分布。
-        const gap = gyClampAutonomyGap(char, decision.nextIn);
+        // 🎲 下一次什么时候再停下来想：TA 说多久就多久，不设上下限；没说/说得不是个数才用随机兜底
+        char.evSeenAt = Date.now();   // 这些事 TA 已经掂量过了，下次只看新发生的
+        const gap = gyAutonomyGapFromTA(char, decision.nextIn);
         char.nextAutonomyAt = Date.now() + gap;
-        entry.nextIn = Math.round(gap / 60000);
 
-        if (picked.key === 'nothing') {
-            entry.result = '什么都没做';
-            entry.ok = true;
+        if (!plan.length) {
+            const entry = { at: Date.now(), charId: char.id, charName: char.name, action: 'nothing', label: '什么都不做',
+                reason: String(decision.reason || (plan0[0] && plan0[0].reason) || '').slice(0, 60), result: '什么都没做', ok: true, nextIn: Math.round(gap / 60000) };
             gyAutonomyLog(char, entry);
             if (typeof saveAllData === 'function') saveAllData();
             return { ok: true, entry };
         }
 
-        try {
-            const res = await picked.run(char, decision.param);
-            entry.result = res || picked.label;
-            entry.ok = !!res || res === undefined;
-        } catch (e) {
-            console.error(`自主行动「${picked.label}」执行失败：`, e);
-            entry.result = '想做但没做成（' + (e.message || e) + '）';
-            entry.ok = false;
+        // 立刻做的按顺序做掉；说了"等会儿"的排进 TA 自己的待办队列，到点了再做（js/14 的定时器）
+        const done = [];
+        if (!Array.isArray(char.autoQueue)) char.autoQueue = [];
+        for (const { x, act } of plan) {
+            const after = parseFloat(x.after);
+            if (isFinite(after) && after >= 1) {
+                char.autoQueue.push({ id: 'aq_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), key: act.key, label: act.label,
+                    param: x.param || '', reason: String(x.reason || '').slice(0, 60), at: Date.now() + after * 60000, planned: Date.now(),
+                    nextSame: x.nextSame, sameWhy: x.sameWhy || '' });
+                continue;
+            }
+            done.push(await gyAutonomyRunItem(char, act, x));
         }
-        gyAutonomyLog(char, entry);
-        char.lastAutonomyTime = Date.now();
         if (typeof saveAllData === 'function') saveAllData();
-        return { ok: entry.ok, entry };
+        const entry = done[0] || { at: Date.now(), charId: char.id, charName: char.name, action: 'later', label: '打算待会儿做',
+            reason: plan.map(p => p.act.label).join('、'), result: '先放着，等会儿再做', ok: true };
+        if (!done.length) gyAutonomyLog(char, entry);
+        entry.nextIn = Math.round(gap / 60000);
+        return { ok: done.length ? done.every(e => e.ok) : true, entry, entries: done, queued: plan.length - done.length };
     } finally {
         runAutonomyTurn._busy = false;
     }
+}
+
+// 真去做一件事（立刻做的、或者队列里到点了的），记进自主日志，顺便记下"这件事下次大概隔多久"
+async function gyAutonomyRunItem(char, act, x, fromQueue) {
+    const entry = { at: Date.now(), charId: char.id, charName: char.name, action: act.key, label: act.label,
+        reason: String((x && x.reason) || '').slice(0, 60), result: '', ok: false, queued: !!fromQueue };
+    try {
+        let res = await act.run(char, x && x.param);
+        // 动作可以回一个对象：{ text, jump（点通知跳去哪）, selfNotified（自己已经弹过通知了） }
+        if (res && typeof res === 'object') { entry.jump = res.jump || null; entry.selfNotified = !!res.selfNotified; entry.anonymous = !!res.anonymous; entry.secret = !!res.secret; res = res.text || act.label; }
+        entry.result = res || act.label;
+        entry.ok = !!res || res === undefined;
+    } catch (e) {
+        console.error(`自主行动「${act.label}」执行失败：`, e);
+        entry.result = '想做但没做成（' + (e.message || e) + '）';
+        entry.ok = false;
+    }
+    gyAutonomyLog(char, entry);
+    char.lastAutonomyTime = Date.now();
+    // 🔔 每件事都弹通知，点一下跳过去（js/60）
+    try { if (entry.ok && typeof window.gyActNotify === 'function') window.gyActNotify(char, act, entry); } catch (e) {}
+    if (entry.ok && typeof window.gyTaActDone === 'function' && x && x.nextSame != null && x.nextSame !== '')
+        window.gyTaActDone(char, act.key, x.nextSame, x.sameWhy);
+    return entry;
+}
+// 队列里到点了的事：一次做一件（花钱的动作一件一件来）
+async function gyAutonomyRunQueue(char) {
+    if (!char || !Array.isArray(char.autoQueue) || !char.autoQueue.length) return null;
+    const now = Date.now();
+    char.autoQueue.sort((a, b) => a.at - b.at);
+    const q = char.autoQueue[0];
+    if (!q || q.at > now) return null;
+    char.autoQueue.shift();
+    const act = GY_AUTONOMY_ACTIONS.find(a => a.key === q.key);
+    let ok = false; try { ok = !!act && act.need(char); } catch (e) {}
+    if (!ok) { if (typeof saveAllData === 'function') saveAllData(); return null; }   // 条件没了（开关关了之类）：这件就算了
+    const e = await gyAutonomyRunItem(char, act, q, true);
+    if (typeof saveAllData === 'function') saveAllData();
+    return e;
+}
+window.gyAutoQueueOf = c => (c && Array.isArray(c.autoQueue) ? c.autoQueue.slice().sort((a, b) => a.at - b.at) : []);
+// TA 说的"多久之后再想"：多久都行，只要是个数；不是数才用随机兜底
+function gyAutonomyGapFromTA(char, minutes) {
+    const n = parseFloat(minutes);
+    if (!isFinite(n) || n < 0) return gyRollAutonomyGap(char);
+    return Math.round(n * 60000);
 }
 
 // 🎲 掷一个"下次什么时候再想起来做点什么"的间隔（毫秒）。
@@ -620,9 +686,9 @@ ${recentActs.length ? `【你刚做过这些，别一直重复同一件】\n${re
 // 分布故意做成"偏短但偶尔很长"：真人也不是均匀地每隔固定时间做一件事，
 // 大多数时候隔不久，偶尔一忙就是大半天没动静。
 function gyAutonomyBounds(char) {
-    const minM = Math.max(5, parseInt(char && char.autonomyMinMinutes) || 30);          // 最快多久一次（分钟）
-    const maxM = Math.max(minM + 5, (parseInt(char && char.autonomyMaxHours) || 8) * 60); // 最慢多久一次（小时→分钟）
-    return { minM, maxM };
+    // 🎲 以前这里是"最快/最慢多久一次"的上下限（角色编辑页那两个框）。现在不设限：什么时候做全由 TA 说了算。
+    //    这两个数只剩一个用处——TA 没说/说的不是个数的时候，随机兜底掷在这个范围里（偏短，偶尔很长）。
+    return { minM: 20, maxM: 8 * 60 };
 }
 function gyRollAutonomyGap(char) {
     const { minM, maxM } = gyAutonomyBounds(char);
@@ -848,6 +914,11 @@ function startAutonomyTimer() {
             const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
             if (!api || !api.key) return;
 
+            // 先把 TA 们之前说"等会儿再做"的、已经到点的事做掉（每人一次一件）
+            for (const qc of (myCharacters || [])) {
+                if (getCharActMode(qc) !== 'auto') continue;
+                try { await gyAutonomyRunQueue(qc); } catch (e) { console.warn('自主队列出错：', e); }
+            }
             const now = Date.now();
             const due = (myCharacters || []).filter(c => {
                 if (getCharActMode(c) !== 'auto') return false;

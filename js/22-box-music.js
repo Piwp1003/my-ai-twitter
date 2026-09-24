@@ -66,6 +66,7 @@
         chat: []                // 这次一起听的对话 [{who,name,text,at}]
     };
     let audio = null, blobUrls = {}, lrcLines = [], lrcIdx = -1, dragging = false;
+    let wxHid = false;          // 💬 微信模式里临时收起的（不写存档）
     let editingId = null;        // 正在编辑哪首歌（管理面板里的表单）
 
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -630,6 +631,8 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
 .gym-pl.on b{color:#1d9bf0;}
 @media (max-width:600px){
   #gymRoot{right:12px;bottom:80px;}
+  /* 在聊天页里：往上挪一截，别挡住输入框（手机上输入框就在最底下） */
+  body:has(#view-chat:not([style*="none"])) #gymRoot{bottom:150px;}
   .gym-box{max-width:calc(100vw - 24px);}
   .gym-box[data-skin="vinyl-wide"],.gym-box[data-skin="card-split"],
   .gym-box[data-skin="vinyl-classic"],.gym-box[data-skin="mini-round"],
@@ -693,6 +696,7 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         audio.addEventListener('timeupdate', onTime);
         audio.addEventListener('ended', onEnded);
         audio.addEventListener('play', paint);
+        audio.addEventListener('play', () => { if (wxHid) { wxHid = false; if (!S.hidden) { const r = document.getElementById('gymRoot'); if (r) r.style.display = 'block'; } } });
         audio.addEventListener('pause', paint);
         audio.addEventListener('loadedmetadata', () => { const t = cur(); if (t) t.dur = audio.duration; paint(); });
         audio.addEventListener('error', () => {
@@ -704,6 +708,8 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
 
         if (S.pos) { root.style.left = S.pos.x + 'px'; root.style.top = S.pos.y + 'px'; root.style.right = 'auto'; root.style.bottom = 'auto'; }
         if (S.hidden) root.style.display = 'none';
+        // 💬 微信模式里播放条默认收着（只是这次不露出来，不改你在谷雨里的设置）；一放歌就自己出来
+        try { if (localStorage.getItem('gyWxMode') === '1') window.gymWxCollapse(); } catch (e) {}
         bindDrag(root);
         paint();
     }
@@ -1088,6 +1094,12 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         // 🎧 换歌时说一句（走 sayOnSwitch 开关）
         if (charsIn().length && LS().sayOnSwitch) setTimeout(() => someoneSay('switch'), 1200);
     };
+    // 只读：现在放的是哪首（小手机的「音乐」小组件用）
+    window.gymNowInfo = function () {
+        const t = cur(); if (!t) return null;
+        return { title: t.title || '未命名', artist: t.artist || '', cover: t.cover || '', playing: !!(audio && !audio.paused),
+                 t: audio ? audio.currentTime || 0 : 0, d: audio && isFinite(audio.duration) ? audio.duration : (t.dur || 0) };
+    };
     window.gymNext = function () {
         const L = curTracks();
         if (!L.length) return;
@@ -1150,11 +1162,22 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         S.lyrCollapsed = !S.lyrCollapsed;
         paintLyr(); save();
     };
+    // 💬 微信模式用：临时收起 / 放回（不写存档，不动 S.hidden）
+    window.gymWxCollapse = function () {
+        const r = document.getElementById('gymRoot'); if (!r) return;
+        if (audio && !audio.paused) return;          // 正在放歌就别收
+        if (r.style.display !== 'none') { r.style.display = 'none'; wxHid = true; }
+    };
+    window.gymWxRestore = function () {
+        if (!wxHid) return; wxHid = false;
+        const r = document.getElementById('gymRoot'); if (r && !S.hidden) r.style.display = 'block';
+    };
     window.gymHide = function () { S.hidden = true; document.getElementById('gymRoot').style.display = 'none'; save(); toast('播放器收起来了', '想再打开：设置 → 🧩 小功能 → 音乐盒（进去就会自动放出来），或者那一页顶上的「🎚️ 播放器」。'); };
     window.gymShow = function () { S.hidden = false; const r = document.getElementById('gymRoot'); if (r) r.style.display = 'block'; save(); };
     // 悬浮播放器的显示/收起。收起之后一定要有地方能放回来，否则就是"再也打不开"。
     window.gymTogglePlayer = function () {
-        if (S.hidden) { gymShow(); toast('播放器出来了', '右下角那个就是。'); }
+        if (wxHid) { window.gymWxRestore(); toast('播放器出来了', '右下角那个就是。'); }
+        else if (S.hidden) { gymShow(); toast('播放器出来了', '右下角那个就是。'); }
         else { gymHide(); }
         try { renderMgr(); } catch (e) {}
     };
@@ -1269,6 +1292,7 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
             <input class="gym-in" id="gymUrlArtist" placeholder="歌手（选填）">
             <button class="gym-btn ghost" onclick="gymAddUrl()">加进曲库</button>
           </div>
+          <button class="gym-btn ghost" style="margin-top:8px;" onclick="if(window.gyResOpen) gyResOpen('music')">🌐 在线找歌（不用自己上传）</button>
         </div>
         <div class="gym-sec">
           <h4>🗂️ 曲库（${S.tracks.length} 首）</h4>
@@ -1433,6 +1457,9 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         S.stats = { total: { ms: 0, songs: 0 }, byChar: {} };
         save(); renderMgr();
     };
+    // 记忆总览（js/65）用：读 / 改 / 删「一起听的记忆」
+    window.gymMemGet = id => ((S.memory || {})[String(id)] || '');
+    window.gymMemSet = function (id, v) { S.memory = S.memory || {}; v = String(v || '').trim(); if (v) S.memory[String(id)] = v; else delete S.memory[String(id)]; save(); };
     window.gymClearMemory = function (id) {
         if (S.memory) delete S.memory[String(id)];
         save(); renderMgr();
@@ -1572,6 +1599,21 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         if (el) el.value = ''; if (tEl) tEl.value = ''; if (aEl) aEl.value = '';
         save(); renderMgr(); paint();
     };
+    // 给别的模块用：直接往曲库里加一首（在线找到的歌、TA 分享给你的歌）。listName 给了就顺便放进那个歌单（没有就新建）
+    window.gymAddTrack = function (t, listName) {
+        if (!t || !t.src) return null;
+        const dup = S.tracks.find(x => x.src === t.src);
+        const id = dup ? dup.id : ('m' + Date.now() + Math.random().toString(36).slice(2, 7));
+        if (!dup) S.tracks.push({ id, title: String(t.title || '未命名').slice(0, 80), artist: String(t.artist || '').slice(0, 60), cover: t.cover || '', src: t.src, kind: 'url', lrc: '', note: t.note || '' });
+        if (listName) {
+            let l = S.lists.find(x => x.name === listName && x.ids);
+            if (!l) { l = { id: 'pl' + Date.now() + Math.random().toString(36).slice(2, 5), name: listName, ids: [] }; S.lists.push(l); }
+            if (l.ids.indexOf(id) === -1) l.ids.push(id);
+        }
+        save(); try { renderMgr(); paint(); } catch (e) {}
+        return id;
+    };
+    window.gymHasTrack = src => S.tracks.some(x => x.src === src);
     window.gymDelTrack = async function (id) {
         const i = S.tracks.findIndex(x => x.id === id); if (i < 0) return;
         const t = S.tracks[i];
@@ -1917,6 +1959,8 @@ ${log}`;
         save(); renderMgr();
     };
     window.gymSetSay = function (k, v) { LS()[k] = !!v; save(); renderMgr(); };
+    // 🎛️ 给「全部开关」页读当前状态用（js/54）
+    window.gymGetSay = k => !!LS()[k];
 
     // 设置页入口
     function addSettingsEntry() {

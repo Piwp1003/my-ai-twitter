@@ -231,6 +231,8 @@
         try { rec = await localforage.getItem('myTwitterAppData'); } catch (e) { return; }
         if (!rec || !rec.__gyLiveMedia) return;
         const pack = rec.__gyLiveMedia; let n = 0;
+        // 增量保存会把大段 base64 换成引用：只把这一块换回原图，存档其余部分保持原样写回
+        try { if (typeof window.gyResolveImgRefs === 'function') await window.gyResolveImgRefs(pack); } catch (e) {}
         for (const id of Object.keys(pack)) {
             try {
                 if (MAP[id]) continue;

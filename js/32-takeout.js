@@ -198,7 +198,7 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
     };
     window.gytoClearCart = async function (sid) { S.cart[sid] = {}; await save(); render(); };
 
-    const RIDERS = ['小周', '老陈', '阿凯', '小林', '大刘', '小马', '阿强'];
+    const RIDERS = ['小周', '老陈', '阿凯', '小杨', '大刘', '小马', '阿强'];
     window.gytoOrder = async function (sid) {
         const s = shopOf(sid); if (!s) return;
         const { n, p } = cartSum(s);
@@ -240,6 +240,48 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
         if (forWhom !== 'me') sysLine(forWhom, `你给 ${nameOf(forWhom)} 点了「${s.name}」的外卖，大约 ${s.eta} 分钟送到。`);
     };
 
+    // 💬 聊天里角色说"给你点了份外卖"时真的下一单（js/52 调）。
+    //    hint 是 TA 说的吃的/店：对得上菜名或店名就在那家点，对不上随便挑一家；
+    //    凑够起送价，钱从 TA 的钱包出（钱包没开就不扣），送达时间照常走，到了你这儿会有通知。
+    // forSelf：TA 给自己点（自主模式里「给自己点外卖」，js/58）
+    window.gytoCharOrder = async function (charId, hint, forSelf) {
+        const c = charOf(charId);
+        if (!c || !on('takeoutOn') || !S.shops.length) return null;
+        const h = String(hint || '').trim();
+        const hit = (x) => h && x && (String(x).indexOf(h) !== -1 || h.indexOf(String(x)) !== -1);
+        let shop = h ? (S.shops.find(sh => hit(sh.name) || hit(sh.cuisine) || (sh.menu || []).some(m => hit(m.n)))) : null;
+        if (!shop) shop = rnd(S.shops);
+        if (!shop || !(shop.menu || []).length) return null;
+        const menu = shop.menu.slice();
+        const want = h ? menu.filter(m => hit(m.n)) : [];
+        const items = [];
+        const add = (m) => { const e = items.find(x => x.n === m.n); if (e) { e.q++; e.p = Math.round(m.p * e.q * 100) / 100; } else items.push({ n: m.n, q: 1, p: m.p }); };
+        (want.length ? want : [menu.find(m => m.hot) || rnd(menu)]).forEach(add);
+        let guard = 0;
+        while (items.reduce((a, x) => a + x.p, 0) < (shop.minOrder || 0) && guard++ < 8) add(rnd(menu));
+        const fee = Number(shop.fee) || 0;
+        const total = Math.round((items.reduce((a, x) => a + x.p, 0) + fee) * 100) / 100;
+        let receiptId = '';
+        if (window.gyWallet && typeof window.gyWallet.spend === 'function') {
+            const r = await window.gyWallet.spend(String(c.id), total, shop.name + (forSelf ? '（给自己点的外卖）' : '（给' + meName() + '点的外卖）'), {
+                tag: '外卖', shop: shop.name, items: items.concat(fee ? [{ n: '配送费', p: fee }] : [])
+            });
+            if (r && r.ok === false) return null;
+            if (r && r.rid) receiptId = r.rid;
+        }
+        const o = {
+            id: uid('o_'), shopId: shop.id, shopName: shop.name, shopIco: shop.ico,
+            items, total, fee, forWhom: forSelf ? String(c.id) : 'me', by: String(c.id), note: '',
+            at: Date.now(), etaMs: (Number(shop.eta) || 30) * 60000,
+            status: 'accepted', riderName: rnd(RIDERS), receiptId, told: false
+        };
+        S.orders.unshift(o);
+        shop.sold = (Number(shop.sold) || 0) + items.reduce((a, x) => a + x.q, 0);
+        await save();
+        if (!forSelf) sysLine(c.id, `🛵 ${c.name} 给你点了「${shop.name}」的${items.map(x => x.n).join('、')}，大约 ${shop.eta} 分钟送到。`);
+        return { shop: shop.name, items: items.map(x => x.n), eta: shop.eta };
+    };
+
     function sysLine(charId, text) {
         try {
             if (typeof globalChats === 'undefined') return;
@@ -279,13 +321,16 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
     async function arrived(o) {
         const who = o.forWhom === 'me' ? '你' : nameOf(o.forWhom);
         try {
-            if (typeof addNotification === 'function') {
+            if (typeof addNotification === 'function' && !(o.forWhom !== 'me' && String(o.by) === String(o.forWhom))) {
                 addNotification('🛵 <b>外卖到了</b>', null, o.forWhom === 'me' ? null : o.forWhom,
                     charOf(o.forWhom), `${o.shopIco || '🍜'} ${o.shopName}　${who}的餐到了`,
                     o.forWhom === 'me' ? { view: 'mall' } : null);
             }
         } catch (e) {}
-        if (o.forWhom !== 'me') {
+        if (o.forWhom !== 'me' && String(o.by) === String(o.forWhom)) {
+            // TA 给自己点的：不往你们的聊天里插系统消息，也不"谢谢你点的外卖"；算 TA 身上的一件小事
+            try { if (typeof window.gyLifeEvent === 'function') window.gyLifeEvent(o.forWhom, `自己点的「${o.shopName}」外卖到了`, 0.1); } catch (e) {}
+        } else if (o.forWhom !== 'me') {
             sysLine(o.forWhom, `${o.shopName} 的外卖送到了 ${nameOf(o.forWhom)} 那儿。`);
             react(o);
         }

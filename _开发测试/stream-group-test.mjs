@@ -5,10 +5,11 @@
 //   2) 群聊转私聊——角色可以给某条回复加 [MOVETOCHAT]，这条就进1v1私聊、不进群。
 //      开关关掉时标记要被抹干净，绝不能让 "[MOVETOCHAT]" 五个字原样出现在用户眼前。
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 
 const root = process.cwd();
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('dialog', d => d.accept());
 
@@ -41,7 +42,7 @@ await page.route('**/chat/completions', async route => {
   });
 });
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => typeof window.triggerAIBatchReply === 'function', { timeout: 15000 });
 await page.waitForTimeout(400);
 

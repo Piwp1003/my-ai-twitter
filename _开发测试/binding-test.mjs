@@ -6,6 +6,7 @@
 //   ① index.html 里写死的内联事件
 //   ② js/*.js 里用模板字符串拼出来的 HTML（列表项、卡片按钮那些都是这么生成的）
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 import fs from 'fs';
 
@@ -21,7 +22,8 @@ function collectCalls(text, where, out) {
   let m;
   EVENT_ATTR.lastIndex = 0;
   while ((m = EVENT_ATTR.exec(text)) !== null) {
-    const code = m[2];
+    // ${…} 是拼 HTML 时就求值掉的（比如 onclick="open('${esc(id)}')" 里的 esc），不是点按钮时才调的函数
+    const code = m[2].replace(/\$\{[^}]*\}/g, '§');
     // 找 「标识符(」，且前面不是点号（排除 document.getElementById 这种方法调用）
     const callRe = /(^|[^.\w$'"`])([A-Za-z_$][\w$]*)\s*\(/g;
     let c;
@@ -37,13 +39,13 @@ function collectCalls(text, where, out) {
 const calls = new Map();   // 函数名 -> 出现在哪些文件
 collectCalls(fs.readFileSync(path.join(root, 'index.html'), 'utf8'), 'index.html', calls);
 for (const f of fs.readdirSync(path.join(root, 'js')).filter(x => x.endsWith('.js'))) {
-  collectCalls(fs.readFileSync(path.join(root, 'js', f), 'utf8'), 'js/' + f, calls);
+  collectCalls(fs.readFileSync(path.join(root, 'js', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''), 'js/' + f, calls);
 }
 
 const names = [...calls.keys()].sort();
 console.log('  扫到 ' + names.length + ' 个被内联事件调用的函数名\n');
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('dialog', d => d.accept());
 await page.route(/^https?:\/\//, r => r.abort());
@@ -52,7 +54,7 @@ await page.route('**/localforage*.js', r => r.fulfill({
   body: `window.localforage={_d:{},setItem(k,v){this._d[k]=v;return Promise.resolve(v)},getItem(k){return Promise.resolve(this._d[k]??null)},removeItem(k){return Promise.resolve()},config(){}};`
 }));
 await page.route('**/mammoth*.js', r => r.fulfill({ contentType: 'application/javascript', body: 'window.mammoth={};' }));
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => window.__guyuBooted === true, { timeout: 20000 }).catch(() => {});
 await page.waitForTimeout(600);
 

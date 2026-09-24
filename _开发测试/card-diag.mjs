@@ -3,6 +3,7 @@
 //
 // 用法：node _test/card-diag.mjs
 import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
 import fs from 'fs';
 import RandExp from 'randexp';
@@ -41,7 +42,7 @@ function selfMatches(findRegex, sample) {
   } catch (e) { return false; }
 }
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await launchBrowser(chromium);
 const page = await browser.newPage({ viewport: { width: 420, height: 900 } });
 const pageErrors = [];
 page.on('pageerror', e => pageErrors.push(e.message));
@@ -56,7 +57,7 @@ await page.route('**/mammoth*.js', r => r.fulfill({ contentType: 'application/ja
 await page.route('**fonts.googleapis.com**', r => r.abort());
 await page.route('**fonts.gstatic.com**', r => r.abort());
 
-await page.goto('file://' + path.join(root, 'index.html'));
+await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => window.__guyuBooted === true, { timeout: 20000 });
 
 // 先记下"干净页面"的基线：body 背景、app 容器宽度，用来检测卡片 CSS 有没有漏出来污染全局

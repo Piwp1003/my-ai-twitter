@@ -22,8 +22,8 @@
     const LSK = 'gy_site_ctx_cfg';
     try { const r = localStorage.getItem(LSK); if (r) Object.assign(S, JSON.parse(r) || {}); } catch (e) {}
     window.gySiteCtxCfg = function (n, chars) {
-        if (n !== undefined) S.n = Math.max(1, Math.min(30, Number(n) || 5));
-        if (chars !== undefined) S.chars = Math.max(80, Math.min(2000, Number(chars) || 400));
+        if (n !== undefined) S.n = gyNum(n, 5);
+        if (chars !== undefined) S.chars = gyNum(chars, 400);
         try { localStorage.setItem(LSK, JSON.stringify(S)); } catch (e) {}
         return { n: S.n, chars: S.chars };
     };
