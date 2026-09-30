@@ -129,7 +129,7 @@
         const f = input && input.files && input.files[0];
         input.value = '';
         if (!f) return;
-        if (f.size > 2 * 1024 * 1024) return alert('这个文件有点大（' + kb(f.size) + '），不像是一张皮肤。');
+        // 皮肤文件不设大小上限（以前超过 2MB 就不收）
         const fr = new FileReader();
         fr.onload = () => {
             const css = String(fr.result || '');

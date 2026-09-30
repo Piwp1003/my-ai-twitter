@@ -102,7 +102,18 @@ const CORE_ASSETS = [
     './js/62-phone-mode.js?v=' + V,
     './js/63-phone-home.js?v=' + V,
     './js/64-post-regen.js?v=' + V,
-    './js/65-memhub-extra.js?v=' + V
+    './js/65-memhub-extra.js?v=' + V,
+    './js/66-phone-widgets.js?v=' + V,
+    './js/67-phone-island.js?v=' + V,
+    './js/68-custom-font.js?v=' + V,
+    './js/69-modal-resize.js?v=' + V,
+    './js/70-bubble-tail.js?v=' + V,
+    './js/71-phone-mystic.js?v=' + V,
+    './js/73-back-nav.js?v=' + V,
+    './js/74-period.js?v=' + V,
+    './js/75-web-media.js?v=' + V,
+    './js/76-voice.js?v=' + V,
+    './js/77-mood-stat.js?v=' + V
 ];
 
 self.addEventListener('install', (event) => {

@@ -163,7 +163,17 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       spellcheck: false,
+      // 🎧「一起听 · 一起看」要在应用里开网易云 / QQ 音乐 / B 站的官方网页（js/75）
+      webviewTag: true,
     },
+  });
+
+  // 🎧 开进来的官方网页：按普通网页的安全规矩来（开同源策略、没有 Node），登录状态存在 persist:gymedia 里一直留着
+  mainWindow.webContents.on('will-attach-webview', (e, prefs, params) => {
+    delete prefs.preload;
+    prefs.nodeIntegration = false; prefs.contextIsolation = true; prefs.webSecurity = true;
+    if (!/^https?:/i.test(params.src || '')) { e.preventDefault(); return; }
+    params.partition = 'persist:gymedia';
   });
 
   if (state.maximized) mainWindow.maximize();
@@ -465,6 +475,17 @@ if (!gotLock) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
+  });
+
+  // 🎧 网页里的播放器不用先点一下才能出声
+  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+  // 🎧 小窗里的网站要开新窗口（比如 QQ 音乐的播放页、登录弹窗）：就在小窗里打开，不另起一个窗口
+  app.on('web-contents-created', (e, contents) => {
+    if (contents.getType() !== 'webview') return;
+    contents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/i.test(url)) { contents.loadURL(url); }
+      return { action: 'deny' };
+    });
   });
 
   app.whenReady().then(() => {

@@ -70,8 +70,8 @@
         get: id => S.imgs.find(x => x.id === id) || null,
         async add({ src, tag = '', by = 'me', owner = '', note = '' } = {}) {
             if (!src) return null;
-            const img = { id: uid(), src, tag: String(tag).slice(0, 30), by: String(by),
-                          owner: String(owner || ''), note: String(note).slice(0, 80), at: Date.now() };
+            const img = { id: uid(), src, tag: String(tag), by: String(by),
+                          owner: String(owner || ''), note: String(note), at: Date.now() };
             S.imgs.unshift(img);
             await save(); render();
             return img;
@@ -95,6 +95,8 @@
     /* ---------- 上传 ---------- */
     // 图片压到 900px 宽再存——原图动不动两三兆，几十张就把 localforage 撑爆了
     function shrink(file, cb) {
+        // 动图 / 视频 / 实况：交给「动图和视频」（js/44），原样存，不压
+        if (/^video\/|^image\/gif$/i.test(file.type || '') && typeof window.gyLiveTake === 'function') { window.gyLiveTake(file).then(tok => { if (tok) cb(tok); }); return; }
         const r = new FileReader();
         r.onload = () => {
             const im = new Image();
@@ -119,10 +121,11 @@
         const owner = (document.getElementById('gyGalOwner') || {}).value || '';
         const tag = ((document.getElementById('gyGalTag') || {}).value || '').trim();
         let done = 0;
-        files.slice(0, 12).forEach(f => {
+        // 一次选多少张都收（以前一次只收前 12 张，多的悄悄丢掉）
+        files.forEach(f => {
             shrink(f, async src => {
                 await window.gyGallery.add({ src, tag, by: 'me', owner });
-                if (++done === Math.min(files.length, 12)) {
+                if (++done === files.length) {
                     toast('存了 ' + done + ' 张' + (owner ? '到 ' + nameOf(owner) + ' 的私库' : '到公共图库'));
                 }
             });
@@ -208,7 +211,7 @@
                 </div>
                 ${(d.gapMode || 'fixed') === 'fixed' ? `<div class="gygal-row">
                     <span>多久一次</span>
-                    <input type="number" min="0" max="720" value="${d.everyGapH}" onchange="gyDressSet('everyGapH',this.value)">
+                    <input type="number" min="0" value="${d.everyGapH}" onchange="gyDressSet('everyGapH',this.value)">
                     <em>小时（填 0 就关掉这个节拍，交给自主模式让 TA 自己感受）</em>
                 </div>` : `<div class="gygal-row"><em style="flex:1;">爱打扮的人两三天就想换一张，冷淡的人半年不动一次——
                     照人设推，同一个人上下浮动一点，不会整齐得像定时器。本地算，不调 API。</em></div>`}
@@ -231,9 +234,9 @@
                 <option value=""${tab === '' ? ' selected' : ''}>存进公共图库</option>
                 ${cs.map(c => `<option value="${c.id}"${String(tab) === String(c.id) ? ' selected' : ''}>存进 ${esc(c.name)} 的私库</option>`).join('')}
             </select>
-            <input type="text" id="gyGalTag" class="gygal-in" maxlength="30" placeholder="给它一句说明（选填），例：秋天的巷子">
+            <input type="text" id="gyGalTag" class="gygal-in" placeholder="给它一句说明（选填），例：秋天的巷子">
             <div class="gygal-uprow">
-                <input type="file" id="gyGalFile" accept="image/*" multiple style="display:none;" onchange="gyGalUpload(this)">
+                <input type="file" id="gyGalFile" accept="image/*,video/*" multiple style="display:none;" onchange="gyGalUpload(this)">
                 <button type="button" class="gymall-btn solid" onclick="document.getElementById('gyGalFile').click()">📁 从本地传</button>
                 <input type="text" id="gyGalUrl" class="gygal-in" style="flex:1;min-width:140px;margin:0;" placeholder="或者贴一个图片地址">
                 <button type="button" class="gymall-btn" onclick="gyGalAddUrl()">存</button>

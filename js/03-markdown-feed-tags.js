@@ -1,4 +1,4 @@
-// ===================== 轻量 Markdown 渲染（兼容酒馆角色卡常用的 *动作* **强调** `代码` 语法）=====================
+// ===================== 轻量 Markdown 渲染（兼容同类软件角色卡常用的 *动作* **强调** `代码` 语法）=====================
 // 很多角色卡自带的HTML卡片（比如状态栏）用的是写死的id（像id="o3-dr"这种），每次这个正则脚本
 // 触发都会生成一模一样的id。同一个聊天里发过好几次这种卡片，页面上就会有一堆重复id——这是不合法的HTML，
 // 会导致"点展开箭头没反应"（label的for=只会绑定到文档里第一个同名id，不一定是自己这张卡片里的那个），
@@ -63,11 +63,11 @@ function pruneCardWhitespace(container) {
 //      间距全被改掉；同时卡片自己也被谷雨的样式压住，经常直接塌成高度 0。
 //   4. 好几张卡片同时出现时，它们的全局样式互相打架，谁后渲染谁赢，表现极其随机。
 //
-// 酒馆那边（JS-Slash-Runner）从来就不是这么干的：它把每一个"看起来像完整前端页面"的
+// 同类软件那边（JS-Slash-Runner）从来就不是这么干的：它把每一个"看起来像完整前端页面"的
 // 代码块**单独丢进一个 iframe** 里渲染。iframe 自带文档边界，样式进不来也出不去，
 // <script> 正常执行，高度由里面量好了报给外面。这里照抄同一套做法。
 //
-// 判定标准也跟酒馆保持完全一致（见其 util/is_frontend.ts）：内容里出现
+// 判定标准也跟同类软件保持完全一致（见其 util/is_frontend.ts）：内容里出现
 // 'html>'、'<head>'、'<body' 任意一个，就当成完整前端页面走 iframe；
 // 只是一小段 <div> 的（比如霍樊那张状态栏）继续原地内联渲染，不动它。
 function isFrontendHtml(content) {
@@ -90,7 +90,7 @@ function frontendBaseHref() {
 }
 
 // 卡片里写 100vh 的话，iframe 高度是按内容量出来的，vh 又是相对 iframe 自己的高度——
-// 会互相咬住，卡片要么被压扁成一条要么撑不开。跟酒馆一样，把 vh 换成"外面真实视口高度"
+// 会互相咬住，卡片要么被压扁成一条要么撑不开。跟同类软件一样，把 vh 换成"外面真实视口高度"
 // 这个变量，卡片就能按作者本来的意图占满一屏。
 function replaceVhForFrontend(content) {
     if (!/\d+(?:\.\d+)?vh\b/i.test(content)) return content;
@@ -110,7 +110,7 @@ function buildFrontendSrcdoc(content, charId) {
     let tavernCtx = { charId: null, charName: '', userName: '', messages: [], currentMessageId: 0 };
     try {
         if (typeof gyTavernContextFor === 'function') tavernCtx = gyTavernContextFor(charId);
-    } catch (e) { console.warn('[酒馆兼容层] 准备上下文失败：', e); }
+    } catch (e) { console.warn('[同类软件兼容层] 准备上下文失败：', e); }
     // JSON 里如果出现 </script> 会把外面这个 <script> 提前截断，尖括号一律转义掉
     const tavernCtxJson = JSON.stringify(tavernCtx).replace(/</g, '\\u003c');
     const base = frontendBaseHref();
@@ -159,9 +159,9 @@ ${tavernCtx.userAvatar ? `.user_avatar,.user-avatar{background-image:url('${tave
 <\/script>
 ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
 <script>
-// ===== 酒馆助手（TavernHelper）兼容层 · iframe 这一侧 =====
+// ===== 助手脚本（TavernHelper）兼容层 · iframe 这一侧 =====
 // 角色卡的开场白菜单/状态栏/操作栏会直接调 setChatMessages、getChatMessages、
-// getVariables、eventOn 这些全局函数，调不到就弹「环境未配置酒馆助手」。这里把它们补上：
+// getVariables、eventOn 这些全局函数，调不到就弹「环境未配置助手脚本」。这里把它们补上：
 //   · 读数据的接口 —— 用快照同步回答（卡片是同步调的，等不了 postMessage 往返）
 //   · 改数据的接口 —— postMessage 给主页面，由 js/17 接到谷雨自己的功能上
 //   · 快照会在楼层变动后被主页面主动推新的过来，所以卡片手里的数据不会过期
@@ -191,7 +191,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
     if (d.__gyTavernEvent) {
       var ev = d.__gyTavernEvent;
       (listeners[ev.type] || []).slice().forEach(function(fn){
-        try { fn.apply(null, ev.args || []); } catch (err) { console.error('[酒馆兼容层] 事件处理出错：', err); }
+        try { fn.apply(null, ev.args || []); } catch (err) { console.error('[同类软件兼容层] 事件处理出错：', err); }
       });
     }
   });
@@ -210,7 +210,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
 
   function clone(v){ try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; } }
 
-  // 酒馆的 range 写法：0 / '0' / '0-3' / -1（负数＝从后往前数）/ '{{lastMessageId}}'
+  // 同类软件的 range 写法：0 / '0' / '0-3' / -1（负数＝从后往前数）/ '{{lastMessageId}}'
   function pickMessages(range, option){
     var all = ctx.messages || [];
     var opt = option || {};
@@ -254,7 +254,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
 
   function notImplemented(name, fallback){
     return function(){
-      console.info('[酒馆兼容层] 这张卡片调用了 ' + name + '()，谷雨没有对应功能，已安全跳过。');
+      console.info('[同类软件兼容层] 这张卡片调用了 ' + name + '()，谷雨没有对应功能，已安全跳过。');
       return fallback;
     };
   }
@@ -269,7 +269,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
     getCurrentMessageId: function(){ return ctx.currentMessageId != null ? ctx.currentMessageId : -1; },
 
     // —— 变量 ——
-    // 读是同步的（用快照），写是异步的（发给主页面）。跟酒馆一致。
+    // 读是同步的（用快照），写是异步的（发给主页面）。跟同类软件一致。
     getVariables: function(option){ return varStoreFor(option); },
     replaceVariables: function(vars, option){ return call('replaceVariables', [vars, option]); },
     insertOrAssignVariables: function(vars, option){ return call('insertOrAssignVariables', [vars, option]); },
@@ -277,7 +277,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
     deleteVariable: function(path, option){ return call('deleteVariable', [path, option]); },
 
     // —— 事件 ——
-    // 谷雨真的会发的事件见「酒馆助手兼容层说明.md」；监听没有的事件不会报错，只是永远不触发。
+    // 谷雨真的会发的事件见「助手脚本兼容层说明.md」；监听没有的事件不会报错，只是永远不触发。
     eventOn: function(type, fn){
       if (typeof fn !== 'function') return { stop: function(){} };
       if (!listeners[type]) listeners[type] = [];
@@ -383,7 +383,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
     getCurrentChatId:    function(){ return ctx.chatId || ''; },
 
     // —— 版本 ——
-    // 老实说自己是谷雨，不冒充酒馆版本号——卡片要是按版本号做行为分支，
+    // 老实说自己是谷雨，不冒充同类软件版本号——卡片要是按版本号做行为分支，
     // 谎报只会让它走到一条根本没测试过的路上。
     getTavernVersion:       function(){ return (ctx.version && ctx.version.tavern) || ''; },
     getTavernHelperVersion: function(){ return (ctx.version && ctx.version.helper) || ''; },
@@ -403,13 +403,13 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
 
     // —— 脚本按钮 ＝ 续写页上方的卡片按钮栏 ——
     replaceScriptButtons: function(scriptId, buttons){
-      // 酒馆的签名有两种写法：(script_id, buttons) 和只给 (buttons)
+      // 同类软件的签名有两种写法：(script_id, buttons) 和只给 (buttons)
       if (Array.isArray(scriptId)) { buttons = scriptId; scriptId = undefined; }
       return call('replaceScriptButtons', [scriptId, buttons]);
     },
     getScriptButtons: function(scriptId){ return call('getScriptButtons', [scriptId]); },
     updateScriptButtonsWith: function(scriptId, fn){
-      // 酒馆这个接口是传一个函数进去改。函数没法跨 iframe 传，所以在本地先算好再整体替换。
+      // 同类软件这个接口是传一个函数进去改。函数没法跨 iframe 传，所以在本地先算好再整体替换。
       return Promise.resolve(TavernHelper.getScriptButtons(scriptId)).then(function(cur){
         var next = (typeof fn === 'function') ? fn(cur || []) : cur;
         return TavernHelper.replaceScriptButtons(scriptId, next);
@@ -430,7 +430,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
     replaceAudioList:  function(l){ return call('replaceAudioList', [l]); },
 
     // —— 用户人设 ——
-    // 酒馆的 persona ＝"你自己"的身份档案，可以存好几个随时切。
+    // 同类软件的 persona ＝"你自己"的身份档案，可以存好几个随时切。
     // 谷雨对应的就是用户资料里那份「人设」列表（userPersonas）。
     getPersonaIds:   function(){ return (ctx.personas || []).map(function(p){ return p.avatar_id; }); },
     getPersonaNames: function(){ return (ctx.personas || []).map(function(p){ return p.name; }); },
@@ -455,7 +455,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
     eventClearAll:      function(){ listeners = {}; },
     eventClearListener: function(type, fn){ TavernHelper.eventRemoveListener(type, fn); },
     eventEmitAndWait:   function(){ return TavernHelper.eventEmit.apply(null, arguments); },
-    // 酒馆用这个包一层来兜住报错，卡片里挺常见
+    // 同类软件用这个包一层来兜住报错，卡片里挺常见
     errorCatched: function(fn){
       return function(){
         try {
@@ -464,7 +464,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
         } catch (e) { console.error('[卡片]', e); }
       };
     },
-    // 酒馆的全局初始化，谷雨这边建 iframe 时就已经准备好了，直接当已完成
+    // 同类软件的全局初始化，谷雨这边建 iframe 时就已经准备好了，直接当已完成
     initializeGlobal:      function(){ return Promise.resolve(); },
     waitGlobalInitialized: function(){ return Promise.resolve(); },
 
@@ -512,7 +512,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
 
   window.TavernHelper = TavernHelper;
 
-  // 酒馆的事件名常量，卡片会写 tavern_events.MESSAGE_UPDATED 这种
+  // 同类软件的事件名常量，卡片会写 tavern_events.MESSAGE_UPDATED 这种
   window.tavern_events = {
     MESSAGE_SENT: 'message_sent', MESSAGE_RECEIVED: 'message_received',
     MESSAGE_UPDATED: 'message_updated', MESSAGE_EDITED: 'message_edited',
@@ -528,11 +528,11 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
     MESSAGE_IFRAME_RENDER_ENDED: 'message_iframe_render_ended'
   };
 
-  // ⚠️ 兜底：酒馆助手总共有 161 个接口，谷雨真正接上的是其中一部分。
+  // ⚠️ 兜底：助手脚本总共有 161 个接口，谷雨真正接上的是其中一部分。
   // 剩下那些如果**压根不定义**，卡片一调就是 "xxx is not a function" —— 整个脚本当场断在那里，
   // 后面的界面全废。这比返回个空值糟得多。
   //
-  // 所以把 ST 的接口名单整个列在这儿，凡是上面没实现的，一律装一个安全空实现：
+  // 所以把同类软件的接口名单整个列在这儿，凡是上面没实现的，一律装一个安全空实现：
   // 按名字猜一个合理的返回值（列表类给 []、判断类给 false、写操作给 resolved Promise），
   // 并在控制台留一行说明是哪张卡想干什么。卡片顶多少个效果，不会整张崩掉。
   var ST_API = [
@@ -708,7 +708,7 @@ ${needsJq ? `<script src="${base}js/vendor/jquery.min.js"><\/script>` : ''}
     else if (/^get/.test(name)) kind = 'object';
     SAFE[name] = (function(n, k){
       return function(){
-        console.info('[酒馆兼容层] 这张卡片调用了 ' + n + '()，谷雨没有对应功能，已安全跳过。');
+        console.info('[同类软件兼容层] 这张卡片调用了 ' + n + '()，谷雨没有对应功能，已安全跳过。');
         if (k === 'bool') return false;
         if (k === 'array') return [];
         if (k === 'promise') return Promise.resolve(undefined);
@@ -832,9 +832,9 @@ function mountFrontendFrames(root) {
         frame.setAttribute('scrolling', 'no');
         frame.setAttribute('loading', 'lazy');
         // 给每个卡片 iframe 一个名字：调试时能一眼认出是哪一张，
-        // 卡片自己调 getIframeName() 也能拿到（酒馆那边也有这个接口）
+        // 卡片自己调 getIframeName() 也能拿到（同类软件那边也有这个接口）
         frame.name = id;
-        // 不加 sandbox：卡片脚本要能正常跑（酒馆那边也是不加的）。iframe 自带的
+        // 不加 sandbox：卡片脚本要能正常跑（同类软件那边也是不加的）。iframe 自带的
         // 文档边界已经把样式冲突这个真正的问题解决掉了。
         frame.__gyFrontendSrc = src;
         frame.srcdoc = buildFrontendSrcdoc(replaceVhForFrontend(src.html), src.charId);
@@ -859,7 +859,7 @@ window.addEventListener('message', function (e) {
     if (frame) frame.style.height = d.__gyFrontendHeight + 'px';
 });
 
-// 卡片调"会改变状态"的酒馆接口时走这里：iframe 只负责发请求，真正干活的是 js/17 里的
+// 卡片调"会改变状态"的同类软件接口时走这里：iframe 只负责发请求，真正干活的是 js/17 里的
 // gyTavernBridge，它把这些调用接到谷雨自己已有的功能上（比如换开场白）。
 window.addEventListener('message', function (e) {
     const d = e.data;
@@ -874,7 +874,7 @@ window.addEventListener('message', function (e) {
 
     const bridge = window.gyTavernBridge;
     if (!bridge || typeof bridge[method] !== 'function') {
-        console.info('[酒馆兼容层] 卡片调用了 ' + method + '()，谷雨这边没有实现，已安全跳过。');
+        console.info('[同类软件兼容层] 卡片调用了 ' + method + '()，谷雨这边没有实现，已安全跳过。');
         return reply(true, undefined);
     }
     // 让桥接方法知道这是哪个角色的卡片——换开场白得知道换谁的
@@ -886,7 +886,7 @@ window.addEventListener('message', function (e) {
             else reply(true, res && 'value' in res ? res.value : res);
         }, err => reply(false, undefined, err && err.message));
     } catch (err) {
-        console.error('[酒馆兼容层] 执行 ' + method + ' 时出错：', err);
+        console.error('[同类软件兼容层] 执行 ' + method + ' 时出错：', err);
         reply(false, undefined, err && err.message);
     }
 });
@@ -1435,13 +1435,51 @@ window.gyPostMenuDo = function (act, postId) {
 // 这种来自小功能的通知点了没反应，只能自己去翻——等于通知只是个已读回执。
 function addNotification(text, postId, chatCharId, char, desc, opts) {
 const o = opts || {};
-globalNotifications.unshift({ text, postId, chatCharId, timestamp: Date.now(),
-    view: o.view || null, param: o.param || null, feature: o.feature || null });
-unreadNotifs++;
-if (typeof updateNotifBadge === 'function') updateNotifBadge();
-let avatarHtml = getAvatarHTML(char, 40);
-showToast(avatarHtml, text.replace(/<[^>]+>/g, ''), desc, postId, chatCharId);
+const n = { text, postId, chatCharId, timestamp: Date.now(),
+    view: o.view || null, param: o.param || null, feature: o.feature || null };
+if (o.jump) n.jump = o.jump;
+// 🆔 每条都带 charId / desc：点了跳不过去时，还能按"是谁的事"兜底；小手机通知中心那行细节也用得上
+if (char && char.id != null) n.charId = String(char.id);
+if (desc) n.desc = String(desc);
+return gyPushNotif(n, { avatar: (typeof getAvatarHTML === 'function' ? getAvatarHTML(char, 40) : ''), title: String(text || '').replace(/<[^>]+>/g, ''), desc });
 }
+
+// 🆔 通知的唯一 id。
+// 以前通知页 / 小手机通知中心 / 灵动岛全是按"列表里第几条"去找通知的——页面开着的时候
+// 又来了一条新通知，所有下标都往后挪一位，点第 1 条打开的其实是刚进来的那条（"点通知跳错地方"）。
+// 现在每条通知一生下来就有自己的 id，点的时候按 id 找，谁插队都不影响。
+function gyNotifNewId() { return 'nt_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+// 老数据 / 别的模块直接 unshift 进来的通知没有 id，渲染和点击之前统一补上
+function gyNotifEnsureIds() {
+    try {
+        if (typeof globalNotifications === 'undefined' || !Array.isArray(globalNotifications)) return;
+        for (const n of globalNotifications) if (n && typeof n === 'object' && !n.id) n.id = gyNotifNewId();
+    } catch (e) {}
+}
+function gyNotifFind(nid) {
+    if (nid == null) return null;
+    gyNotifEnsureIds();
+    try { return (globalNotifications || []).find(n => n && String(n.id) === String(nid)) || null; } catch (e) { return null; }
+}
+window.gyNotifNewId = gyNotifNewId; window.gyNotifEnsureIds = gyNotifEnsureIds; window.gyNotifFind = gyNotifFind;
+
+// 📮 统一的"发一条通知"：进通知页 + 角标 +（可选）弹窗；弹窗带着这条通知本身，点弹窗和点通知页走同一套跳转。
+// n：{ text, postId, chatCharId, charId, desc, jump, view, param, feature, timestamp }
+// toast：{ avatar, title, desc, anon } —— 传 false 就只进通知页不弹
+function gyPushNotif(n, toast) {
+    const item = Object.assign({ postId: null, chatCharId: null, timestamp: Date.now() }, n || {});
+    if (!item.id) item.id = gyNotifNewId();
+    if (!item.timestamp) item.timestamp = Date.now();
+    try { globalNotifications.unshift(item); } catch (e) {}
+    try { unreadNotifs++; } catch (e) {}
+    if (typeof updateNotifBadge === 'function') updateNotifBadge();
+    if (toast && typeof showToast === 'function') {
+        const plainTitle = toast.title != null ? toast.title : String(item.text || '').replace(/<[^>]+>/g, '');
+        showToast(toast.avatar || '', plainTitle, toast.desc != null ? toast.desc : (item.desc || ''), item.postId, item.chatCharId, !!toast.anon, item);
+    }
+    return item;
+}
+window.gyPushNotif = gyPushNotif;
 
 function updateNotifBadge() {
 let mBadge = document.getElementById('mnavNotifBadge');
@@ -1455,26 +1493,52 @@ if (badge) {
         badge.style.display = 'none';
     }
 }
+// 通知页正开着又来了新通知：马上重画，列表跟数据保持一致
+gyNotifRefreshIfOpen();
+}
+
+function gyNotifPageOpen() {
+    const v = document.getElementById('view-notifications');
+    return !!(v && v.style.display && v.style.display !== 'none');
+}
+function gyNotifRefreshIfOpen() {
+    try {
+        if (!gyNotifPageOpen()) return;
+        gyNotifEnsureIds();
+        const c = document.getElementById('notificationsSection');
+        const first = c && c.querySelector('[data-nid]');
+        const top = (globalNotifications || [])[0];
+        const shown = c ? c.querySelectorAll('[data-nid]').length : 0;
+        if (!top ? shown > 0 : (!first || first.getAttribute('data-nid') !== String(top.id) || shown !== globalNotifications.length)) renderNotifications();
+    } catch (e) {}
+}
+// 有些模块往 globalNotifications 里塞完不叫 updateNotifBadge，这里再轻轻看一眼兜底
+setInterval(gyNotifRefreshIfOpen, 1500);
+
+// 点通知页里的一条：按 id 找到这条，交给统一的跳转（js/60 gyOpenNotif）
+function gyNotifClick(nid) {
+    const n = gyNotifFind(nid);
+    if (!n) { renderNotifications(); return; }
+    if (typeof window.gyOpenNotif === 'function') window.gyOpenNotif(n);
 }
 
 function renderNotifications() {
 const container = document.getElementById('notificationsSection');
+if (!container) return;
 if (!globalNotifications || globalNotifications.length === 0) {
     container.innerHTML = `<div class="empty-state">暂无新通知</div>`;
     return;
 }
-container.innerHTML = globalNotifications.map((n, ni) => {
-    let actionAttr = '';
-    if (n.jump && typeof window.gyJump === 'function') actionAttr = `onclick="gyJump(globalNotifications[${ni}].jump)"`;
-    else if (n.chatCharId) actionAttr = `onclick="switchMainView('chat'); switchChatSession('${n.chatCharId}')"`;
-    else if (n.postId) actionAttr = `onclick="switchMainView('postDetail', '${n.postId}')"`;
-    else if (n.feature) actionAttr = `onclick="gyOpenFeaturePage('${n.feature}')"`;
-    else if (n.view) actionAttr = `onclick="switchMainView('${n.view}'${n.param ? ", '" + n.param + "'" : ''})"`;
-    
+gyNotifEnsureIds();
+// 每一条都能点：有明确去处的跳过去；什么都没写的按文字猜（信 → 信件与日记……），猜不到就留在这页
+container.innerHTML = globalNotifications.map(n => {
+    const nid = String(n.id).replace(/[^\w-]/g, '');
+    const desc = n.desc ? String(n.desc).replace(/<[^>]+>/g, '').slice(0, 80) : '';
     return `
-    <div class="notification-item${actionAttr ? ' notif-jump' : ''}" ${actionAttr}>
+    <div class="notification-item notif-jump${n.read ? ' notif-read' : ''}" data-nid="${nid}" style="cursor:pointer;" onclick="gyNotifClick('${nid}')">
         <div style="flex-grow:1;">
             <div style="font-size:15px; color:#0f1419; margin-bottom:4px;">${n.text}</div>
+            ${desc ? `<div style="font-size:13px; color:#536471; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(desc)}</div>` : ''}
             <div style="font-size:13px; color:#536471;" class="time-updater" data-timestamp="${n.timestamp}">${timeAgo(n.timestamp)}</div>
         </div>
     </div>`;

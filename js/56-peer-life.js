@@ -34,7 +34,7 @@
     // 存档：window.gyPeerLog 跟着主存档走（js/04 的快照/读档里登记过）
     if (!Array.isArray(window.gyPeerLog)) window.gyPeerLog = [];
     const LOG = () => { if (!Array.isArray(window.gyPeerLog)) window.gyPeerLog = []; return window.gyPeerLog; };
-    const LOG_CAP = 400;
+    // 以前 LOG_CAP = 400，超了删最早的；现在不设上限，全留着
 
     // 频率（只管后台那一路；自主模式的角色按自己的习惯）
     const CFG_KEY = 'gy_peer_cfg';
@@ -245,7 +245,6 @@ ${kinds}
             scene = `${A.name} 发了条朋友圈：${e.moment}` + (lines.length ? '\n' + lines.map(x => (x.w === 'a' ? A.name : B.name) + '：' + x.t).join('\n') : '');
         }
         LOG().push(e);
-        if (LOG().length > LOG_CAP) LOG().splice(0, LOG().length - LOG_CAP);
         // 也记一笔进「Ta们在做什么」：那边的记忆总结会把它喂回两个人各自的记忆
         try {
             if (typeof addTheaterLog === 'function') addTheaterLog({

@@ -263,14 +263,15 @@
           <div class="gysitecfg-hd">🎚️ 这一组取多少</div>
           <div class="gysitecfg-r">
             <span class="gysitecfg-k">每类取几条</span>
-            <input class="gysitecfg-rn" type="range" min="1" max="30" step="1" value="${S.n}"
-                   oninput="gySiteCtxSet('n', this.value)">
+            <!-- 以前是 1~30 的滑块，封了顶；改成数字框，填多少取多少 -->
+            <input class="gysitecfg-rn" type="number" min="1" step="1" value="${S.n}" style="width:90px;"
+                   onchange="gySiteCtxSet('n', this.value)">
             <b class="gysitecfg-nl">${S.n} 条</b>
           </div>
           <div class="gysitecfg-r">
             <span class="gysitecfg-k">每条最多</span>
-            <input class="gysitecfg-rc" type="range" min="80" max="2000" step="20" value="${S.chars}"
-                   oninput="gySiteCtxSet('chars', this.value)">
+            <input class="gysitecfg-rc" type="number" min="1" step="20" value="${S.chars}" style="width:90px;"
+                   onchange="gySiteCtxSet('chars', this.value)">
             <b class="gysitecfg-cl">${S.chars} 字</b>
           </div>
           <div class="gysitecfg-e gysitecfg-est">${estHtml()}</div>

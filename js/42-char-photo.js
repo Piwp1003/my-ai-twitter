@@ -38,7 +38,7 @@
         ? window.gyStore('gyPhotoBox', 'ref')
         : ((typeof localforage !== 'undefined') ? localforage.createInstance({ name: 'gyPhotoBox', storeName: 'ref' }) : null);
     const RKEY = 'gyPhoto_refs';
-    const REF_MAX = 8;          // 每个角色最多留几张参考图
+    // 参考图张数不设上限（以前每个角色最多留 8 张，多的被挤掉）
 
     const MODES = [
         { k: 'off',  icon: '🚫', name: '不发图',        note: 'TA 不会主动发图片。手动那颗按钮照样能用。' },
@@ -65,7 +65,7 @@
         chan: 'free',
         url: '', key: '', model: 'dall-e-3', size: '1024x1024', tpl: '',
         gapMsg: 6,           // 最少隔几条消息才让 TA 再发一张
-        maxDay: 15,          // 一天最多几张（生图那档别烧钱）
+        maxDay: 0,           // 旧存档里的字段，已经不用了：不再限制一天几张
         // 生图专用：每个角色长什么样。{ 角色id: { desc:'形象词', seed:12345, on:true } }
         // 没有这个的话，"自拍"每画一次都是另一张脸——那就不是 TA 了。
         look: {},
@@ -221,7 +221,7 @@
         try {
             const today = new Date().toDateString();
             if (S.day !== today) { S.day = today; S.dayN = 0; }
-            if (S.dayN >= Math.max(1, S.maxDay)) return '今天发得够多了（一天最多 ' + S.maxDay + ' 张）';
+            // （以前这里还有"一天最多 N 张"的上限，删了）
             const n = ((typeof globalChats !== 'undefined' && globalChats[sessionId]) || []).length;
             let last = S.last[sessionId];
             // 聊天记录被删短过（清空重聊、删了几条）的话，记着的那个位置就比现在还靠后，
@@ -520,12 +520,11 @@ ${hist ? '你们刚才在聊：\n' + hist + '\n' : ''}只回一句话，说清�
         const tag = ((document.getElementById('gypicRefTag_' + charId) || {}).value || '').trim();
         const k = String(charId);
         let done = 0;
-        files.slice(0, REF_MAX).forEach(f => {
+        files.forEach(f => {
             shrinkImg(f, async src => {
                 if (!Array.isArray(R[k])) R[k] = [];
-                R[k].unshift({ id: uid(), src, tag: tag.slice(0, 20), at: Date.now() });
-                if (R[k].length > REF_MAX) R[k] = R[k].slice(0, REF_MAX);
-                if (++done === Math.min(files.length, REF_MAX)) {
+                R[k].unshift({ id: uid(), src, tag, at: Date.now() });
+                if (++done === files.length) {
                     await saveR(); render();
                     toast('🖼️', `存了 ${done} 张参考图${tag ? '（标签：' + tag + '）' : ''}`);
                 }
@@ -539,8 +538,7 @@ ${hist ? '你们刚才在聊：\n' + hist + '\n' : ''}只回一句话，说清�
         const tag = ((document.getElementById('gypicRefTag_' + charId) || {}).value || '').trim();
         const k = String(charId);
         if (!Array.isArray(R[k])) R[k] = [];
-        R[k].unshift({ id: uid(), src: u, tag: tag.slice(0, 20), at: Date.now() });
-        if (R[k].length > REF_MAX) R[k] = R[k].slice(0, REF_MAX);
+        R[k].unshift({ id: uid(), src: u, tag, at: Date.now() });
         await saveR(); render();
         toast('🖼️', '存好了（外链图 image_url 那档也能用）');
     };
@@ -552,7 +550,7 @@ ${hist ? '你们刚才在聊：\n' + hist + '\n' : ''}只回一句话，说清�
     window.gyPhotoRefTag = async function (charId, id, tag) {
         const x = refsOf(charId).find(y => y.id === id);
         if (!x) return;
-        x.tag = String(tag || '').slice(0, 20);
+        x.tag = String(tag || '');
         await saveR();
     };
     // 按这句描述挑最像的那张参考图
@@ -924,12 +922,9 @@ ${persona}`;
             <div class="gypic-sec">
               <h4>④ 别发太勤</h4>
               <div class="gypic-num"><span>最少隔</span>
-                <input type="number" min="0" max="50" value="${S.gapMsg}" onchange="gyPhotoSetNum('gapMsg',this.value,0,50,6)">
+                <input type="number" min="0" value="${S.gapMsg}" onchange="gyPhotoSetNum('gapMsg',this.value,0,Infinity,6)">
                 <span>条消息才再发一张</span></div>
-              <div class="gypic-num"><span>一天最多</span>
-                <input type="number" min="1" max="100" value="${S.maxDay}" onchange="gyPhotoSetNum('maxDay',this.value,1,100,15)">
-                <span>张（生图那档别烧钱）</span></div>
-              <div class="gypic-note">这两条只管 TA 自己发的。聊天框 ⋮ 里那颗 📷 是手动的，<b>点了就发，不受这两条限制</b>。</div>
+              <div class="gypic-note">填 0 就是不用隔。只管 TA 自己发的；一天发几张不设上限。聊天框 ⋮ 里那颗 📷 是手动的，<b>点了就发</b>。</div>
             </div>`;
     }
 

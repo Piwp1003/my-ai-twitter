@@ -1131,6 +1131,12 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         audio.currentTime = Math.max(0, Math.min(1, (r.bottom - e.clientY) / r.height)) * audio.duration;
         onTime();
     };
+    // 按歌名在曲库里找（邀请卡 / TA 点名要听的那首）：先全等，再互相包含
+    window.gymFindTrack = function (title) {
+        const n = x => String(x || '').replace(/[《》「」"'“”\s]/g, '').toLowerCase();
+        const t = n(title); if (!t) return null;
+        return S.tracks.find(x => n(x.title) === t) || S.tracks.find(x => n(x.title) && (n(x.title).indexOf(t) !== -1 || t.indexOf(n(x.title)) !== -1)) || null;
+    };
     window.gymPlayTrackId = function (id) {
         let i = curTracks().findIndex(t => t.id === id);
         if (i < 0) { S.curList = 'all'; i = S.tracks.findIndex(t => t.id === id); }
@@ -1586,7 +1592,8 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         const u = (el && el.value || '').trim();
         if (!u) return toast('先填链接', '把音频的直接地址贴进来。');
         if (/music\.163\.com|y\.qq\.com|kugou|kuwo|bilibili|youtube|spotify/i.test(u)) {
-            toast('这个链接放不了', '网易云/QQ音乐这类是网页地址，不是音频文件地址，而且有版权校验，网页里拿不到音频。请用音频直链，或者把文件下载下来用「选择音频文件」。');
+            if (typeof window.gyWmOpen === 'function') { toast('🎧 这是网站链接', '在「一起听 · 一起看」里帮你打开了（网易云 / QQ 音乐这类不能当音频文件用）'); window.gyWmOpen(u); if (el) el.value = ''; return; }
+            toast('这个链接放不了', '网易云/QQ音乐这类是网页地址，不是音频文件地址。请用音频直链，或者把文件下载下来上传。');
             return;
         }
         const id = 'm' + Date.now() + Math.random().toString(36).slice(2, 7);
@@ -1604,7 +1611,7 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         if (!t || !t.src) return null;
         const dup = S.tracks.find(x => x.src === t.src);
         const id = dup ? dup.id : ('m' + Date.now() + Math.random().toString(36).slice(2, 7));
-        if (!dup) S.tracks.push({ id, title: String(t.title || '未命名').slice(0, 80), artist: String(t.artist || '').slice(0, 60), cover: t.cover || '', src: t.src, kind: 'url', lrc: '', note: t.note || '' });
+        if (!dup) S.tracks.push({ id, title: String(t.title || '未命名'), artist: String(t.artist || ''), cover: t.cover || '', src: t.src, kind: 'url', lrc: '', note: t.note || '' });
         if (listName) {
             let l = S.lists.find(x => x.name === listName && x.ids);
             if (!l) { l = { id: 'pl' + Date.now() + Math.random().toString(36).slice(2, 5), name: listName, ids: [] }; S.lists.push(l); }
@@ -1715,7 +1722,6 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
     function pushChat(who, name, text) {
         if (!Array.isArray(S.chat)) S.chat = [];
         S.chat.push({ who, name, text, at: Date.now() });
-        while (S.chat.length > 60) S.chat.shift();   // 只留最近的，别把存档堆大
         paintChat(); save();
     }
 
@@ -1770,7 +1776,10 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
                 ask: '对方问你这首歌怎么样，说说你的看法。',
                 reply: '接着对方刚说的话往下聊。'
             }[reason] || '说一句。';
-            const ask = `你正在和${(typeof userDisplayName === 'function') ? userDisplayName(c) : '对方'}一起听歌。
+            const un = (typeof userDisplayName === 'function') ? userDisplayName(c) : '对方';
+            const byTxt = (LS().by || {})[String(c.id)] === 'char'
+                ? `（这次一起听是你发起的：是你约${un}来听的）` : `（这次一起听是${un}发起的：是${un}约你来听的）`;
+            const ask = `你正在和${un}一起听歌。${byTxt}
 
 ${nowPlayingPrompt()}${otherNames(c)}${tasteOf(c)}
 
@@ -1872,6 +1881,7 @@ ${chatSoFar()}
         id = String(id);
         if (L.chars.includes(id)) {                       // 已经在听了 → 请 TA 走，不用问
             L.chars = L.chars.filter(x => x !== id);
+            if (L.by) delete L.by[id];
             save(); renderMgr(); paint();
             return;
         }
@@ -1884,24 +1894,45 @@ ${chatSoFar()}
                 char: c, kind: 'music',
                 title: song ? (song.title || '一首歌') : '',
                 sub: song && song.artist ? song.artist : '',
-                onYes: () => { if (!LS().chars.includes(id)) LS().chars.push(id); save(); renderMgr(); paint(); },
+                trackId: song ? song.id : '',
+                onYes: () => { window.gymJoinListener(id, 'me'); },
                 onNo: () => { renderMgr(); }
             });
             return;
         }
-        L.chars.push(id);
-        save(); renderMgr(); paint();
+        window.gymJoinListener(id, 'me');
     };
     // 给邀请卡片的「去听 ›」用：直接把人加进来（这时候已经答应过了，不用再问一遍）
-    window.gymJoinListener = function (id) {
+    // by：'me'＝你约的 TA（默认），'char'＝TA 约的你
+    window.gymJoinListener = function (id, by) {
         const L = LS(); id = String(id);
+        if (!L.by) L.by = {};
+        if (!L.chars.length) L.t0 = Date.now();
+        if (!L.chars.includes(id) || by) L.by[id] = by === 'char' ? 'char' : 'me';
         if (!L.chars.includes(id)) L.chars.push(id);
         save(); renderMgr(); paint();
     };
 
+    // 💬 散场之后，TA 像真人一样在私聊里再说两句（js/28 gyAfterActivity）
+    function afterListen() {
+        try {
+            const cs = charsIn();
+            if (!cs.length || typeof window.gyAfterActivity !== 'function') return;
+            const L = LS();
+            const mins = L.t0 ? (Date.now() - L.t0) / 60000 : 0;
+            if (!(S.chat || []).length && mins < 3) return;
+            const t = cur();
+            const talk = (S.chat || []).slice(-16).map(m => `${m.name}：${m.text}`).join('\n');
+            const summary = `一起听歌${t ? '，最后放的是《' + (t.title || '未命名') + '》' + (t.artist ? '（' + t.artist + '）' : '') : ''}。`
+                + (talk ? `\n听的时候聊过的：\n${talk}` : '');
+            cs.forEach(c => window.gyAfterActivity(c.id, '一起听歌', summary, { by: (L.by || {})[String(c.id)] === 'char' ? 'char' : 'me', mins }));
+        } catch (e) { console.warn('[音乐盒] 事后消息没发出去：', e); }
+    }
+
     window.gymLeaveListen = async function () {
+        afterListen();
         if (charsIn().length && (S.chat || []).length >= 4) await summarizeListen(false);
-        LS().chars = []; S.chat = [];
+        LS().chars = []; S.chat = []; LS().by = {}; LS().t0 = 0;
         save(); renderMgr(); paint();
         toast('结束了这次一起听', '刚才聊的已经总结进 TA 的记忆里了。');
     };
@@ -2001,10 +2032,29 @@ ${log}`;
             GY_AUTONOMY_ACTIONS.splice(GY_AUTONOMY_ACTIONS.length - 1, 0, {
                 key: 'music_invite',
                 label: '约用户一起听歌',
-                hint: '手头有首想放给对方听的歌，或者只是想找个由头待在一起',
-                need: () => S.tracks && S.tracks.length > 0,
-                run: async (char) => {
+                hint: '手头有首想放给对方听的歌，或者只是想找个由头待在一起；param 填歌名（可不写，不写就从曲库里挑一首）',
+                need: () => (S.tracks && S.tracks.length > 0) || typeof window.gyInviteResolveItem === 'function',
+                run: async (char, param) => {
                     const id = String(char.id);
+                    // 📨 发一张邀请卡：TA 点了名的那首先找来（曲库里有就用，没有就在线找），你点「好啊」就直接放这首
+                    if (typeof window.gyInviteFromChar === 'function') {
+                        const want = String(param || '').split(/[|｜]/)[0].replace(/[《》「」]/g, '').trim();
+                        let extra = null, title = want;
+                        if (want && typeof window.gyInviteResolveItem === 'function') {
+                            try { extra = await window.gyInviteResolveItem('music', want); } catch (e) {}
+                        }
+                        if (!extra && !want && S.tracks.length) {
+                            const t = S.tracks[Math.floor(Math.random() * S.tracks.length)];
+                            extra = { trackId: t.id }; title = t.title || '';
+                        }
+                        if (!title && !extra) return null;
+                        const tr = extra && extra.trackId ? S.tracks.find(x => x.id === extra.trackId) : null;
+                        let inv = null;
+                        inv = window.gyInviteFromChar(Object.assign({ char, kind: 'music', title, sub: tr && tr.artist ? tr.artist : '' }, extra || {}, {
+                            onYes: () => { try { const K = (window.GY_INVITE_KINDS || {}).music; if (K && K.accept) K.accept(inv || { charId: id, from: 'char', title }); } catch (e) {} }
+                        }));
+                        return inv ? '约你一起听' + (title ? '「' + title + '」' : '歌') : null;
+                    }
                     if (!LS().chars.includes(id)) LS().chars.push(id);
                     gymShow(); LS().chatOpen = true;
                     await save(); paint();

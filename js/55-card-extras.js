@@ -74,7 +74,7 @@
                 if (typeof namespaceInjectedIds === 'function') h = namespaceInjectedIds(h, 'cw' + b.start + '_' + (depth || 0));
                 // 渲染完跟原文一样（正则没真的把它变成界面）就还给正文
                 if (!h || h.indexOf(b.seg.slice(0, 12)) !== -1) { return; }
-                // 只是被包成了代码块（卡片靠酒馆插件脚本才能画出来的那种）——这里画不出来，还给正文
+                // 只是被包成了代码块（卡片靠同类软件插件脚本才能画出来的那种）——这里画不出来，还给正文
                 const bare = h.replace(/<\/?(pre|code|br|p|span)[^>]*>/gi, '');
                 if (!/<[a-z][^>]*>/i.test(bare)) { return; }
                 html += `<div class="gy-chat-widget" onclick="event.stopPropagation()">${h}</div>`;
@@ -99,7 +99,8 @@
             const r = await fetch(url, { signal: ctl ? ctl.signal : undefined, mode: 'cors' });
             if (!r.ok) return null;
             const b = await r.blob();
-            if (!b || b.size > 1.5 * 1024 * 1024 || !/^image\//.test(b.type || 'image/')) return null;
+            // 不再按大小拒收（以前超过 1.5MB 的图就不存本地）；只看是不是图片
+            if (!b || !/^image\//.test(b.type || 'image/')) return null;
             return await blobToData(b);
         } catch (e) { return null; } finally { clearTimeout(t); }
     }

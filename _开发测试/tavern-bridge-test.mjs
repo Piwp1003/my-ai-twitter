@@ -1,7 +1,7 @@
-// 验证「酒馆助手兼容层」：角色卡自带的开场白菜单 / 操作栏，在谷雨里能不能真的用起来。
+// 验证「助手脚本兼容层」：角色卡自带的开场白菜单 / 操作栏，在谷雨里能不能真的用起来。
 //
 // 用真实角色卡的正则脚本（成人游乐园那张会明确检查 triggerSlash，检查不到就弹
-// 「环境未配置酒馆助手」），跑完整链路：
+// 「环境未配置助手脚本」），跑完整链路：
 //   1. 卡片脚本能不能拿到 TavernHelper / setChatMessages / getChatMessages
 //   2. getChatMessages("0") 能不能读到这个角色的开场白列表
 //   3. 点开场白菜单（setChatMessages 换 swipe）能不能真的把续写的开场换掉
@@ -64,7 +64,7 @@ await page.evaluate(() => {
       '<script>\n' +
       'var diag = document.getElementById("diag");\n' +
       'if (typeof triggerSlash !== "function") {\n' +
-      '  diag.textContent = "环境未配置酒馆助手";\n' +
+      '  diag.textContent = "环境未配置助手脚本";\n' +
       '} else {\n' +
       '  diag.textContent = "OK";\n' +
       '  var msgs = getChatMessages("0", {include_swipes:true});\n' +
@@ -100,7 +100,7 @@ const frame = page.frames().find(f => f !== page.mainFrame());
 check('开场白菜单渲染成了 iframe', !!frame);
 
 const diag = frame ? await frame.evaluate(() => document.getElementById('diag')?.textContent) : null;
-check('卡片不再报「环境未配置酒馆助手」', diag === 'OK', '卡片里显示的是: ' + diag);
+check('卡片不再报「环境未配置助手脚本」', diag === 'OK', '卡片里显示的是: ' + diag);
 
 const api = frame ? await frame.evaluate(() => ({
   helper: !!window.TavernHelper,
@@ -162,7 +162,7 @@ check('triggerSlash(/echo) 会弹提示，并且把 severity= 参数剥掉',
   toast.ok && toast.text === '已切换到旋转木马', JSON.stringify(toast));
 
 
-// ================= 楼层模型：跟酒馆对齐 =================
+// ================= 楼层模型：跟同类软件对齐 =================
 // 造一段有开场白 + 用户 + AI 的续写，验证 message_id / range / 写接口 / 事件
 await page.evaluate(() => {
   const s = storySessions[0];
@@ -178,7 +178,7 @@ await page.waitForTimeout(400);
 
 const floors = await page.evaluate(() =>
   Array.from(document.querySelectorAll('#ssTurns .ss-meta')).map(e => e.textContent.trim().split(' ')[0]));
-check('楼层号从 0 开始（跟酒馆的 message_id 一致）',
+check('楼层号从 0 开始（跟同类软件的 message_id 一致）',
   floors[0] === '#0楼' && floors[1] === '#1楼', JSON.stringify(floors));
 
 // 桥接方法有同步也有异步（generate / getModelList / installExtension 这些是 async），
@@ -193,7 +193,7 @@ check('getLastMessageId 是最后一楼的号', (await B('getLastMessageId')) ==
 const all = await B('getChatMessages', '0-{{lastMessageId}}', {});
 check('getChatMessages 能取整段，message_id 就是楼层下标',
   all.length === 4 && all.map(m => m.message_id).join(',') === '0,1,2,3', JSON.stringify(all.map(m => m.message_id)));
-check('role 翻译成酒馆的说法（ai → assistant）',
+check('role 翻译成同类软件的说法（ai → assistant）',
   all[0].role === 'assistant' && all[1].role === 'user', all.map(m => m.role).join(','));
 check('隐藏楼层带上 is_hidden', all[3].is_hidden === true);
 
@@ -232,7 +232,7 @@ check('setChatMessages 能隐藏楼层（is_hidden）',
 await B('insertOrAssignVariables', { 好感度: 5, 状态: { 疲劳: 2 } }, { type: 'message', message_id: 2 });
 await page.waitForTimeout(200);
 const mv = await B('getVariables', { type: 'message', message_id: 2 });
-check('楼层变量能写能读（酒馆的 type:message）',
+check('楼层变量能写能读（同类软件的 type:message）',
   mv.好感度 === 5 && mv.状态.疲劳 === 2, JSON.stringify(mv));
 
 await B('insertOrAssignVariables', { 状态: { 心情: '好' } }, { type: 'message', message_id: 2 });
@@ -277,7 +277,7 @@ await page.evaluate(() => {
   worldbooks.push({ id: 77, title: '旧书店设定', content: '门口有棵梧桐。', keywords: '书店,梧桐', isGlobal: true, category: '场景' });
   myCharacters[myCharacters.length - 1].worldbooks = [77];
 });
-// 世界书现在是酒馆的两层结构：**分类 ＝ 书名**，一本书里装很多条目
+// 世界书现在是同类软件的两层结构：**分类 ＝ 书名**，一本书里装很多条目
 await page.evaluate(() => {
   worldbooks.push({ id: 78, title: '梧桐树', content: '门口那棵。', keywords: '梧桐',
     isGlobal: false, category: '场景', secondaryKeywords: '树,叶子', secondaryLogic: 'and_any',
@@ -292,18 +292,18 @@ check('一本书里装着这个分类下的所有条目',
   JSON.stringify(bookEntries.map(e => e.name)));
 
 const deep = bookEntries.find(e => e.name === '梧桐树');
-check('条目字段跟酒馆几乎 1:1（次要关键词/顺序/深度/身份/粘性/冷却都在）',
+check('条目字段跟同类软件几乎 1:1（次要关键词/顺序/深度/身份/粘性/冷却都在）',
   deep.secondary_keys.includes('树') && deep.selective === true && deep.order === 50
   && deep.depth === 3 && deep.role === 'user' && deep.sticky === 2 && deep.cooldown === 1,
   JSON.stringify(deep));
-check('位置也翻译成酒馆的叫法',
+check('位置也翻译成同类软件的叫法',
   deep.position === 'after_character_definition', deep.position);
 
 const wb = await B('getWorldbook', '场景');
 const oldShop = wb.find(e => e.name === '旧书店设定');
-check('世界书条目按酒馆的字段名给出（name/content/keys/enabled）',
+check('世界书条目按同类软件的字段名给出（name/content/keys/enabled）',
   oldShop.content.includes('梧桐') && oldShop.keys.includes('梧桐') && oldShop.enabled === true, JSON.stringify(oldShop));
-check('谷雨的「全局世界书」映射成酒馆的常驻条目 constant', oldShop.constant === true);
+check('谷雨的「全局世界书」映射成同类软件的常驻条目 constant', oldShop.constant === true);
 
 await B('replaceWorldbook', '场景', [{ name: '旧书店设定', content: '门口的梧桐今年没发芽。', order: 7 }]);
 check('卡片能改书里某一条的正文和顺序',
@@ -418,7 +418,7 @@ const gen = await page.evaluate(async () => {
 });
 check('generate 能真的生成，用的是谷雨的 API 配置和设定',
   gen && gen.ok && typeof gen.value === 'string' && gen.value.length > 0, JSON.stringify(gen).slice(0, 160));
-check('generate 不会自己往楼层里加内容（跟酒馆一致）',
+check('generate 不会自己往楼层里加内容（跟同类软件一致）',
   (await page.evaluate(() => storySessions[0].turns.length)) === 5, '现在 ' + (await page.evaluate(() => storySessions[0].turns.length)) + ' 楼');
 
 // —— 卡片那一侧真的拿得到这些接口 ——
@@ -527,7 +527,7 @@ const clicked = await page.evaluate(() => {
   window.gyTavernEmit = orig;
   return seen;
 });
-check('点按钮发出的事件名跟酒馆的 getButtonEvent 算法一致',
+check('点按钮发出的事件名跟同类软件的 getButtonEvent 算法一致',
   clicked.includes('5001_查看手账_button_clicked'), JSON.stringify(clicked));
 
 check('按钮注册信息存在会话上（重渲染不会丢）',
@@ -731,7 +731,7 @@ check('getPersonaIds 读到的是谷雨的用户人设',
   persona && persona.ids.join(',') === 'persona_a,persona_b', JSON.stringify(persona && persona.ids));
 check('getPersonaNames 给的是人设里的名字',
   persona && persona.names.join(',') === '林,阿林', JSON.stringify(persona && persona.names));
-check('能按 id 取到一份人设，字段翻译成酒馆的形状',
+check('能按 id 取到一份人设，字段翻译成同类软件的形状',
   persona && persona.one && persona.one.name === '阿林' && persona.one.title === '马甲小号'
   && persona.one.description === '匿名号。', JSON.stringify(persona && persona.one));
 check('getCurrentPersonaId 能推出当前是哪份人设', persona && persona.current === 'persona_a',
@@ -760,7 +760,7 @@ const declinedPersona = await page.evaluate(async () => {
 check('点取消就不切', declinedPersona === '阿林', '现在是 ' + declinedPersona);
 
 
-// —— 兜底：ST 的 161 个接口，一个都不能让卡片调崩 ——
+// —— 兜底：同类软件 的 161 个接口，一个都不能让卡片调崩 ——
 const surfaceAudit = pFrame ? await pFrame.evaluate(() => {
   const names = Object.keys(window.TavernHelper);
   const notFn = names.filter(k => typeof window.TavernHelper[k] !== 'function');
@@ -775,7 +775,7 @@ const surfaceAudit = pFrame ? await pFrame.evaluate(() => {
 }) : null;
 check('TavernHelper 上没有"不是函数"的成员',
   surfaceAudit && surfaceAudit.notFn.length === 0, JSON.stringify(surfaceAudit && surfaceAudit.notFn));
-check('酒馆 161 个接口全都挂上了（不会再 xxx is not a function）',
+check('同类软件 161 个接口全都挂上了（不会再 xxx is not a function）',
   surfaceAudit && surfaceAudit.count >= 161, '挂了 ' + (surfaceAudit && surfaceAudit.count) + ' 个');
 check('兜底空实现挨个调一遍，一个都不抛异常',
   surfaceAudit && surfaceAudit.threw.length === 0, JSON.stringify(surfaceAudit && surfaceAudit.threw.slice(0, 5)));

@@ -168,10 +168,11 @@ ${have.length ? `【已经抽过这些，别重复】${have.join('、')}\n` : ''
         const name = ((g('gynpName') || {}).value || '').trim();
         if (!name) return toast('先写个名字');
         S.npcs.push({
-            id: uid(), ownerId: String(charId), name: name.slice(0, 14),
-            ico: ((g('gynpIco') || {}).value || '👤').slice(0, 4),
-            who: ((g('gynpWho') || {}).value || '').slice(0, 20),
-            tie: ((g('gynpTie') || {}).value || '').slice(0, 30),
+            // 你自己填的不截字数
+            id: uid(), ownerId: String(charId), name,
+            ico: ((g('gynpIco') || {}).value || '👤'),
+            who: ((g('gynpWho') || {}).value || ''),
+            tie: ((g('gynpTie') || {}).value || ''),
             persona: '', tone: '', handle: '', wb: '', from: 'manual', at: Date.now(), on: true
         });
         await save();
@@ -292,7 +293,7 @@ ${have.length ? `【已经抽过这些，别重复】${have.join('、')}\n` : ''
             </div>`;
           }).join('')}
           <div class="gynp-nums">
-            <label>注进 prompt 最多 <input type="number" min="1" max="12" value="${Number(S.inject) || 5}" onchange="gyNpcSet('inject', this.value)"> 个</label>
+            <label>注进 prompt 最多 <input type="number" min="1" value="${Number(S.inject) || 5}" onchange="gyNpcSet('inject', this.value)"> 个</label>
             <label>推文底下有 <input type="number" min="0" max="100" value="${Number(S.cmtPct) || 0}" onchange="gyNpcSet('cmtPct', this.value)"> % 的路人换成熟人</label>
           </div>`;
     }

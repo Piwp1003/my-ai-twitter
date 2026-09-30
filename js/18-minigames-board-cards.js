@@ -284,7 +284,7 @@ ${boardText}
       const fb = pickFallbackMove(game.board);
       row = fb.row; col = fb.col;
     }
-    const message = (parsed && parsed.message) ? String(parsed.message).slice(0, 100) : '';
+    const message = (parsed && parsed.message) ? String(parsed.message) : '';   // 不再截断到 100 字：模型说多少就显示多少
 
     placeStone(game, row, col, 'char');
     game.turn = 'user';

@@ -112,12 +112,49 @@ function rtSyncOverlaySize(){
 }
 window.addEventListener('resize', rtSyncOverlaySize);
 
+/* 💬 这一趟读完（关掉阅读页）之后，搭子像真人一样在私聊里再说两句（js/28 gyAfterActivity）。
+   只有真读了（翻过页、或者聊过）才算；开一下就关掉不算。 */
+var rtSess = null;   // { bookId, ch, t0 }
+function rtSessStart(){
+  var b = rtCurrentBook();
+  rtSess = b ? { bookId: b.id, ch: b.currentChapterIndex, t0: Date.now() } : null;
+}
+function rtAfterRead(){
+  try{
+    var s = rtSess; rtSess = null;
+    if(!s || typeof window.gyAfterActivity !== 'function') return;
+    var b = (window.__rtState.books || []).find(function(x){ return x.id === s.bookId; });
+    if(!b || !b.companionCharId) return;
+    var talk = [];
+    Object.keys(b.discussion || {}).forEach(function(k){
+      (b.discussion[k] || []).forEach(function(m){ if((m.ts || 0) >= s.t0) talk.push(m); });
+    });
+    var moved = b.currentChapterIndex !== s.ch;
+    if(!moved && !talk.length) return;
+    var char = (typeof myCharacters !== 'undefined' ? myCharacters : []).find(function(c){ return String(c.id) === String(b.companionCharId); });
+    if(!char) return;
+    var uname = (typeof userDisplayName === 'function') ? userDisplayName(char) : '对方';
+    var chName = function(i){ var c = b.chapters[i]; return c ? (c.title || ('第' + (i+1) + '部分')) : ''; };
+    var mine = [];
+    for(var i = Math.min(s.ch, b.currentChapterIndex); i <= Math.max(s.ch, b.currentChapterIndex); i++){
+      (b.comments[i] || []).forEach(function(c){ if(c && c.comment) mine.push('（读到「' + (c.quote || '') + '」时）你说：' + c.comment); });
+    }
+    talk.sort(function(a, z){ return (a.ts || 0) - (z.ts || 0); });
+    var summary = '一起读《' + b.title + '》' + (moved ? '，从「' + chName(s.ch) + '」读到了「' + chName(b.currentChapterIndex) + '」' : '，停在「' + chName(b.currentChapterIndex) + '」') + '。'
+      + (mine.length ? '\n你边读边写的评论：\n' + mine.slice(-8).join('\n') : '')
+      + (talk.length ? '\n你们聊过的：\n' + talk.slice(-12).map(function(m){ return (m.role === 'user' ? uname : char.name) + '：' + m.text; }).join('\n') : '');
+    window.gyAfterActivity(char.id, '一起读书', summary, { by: b.companionBy === 'char' ? 'char' : 'me', mins: (Date.now() - s.t0) / 60000 });
+  } catch(e){ console.warn('[一起阅读] 事后消息没发出去：', e); }
+}
 window.rtOpenOverlay = function(){
-  document.getElementById('rtOverlay').style.display = 'flex';
+  var ov = document.getElementById('rtOverlay');
+  var wasOpen = ov.style.display === 'flex';
+  ov.style.display = 'flex';
   rtSyncOverlaySize();
   rtRenderReader();
+  if(!wasOpen || !rtSess) rtSessStart();
 };
-window.rtCloseOverlay = function(){ document.getElementById('rtOverlay').style.display = 'none'; };
+window.rtCloseOverlay = function(){ document.getElementById('rtOverlay').style.display = 'none'; rtAfterRead(); };
 document.getElementById('rtCloseBtn').addEventListener('click', function(){ window.rtCloseOverlay(); });
 document.getElementById('rtCollapseBtn').addEventListener('click', function(){ document.getElementById('rtOverlay').classList.toggle('rt-collapsed'); });
 // 全屏时顶部栏（书名/书架/导入/搭子/写读后感等按钮）整个隐藏掉，只剩纯正文，更专注阅读；
@@ -160,7 +197,6 @@ document.getElementById('rtQuoteSelectBtn').addEventListener('click', function()
     alert('请先在上方正文里选中你想讨论的一段文字，再点这个按钮。');
     return;
   }
-  if(text.length > 200){ text = text.slice(0,200) + '……'; }
   rtSetPendingQuote(text);
 });
 
@@ -196,22 +232,26 @@ document.getElementById('rtCompanionModal').addEventListener('click', async func
       await window.gyInviteSend({
         char: c, kind: 'read',
         title: book.title || '一本书',
+        bookId: book.id,
         sub: '一段一段地读，读到哪儿聊到哪儿',
-        onYes: function(){ book.companionCharId = cid; rtSaveState(); rtRenderReader(); },
+        onYes: function(){ book.companionCharId = cid; book.companionBy = 'me'; rtSaveState(); rtRenderReader(); },
         onNo:  function(){ rtRenderReader(); }
       });
       return;
     }
     book.companionCharId = cid;
+    book.companionBy = 'me';
     rtSaveState();
     rtRenderReader();
   }
 });
 
 // 给邀请卡片的「去读 ›」用：这时候已经答应过了，直接设成搭子
-window.rtSetCompanion = function(charId){
+// by：'me'＝你约的 TA（默认），'char'＝TA 约的你
+window.rtSetCompanion = function(charId, by){
   var book = rtCurrentBook(); if(!book) return;
   book.companionCharId = String(charId);
+  book.companionBy = (by === 'char') ? 'char' : 'me';
   rtSaveState();
   try { rtRenderReader(); } catch(e){}
 };
@@ -396,11 +436,13 @@ window.rtImportText = async function(title, text, meta){
   var file = new File([String(text)], (title || '在线书籍').replace(/[\\/:*?"<>|]/g,'') + '.txt', { type: 'text/plain' });
   var result = await rtParseFile(file, 'txt');
   if(!result.chapters || !result.chapters.length) return null;
-  var lastCompanion = window.__rtState.books.length ? window.__rtState.books[window.__rtState.books.length-1].companionCharId : null;
-  var book = { id: 'book_' + Date.now(), title: title || result.title || '在线书籍', format: 'txt', addedAt: Date.now(),
-    chapters: result.chapters, currentChapterIndex: 0, companionCharId: lastCompanion || (myCharacters[0] && myCharacters[0].id) || null,
+  // ⚠️ 搭子不再"顺手沿用上一本书的"：这本是谁找来的、跟谁一起读，由打开它的人（邀请卡 / 你自己选）来定，
+  //    不然 TA 约你读的书，搭子可能是上一本书的另一个人。
+  var book = { id: 'book_' + Date.now() + Math.random().toString(36).slice(2, 5), title: title || result.title || '在线书籍', format: 'txt', addedAt: Date.now(),
+    chapters: result.chapters, currentChapterIndex: 0, companionCharId: null,
     comments: {}, discussion: {}, finished: false, online: (meta && meta.src) || true };
   window.__rtState.books.push(book);
+  if(!window.__rtState.currentBookId || !rtCurrentBook()) window.__rtState.currentBookId = book.id;
   rtSaveState();
   return book;
 };
@@ -458,7 +500,17 @@ window.rtOpenLibrary = function(){
   if(typeof openModal==='function'){ openModal('rtLibraryModal'); }
 };
 window.rtOpenBook = function(bookId){
+  var prev = window.__rtState.currentBookId;
+  if(prev && prev !== bookId && rtSess){ rtAfterRead(); }
   window.__rtState.currentBookId = bookId;
+  // 从 TA 的邀请卡进来、书当时还没到手：现在打开的这本就跟 TA 一起读
+  var pc = window.__rtPendingCompanion;
+  if(pc){
+    window.__rtPendingCompanion = null;
+    var bk = (window.__rtState.books || []).find(function(x){ return x.id === bookId; });
+    if(bk){ bk.companionCharId = String(pc.charId); bk.companionBy = pc.by === 'char' ? 'char' : 'me'; }
+  }
+  if(document.getElementById('rtOverlay').style.display === 'flex' && (!rtSess || rtSess.bookId !== bookId)){ setTimeout(rtSessStart, 0); }
   rtClearPendingQuote();
   rtSaveState();
   closeModal('rtLibraryModal');
@@ -595,6 +647,11 @@ window.rtJumpChapter = function(idx){
 document.getElementById('rtPrevBtn').addEventListener('click', function(){ window.rtPrevChapter(); });
 document.getElementById('rtNextBtn').addEventListener('click', function(){ window.rtNextChapter(); });
 
+// 这次一起读是谁约的谁
+function rtByText(book, char){
+  var u = (typeof userDisplayName === 'function') ? userDisplayName(char) : currentUser.name;
+  return book && book.companionBy === 'char' ? ('这次一起读是你发起的：是你约' + u + '来读的') : ('这次一起读是' + u + '发起的：是' + u + '约你一起读的');
+}
 /* ===== AI：角色自主评论当前段落 ===== */
 async function rtGenerateComments(book, chapterIdx){
   // 🔌 设置 → 自动功能开关 → 一起看/一起读 → 「一起阅读：翻页时角色自动评论」
@@ -612,7 +669,7 @@ async function rtGenerateComments(book, chapterIdx){
   var actionRule = allowActionTags ? '' : '\n【严格禁止】：不要有任何动作、神态或心理描写，不要用括号()或【】，只输出文字内容。';
   var textForAI = chapter.text.length > 6000 ? chapter.text.slice(0,6000) + '……（后面省略）' : chapter.text;
   var prompt = '你正在扮演角色："' + char.name + '"。\n【人设】\n' + (char.persona||'') + '\n' + (wbText ? ('【相关设定】\n' + wbText + '\n') : '') +
-    '你正在和' + currentUser.name + '一起读书，书名是《' + book.title + '》，你们刚读到这一部分（' + (chapter.title||'') + '）：\n\n' + textForAI +
+    '你正在和' + currentUser.name + '一起读书，书名是《' + book.title + '》（' + rtByText(book, char) + '），你们刚读到这一部分（' + (chapter.title||'') + '）：\n\n' + textForAI +
     '\n\n如果这段文字里有让你（根据你的人设和说话风格）特别有感触、想吐槽、觉得有意思或想拿出来讨论的句子，挑1-3处评论一下；如果没有特别想说的，就不用硬凑评论，返回空数组即可。' +
     '\n每条评论要包含：quote（必须是从上面原文里逐字摘抄的一句话，不超过40字，不能改写或省略中间内容）和 comment（你的评论/感想，20-60字，要符合你的人设和说话风格）。' + actionRule +
     '\n必须只返回如下JSON格式，不要加其它文字或代码块标记：{"comments":[{"quote":"...","comment":"..."}]}\n如果这段没有特别想评论的，返回{"comments":[]}。';
@@ -658,7 +715,7 @@ window.rtSendDiscuss = async function(){
     return who + q + '：' + m.text;
   }).join('\n');
   var prompt = '你正在扮演角色："' + char.name + '"。\n【人设】\n' + (char.persona||'') + '\n' + (wbText ? ('【相关设定】\n' + wbText + '\n') : '') +
-    '你正在和' + currentUser.name + '一起读《' + book.title + '》，目前读到"' + (chapter.title||'') + '"，这部分原文内容：\n\n' + textForAI +
+    '你正在和' + currentUser.name + '一起读《' + book.title + '》（' + rtByText(book, char) + '），目前读到"' + (chapter.title||'') + '"，这部分原文内容：\n\n' + textForAI +
     '\n\n你们之间关于这段内容的讨论记录：\n' + histText +
     '\n\n请以' + char.name + '的口吻自然回应' + currentUser.name + '最后说的话，符合你的人设和说话风格，紧扣书的内容和你们的讨论，必须给出实际回应。如果对方引用了某一句原文或你自己之前的某条评论，要针对那句话来回应。' + actionRule +
     '\n只输出回复内容本身，不要加多余的前缀。';

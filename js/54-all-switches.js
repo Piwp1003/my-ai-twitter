@@ -322,7 +322,7 @@
         const def = '我的配置 ' + (mine().length + 1);
         try { name = (typeof appPrompt === 'function') ? await appPrompt('给现在这一套开关起个名字（比如"周末放开玩""上班省钱"）', def) : prompt('名字', def); } catch (e) {}
         if (name == null) return;
-        name = String(name).trim().slice(0, 20) || def;
+        name = String(name).trim() || def;   // 预设名不限字数
         const snap = captureNow();
         const same = mine().find(x => x.name === name);
         if (same) {
@@ -352,7 +352,7 @@
         let name = null;
         try { name = await appPrompt('改个名字', p.name); } catch (e) {}
         if (name == null) return;
-        name = String(name).trim().slice(0, 20); if (!name) return;
+        name = String(name).trim(); if (!name) return;
         p.name = name;
         try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
         renderPresets();

@@ -78,11 +78,9 @@
         cart: {},       // { 店id: {菜id: 份数} }
         settings: { autoNewShop: true }
     };
-    const KEEP = 120;
-
+    // 订单不设条数上限（以前只留最近 120 单，旧单会自己消失）
     async function save() {
-        try { if (S.orders.length > KEEP) S.orders = S.orders.slice(0, KEEP);
-              if (LF) await LF.setItem(KEY, JSON.parse(JSON.stringify(S))); } catch (e) { console.warn('[外卖] 存档失败', e); }
+        try { if (LF) await LF.setItem(KEY, JSON.parse(JSON.stringify(S))); } catch (e) { console.warn('[外卖] 存档失败', e); }
     }
     async function load() {
         try { if (LF) { const d = await LF.getItem(KEY); if (d && typeof d === 'object') S = Object.assign(S, d); } } catch (e) {}
@@ -203,9 +201,9 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
         const s = shopOf(sid); if (!s) return;
         const { n, p } = cartSum(s);
         if (!n) return toast('购物车是空的');
-        if (p < (s.minOrder || 0)) return toast('还差 ￥' + money(s.minOrder - p) + ' 起送');
+        // 起送价只是店铺的一个标签，不拦你下单
         const forWhom = (document.getElementById('gytoFor') || {}).value || 'me';
-        const note = ((document.getElementById('gytoNote') || {}).value || '').slice(0, 40);
+        const note = ((document.getElementById('gytoNote') || {}).value || '');
         const c = cartOf(sid);
         const items = s.menu.filter(m => c[m.id]).map(m => ({ n: m.n, q: c[m.id], p: Math.round(m.p * c[m.id] * 100) / 100 }));
         const fee = Number(s.fee) || 0;
@@ -218,7 +216,7 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
                 tag: '外卖', shop: s.name,
                 items: items.concat(fee ? [{ n: '配送费', p: fee }] : [])
             });
-            if (r && r.ok === false) return toast('卡里不够 ￥' + money(total) + '，这一单没下成');
+            // 钱不够也照下：钱包那边允许透支，不再"这一单没下成"
             if (r && r.rid) receiptId = r.rid;
         }
 
@@ -232,6 +230,7 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
         s.sold = (Number(s.sold) || 0) + n;
         S.cart[sid] = {};
         await save();
+        changed();
         // ⚠️ 下完单要退出店铺页，否则 openShop 还占着，切到「我的订单」也只会重画菜单
         openShop = null;
         tab = 'orders'; render();
@@ -278,6 +277,9 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
         S.orders.unshift(o);
         shop.sold = (Number(shop.sold) || 0) + items.reduce((a, x) => a + x.q, 0);
         await save();
+        // 角色下的单：外卖页开着「我的订单」就马上重画，不用等下一拍
+        if (viewOpen() && tab === 'orders' && !openShop) render();
+        changed();
         if (!forSelf) sysLine(c.id, `🛵 ${c.name} 给你点了「${shop.name}」的${items.map(x => x.n).join('、')}，大约 ${shop.eta} 分钟送到。`);
         return { shop: shop.name, items: items.map(x => x.n), eta: shop.eta };
     };
@@ -315,7 +317,7 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
                 await arrived(o);
             }
         }
-        if (changed) await save();
+        if (changed) { await save(); changedNote(); }
         if (viewOpen() && tab === 'orders') render();
     }
     async function arrived(o) {
@@ -431,7 +433,7 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
         const c = cartOf(id);
         const { n, p } = cartSum(s);
         const owner = s.ownerId ? charOf(s.ownerId) : null;
-        const enough = p >= (s.minOrder || 0) && n > 0;
+        const enough = n > 0;   // 不凑起送价也能下单
         return `
         <div class="gyto-hd">
             <span class="gyto-back" onclick="gytoBack()">←</span>
@@ -464,7 +466,7 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
                     ${chars().map(x => `<option value="${x.id}">送给 ${esc(x.name)}</option>`).join('')}
                 </select>
             </div>
-            <input type="text" id="gytoNote" class="gyto-in" maxlength="40" placeholder="备注：不要香菜 / 多加辣 / 放门口">
+            <input type="text" id="gytoNote" class="gyto-in" placeholder="备注：不要香菜 / 多加辣 / 放门口">
             <div class="gyto-pay">
                 <div>
                     <b>￥${money(p + (n ? (Number(s.fee) || 0) : 0))}</b>
@@ -472,7 +474,7 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
                 </div>
                 <button type="button" class="gyto-sub ${enough ? '' : 'off'}"
                     onclick="${enough ? `gytoOrder('${s.id}')` : ''}">
-                    ${n === 0 ? '选点东西' : (p < (s.minOrder || 0) ? '差 ￥' + money(s.minOrder - p) + ' 起送' : '去下单')}
+                    ${n === 0 ? '选点东西' : '去下单'}
                 </button>
             </div>
         </div>`;
@@ -518,14 +520,14 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
             <div class="form-hint">自己开一家店：店名、老板是谁、什么脾气、卖什么，全都你说了算。
                 老板可以指到某个角色身上——那家店就是 TA 开的。</div>
             <input type="text" id="gytoNName" class="gyto-in" placeholder="店名，例：巷口那家面馆">
-            <input type="text" id="gytoNIco" class="gyto-in" maxlength="4" placeholder="一个 emoji，例：🍜">
-            <input type="text" id="gytoNCui" class="gyto-in" maxlength="8" placeholder="品类，例：面馆">
-            <input type="text" id="gytoNDesc" class="gyto-in" maxlength="40" placeholder="一句简介，例：做了很多年了，街坊常来">
+            <input type="text" id="gytoNIco" class="gyto-in" placeholder="一个 emoji，例：🍜">
+            <input type="text" id="gytoNCui" class="gyto-in" placeholder="品类，例：面馆">
+            <input type="text" id="gytoNDesc" class="gyto-in" placeholder="一句简介，例：做了很多年了，街坊常来">
             <select id="gytoNOwner" class="gyto-in">
                 <option value="">老板：不指定（就是个陌生老板）</option>
                 ${chars().map(c => `<option value="${c.id}">老板：${esc(c.name)}</option>`).join('')}
             </select>
-            <input type="text" id="gytoNTrait" class="gyto-in" maxlength="50" placeholder="老板是个什么人（会写进备注回复的口吻）">
+            <input type="text" id="gytoNTrait" class="gyto-in" placeholder="老板是个什么人（会写进备注回复的口吻）">
             <div style="display:flex;gap:6px;">
                 <input type="number" id="gytoNMin" class="gyto-in" placeholder="起送价" style="flex:1;">
                 <input type="number" id="gytoNFee" class="gyto-in" placeholder="配送费" style="flex:1;">
@@ -542,11 +544,11 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
         const menu = g('gytoNMenu').split('\n').map(l => l.trim()).filter(Boolean).map((l, i) => {
             const m = l.match(/^(.*?)[\s　]+(\d+(?:\.\d+)?)$/);
             return { id: 'i' + i + Math.random().toString(36).slice(2, 5),
-                     n: (m ? m[1] : l).slice(0, 16), p: m ? Math.round(parseFloat(m[2])) : 15, hot: i === 0 };
+                     n: (m ? m[1] : l), p: m ? Math.round(parseFloat(m[2])) : 15, hot: i === 0 };
         });
         const base = randomShop();
         S.shops.unshift(Object.assign(base, {
-            name: name.slice(0, 16),
+            name: name,
             ico: g('gytoNIco').trim() || base.ico,
             cuisine: g('gytoNCui').trim() || base.cuisine,
             desc: g('gytoNDesc').trim() || base.desc,
@@ -563,6 +565,11 @@ ${had ? `已经有这些店了，别重复：\n${had}\n` : ''}
         toast('「' + name + '」开张了');
     };
 
+    // 通知别的面板"外卖数据变了"（全局帮手可能还没装上，所以要判断）
+    function changedNote() {
+        try { if (typeof window.gyDataChanged === 'function') window.gyDataChanged('takeout'); } catch (e) {}
+    }
+    const changed = changedNote;
     function render() {
         const box = document.getElementById('gyTakeoutBody');
         if (box) box.innerHTML = window.gyTakeoutHtml();

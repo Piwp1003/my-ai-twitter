@@ -27,7 +27,7 @@
     const isOn = k => (typeof isAutoOn === 'function') ? isAutoOn(k) : false;
     const plain = s => String(s || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
     const isAutoChar = c => { try { return isOn('charAutonomy') && typeof getCharActMode === 'function' && getCharActMode(c) === 'auto'; } catch (e) { return false; } };
-    const CAP = 40;
+    // 以前 CAP = 40，只留最近 40 件事；现在不设上限（注进 prompt 的只取最近几条，不会越来越长）
 
     (function regDef(tries) {
         try {
@@ -129,7 +129,6 @@ ${where ? where + '\n' : ''}${known.length ? `你认识的人（只有这几个�
             const h = { at: Date.now(), what, where: (ln && ln.text) || (c.lifeState && c.lifeState.activity) || '', who: other ? other.name : '', feel, weight };
             if (!Array.isArray(c.happenings)) c.happenings = [];
             c.happenings.push(h);
-            if (c.happenings.length > CAP) c.happenings.splice(0, c.happenings.length - CAP);
             // 情绪：开了情绪惯性才动
             try {
                 if (feel && isOn('aliveMood') && typeof aliveMoodValue === 'function') {

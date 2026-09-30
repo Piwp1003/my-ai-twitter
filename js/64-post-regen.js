@@ -3,7 +3,7 @@
    ---------------------------------------------------------------------------
    喜欢角色发的这条的意思，但想让 TA 换个写法：推文右上角 ⋮ 里多一行「🔄 让 TA 重新写」。
    · 同一个时间点、同一件事，TA 按自己的人设再写一次；状态栏 / 卡片格式照常（跟发推同一套正则）
-   · 原来那一版留着：⋮ 里会多一行「↩ 换回上一版」，最多记 5 版
+   · 原来那一版留着：⋮ 里会多一行「↩ 换回上一版」，每一版都留着
    · 评论、点赞、图片、引用都不动，只换正文
    只收在 ⋮ 菜单里，不在推文上多放按钮。
    =========================================================================== */
@@ -85,7 +85,7 @@ ${typeof getFinalAnswerMarkerPromptNote === 'function' ? getFinalAnswerMarkerPro
             if (!text) throw new Error('TA 这次没写出东西来');
             if (typeof applyRegexScripts === 'function') text = applyRegexScripts(text, 'ai_output', char.id);
             if (tag && !text.includes(tag)) text += '\n' + tag;
-            post.prevTexts = (post.prevTexts || []).concat([post.text]).slice(-5);
+            post.prevTexts = (post.prevTexts || []).concat([post.text]);
             post.text = text;
             post.rewrittenAt = Date.now();
             if (typeof saveAllData === 'function') saveAllData();

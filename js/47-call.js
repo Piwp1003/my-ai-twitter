@@ -103,9 +103,14 @@
     function stopSound() {
         try { if (audio) { audio.pause(); audio = null; } } catch (e) {}
         try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) {}
+        try { if (window.gyVoiceStop) window.gyVoiceStop(); } catch (e) {}
     }
     async function speak(text) {
         if (S.mode === 'text' || !text) return;
+        // 🎙️ 这个角色有自己的声音（js/76：语音模型 / 语音库）：用 TA 的
+        if (typeof window.gyVoiceSpeak === 'function' && C && !C.isGroup && window.gyVoiceHas && window.gyVoiceHas(C.char)) {
+            try { stopSound(); const r = await window.gyVoiceSpeak(C.char, text); if (r) return; } catch (e) {}
+        }
         if (S.tts === 'api' && S.url) {
             try {
                 const r = await fetch(S.url, {
@@ -160,9 +165,28 @@
     }
 
     /* ================= 跟模型说话 ================= */
+    const uName = c => (typeof userDisplayName === 'function') ? userDisplayName(c) : ((typeof currentUser !== 'undefined' && currentUser && currentUser.name) || '用户');
+    // 这通电话是谁打给谁的——TA 打过来的和你打过去的，开口、语气完全不一样
+    function whoCalled(c) {
+        const u = uName(c);
+        if (C.group) {
+            const by = C.by ? (C.joined || []).concat(membersOf(C.group)).find(x => String(x.id) === String(C.by)) : null;
+            if (by && String(by.id) === String(c.id)) return `【这通群通话是你发起的】是你在「${C.group.name || '群'}」里拉大家（包括${u}）进来的。`;
+            if (by) return `【这通群通话是${by.name}发起的】${by.name}在「${C.group.name || '群'}」里拉大家进来的，你是被拉进来的。`;
+            return `【这通群通话是${u}发起的】${u}在「${C.group.name || '群'}」里拉大家进来，你接了。`;
+        }
+        if (C.incoming) return `【这通电话是你打给${u}的】是你主动打过去、${u}接起来的。${C.why ? '你打这通电话是因为：' + C.why + '。' : ''}`;
+        return `【这通电话是${u}打给你的】是${u}主动打过来、你接起来的。`;
+    }
     function callPrompt(c) {
-        const last = C.log.slice(-10).map(x => (x.me ? '对方：' : '你：') + x.text).join('\n');
+        const u = uName(c);
+        const last = C.log.slice(-10).map(x => {
+            if (x.me) return u + '：' + x.text;
+            if (x.who && x.who !== c.name) return x.who + '：' + x.text;
+            return '你：' + x.text;
+        }).join('\n');
         return `【现在你们在打电话，不是在打字】
+${whoCalled(c)}
 这是一通语音通话，你说的每一句都会被对方**听见**，不是看见。所以：
 · 句子要短，一次只说一两句，像真的在讲电话
 · 用口语：可以有"喂""嗯""哎""诶你等一下"这种
@@ -176,9 +200,20 @@ ${last ? '\n【电话里已经说过的】\n' + last + '\n' : ''}`;
         if (typeof callChatCompletionAPI !== 'function' || typeof getApiConfig !== 'function') return '';
         const api = getApiConfig(false);
         if (!api || !api.key) { toast('📞', '还没配 API Key'); return ''; }
+        const u = uName(c);
+        let opener;
+        if (C && C.group) {
+            opener = (C.by && String(C.by) === String(c.id))
+                ? '\n群通话刚接通，大家都进来了。你是拉大家进来的那个人，先开口说第一句（说说为什么拉大家），一句就够。'
+                : '\n群通话刚接通，你进来了。说你进来的第一句，一句就够。';
+        } else if (C && C.incoming) {
+            opener = '\n你打过去，' + u + '刚接起来。你是打电话的那一方，先开口说第一句（自然地带出你为什么打来），一句就够。';
+        } else {
+            opener = '\n' + u + '刚把电话打过来，你接起来了。说你接电话的第一句，一句就够。';
+        }
         const tail = first
-            ? callPrompt(c) + '\n对方刚把电话打过来，你接起来了。说你接电话的第一句，一句就够。'
-            : callPrompt(c) + '\n对方在电话里说：「' + String(userText || '') + '」\n你回一句（最多两句）。';
+            ? callPrompt(c) + opener
+            : callPrompt(c) + '\n' + u + '在电话里说：「' + String(userText || '') + '」\n你回一句（最多两句）。';
         const base = (typeof buildBasePrompt === 'function') ? buildBasePrompt(c, false, '') : '';
         const d = await callChatCompletionAPI(api, buildStructuredMessages(base, [], tail));
         if (d && d.error) { toast('📞', '接口报错：' + (d.error.message || '')); return ''; }
@@ -193,14 +228,16 @@ ${last ? '\n【电话里已经说过的】\n' + last + '\n' : ''}`;
         ? window.gyInjectInSceneSoft('call', () => ask(c, u, f)) : ask(c, u, f);
 
     /* ================= 开始 / 说话 / 挂断 ================= */
-    window.gyCallStart = async function (id, incoming) {
+    // incoming＝TA 打过来的（你接了）；opts.why＝TA 打这通电话的由头
+    window.gyCallStart = async function (id, incoming, opts) {
         const sid = id != null ? id : (typeof currentChatSessionId !== 'undefined' ? currentChatSessionId : null);
         const s = charOf(sid);
         if (!s) { toast('📞', '先点开一个人再打'); return; }
-        if (s.isGroup) return gyGroupCallStart(s.raw);
+        if (s.isGroup) return gyGroupCallStart(s.raw, opts);
 
         const m = ensure();
-        C = { id: String(sid), char: s.raw, t0: Date.now(), log: [], busy: false, ended: false, incoming: !!incoming };
+        C = { id: String(sid), char: s.raw, t0: Date.now(), log: [], busy: false, ended: false, incoming: !!incoming,
+              why: (opts && opts.why) || '' };
         document.getElementById('gyCallName').innerText = s.raw.name || '';
         const av = document.getElementById('gyCallAv');
         try {
@@ -278,21 +315,50 @@ ${last ? '\n【电话里已经说过的】\n' + last + '\n' : ''}`;
         // 卡片正文第一行是时长，下面接整段通话内容——
         // 页面上默认只显示第一行（点「看看说了什么」才展开），但**prompt 里是全的**，
         // 所以挂断之后 TA 照样记得电话里说过什么。
+        // ⚠️ 你说的话**写你的名字**，不能写"我："——历史里这条消息挂在 TA 名下（TA 打来的那通）时，
+        //    模型会把"我：……"读成它自己说的。第一行写清楚是谁打给谁的，TA 翻记录时不会弄反。
+        //    第一行是标题、第二行是【电话里说了什么】——下面的 cardSweep 按这个排版切卡片，别动。
+        const ended = C;
+        let body = '';
         try {
-            if (C.log.length && typeof globalChats !== 'undefined') {
-                const arr = globalChats[C.id] = globalChats[C.id] || [];
-                const body = C.log.map(x => (x.me ? '我：' : ((x.who || C.char.name || 'TA') + '：')) + x.text).join('\n');
+            const un = uName(ended.group ? null : ended.char);
+            body = ended.log.map(x => (x.me ? un : (x.who || ended.char.name || 'TA')) + '：' + x.text).join('\n');
+            if (ended.log.length && typeof globalChats !== 'undefined') {
+                const arr = globalChats[ended.id] = globalChats[ended.id] || [];
+                let head;
+                if (ended.group) {
+                    const by = ended.by ? membersOf(ended.group).find(x => String(x.id) === String(ended.by)) : null;
+                    head = (by ? by.name : un) + ' 发起的群通话 · ' + durTxt(secs);
+                } else {
+                    head = ended.incoming ? (ended.char.name + ' 打给 ' + un) : (un + ' 打给 ' + ended.char.name);
+                    head += ' · ' + durTxt(secs);
+                }
                 arr.push({
-                    sender: C.incoming ? C.id : 'me',
-                    text: '📞 通话 · ' + durTxt(secs) + '\n【电话里说了什么】\n' + body,
-                    timestamp: Date.now(), readBy: ['me'], viaCall: true, callSecs: secs
+                    sender: ended.group ? (ended.by || 'me') : (ended.incoming ? ended.id : 'me'),
+                    text: '📞 ' + head + '\n【电话里说了什么】\n' + body,
+                    timestamp: Date.now(), readBy: ['me'], viaCall: true, callSecs: secs, callBy: ended.group ? (ended.by || 'me') : (ended.incoming ? ended.id : 'me')
                 });
                 if (typeof saveAllData === 'function') saveAllData();
                 if (typeof renderChatMessages === 'function' &&
-                    String(currentChatSessionId) === C.id) renderChatMessages();
+                    String(currentChatSessionId) === ended.id) renderChatMessages();
             }
         } catch (e) { console.error('[打电话] 写聊天记录时出错', e); }
         C = null;
+        // 💬 挂了电话，TA 像真人一样再发一两条（回味 / 补一句 / 约下次…）
+        try {
+            // 聊了一大段、只说了一句、刚接通就被挂了——真人都会有反应，所以不设门槛；只是经过写得不一样
+            if (!body) body = '（刚接通就挂了，几乎什么都没说）';
+            else if (ended.log.length < 2) body += '\n（没说几句电话就挂了）';
+            if (typeof window.gyAfterActivity === 'function') {
+                if (ended.group) {
+                    const pool = ended.joined || [];
+                    const sp = pool.find(x => String(x.id) === String(ended.by)) || pool[Math.floor(Math.random() * pool.length)];
+                    if (sp) window.gyAfterActivity(sp.id, '群通话', body, { by: ended.by ? (String(ended.by) === String(sp.id) ? 'char' : (membersOf(ended.group).find(x => String(x.id) === String(ended.by)) || {}).name) : 'me', mins: secs / 60, group: ended.id });
+                } else {
+                    window.gyAfterActivity(ended.id, '打电话', body, { by: ended.incoming ? 'char' : 'me', mins: secs / 60 });
+                }
+            }
+        } catch (e) {}
     };
 
     /* ================= 通话里的设置 ================= */
@@ -360,11 +426,14 @@ ${last ? '\n【电话里已经说过的】\n' + last + '\n' : ''}`;
         } catch (e) { return []; }
     }
 
-    window.gyGroupCallStart = async function (g) {
+    // opts.by＝发起这通群通话的角色 id（TA 拉大家进来的）；不传＝你发起的
+    window.gyGroupCallStart = async function (g, opts) {
         const mem = membersOf(g);
         if (!mem.length) { toast('📞', '这个群里还没有人'); return; }
+        if (C || IN) { toast('📞', '已经在通话里了'); return; }
         const m = ensure();
-        C = { id: String(g.id), char: g, group: g, t0: Date.now(), log: [], busy: false, ended: false, joined: [] };
+        const by = (opts && opts.by != null && mem.some(x => String(x.id) === String(opts.by))) ? String(opts.by) : '';
+        C = { id: String(g.id), char: g, group: g, t0: Date.now(), log: [], busy: false, ended: false, joined: [], by };
         document.getElementById('gyCallName').innerText = g.name || '';
         try {
             document.getElementById('gyCallAv').innerHTML =
@@ -379,10 +448,10 @@ ${last ? '\n【电话里已经说过的】\n' + last + '\n' : ''}`;
         await new Promise(r => setTimeout(r, 1200));
         if (!C || C.ended) return;
 
-        // 一个个问谁来
+        // 一个个问谁来（发起的那个人不用问——是 TA 拉的大家）
         for (const c of mem) {
             if (!C || C.ended) return;
-            const yes = await decideScened(c);
+            const yes = (by && String(c.id) === by) ? { ok: true } : await decideScened(c);
             if (yes.ok) { C.joined.push(c); line(c.name, '（进来了）', 'them'); }
             // ⚠️ 这一行不能带 wait 类：下面清"…"占位用的是 querySelector('.wait')，
             //    会把这条"没接"当占位符删掉（实测就被删了）。
@@ -405,7 +474,7 @@ ${last ? '\n【电话里已经说过的】\n' + last + '\n' : ''}`;
         setState(C.joined.length + ' 人在线 · 0:00');
 
         if (S.greetOn) {
-            const who = C.joined[0];
+            const who = C.joined.find(x => String(x.id) === by) || C.joined[0];
             C.busy = true; line(who.name, '…', 'them wait');
             const t = await askScened(who, '', true);
             const w = document.querySelector('#gyCallLog .wait'); if (w) w.remove();
@@ -501,7 +570,8 @@ ${sched ? '\n' + sched + '\n' : ''}
         ? window.gyInjectInSceneSoft('call', () => decideAnswer(c)) : decideAnswer(c);
 
     // 没接通：聊天里记一条，TA 把没接的理由补一句过来
-    function noAnswer(id, char, why, iCalled) {
+    // why0＝TA 打过来时想说的由头；rejected＝你是点了挂断（不是没听见）
+    function noAnswer(id, char, why, iCalled, why0, rejected) {
         try {
             const m = document.getElementById('gyCallModal'); if (m) m.classList.remove('on');
             if (C && C.timer) clearInterval(C.timer);
@@ -517,6 +587,14 @@ ${sched ? '\n' + sched + '\n' : ''}
             if (typeof renderChatMessages === 'function' && String(currentChatSessionId) === String(id)) renderChatMessages();
             if (!iCalled && typeof addNotification === 'function')
                 addNotification(`<b>${esc(char.name)}</b> 给你打过电话，你没接 📞`, null, id, char, '');
+            // TA 打给你、你没接（或者直接挂了）：像真人一样发条消息过来——"怎么不接电话""在忙吗"…
+            if (!iCalled && !char.members && typeof window.gyAfterActivity === 'function') {
+                const u = uName(char);
+                window.gyAfterActivity(id, '没打通的电话', '', {
+                    by: 'char',
+                    ask: `你刚才给${u}打了个电话${why0 ? '（你打过去是因为：' + why0 + '）' : ''}，${rejected ? u + '直接挂断了' : '响了半天' + u + '没接'}。`
+                });
+            }
         } catch (e) {}
     }
 
@@ -548,9 +626,9 @@ ${sched ? '\n' + sched + '\n' : ''}
         if (!s || s.isGroup) return false;
         if (C || IN) return false;                     // 已经在通话/已经在响了就别叠
         const m = ensureIn();
-        IN = { id: String(s.raw.id), char: s.raw, left: Math.max(1, Math.round(gyNum(S.ringSec, 20))) };
+        IN = { id: String(s.raw.id), char: s.raw, why: String(why || ''), left: Math.max(1, Math.round(gyNum(S.ringSec, 20))) };
         document.getElementById('gyInName').innerText = s.raw.name || '';
-        document.getElementById('gyInWhy').innerText = why ? '“' + String(why).slice(0, 40) + '”' : '';
+        document.getElementById('gyInWhy').innerText = why ? '“' + String(why) + '”' : '';
         try { document.getElementById('gyInAv').innerHTML = (typeof getAvatarHTML === 'function') ? getAvatarHTML(s.raw, 120) : ''; } catch (e) {}
         document.getElementById('gyInSub').innerText = '邀请你语音通话…';
         m.classList.add('on');
@@ -561,28 +639,28 @@ ${sched ? '\n' + sched + '\n' : ''}
             const sub = document.getElementById('gyInSub');
             if (sub) sub.innerText = '邀请你语音通话…（' + IN.left + '）';
             if (IN.left <= 0) {
-                const id = IN.id, ch = IN.char;
+                const id = IN.id, ch = IN.char, w = IN.why;
                 gyCallReject(true);
-                noAnswer(id, ch, '', false);
+                noAnswer(id, ch, '', false, w, false);
             }
         }, 1000);
         return true;
     };
     window.gyCallAccept = async function () {
         if (!IN) return;
-        const id = IN.id;
+        const id = IN.id, why = IN.why;
         clearInterval(IN.timer);
         document.getElementById('gyCallIncoming').classList.remove('on');
         IN = null;
-        await gyCallStart(id, true);          // true = TA 打过来的，不用再问"接不接"
+        await gyCallStart(id, true, { why });  // true = TA 打过来的，不用再问"接不接"；why = TA 为什么打
     };
     window.gyCallReject = function (silent) {
         if (!IN) return;
         clearInterval(IN.timer);
         const m = document.getElementById('gyCallIncoming'); if (m) m.classList.remove('on');
-        const id = IN.id, ch = IN.char;
+        const id = IN.id, ch = IN.char, w = IN.why;
         IN = null;
-        if (!silent) noAnswer(id, ch, '', false);
+        if (!silent) noAnswer(id, ch, '', false, w, true);
     };
 
     /* ================= 🗗 小窗 ================= */
@@ -751,7 +829,7 @@ ${sched ? '\n' + sched + '\n' : ''}
                             const d = await callChatCompletionAPI(api, buildStructuredMessages(base, [], ask));
                             let t = (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content || '').trim();
                             if (typeof stripReasoningBlocks === 'function') t = stripReasoningBlocks(t);
-                            why = t.replace(/^["'“”「」]+|["'“”「」]+$/g, '').slice(0, 30);
+                            why = t.replace(/^["'“”「」]+|["'“”「」]+$/g, '');
                         }
                     } catch (e) {}
                     window.gyCallRing(char, why);

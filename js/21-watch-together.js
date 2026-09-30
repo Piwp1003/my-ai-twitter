@@ -80,6 +80,15 @@
   const charById = id => chars().find(c => String(c.id) === String(id));
   const watchers = () => (S.watch.chars || []).map(charById).filter(Boolean);
   const curFilm = () => S.films.find(f => f.id === S.cur) || null;
+  // 这次一起看是谁约的谁：{角色id: 'me'（你约 TA）| 'char'（TA 约你）}
+  const byOf = id => ((S.watch.by || {})[String(id)] === 'char') ? 'char' : 'me';
+  const uname = c => (typeof userDisplayName === 'function') ? userDisplayName(c) : '对方';
+  const byLine = c => {
+    if (!c || !(S.watch.chars || []).map(String).includes(String(c.id))) return '';
+    return byOf(c.id) === 'char'
+      ? `\n【这次一起看是你发起的】是你约${uname(c)}来一起看的。`
+      : `\n【这次一起看是${uname(c)}发起的】是${uname(c)}约你来一起看的，你答应了。`;
+  };
 
   async function save() {
     try {
@@ -718,7 +727,7 @@
     if (curUrl) { try { URL.revokeObjectURL(curUrl); } catch (e) {} curUrl = null; }
     let f = S.films.find(x => x.url === url);
     if (!f) {
-      f = { id: 'f' + Date.now().toString(36), title: String(title || '在线影片').slice(0, 80), file: '', url,
+      f = { id: 'f' + Date.now().toString(36), title: String(title || '在线影片'), file: '', url,
             subs: [], comments: [], chat: [], pos: 0, dur: 0, cover: (extra && extra.cover) || '', addedAt: Date.now(), online: true, note: (extra && extra.note) || '' };
       S.films.unshift(f);
       if (!S.stats) S.stats = { total: { ms: 0, films: 0 }, byChar: {} };
@@ -738,13 +747,20 @@
     if (!url) return null;
     let f = S.films.find(x => x.url === url);
     if (!f) {
-      f = { id: 'f' + Date.now().toString(36), title: String(title || '在线影片').slice(0, 80), file: '', url,
+      f = { id: 'f' + Date.now().toString(36), title: String(title || '在线影片'), file: '', url,
             subs: [], comments: [], chat: [], pos: 0, dur: 0, cover: (extra && extra.cover) || '', addedAt: Date.now(), online: true, note: (extra && extra.note) || '' };
       S.films.unshift(f);
       await save(); try { paintAll(); } catch (e) {}
     }
     return f;
   };
+  // 按片名在片库里找（邀请卡 / TA 点名要看的那部）：先全等，再互相包含
+  window.fbFindFilm = function (title) {
+    const n = s => String(s || '').replace(/[《》「」"'“”\s]/g, '').toLowerCase();
+    const t = n(title); if (!t) return null;
+    return S.films.find(f => n(f.title) === t) || S.films.find(f => n(f.title) && (n(f.title).indexOf(t) !== -1 || t.indexOf(n(f.title)) !== -1)) || null;
+  };
+  window.fbCurFilmId = () => S.cur || null;
   // 片库里点"接着看"：电脑上能直接恢复，手机上要重选一次
   window.fbResume = async function (id) {
     const fu = S.films.find(x => x.id === id);
@@ -836,7 +852,7 @@
     if (!api || !api.key) return '';
     try {
       const base = (typeof buildBasePrompt === 'function') ? buildBasePrompt(char, false, '') : '';
-      const sys = base + (sysExtra || '');
+      const sys = base + byLine(char) + (sysExtra || '');
       const msgs = (typeof buildStructuredMessages === 'function')
         ? buildStructuredMessages(sys, [], ask) : (sys + '\n\n' + ask);
       const data = await callChatCompletionAPI(api, msgs);
@@ -916,8 +932,26 @@ ${near ? '刚才这一段的台词：\n' + near : '（这部片子没导字幕�
       const t = await askChar(c, ask);
       if (t) pushComment(c, t.replace(/^["「]|["」]$/g, '').slice(0, 120), '');
     }
+    afterWatch('end');
     await summarizeWatch(false);
     toast('看完了', '要不要让 TA 写篇观后感？在片库里点《' + f.title + '》的「✍️ 观后感」。');
+  }
+
+  // 💬 看完 / 散场之后，TA 像真人一样在私聊里再说两句（js/28 gyAfterActivity）。一场只触发一次。
+  function afterWatch(reason) {
+    try {
+      const f = curFilm(); const cs = watchers();
+      if (!f || !cs.length || typeof window.gyAfterActivity !== 'function') return;
+      const key = f.id + '|' + (S.watch.t0 || 0);
+      if (S.watch.afterKey === key) return;
+      const mins = S.watch.t0 ? (Date.now() - S.watch.t0) / 60000 : 0;
+      if (!(f.chat || []).length && mins < 3 && reason !== 'end') return;   // 刚拉进来就散了，不算一起看过
+      S.watch.afterKey = key; save();
+      const talk = (f.chat || []).slice(-16).map(m => `${m.name}：${m.text}`).join('\n');
+      const summary = `一起看《${f.title}》${reason === 'end' ? '，整部看完了' : '，看到 ' + fmtT(video ? video.currentTime : (f.pos || 0)) + ' 就先散了'}。`
+        + (talk ? `\n看的时候聊过的：\n${talk}` : '');
+      cs.forEach(c => window.gyAfterActivity(c.id, '一起看电影', summary, { by: byOf(c.id), mins }));
+    } catch (e) { console.warn('[一起看] 事后消息没发出去：', e); }
   }
 
   // 把这次一起看总结成一段记忆（跟音乐盒一个路子）
@@ -956,7 +990,6 @@ ${mine ? '【你看的时候说过】' + mine + '\n' : ''}${talk ? '【你们的
       if (!t) continue;
       if (!Array.isArray(c.filmNotes)) c.filmNotes = [];
       c.filmNotes.unshift({ id: 'fn' + Date.now().toString(36), filmTitle: f.title, content: t, at: Date.now() });
-      c.filmNotes = c.filmNotes.slice(0, 20);
     }
     if (typeof saveAllData === 'function') saveAllData();
     toast('写好了', '在角色资料里能看到，以后聊天 TA 也会提起。');
@@ -1151,8 +1184,14 @@ ${hist}
         <button type="button" class="btn-cancel" onclick="fbCloseModal('fbWatchersModal')">好了</button>
       </div>`);
   };
-  window.fbToggleWatcher = function (id, on) {
+  // by：'me'＝你约的 TA（默认），'char'＝TA 约的你（从 TA 发来的邀请卡进来）
+  window.fbToggleWatcher = function (id, on, by) {
     const a = (S.watch.chars || []).map(String);
+    if (!S.watch.by) S.watch.by = {};
+    if (on) {
+      if (!a.length) S.watch.t0 = Date.now();             // 这一场从现在算
+      if (!a.includes(String(id)) || by) S.watch.by[String(id)] = by === 'char' ? 'char' : 'me';
+    } else delete S.watch.by[String(id)];
     S.watch.chars = on ? Array.from(new Set(a.concat([String(id)]))) : a.filter(x => x !== String(id));
     save(); paintHead(); renderChat();
   };
@@ -1288,13 +1327,14 @@ ${hist}
       await window.gyInviteSend({
         char: c, kind: 'film',
         title: f ? f.title : '',
+        filmId: f ? f.id : '',
         sub: tasteOf(c) ? '' : '',
         ask: `对方想邀请你一起看${f ? `《${f.title}》` : '一部电影'}。
 ${tasteOf(c)}
 按你的人设决定答不答应——不想看、没心情、正忙都可以拒绝，不用勉强自己。
 只输出严格 JSON，不要 markdown：{"ok": true或false, "line": "你的回答，一句话，不超过30字"}`,
         onYes: (r) => {
-          fbToggleWatcher(id, true);
+          fbToggleWatcher(id, true, 'me');
           if (f) { if (!f.chat) f.chat = []; f.chat.push({ who: 'char', name: c.name, text: r.line || '好啊。', at: Date.now(), atSec: video ? video.currentTime : 0 }); }
           save(); renderChat();
           if (document.getElementById('fbWatchersModal')) fbOpenWatchers();
@@ -1327,8 +1367,9 @@ ${tasteOf(c)}
   window.fbLeave = async function () {
     const cs = watchers();
     const f = curFilm();
+    afterWatch('leave');                                  // 先把"刚才聊了什么"交给事后那条消息（下面会清掉）
     if (cs.length && f && (f.chat || []).length >= 4) await summarizeWatch(false);
-    S.watch.chars = [];
+    S.watch.chars = []; S.watch.by = {}; S.watch.t0 = 0;
     if (f) f.chat = [];
     await save(); paintHead(); renderChat();
     if (document.getElementById('fbWatchersModal')) fbOpenWatchers();
@@ -1391,7 +1432,7 @@ ${chatSoFar()}
     const el = document.getElementById('fbTaste_' + id);
     if (!el) return;
     if (!S.taste) S.taste = {};
-    S.taste[String(id)] = el.value.trim().slice(0, 80);
+    S.taste[String(id)] = el.value.trim();
     save(); toast('存好了', '');
   };
 

@@ -38,7 +38,7 @@
           items: c => c.diaryPeeks || [], text: x => x.remember || '', meta: x => `《${x.title || '无题'}》· ${when(x.at)}${x.trace ? ' · 痕迹：' + x.trace : ''}`,
           edit: (x, v) => { x.remember = v; }, del: (c, i) => { const x = c.diaryPeeks.splice(i, 1)[0]; try { (typeof globalUserDiaries !== 'undefined' ? globalUserDiaries : []).forEach(d => { if (d.id === x.entryId && Array.isArray(d.secretPeeks)) d.secretPeeks = d.secretPeeks.filter(p => String(p.charId) !== String(c.id)); }); } catch (e) {} } },
         { k: 'lifeEvents', ico: '🎲', n: '最近碰上的事', d: '随机事件 / 生活里的意外，TA 做决定时会想起来',
-          items: c => c.lifeEvents || [], text: x => x.t || '', meta: x => when(x.at), edit: (x, v) => { x.t = v.slice(0, 80); }, del: (c, i) => { c.lifeEvents.splice(i, 1); } },
+          items: c => c.lifeEvents || [], text: x => x.t || '', meta: x => when(x.at), edit: (x, v) => { x.t = v; }, del: (c, i) => { c.lifeEvents.splice(i, 1); } },
         { k: 'bioHistory', ico: '🕘', n: '过往签名', d: 'TA 以前用过的签名',
           items: c => c.bioHistory || [], text: x => x.bio || '', meta: x => when(x.at), edit: (x, v) => { x.bio = v; }, del: (c, i) => { c.bioHistory.splice(i, 1); } }
     ];

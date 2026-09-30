@@ -1578,7 +1578,7 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
         let icon = '📍', name = raw;
         if (m && /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(m[1])) { icon = m[1]; name = m[2]; }
         if (!Array.isArray(S.cats)) S.cats = DEF_CATS.map(c => Object.assign({}, c));
-        S.cats.push({ id: uid('c'), name: name.slice(0, 8), icon });
+        S.cats.push({ id: uid('c'), name: name.trim(), icon });
         if (el) el.value = '';
         save(); renderPanel();
     };
@@ -1686,7 +1686,7 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
 要求：
 1. 只标图上<真的画了或者写了>的地方——图上有字就用图上的字，没字但明显是个建筑/区域就用一个贴切的名字。看不出来就别编。
 2. x、y 是这个地点在图上的位置，用百分比，0 到 100：x 是从左边算的横向百分比，y 是从上边算的纵向百分比。要尽量准。
-3. 最多 20 个，挑重要的、角色真的会去的。
+3. 能认出来的都标上，挑角色真的会去的。
 4. cat 从这几个里挑一个：${cats().map(c => c.id + '(' + c.name + ')').join('、')}。
 ${have.length ? '5. 这些已经有了，别重复：' + have.join('、') + '\n' : ''}${cs.length ? '这张图上活动的角色：' + cs.map(c => c.name).join('、') + '\n' : ''}
 只输出 JSON 数组，不要解释、不要 markdown 围栏：
@@ -2199,7 +2199,7 @@ ${req.trim() ? '【我的要求（以这个为准）】\n' + req.trim() + '\n' :
             ${d.decide === 'me' ? `
               <div class="gymap-hint">待多久：</div>
               <div class="gymap-modes">${quick}</div>
-              <input class="gymap-in" id="gymapDateMins" type="number" min="5" max="1440" value="${d.mins}" placeholder="自己填分钟数">
+              <input class="gymap-in" id="gymapDateMins" type="number" min="1" value="${d.mins}" placeholder="自己填分钟数">
               <input class="gymap-in" id="gymapDateAct" value="${esc(d.act)}" placeholder="去那儿做什么？比如「坐着聊会儿天」「陪我把班上完」——不填就让 TA 自己想">
             ` : '<div class="gymap-hint">TA 会自己决定待多久、做什么——按 TA 的性格和此刻的处境来。</div>'}
             <div style="margin-top:12px;">
@@ -2380,6 +2380,8 @@ ${letChar ? '待多久、去干什么，你自己定。' : '待多久和干什�
             window.gyInviteFromChar({
                 char: c, kind: 'date',
                 title: sp.name,
+                // 落地要用的都存在卡上：刷新之后回调没了，你再点「好啊」照样能约成（见 gymapInviteAnswered）
+                data: { spotId: sp.id, mins: mins || 60, act: act || '', decided: !!decided },
                 sub: (sp.faction ? sp.faction + '　' : '') + (decided ? `TA 想待 ${fmtMin(mins)}${act ? '，' + act : ''}` : '待多久、去干什么由你定'),
                 line,
                 onYes: async () => {
@@ -2413,6 +2415,19 @@ ${letChar ? '待多久、去干什么，你自己定。' : '待多久和干什�
               <button class="gymap-btn ghost" onclick="gymapInviteNo()">改天吧</button>
             </div>`);
     }
+    // 邀请卡的「好啊 / 算了」在页面刷新之后点的：按卡上存的数据落地（js/28 KINDS.date.answer 调这里）
+    window.gymapInviteAnswered = async function (inv, yes) {
+        try {
+            const d = (inv && inv.data) || {};
+            const c = chars().find(x => String(x.id) === String(inv.charId));
+            const sp = spotById(d.spotId) || allSpots().find(x => x.name === inv.title);
+            if (!c || !sp) return;
+            invitePending = null;
+            if (yes) await settleDate({ char: c, sp, by: 'char', ok: true, line: '（你答应了）', mins: d.mins || 60, act: d.act || '' });
+            else await pushLog({ id: uid('d'), charId: c.id, charName: c.name, spot: sp.name, spotId: sp.id,
+                faction: sp.faction || '', by: 'char', ok: false, mins: 0, act: '', line: '（你说改天）', at: nowMs(), until: 0 });
+        } catch (e) { console.warn('[行程] 按邀请卡落地失败：', e); }
+    };
     window.gymapInviteMins = function (m, el) {
         if (invitePending) invitePending.mins = m;
         try { el.parentElement.querySelectorAll('.gymap-mini').forEach(b => b.classList.remove('on')); el.classList.add('on'); } catch (e) {}
@@ -2504,8 +2519,29 @@ ${letChar ? '待多久、去干什么，你自己定。' : '待多久和干什�
     };
     window.gymapEndDate = async function (id) {
         const l = dateLogs().find(x => x.id === id);
-        if (l) { l.until = nowMs(); await save(); renderPanel(); }
+        if (l) { l.until = nowMs(); l.endedEarly = true; await save(); renderPanel(); checkDateEnds(); }
     };
+    // 💬 约出去的那段时间到了（或者提前结束了）：TA 像真人一样回头在私聊里再说两句（js/28 gyAfterActivity）。
+    //    每一场只触发一次（l.afterDone）；太久以前就结束的（比如这个功能上线之前的旧记录）悄悄标掉，不补发。
+    function checkDateEnds() {
+        try {
+            const now = nowMs();
+            let dirty = false;
+            dateLogs().forEach(l => {
+                if (!l || !l.ok || !l.until || l.until > now || l.afterDone) return;
+                l.afterDone = true; dirty = true;
+                if (now - l.until > 6 * 3600000) return;
+                if (typeof window.gyAfterActivity !== 'function') return;
+                const c = chars().find(x => String(x.id) === String(l.charId));
+                if (!c) return;
+                const mins = Math.max(1, Math.round((l.until - l.at) / 60000));
+                const summary = `一起去了「${l.spot}」${l.faction ? '（' + l.faction + '）' : ''}${l.act ? '，' + l.act : ''}，待了 ${fmtMin(mins)}${l.endedEarly ? '（提前散了）' : ''}。${l.line && !/^（/.test(l.line) ? '\n当时约的时候你说：' + l.line : ''}`;
+                window.gyAfterActivity(c.id, '约出去', summary, { by: l.by === 'char' ? 'char' : 'me', mins });
+            });
+            if (dirty) save();
+        } catch (e) { console.warn('[行程] 检查约会结束失败：', e); }
+    }
+    window.__gymapCheckDateEnds = checkDateEnds;
     window.gymapDelDate = async function (id) {
         S.date.logs = dateLogs().filter(x => x.id !== id);
         await save(); renderPanel(); try { renderMemHub(); } catch (e) {}
@@ -2529,7 +2565,7 @@ ${letChar ? '待多久、去干什么，你自己定。' : '待多久和干什�
             <b>正在一起</b>：${esc(cur.spot)}${cur.act ? ' · ' + esc(cur.act) : ''}，还剩 ${fmtMin(Math.max(1, Math.round((cur.until - nowMs()) / 60000)))}</div>` : ''}
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
             <span style="font-size:12px;color:#536471;">保留最近</span>
-            <input id="gymapMemKeep" type="number" min="0" max="9999" value="${keep}" style="width:80px;padding:6px;border:1px solid #cfd9de;border-radius:6px;font-size:13px;">
+            <input id="gymapMemKeep" type="number" min="0" value="${keep}" style="width:80px;padding:6px;border:1px solid #cfd9de;border-radius:6px;font-size:13px;">
             <span style="font-size:12px;color:#536471;">条，0 ＝ 不限</span>
             <button type="button" class="btn-edit-small" onclick="gymapSaveMemKeep()">保存</button>
           </div>
@@ -2688,6 +2724,9 @@ ${letChar ? '待多久、去干什么，你自己定。' : '待多久和干什�
         }, 20000);
         // 打开 app 后过一会儿看看今天要不要提醒天气
         setTimeout(() => { try { maybeRemind(); } catch (e) {} }, 25000);
+        // 约出去的那段时间到没到：每分钟看一眼（纯本地，不花钱；到了才会问 TA 一次）
+        setTimeout(checkDateEnds, 8000);
+        setInterval(checkDateEnds, 60000);
         const nMaps = Object.keys(S.mapSets).reduce((a, f) => a + (S.mapSets[f].list || []).length, 0);
         console.info('[行程与天气] 已加载：' + nMaps + ' 张地图，' + allSpots().length + ' 个地点');
     })();

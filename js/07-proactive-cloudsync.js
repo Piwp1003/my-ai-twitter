@@ -314,13 +314,9 @@ async function fetchPendingFromCloud() {
                 postsAdded = true;
                 pendingIdToPostId[item.id] = post.id;
 
-                if (typeof showToast === 'function') {
-                    const avatarHtml = typeof getAvatarHTML === 'function' ? getAvatarHTML(char, 80) : '';
-                    showToast(avatarHtml, `${char.name} 发布了新推文`, item.text, post.id, null);
-                }
-                globalNotifications.unshift({ text: `<b>${char.name}</b> 发布了新推文`, postId: post.id, chatCharId: null, timestamp: item.timestamp });
-                unreadNotifs++;
-                if (typeof updateNotifBadge === 'function') updateNotifBadge();
+                // 通知带 id / charId / desc，弹窗带着这条通知：点弹窗、点通知页都跳到这条推文
+                gyPushNotif({ text: `<b>${char.name}</b> 发布了新推文`, postId: post.id, chatCharId: null, timestamp: item.timestamp, charId: String(char.id), desc: String(item.text || '').slice(0, 200) },
+                    { avatar: typeof getAvatarHTML === 'function' ? getAvatarHTML(char, 80) : '', title: `${char.name} 发布了新推文`, desc: item.text });
             } else {
                 // 默认当聊天消息处理（老数据没有type字段的兜底）
                 const sessionId = String(char.id);
@@ -336,13 +332,8 @@ async function fetchPendingFromCloud() {
                 if (currentChatSessionId === sessionId && document.getElementById('view-chat') && document.getElementById('view-chat').style.display !== 'none') {
                     if (typeof renderChatMessages === 'function') renderChatMessages();
                 } else {
-                    if (typeof showToast === 'function') {
-                        const avatarHtml = typeof getAvatarHTML === 'function' ? getAvatarHTML(char, 80) : '';
-                        showToast(avatarHtml, `${char.name} 发来消息`, item.text, null, sessionId);
-                    }
-                    globalNotifications.unshift({ text: `<b>${char.name}</b> 给您发来消息`, postId: null, chatCharId: sessionId, timestamp: item.timestamp });
-                    unreadNotifs++;
-                    if (typeof updateNotifBadge === 'function') updateNotifBadge();
+                    gyPushNotif({ text: `<b>${char.name}</b> 给您发来消息`, postId: null, chatCharId: sessionId, timestamp: item.timestamp, charId: String(char.id), desc: String(item.text || '').slice(0, 200) },
+                        { avatar: typeof getAvatarHTML === 'function' ? getAvatarHTML(char, 80) : '', title: `${char.name} 发来消息`, desc: item.text });
                     if (typeof renderChatCharList === 'function') renderChatCharList();
                 }
             }
@@ -469,10 +460,9 @@ ${getChatMultiReplyBlock()}${(typeof window.gyChatActsPrompt === 'function') ? w
                 if (currentChatSessionId === sessionId && document.getElementById('view-chat').style.display !== 'none') { 
                     renderChatMessages(); 
                 } else {
-                    let avatarHtml = getAvatarHTML(char, 80);
-                    showToast(avatarHtml, `${char.name} 发来消息`, repText || "[图片/表情/拍一拍]", null, sessionId);
-                    globalNotifications.unshift({ text: `<b>${char.name}</b> 给您发来消息`, postId: null, chatCharId: sessionId, timestamp: Date.now() }); 
-                    unreadNotifs++; updateNotifBadge(); renderChatCharList();
+                    gyPushNotif({ text: `<b>${char.name}</b> 给您发来消息`, postId: null, chatCharId: sessionId, charId: String(char.id), desc: String(repText || '').slice(0, 200) },
+                        { avatar: getAvatarHTML(char, 80), title: `${char.name} 发来消息`, desc: repText || "[图片/表情/拍一拍]" });
+                    renderChatCharList();
                 }
                 saveAllData(); checkAndAutoSummarizeChat(sessionId);
             }

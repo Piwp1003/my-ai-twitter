@@ -1,4 +1,33 @@
 // ===== 信封与日记逻辑 =====
+// 📮 信件 / 日记相关的通知：进通知页 + 弹窗，点哪个都能直接跳到这个人的「信件」或「日记」那一栏
+function gyDiaryNotify(char, text, toastTitle, toastDesc, jump) {
+    const fields = { text, postId: null, chatCharId: null, timestamp: Date.now(), jump, charId: char ? String(char.id) : null };
+    if (toastDesc) fields.desc = String(toastDesc);
+    const toast = { avatar: (char && typeof getAvatarHTML === 'function') ? getAvatarHTML(char, 40) : '', title: toastTitle, desc: toastDesc || '' };
+    if (typeof gyPushNotif === 'function') return gyPushNotif(fields, toast);
+    fields.id = 'nt_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    globalNotifications.unshift(fields);
+    unreadNotifs++;
+    if (typeof updateNotifBadge === 'function') updateNotifBadge();
+    showToast(toast.avatar, toast.title, toast.desc, null, null, false, fields);
+    return fields;
+}
+// 信 / 日记变了：今天面板、别的页面（gyDataChanged）、正开着的信件与日记页都跟着刷新
+function gyDiaryChanged(char, tab) {
+    try { if (window.gyTodayRender) setTimeout(window.gyTodayRender, 50); } catch (e) {}
+    try { if (window.gyDataChanged) window.gyDataChanged('diary'); } catch (e) {}
+    try {
+        const v = document.getElementById('view-diary');
+        if (!v || v.style.display === 'none') return;
+        if (tab === 'mydiary') { if (currentDiaryTab === 'mydiary' && typeof renderMyDiaryArea === 'function') renderMyDiaryArea(); return; }
+        if (char && currentDiaryCharId == char.id && currentDiaryTab === tab) renderDiaryContent();
+    } catch (e) {}
+}
+// 打开某个故事（通知跳转用）
+window.gyOpenNovel = function (id) {
+    try { switchMainView('novel'); } catch (e) {}
+    if (id != null && typeof globalNovels !== 'undefined' && globalNovels.some(n => n.id === id)) { try { openNovelDetail(id); } catch (e) {} }
+};
 function renderDiaryCharList() {
     const container = document.getElementById('diaryCharList');
     if(myCharacters.length === 0) { container.innerHTML = '<div style="color:#888;">暂无角色，请先创建角色。</div>'; return; }
@@ -160,20 +189,16 @@ function saveTempDiary() {
     
     if(currentDiaryTab === 'letter') {
         char.diaryData.letters.unshift(tempGeneratedDiary);
-        showToast(getAvatarHTML(char, 40), `收到 ${char.name} 的信`, tempGeneratedDiary.title, null, null);
-        globalNotifications.unshift({ text: `<b>${char.name}</b> 给你寄来了一封信：${tempGeneratedDiary.title}`, timestamp: Date.now() });
+        gyDiaryNotify(char, `<b>${char.name}</b> 给你寄来了一封信：${tempGeneratedDiary.title}`, `收到 ${char.name} 的信`, tempGeneratedDiary.title, { diary: char.id, tab: 'letter' });
     } else {
         char.diaryData.diaries.unshift(tempGeneratedDiary);
-        showToast(getAvatarHTML(char, 40), `${char.name} 的日记更新了`, "你偷看了 ta 的日记...", null, null);
-        globalNotifications.unshift({ text: `<b>${char.name}</b> 更新了日记`, timestamp: Date.now() });
+        gyDiaryNotify(char, `<b>${char.name}</b> 更新了日记`, `${char.name} 的日记更新了`, "你偷看了 ta 的日记...", { diary: char.id, tab: 'diary' });
     }
-    
-    unreadNotifs++;
-    if (typeof updateNotifBadge === 'function') updateNotifBadge();
-    
     saveAllData(); 
     tempGeneratedDiary = null; 
     renderDiaryContent(); 
+    try { if (window.gyTodayRender) setTimeout(window.gyTodayRender, 50); } catch (e) {}
+    try { if (window.gyDataChanged) window.gyDataChanged('diary'); } catch (e) {}
 }
 function discardTempDiary() { tempGeneratedDiary = null; renderDiaryContent(); }
 function openDiaryDetail(id) {
@@ -264,11 +289,8 @@ ${getFinalAnswerMarkerPromptNote()}
         if (!parsed) return false;
         const letter = { id: 'd_' + Date.now() + '_' + Math.floor(Math.random() * 1000), title: parsed.title || '新信件', content: parsed.content || '', date: Date.now(), author: 'char' };
         char.diaryData.letters.unshift(letter);
-        showToast(getAvatarHTML(char, 40), `收到 ${char.name} 的信`, letter.title, null, null);
-        globalNotifications.unshift({ text: `<b>${char.name}</b> 给你寄来了一封信：${letter.title}`, timestamp: Date.now() });
-        unreadNotifs++;
-        if (typeof updateNotifBadge === 'function') updateNotifBadge();
-        if (currentDiaryCharId == char.id && currentDiaryTab === 'letter' && document.getElementById('view-diary') && document.getElementById('view-diary').style.display !== 'none') renderDiaryContent();
+        gyDiaryNotify(char, `<b>${char.name}</b> 给你寄来了一封信：${letter.title}`, `收到 ${char.name} 的信`, letter.title, { diary: char.id, tab: 'letter' });
+        gyDiaryChanged(char, 'letter');
         return true;
     } catch (e) {
         console.error('角色主动写信失败：', char.name, e);
@@ -339,6 +361,8 @@ function sendUserLetter() {
     if (currentDiaryTab !== 'letter') switchDiaryTab('letter'); else renderDiaryContent();
     const waitText = formatDurationZh(dueAt - Date.now());
     appToast(`💌 信已经寄出，${char.name} 大概会在 ${waitText} 内给你回信`);
+    try { if (window.gyTodayRender) setTimeout(window.gyTodayRender, 50); } catch (e) {}
+    try { if (window.gyDataChanged) window.gyDataChanged('diary'); } catch (e) {}
 }
 
 // 后台定时检查：所有角色的 pendingLetterReplies 里，到点(dueAt<=now)的就触发生成回信
@@ -414,11 +438,8 @@ ${getFinalAnswerMarkerPromptNote()}
 
         const reply = { id: 'd_' + Date.now() + '_' + Math.floor(Math.random() * 1000), title: parsed.title || `回信：${userLetter.title || '无题'}`, content: parsed.content || '', date: Date.now(), author: 'char', replyToId: userLetter.id };
         char.diaryData.letters.unshift(reply);
-        showToast(getAvatarHTML(char, 40), `${char.name} 回信了`, reply.title, null, null);
-        globalNotifications.unshift({ text: `<b>${char.name}</b> 回了你一封信：${reply.title}`, timestamp: Date.now() });
-        unreadNotifs++;
-        if (typeof updateNotifBadge === 'function') updateNotifBadge();
-        if (currentDiaryCharId == char.id && currentDiaryTab === 'letter' && document.getElementById('view-diary') && document.getElementById('view-diary').style.display !== 'none') renderDiaryContent();
+        gyDiaryNotify(char, `<b>${char.name}</b> 回了你一封信：${reply.title}`, `${char.name} 回信了`, reply.title, { diary: char.id, tab: 'letter' });
+        gyDiaryChanged(char, 'letter');
     } catch (e) {
         console.error('生成回信失败：', char.name, e);
     }
@@ -624,11 +645,9 @@ ${getFinalAnswerMarkerPromptNote()}
         reaction.resultText = text;
         reaction.resolvedAt = Date.now();
 
-        showToast(getAvatarHTML(char, 40), peeked ? (isInvite ? `${char.name} 看完了你的日记` : `${char.name} 偷看了你的日记`) : `${char.name} 对你的日记有反应了`, text.slice(0, 40), null, null);
-        globalNotifications.unshift({ text: `<b>${char.name}</b> ${peeked ? (isInvite ? '认真看完了你邀请Ta看的日记，还留了句话' : '偷看了你的日记，还留了句话') : '路过你的日记，但没有翻开'}`, timestamp: Date.now() });
-        unreadNotifs++;
-        if (typeof updateNotifBadge === 'function') updateNotifBadge();
-        if (currentDiaryTab === 'mydiary' && document.getElementById('view-diary') && document.getElementById('view-diary').style.display !== 'none') renderMyDiaryArea();
+        gyDiaryNotify(char, `<b>${char.name}</b> ${peeked ? (isInvite ? '认真看完了你邀请Ta看的日记，还留了句话' : '偷看了你的日记，还留了句话') : '路过你的日记，但没有翻开'}`,
+            peeked ? (isInvite ? `${char.name} 看完了你的日记` : `${char.name} 偷看了你的日记`) : `${char.name} 对你的日记有反应了`, text.slice(0, 40), { fn: 'gyOpenMyDiary' });
+        gyDiaryChanged(char, 'mydiary');
     } catch (e) {
         console.error('生成日记反应失败：', reaction.charId, e);
     }
@@ -1018,10 +1037,8 @@ function keepNovelChapter() {
         renderNovelChapters();
 
         let novelTitle = novel.title || '未命名故事';
-        showToast(`<div class="avatar" style="background:#1d9bf0;color:white;font-size:20px;">📚</div>`, `新章节已保存完毕！`, `《${novelTitle}》第 ${novel.chapters.length} 章已存档。`, null, null);
-        globalNotifications.unshift({ text: `<b>系统</b> 已完成故事《${novelTitle}》的新章节生成`, postId: null, chatCharId: null, timestamp: Date.now() });
-        unreadNotifs++;
-        if (typeof updateNotifBadge === 'function') updateNotifBadge();
+        gyPushNotif({ text: `<b>系统</b> 已完成故事《${novelTitle}》的新章节生成`, desc: `《${novelTitle}》第 ${novel.chapters.length} 章已存档。`, jump: { fn: 'gyOpenNovel', args: [novel.id] } },
+            { avatar: `<div class="avatar" style="background:#1d9bf0;color:white;font-size:20px;">📚</div>`, title: `新章节已保存完毕！`, desc: `《${novelTitle}》第 ${novel.chapters.length} 章已存档。` });
         // 💬 让参与这个故事的角色读一读这一章（开关：novelReview，默认关）
         try { runNovelReviews(novel, novel.chapters.length - 1); } catch (e) { console.warn('[故事点评] 出错：', e); }
     }
@@ -1107,7 +1124,7 @@ ${mine}
     if (typeof renderNovelChapters === 'function' && document.getElementById('novelChaptersContainer')) renderNovelChapters();
     if (chap.reviews.length && typeof addNotification === 'function') {
         addNotification(`故事《${novel.title || '未命名'}》第 ${chapIdx + 1} 章，<b>${chap.reviews.length} 个人</b>说了点什么 💬`,
-            null, null, null, chap.reviews[0].text, { view: 'novel' });
+            null, null, null, chap.reviews[0].text, { view: 'novel', jump: { fn: 'gyOpenNovel', args: [novel.id] } });
     }
 }
 

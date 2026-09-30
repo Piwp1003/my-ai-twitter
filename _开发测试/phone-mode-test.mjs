@@ -34,11 +34,18 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
   await page.waitForTimeout(400);
   const st = await page.evaluate(() => ({ pm: document.body.classList.contains('gyphm'), wx: document.body.classList.contains('gywx'), wxLs: localStorage.getItem('gyWxMode') }));
   check(`[${tag}] 切到小手机，微信模式自动关掉`, st.pm && !st.wx && st.wxLs === '0', JSON.stringify(st));
-  check(`[${tag}] 进来先是锁屏：时间 + 轻点解锁`, await vis(page, '#gyPmHome .pm-lock') && /轻点解锁/.test(await page.evaluate(() => document.querySelector('#gyPmHome .pm-lock').innerText)));
+  check(`[${tag}] 进来先是锁屏：时间 + 上滑解锁`, await vis(page, '#gyPmHome .pm-lock') && /上滑解锁/.test(await page.evaluate(() => document.querySelector('#gyPmHome .pm-lock').innerText)));
   if (shots) await page.screenshot({ path: `${shots}/pm-${tag}-lock.png` });
-  await page.evaluate(() => document.querySelector('#gyPmHome .pm-lock').click());
-  await page.waitForTimeout(450);
-  check(`[${tag}] 轻点解锁`, !(await vis(page, '#gyPmHome .pm-lock')));
+  const lr = await page.evaluate(() => { const r = document.querySelector('#gyPmHome .pm-lock').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height - 60 }; });
+  await page.mouse.click(lr.x, lr.y); await page.waitForTimeout(200);
+  check(`[${tag}] 点一下不会解锁（只会跳一下提示）`, await vis(page, '#gyPmHome .pm-lock'));
+  await page.mouse.move(lr.x, lr.y); await page.mouse.down(); await page.mouse.move(lr.x, lr.y - 40, { steps: 4 });
+  const mid = await page.evaluate(() => document.querySelector('#gyPmHome .pm-lock').style.transform);
+  await page.mouse.up(); await page.waitForTimeout(500);
+  check(`[${tag}] 滑一点点松手：跟着手指走，然后弹回来`, /translateY\(-/.test(mid) && await vis(page, '#gyPmHome .pm-lock'), mid);
+  await page.mouse.move(lr.x, lr.y); await page.mouse.down(); await page.mouse.move(lr.x, lr.y - 220, { steps: 10 }); await page.mouse.up();
+  await page.waitForTimeout(500);
+  check(`[${tag}] 上滑解锁`, !(await vis(page, '#gyPmHome .pm-lock')));
   check(`[${tag}] 桌面显示出来了`, await vis(page, '#gyPmHome'));
   check(`[${tag}] 默认桌面：指针时钟 + 日历 + 正在播放 小组件`, await page.evaluate(() => !!document.querySelector('.pm-page[data-page="0"] .wk-aclock .dial') && !!document.querySelector('.pm-page[data-page="0"] .wk-cal') && !!document.querySelector('.pm-page[data-page="0"] .wk-music')));
   await page.evaluate(() => gyPmAddW('recent', 'm'));
@@ -90,7 +97,7 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
   await page.evaluate(() => document.querySelector('.pm-app[data-pmapp="beauty"]').click());
   check(`[${tag}] 「美化」：外观/壁纸/图标/字体/锁屏都能调`, await vis(page, '#gyPmSheet.on') && await page.evaluate(() => ['外观', '壁纸', '图标', '字体', '锁屏', '编辑桌面'].every(t => document.getElementById('gyPmSheet').innerText.toUpperCase().includes(t))));
   await page.evaluate(() => document.querySelector('#gyPmSheet .sw span:nth-child(3)').click());
-  check(`[${tag}] 选个颜色壁纸就换上`, await page.evaluate(() => document.getElementById('gyPmHome').style.backgroundColor !== ''));
+  check(`[${tag}] 选个颜色壁纸就换上`, await page.evaluate(() => /background/.test(document.querySelector('#gyPmHome .pm-wall.home .bg').getAttribute('style') || '')));
   await page.evaluate(() => [...document.querySelectorAll('#gyPmSheet .chip')].find(c => c.innerText === '黑').click());
   check(`[${tag}] 图标换成黑色`, await page.evaluate(() => document.body.classList.contains('pm-st-black')));
   await page.evaluate(() => [...document.querySelectorAll('#gyPmSheet .chip')].find(c => c.innerText === '深色').click());
@@ -99,7 +106,7 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
   await page.evaluate(() => { [...document.querySelectorAll('#gyPmSheet .chip')].find(c => c.innerText === '浅色').click(); [...document.querySelectorAll('#gyPmSheet .chip')].find(c => c.innerText === '白').click(); });
   check(`[${tag}] 美化里有锁屏壁纸、换图标、小组件、资源库`, await page.evaluate(() => ['锁屏壁纸', '换图标', '小组件', 'App 资源库'].every(t => document.getElementById('gyPmSheet').innerText.includes(t))));
   await page.evaluate(() => document.querySelector('#gyPmSheet .sw span.same').parentNode.querySelectorAll('span')[5].click());
-  check(`[${tag}] 锁屏壁纸单独换`, await page.evaluate(() => { gyPmLockNow(); const l = document.querySelector('#gyPmHome .pm-lock'); const ok = l && /1c1c1e|28, 28, 30/.test(l.getAttribute('style') || ''); gyPmUnlock(); return ok; }));
+  check(`[${tag}] 锁屏壁纸单独换`, await page.evaluate(() => { gyPmLockNow(); const l = document.querySelector('#gyPmHome .pm-lock'); const b = l && l.querySelector('.pm-wall .bg'); const ok = b && /1c1c1e|28, 28, 30/.test(b.getAttribute('style') || ''); gyPmUnlock(); return ok; }));
   await page.waitForTimeout(450);
   await page.evaluate(() => gyPmIcons());
   check(`[${tag}] 换图标：所有 App 一张表，每个都能换图片`, await page.evaluate(() => document.querySelectorAll('#gyPmSheet .pm-ic-list .row input[type=file]').length >= 20));
@@ -115,25 +122,35 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
   const order0 = await page.evaluate(() => [...document.querySelectorAll('.pm-page[data-page="0"] .pm-app')].map(e => e.dataset.pmapp).join(','));
   await page.evaluate(() => document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="today"]').scrollIntoView({ block: 'center' }));
   await page.waitForTimeout(100);
-  const pA = await page.evaluate(() => { const r = document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="diary"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 22 }; });
-  const pB = await page.evaluate(() => { const r = document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="forum"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 22 }; });
+  const pA = await page.evaluate(() => { const e = document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="diary"]'), r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 22, pos: e.style.gridColumn + '/' + e.style.gridRow }; });
+  const pB = await page.evaluate(() => { const e = document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="forum"]'), r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 22, pos: e.style.gridColumn + '/' + e.style.gridRow }; });
+  const gB0 = await page.evaluate(() => { const e = document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="beauty"]'); return e.style.gridColumn + '/' + e.style.gridRow; });
   await page.mouse.move(pA.x, pA.y); await page.mouse.down(); await page.mouse.move(pA.x + 10, pA.y + 5, { steps: 3 }); await page.mouse.move(pB.x, pB.y, { steps: 8 }); await page.mouse.up();
   await page.waitForTimeout(150);
   const order1 = await page.evaluate(() => [...document.querySelectorAll('.pm-page[data-page="0"] .pm-app')].map(e => e.dataset.pmapp).join(','));
-  check(`[${tag}] 拖着换位置（边拖边让位）`, order0 !== order1 && order1.indexOf('diary') > order1.indexOf('today'), order0 + ' → ' + order1);
+  const gpos = k => page.evaluate(k => { const e = document.querySelector(`.pm-page[data-page="0"] .pm-app[data-pmapp="${k}"]`); return e ? e.style.gridColumn + '/' + e.style.gridRow : ''; }, k);
+  check(`[${tag}] 拖到别的图标上：两个互换位置`, (await gpos('diary')) === pB.pos && (await gpos('forum')) === pA.pos, order0 + ' → ' + order1 + ' ' + JSON.stringify([pA.pos, pB.pos, await gpos('diary'), await gpos('forum')]));
+  // 拿走一个图标：后面的不会自动往前补
+  await page.evaluate(() => document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="film"] .pm-del').click());
+  await page.waitForTimeout(100);
+  const beautyAfter = await gpos('beauty');
+  check(`[${tag}] 收起一个图标：其他图标不自动补位（空着）`, beautyAfter === gB0, gB0 + ' → ' + beautyAfter);
+  await page.evaluate(() => { gyPmLibrary(); document.querySelector('#gyPmLibGrid .pm-app[data-pmapp="film"]').click(); gyPmCloseSheet(); });
   check(`[${tag}] App 资源库不再占一页`, await page.evaluate(() => !document.querySelector('.pm-page.lib') && document.querySelectorAll('#gyPmHome .pm-pg i:not(.newpg)').length === document.querySelectorAll('#gyPmHome .pm-page').length));
   // 小组件拖到图标中间：图标自己让开
   const wBefore = await page.evaluate(() => [...document.querySelectorAll('.pm-page[data-page="0"] .pm-item')].map(e => e.dataset.pmapp || e.dataset.wid ? (e.dataset.pmapp || 'W:' + e.className.match(/wk-(\w+)/)[1]) : '').join(','));
   await page.evaluate(() => document.querySelector('.pm-page[data-page="0"] .wk-aclock').scrollIntoView({ block: 'center' }));
   const wA = await page.evaluate(() => { const r = document.querySelector('.pm-page[data-page="0"] .wk-aclock').getBoundingClientRect(); return { x: r.left + 30, y: r.top + 30 }; });
-  await page.evaluate(() => document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="music"]').scrollIntoView({ block: 'center' }));
+  await page.evaluate(() => { document.querySelector('.pm-page[data-page="0"]').scrollTop = 0; document.querySelectorAll('[class*="toast"]').forEach(e => { if (e.id !== 'gyPmHome') e.style.display = 'none'; }); });
   await page.waitForTimeout(100);
   const wA2 = await page.evaluate(() => { const r = document.querySelector('.pm-page[data-page="0"] .wk-aclock').getBoundingClientRect(); return { x: r.left + 30, y: r.top + 30 }; });
-  const wB = await page.evaluate(() => { const r = document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="music"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 20 }; });
-  await page.mouse.move(wA2.x, Math.max(wA2.y, 140)); await page.mouse.down(); await page.mouse.move(wA2.x + 8, Math.max(wA2.y, 140) + 8, { steps: 3 }); await page.mouse.move(wB.x, wB.y, { steps: 10 }); await page.waitForTimeout(250); await page.mouse.up();
-  await page.waitForTimeout(150);
-  const wAfter = await page.evaluate(() => [...document.querySelectorAll('.pm-page[data-page="0"] .pm-item')].map(e => e.dataset.pmapp || 'W:' + (e.className.match(/wk-(\w+)/) || [])[1]).join(','));
-  check(`[${tag}] 小组件能拖到图标中间，图标自己让开`, wAfter.indexOf('W:aclock') > wAfter.indexOf('music') - 1 && wAfter !== wBefore, wBefore + ' → ' + wAfter);
+  const wB = await page.evaluate(() => { const e = document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="music"]'), r = e.getBoundingClientRect(); return { x: r.left + 30, y: r.top + 30, x0: r.left, y0: r.top }; });
+  await page.mouse.move(wA2.x, wA2.y); await page.mouse.down(); await page.mouse.move(wA2.x + 8, wA2.y + 8, { steps: 3 }); await page.mouse.move(wB.x, wB.y, { steps: 10 }); await page.waitForTimeout(250); await page.mouse.up();
+  await page.waitForTimeout(450);
+  const wAfter = await page.evaluate(() => [...document.querySelectorAll('.pm-page[data-page="0"] .pm-item')].map(e => (e.dataset.pmapp || 'W:' + (e.className.match(/wk-(\w+)/) || [])[1]) + '@' + e.style.gridColumn + '/' + e.style.gridRow).join(','));
+  const ovl = await page.evaluate(() => { const els = [...document.querySelectorAll('.pm-page[data-page="0"] .pm-item')], rs = els.map(e => e.getBoundingClientRect()); for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) { if (els[i].dataset.wid && els[j].dataset.wid) continue; const a = rs[i], b = rs[j]; if (a.left < b.right - 6 && b.left < a.right - 6 && a.top < b.bottom - 6 && b.top < a.bottom - 6) return true; } return false; });
+  const acR = await page.evaluate(() => { const r = document.querySelector('.pm-page[data-page="0"] .wk-aclock').getBoundingClientRect(); return { x: r.left, y: r.top }; });
+  check(`[${tag}] 小组件想放哪放哪（松手在哪就在哪），压到的图标挪开，不重叠`, Math.abs(acR.x - wB.x0) < 8 && Math.abs(acR.y - wB.y0) < 8 && !ovl, JSON.stringify({ acR, wB, ovl, wAfter }));
   // 点图标：改名字
   await page.evaluate(() => document.querySelector('.pm-page[data-page="0"] .pm-app[data-pmapp="music"]').click());
   await page.waitForTimeout(100);
@@ -183,7 +200,9 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
   await page.evaluate(() => gyPmHome());
   // 🔔 通知中心：从状态栏往下拉
   await page.evaluate(() => { globalNotifications.unshift({ text: '沈之遥 给你发了一条消息', chatCharId: '9101', timestamp: Date.now() }); unreadNotifs = 3; document.querySelectorAll('.toast-item').forEach(t => t.remove()); });
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => window.gyPmIsland && gyPmIsland.hide());
+  await page.waitForTimeout(500);
   const sbR = await page.evaluate(() => { const r = document.querySelector('#gyPmHome .pm-sb').getBoundingClientRect(); const e = document.elementFromPoint(r.left + 60, r.top + r.height / 2); return { x: r.left + 60, y: r.top + r.height / 2, hit: e && e.outerHTML.slice(0, 90), cls: document.body.className }; });
   await page.mouse.move(sbR.x, sbR.y); await page.mouse.down(); await page.mouse.move(sbR.x, sbR.y + 60, { steps: 4 }); await page.mouse.move(sbR.x, sbR.y + 200, { steps: 6 }); await page.mouse.up();
   await page.waitForTimeout(400);
@@ -222,7 +241,7 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
   await page.evaluate(() => document.querySelector('#gyPmBar .nav .l').click());
   await page.waitForTimeout(200);
   const nav2 = await page.evaluate(() => ({ app: document.body.classList.contains('gyphm-app'), t: document.getElementById('gyPmT').textContent, set: getComputedStyle(document.getElementById('view-settings')).display }));
-  check(`[${tag}] 左上角：最外层是「回桌面」，进下一层变成「‹」，点了回上一层`, nav0 === 'home' && nav1.v === 'back' && nav2.app && nav2.set !== 'none' && nav2.t === '系统设置', JSON.stringify({ nav0, nav1, nav2 }));
+  check(`[${tag}] 左上角一直是「‹」：最外层点了回桌面，进下一层点了回上一层`, nav0 === 'back' && nav1.v === 'back' && nav2.app && nav2.set !== 'none' && nav2.t === '系统设置', JSON.stringify({ nav0, nav1, nav2 }));
   await page.evaluate(() => gyPmHome());
   await page.evaluate(() => document.querySelector('.pm-page[data-page="0"] .wk-contact').click());
   await page.waitForTimeout(300);
@@ -245,7 +264,7 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
   await page.waitForTimeout(400);
   check(`[${tag}] 刷新后还是小手机`, await page.evaluate(() => document.body.classList.contains('gyphm')));
   check(`[${tag}] 刷新后桌面还是自己摆的样子（改的名字还在）`, await page.evaluate(() => { const l = document.querySelector('.pm-app[data-pmapp="music"] .pm-lb'); return l && l.innerText === '听歌'; }));
-  await page.evaluate(() => { const l = document.querySelector('#gyPmHome .pm-lock'); if (l) l.click(); });
+  await page.evaluate(() => gyPmUnlock());
   await page.waitForTimeout(450);
   await page.evaluate(() => document.querySelector('.pm-dock .pm-app[data-pmapp="set"]').click());
   await page.waitForTimeout(300);

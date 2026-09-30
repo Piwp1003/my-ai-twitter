@@ -92,6 +92,7 @@ function addTheaterLog(entry) {
     globalTheaterLogs.push(entry);
     const keep = (typeof theaterLogKeep === 'number' && theaterLogKeep > 0) ? Math.round(theaterLogKeep) : 0;
     if (keep > 0) { while (globalTheaterLogs.length > keep) globalTheaterLogs.shift(); }
+    try { if (typeof window.gyDataChanged === 'function') window.gyDataChanged('theater'); } catch (e) {}   // 时间卡的"上一次"跟着变
 }
 
 // 真正跑一场。manual=true 是用户在页面上点「现在演一场」。
@@ -428,17 +429,17 @@ const GY_AUTONOMY_ACTIONS = [
     {
         key: 'diary', label: '写一篇自己的日记', hint: '不给任何人看的那种，只写给自己',
         need: () => typeof autonomyWriteDiary === 'function',
-        run: async (char) => { await autonomyWriteDiary(char); return '写了篇日记'; }
+        run: async (char, param) => { const r = await autonomyWriteDiary(char, param || ''); return r || null; }
     },
     {
         key: 'forum', label: '在小说论坛发个帖', hint: '实名，跟兴趣/正事有关的长一点的帖子',
         need: () => typeof autoGenerateForumThreadForChar === 'function',
-        run: async (char) => { await autoGenerateForumThreadForChar(char); return '在论坛发了个帖'; }
+        run: async (char, param) => { const r = await autoGenerateForumThreadForChar(char, param || ''); return (r && r.success === false) ? null : '在论坛发了个帖'; }
     },
     {
         key: 'anon', label: '去匿名论坛发一条', hint: '实名说不出口的话，匿名说',
         need: () => typeof autoGenerateAnonPostForChar === 'function',
-        run: async (char, param) => { await autoGenerateAnonPostForChar(char, param || ''); return '在匿名区发了一条'; }
+        run: async (char, param) => { const r = await autoGenerateAnonPostForChar(char, param || ''); return (r && r.success === false) ? null : '在匿名区发了一条'; }
     },
     {
         key: 'comment', label: '去评论别人的帖子', hint: '刷到了别人的推文，忍不住说两句',
@@ -459,10 +460,11 @@ const GY_AUTONOMY_ACTIONS = [
         key: 'status', label: '换一下自己此刻的状态', hint: '手头的事换了、心情变了',
         need: () => typeof saveCharLifeState === 'function',
         run: async (char, param) => {
-            const txt = String(param || '').trim().slice(0, 30);
+            const txt = String(param || '').trim();
             if (!txt) return null;
             saveCharLifeState(char, txt, null);
             if (typeof saveAllData === 'function') saveAllData();
+            gyAutonomyRefreshViews(char, 'status');
             return '状态变成了「' + txt + '」';
         }
     },
@@ -506,9 +508,37 @@ function gyAutonomyLog(char, entry) {
     if (!char) return;
     if (!Array.isArray(char.autonomyLog)) char.autonomyLog = [];
     char.autonomyLog.push(entry);
-    // 这份日志只是给用户翻"TA 最近都自己干了啥"用的，留最近 50 条足够，再多没人翻
-    while (char.autonomyLog.length > 50) char.autonomyLog.shift();
+    // 以前只留最近 50 条——这是给你翻"TA 都自己干了啥"的记录，不再悄悄删；
+    // 写进决策提示词的只取最近几条（runAutonomyTurn 里 slice(-6)），存多少都不影响 prompt 长短。
+    gyAutonomyRefreshViews(char, 'autonomy');
 }
+
+// 🔄 后台改了数据之后，把正开着、跟这件事有关的那几页重画一下（不开着的不动）
+function gyAutonomyRefreshViews(char, what) {
+    try { if (typeof window.gyDataChanged === 'function') window.gyDataChanged(what || 'autonomy'); } catch (e) {}
+    const shown = id => { const v = document.getElementById(id); return !!(v && v.style.display !== 'none' && (v.offsetParent !== null || v.getClientRects().length)); };
+    // 自主日志那一页
+    try { const box = document.getElementById('autonomyLogList'); if (box && (box.offsetParent !== null) && typeof renderAutonomyPage === 'function') renderAutonomyPage(); } catch (e) {}
+    // 通知页（动作会加通知）
+    try { if (shown('view-notifications') && typeof renderNotifications === 'function') renderNotifications(); } catch (e) {}
+    if (!char) return;
+    const w = String(what || '');
+    // 日记页正开着这个角色（信 / 日记）
+    try {
+        if (/diary|letter|autonomy/.test(w) && shown('view-diary') && typeof currentDiaryCharId !== 'undefined' && String(currentDiaryCharId) === String(char.id)) {
+            if (typeof currentDiaryTab !== 'undefined' && currentDiaryTab === 'mydiary') { if (typeof renderMyDiaryArea === 'function') renderMyDiaryArea(); }
+            else if (typeof renderDiaryContent === 'function') renderDiaryContent();
+        }
+    } catch (e) {}
+    // 角色主页正开着这个角色（状态 / 待办 / 推文）：只在「帖子」那一栏时重画，重画会把栏目切回帖子
+    try {
+        if (/status|todo|post|autonomy/.test(w) && shown('view-profile') && typeof currentProfileId !== 'undefined' && String(currentProfileId) === String(char.id)
+            && (typeof currentProfileTab === 'undefined' || currentProfileTab === 'posts') && typeof renderProfilePage === 'function') renderProfilePage(char.id);
+    } catch (e) {}
+    // 待办清单
+    try { if (/todo/.test(w) && typeof renderCharTodoList === 'function' && document.getElementById('charTodoList')) renderCharTodoList(); } catch (e) {}
+}
+window.gyAutonomyRefreshViews = gyAutonomyRefreshViews;
 
 // 核心：让一个角色自己拿一次主意
 // manual=true 是用户在界面上手动点的：跳过随机概率，**也不受开关限制**（同上，点了就跑）
@@ -546,6 +576,19 @@ async function runAutonomyTurn(char, manual) {
                 .join('\n');
         }
 
+        // 📝 写信 / 写日记 / 发帖这类"自己的习惯"：以前夹在几十个选项里、以前提示里还压着 TA 少做事，
+        //    模型几乎从来不选，看起来像没接上。这里单独列出来：上一次是什么时候、TA 自己说过多久做一次——
+        //    只是摆事实给 TA 看，做不做还是 TA 自己定。
+        const HABIT_KEYS = [['letter', '给' + ((typeof userDisplayName === 'function') ? userDisplayName(char) : '对方') + '写信'], ['diary', '写日记'], ['post', '发推文'], ['moment_self', '发朋友圈'], ['forum', '论坛发帖'], ['anon', '匿名区发帖']];
+        const habitLines = HABIT_KEYS.filter(([k]) => avail.some(a => a.key === k)).map(([k, n]) => {
+            const last = typeof window.gyTaLastAct === 'function' ? window.gyTaLastAct(char, k) : 0;
+            const h = typeof window.gyTaHabitOf === 'function' ? window.gyTaHabitOf(char, k) : null;
+            const lastTxt = last ? '上一次是' + (window.gyTaAgo ? window.gyTaAgo(last) : new Date(last).toLocaleDateString()) : '还从来没做过';
+            let due = '';
+            if (h && !h.never && h.ms && last && Date.now() - last >= h.ms) due = `（你说过大概隔${window.gyTaFmtMs ? window.gyTaFmtMs(h.ms) : Math.round(h.ms / 3600000) + '小时'}一次——按你自己的习惯，差不多到了）`;
+            else if (h && !h.never && h.ms) due = `（你说过大概隔${window.gyTaFmtMs ? window.gyTaFmtMs(h.ms) : Math.round(h.ms / 3600000) + '小时'}一次）`;
+            return `· ${n}：${lastTxt}${due}`;
+        });
         const menu = avail.map(a => `- ${a.key}：${a.label}（${a.hint}${(typeof window.gyTaActNote === 'function') ? window.gyTaActNote(char, a.key) : ''}）`).join('\n');
         const later = (char.autoQueue || []).filter(q => q && q.at > Date.now());
 
@@ -565,22 +608,21 @@ ${recentChat ? recentChat.slice(-800) : '（最近没怎么说话）'}
 【首页上别人刚发的】
 ${othersFeed || '（没什么新东西）'}
 
-${recentActs.length ? `【你最近做过这些】\n${recentActs.map(a => '· ' + a).join('\n')}\n` : ''}
+${recentActs.length ? `【你最近做过这些】\n${recentActs.map(a => '· ' + a).join('\n')}\n` : ''}${habitLines.length ? `【你自己的这些习惯】\n${habitLines.join('\n')}\n（写日记、写信、发帖这些本来就是你生活的一部分：心里有事、有话想说、今天有什么值得记下来，就去做，不用等特别大的理由；不想写就不写）\n` : ''}
 像个真人一样决定：
 1. 做不做、做什么、做几件、什么时候做，全由你自己定，没有规定。
-   · 可以什么都不做——大部分时候人就是在过自己的日子。
+   · 可以什么都不做。
    · 可以只做一件。
    · 也可以好几件：一件事常常会勾出另一件，做哪几件、先后顺序、怎么搭配，都看你此刻的心情和遇到的事，别套固定的组合。
 2. 每件事什么时候做也由你定：想到就立刻做（after 填 0），或者先放着，等有空了再做（after 填过多少分钟，多久都行）。
-3. 按你的性格和此刻的处境来，不要因为"好久没发推了"就发推。理由要具体到"因为刚才/因为待办上那件/因为日程里这一段"，不要写空话。
-4. 别老找${who}。一个人一天里绝大多数时间跟另一个人无关。
+3. 按你的性格和此刻的处境来。理由要具体到"因为刚才/因为待办上那件/因为日程里这一段"，不要写空话。
 
 另外：
 · nextIn：这些都做完（或者什么都不做）之后，你大概过多久会再停下来想想要不要做点什么？分钟数，多久都行，按你的性子和今天的安排来，别凑整数。
 · 每件事的 nextSame：这件事做完之后，下次再做同一件事大概隔多久（分钟，多久都行；几乎不会再做就填 0）；sameWhy 一句你自己的说法（12 字以内）。
 
 请严格只返回 JSON，不要用 \`\`\` 包裹，不要写别的。什么都不做就让 plan 是空数组：
-{"plan":[{"action":"上表里的 key","after":0,"reason":"一句话，为什么要做（20字内）","param":"看情况填：换状态就填新状态；办掉待办就填那条待办的原文；记新待办就填要记的事；匿名发帖/递料可以填个话题；其余留空","nextSame":分钟数,"sameWhy":""}],"nextIn":分钟数}`;
+{"plan":[{"action":"上表里的 key","after":0,"reason":"一句话，为什么要做（20字内）","param":"看情况填：换状态就填新状态；办掉待办就填那条待办的原文；记新待办就填要记的事；写日记/论坛发帖/匿名发帖/递料可以填个话题或方向；其余留空","nextSame":分钟数,"sameWhy":""}],"nextIn":分钟数}`;
 
         const messages = buildStructuredMessages(buildBasePrompt(char, true, recentChat), [], ask);
         const data = await callChatCompletionAPI(api, messages);
@@ -604,9 +646,10 @@ ${recentActs.length ? `【你最近做过这些】\n${recentActs.map(a => '· ' 
 
         if (!plan.length) {
             const entry = { at: Date.now(), charId: char.id, charName: char.name, action: 'nothing', label: '什么都不做',
-                reason: String(decision.reason || (plan0[0] && plan0[0].reason) || '').slice(0, 60), result: '什么都没做', ok: true, nextIn: Math.round(gap / 60000) };
+                reason: String(decision.reason || (plan0[0] && plan0[0].reason) || ''), result: '什么都没做', ok: true, nextIn: Math.round(gap / 60000) };
             gyAutonomyLog(char, entry);
             if (typeof saveAllData === 'function') saveAllData();
+            gyAutonomyRefreshViews(char, 'today');   // 「下次停下来想想」变了
             return { ok: true, entry };
         }
 
@@ -617,7 +660,7 @@ ${recentActs.length ? `【你最近做过这些】\n${recentActs.map(a => '· ' 
             const after = parseFloat(x.after);
             if (isFinite(after) && after >= 1) {
                 char.autoQueue.push({ id: 'aq_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), key: act.key, label: act.label,
-                    param: x.param || '', reason: String(x.reason || '').slice(0, 60), at: Date.now() + after * 60000, planned: Date.now(),
+                    param: x.param || '', reason: String(x.reason || ''), at: Date.now() + after * 60000, planned: Date.now(),
                     nextSame: x.nextSame, sameWhy: x.sameWhy || '' });
                 continue;
             }
@@ -628,6 +671,7 @@ ${recentActs.length ? `【你最近做过这些】\n${recentActs.map(a => '· ' 
             reason: plan.map(p => p.act.label).join('、'), result: '先放着，等会儿再做', ok: true };
         if (!done.length) gyAutonomyLog(char, entry);
         entry.nextIn = Math.round(gap / 60000);
+        gyAutonomyRefreshViews(char, 'today');   // 下次时间 / 打算等会儿做的队列变了
         return { ok: done.length ? done.every(e => e.ok) : true, entry, entries: done, queued: plan.length - done.length };
     } finally {
         runAutonomyTurn._busy = false;
@@ -637,7 +681,10 @@ ${recentActs.length ? `【你最近做过这些】\n${recentActs.map(a => '· ' 
 // 真去做一件事（立刻做的、或者队列里到点了的），记进自主日志，顺便记下"这件事下次大概隔多久"
 async function gyAutonomyRunItem(char, act, x, fromQueue) {
     const entry = { at: Date.now(), charId: char.id, charName: char.name, action: act.key, label: act.label,
-        reason: String((x && x.reason) || '').slice(0, 60), result: '', ok: false, queued: !!fromQueue };
+        reason: String((x && x.reason) || ''), result: '', ok: false, queued: !!fromQueue };
+    // 方向：自主模式里做的事都是 TA 自己想做的（聊天里对方让做的走 js/52，那边会标成"对方让你做的"）
+    const by0 = window.__gyActBy;
+    window.__gyActBy = { by: 'self', charId: String(char.id) };
     try {
         let res = await act.run(char, x && x.param);
         // 动作可以回一个对象：{ text, jump（点通知跳去哪）, selfNotified（自己已经弹过通知了） }
@@ -648,13 +695,14 @@ async function gyAutonomyRunItem(char, act, x, fromQueue) {
         console.error(`自主行动「${act.label}」执行失败：`, e);
         entry.result = '想做但没做成（' + (e.message || e) + '）';
         entry.ok = false;
-    }
+    } finally { window.__gyActBy = by0; }
     gyAutonomyLog(char, entry);
     char.lastAutonomyTime = Date.now();
     // 🔔 每件事都弹通知，点一下跳过去（js/60）
     try { if (entry.ok && typeof window.gyActNotify === 'function') window.gyActNotify(char, act, entry); } catch (e) {}
     if (entry.ok && typeof window.gyTaActDone === 'function' && x && x.nextSame != null && x.nextSame !== '')
         window.gyTaActDone(char, act.key, x.nextSame, x.sameWhy);
+    gyAutonomyRefreshViews(char, act.key);   // 时间卡的"上一次"、队列、开着的日记页/主页/通知页
     return entry;
 }
 // 队列里到点了的事：一次做一件（花钱的动作一件一件来）
@@ -667,7 +715,7 @@ async function gyAutonomyRunQueue(char) {
     char.autoQueue.shift();
     const act = GY_AUTONOMY_ACTIONS.find(a => a.key === q.key);
     let ok = false; try { ok = !!act && act.need(char); } catch (e) {}
-    if (!ok) { if (typeof saveAllData === 'function') saveAllData(); return null; }   // 条件没了（开关关了之类）：这件就算了
+    if (!ok) { if (typeof saveAllData === 'function') saveAllData(); gyAutonomyRefreshViews(char, 'today'); return null; }   // 条件没了（开关关了之类）：这件就算了
     const e = await gyAutonomyRunItem(char, act, q, true);
     if (typeof saveAllData === 'function') saveAllData();
     return e;
@@ -713,15 +761,25 @@ function getCharActMode(char) {
 
 // 📔 写一篇自己的日记：generateDiaryContent 那个是绑在日记页界面上的（要读当前选中角色、要改按钮文字），
 // 后台跑不能用它，所以这里单独写一份只动数据的。
-async function autonomyWriteDiary(char) {
+// topic：想写的方向（可不给）。by：'self' 是 TA 自己想写的；'user' 是对方在聊天里让 TA 写的（js/52）。
+// 不传 by 就看此刻是谁在让 TA 做事（js/52 / 自主模式执行时会标 window.__gyActBy）。
+async function autonomyWriteDiary(char, topic, by) {
+    if (!char) return null;
     const api = getApiConfig(true);
-    if (!api.key) return null;
+    if (!api || !api.key) return null;
+    if (!by) { const d = window.__gyActBy; by = (d && String(d.charId) === String(char.id) && d.by) || 'self'; }
+    const who0 = (typeof userDisplayName === 'function') ? userDisplayName(char) : '对方';
+    const tp = String(topic || '').trim();
+    const why = by === 'user'
+        ? `这篇是${who0}在聊天里让你写的——你答应了，现在真的去写。写不写给${who0}看、写多真，按你的性子来。`
+        : '这是你自己想写的，没人让你写。';
     if (!char.diaryData) char.diaryData = { letters: [], diaries: [] };
     if (!Array.isArray(char.diaryData.diaries)) char.diaryData.diaries = [];
     const recentChat = (typeof getRecentChatContext === 'function') ? (getRecentChatContext(char.id) || '') : '';
     const limit = (typeof diaryWordLimit !== 'undefined') ? diaryWordLimit : 300;
     const ask = `现在是 ${new Date().toLocaleString('zh-CN', { hour12: false, weekday: 'long' })}。
 你现在想写点东西给自己看——一篇不打算给任何人看的日记。写今天真实发生的、心里过不去的、或者忽然想明白的那一点事。
+${why}${tp ? `\n这次想写的方向：${tp}（照这个方向写，但用你自己的语气和视角，不要照抄这句话）` : ''}
 字数 ${limit} 字左右。${typeof WORD_LIMIT_PRIORITY_NOTE !== 'undefined' ? WORD_LIMIT_PRIORITY_NOTE : ''}
 不要写成给人看的文章，日记就该有点没头没尾。
 ${typeof getFinalAnswerMarkerPromptNote === 'function' ? getFinalAnswerMarkerPromptNote() : ''}
@@ -741,6 +799,7 @@ ${typeof getFinalAnswerMarkerPromptNote === 'function' ? getFinalAnswerMarkerPro
         content, date: Date.now(), author: 'char'
     });
     if (typeof saveAllData === 'function') saveAllData();
+    gyAutonomyRefreshViews(char, 'diary');   // 日记页正开着这个人就马上看到这篇；时间卡的"上一次"也跟着变
     return '写了篇日记：' + (parsed.title || '无题');
 }
 
@@ -824,6 +883,7 @@ async function autonomyNudgeUser(char) {
         && document.getElementById('view-chat')?.style.display !== 'none'
         && typeof renderChatMessages === 'function') renderChatMessages();
     else if (typeof renderChatCharList === 'function') renderChatCharList();
+    gyAutonomyRefreshViews(char, 'nudge');
     return '拍了拍你';
 }
 
@@ -841,14 +901,13 @@ async function autonomyFinishTodo(char, param) {
     hit.done = true;
     hit.doneAt = Date.now();
     if (typeof saveAllData === 'function') saveAllData();
-    if (typeof renderCharTodoList === 'function'
-        && document.getElementById('charTodoList')) renderCharTodoList();
+    gyAutonomyRefreshViews(char, 'todo');
     return '把「' + hit.text + '」办掉了';
 }
 
 // 📝 记一条新待办
 async function autonomyAddTodo(char, param) {
-    const text = String(param || '').trim().slice(0, 60);
+    const text = String(param || '').trim();
     if (!text) return null;
     if (!Array.isArray(char.todos)) char.todos = [];
     if (char.todos.some(t => t && t.text === text)) return null;   // 已经记过了就别重复
@@ -857,8 +916,7 @@ async function autonomyAddTodo(char, param) {
         text, date: null, done: false, createdAt: Date.now(), doneAt: null, source: 'ai'
     });
     if (typeof saveAllData === 'function') saveAllData();
-    if (typeof renderCharTodoList === 'function'
-        && document.getElementById('charTodoList')) renderCharTodoList();
+    gyAutonomyRefreshViews(char, 'todo');
     return '记下了「' + text + '」';
 }
 
@@ -879,9 +937,11 @@ async function autonomyFeedTabloid(char, param) {
     if (!target) target = myCharacters.find(c => String(c.id) !== String(char.id));
     if (!target) return null;
     const topic = String(param || '').trim();
+    const d0 = window.__gyActBy;
+    const byUser = !!(d0 && d0.by === 'user' && String(d0.charId) === String(char.id));
     const messages = buildStructuredMessages('你是一个唯恐天下不乱的娱乐营销号。', [],
         `有人给你递了一条料，关于 ${target.name}（人设：${String(target.persona || '').slice(0, 300)}）。递料的人是 ${char.name}。
-${topic ? `料的内容大概是：${topic}。` : ''}
+${topic ? `料的内容大概是：${topic}。` : ''}${byUser ? `（${char.name}是被人撺掇来递这条料的。）` : ''}
 请写成一条震惊体的爆料推文，150 字左右，直接输出正文，不要加前缀说明、不要用引号包裹。`);
     const data = await callChatCompletionAPI(api, messages);
     const text = (data.choices?.[0]?.message?.content || '').trim();
@@ -895,6 +955,7 @@ ${topic ? `料的内容大概是：${topic}。` : ''}
     tabloidPosts.unshift(post);
     if (typeof saveAllData === 'function') saveAllData();
     if (typeof renderTabloidPosts === 'function') renderTabloidPosts();
+    gyAutonomyRefreshViews(char, 'tabloid');
     if (typeof showToast === 'function') {
         showToast(`<div class="avatar" style="background:#1d9bf0;color:white;font-size:20px;">📰</div>`,
             '新的八卦爆料！', text, post.id, null);
@@ -920,13 +981,15 @@ function startAutonomyTimer() {
                 try { await gyAutonomyRunQueue(qc); } catch (e) { console.warn('自主队列出错：', e); }
             }
             const now = Date.now();
+            let rolled = false;
             const due = (myCharacters || []).filter(c => {
                 if (getCharActMode(c) !== 'auto') return false;
                 // 没有下次时间的（刚切到自主模式、或者老存档）：现在给 TA 掷一个，这一轮先不动。
                 // 不立刻就动是故意的——刚勾上开关就"叮"地跳出来一条，太像机器人了。
-                if (!c.nextAutonomyAt) { c.nextAutonomyAt = now + gyRollAutonomyGap(c); return false; }
+                if (!c.nextAutonomyAt) { c.nextAutonomyAt = now + gyRollAutonomyGap(c); rolled = true; return false; }
                 return now >= c.nextAutonomyAt;
             });
+            if (rolled) gyAutonomyRefreshViews(null, 'today');   // 刚排上「下次停下来想想」
             if (due.length === 0) return;
 
             // 一轮最多让一个角色行动：这功能一次可能连着两次调用，一次放行好几个角色太凶了
@@ -936,6 +999,7 @@ function startAutonomyTimer() {
             char.nextAutonomyAt = now + gyRollAutonomyGap(char);
             char.lastAutonomyTime = now;
             await runAutonomyTurn(char, false);
+            gyAutonomyRefreshViews(char, 'today');   // 没跑成（接口出错之类）也要把新排的时间画上
             // 顺手看看 TA 的待办是不是快见底了（走 autoTodoGen 开关，一天最多一次）
             if (typeof autoTopUpCharTodos === 'function') await autoTopUpCharTodos(char);
         } catch (e) { console.error('自主行动定时器出错：', e); }

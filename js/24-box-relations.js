@@ -85,7 +85,8 @@
     function baseOf(id) { const v = parseFloat(S.base[String(id)]); return isNaN(v) ? 0 : v; }
     function score(id) {
         const t = baseOf(id) + book(id).reduce((a, e) => a + (parseFloat(e.d) || 0), 0);
-        return Math.max(-100, Math.min(100, Math.round(t * 10) / 10));
+        // 不再夹在 −100 ~ 100 里：你想设 500 就是 500（进度条那边自己封了宽度，不会画爆）
+        return Math.round(t * 10) / 10;
     }
     // 直接把某个角色的好感度设成一个数（账本一笔都不动）
     window.gyrelSetScore = async function (charId, v) {
@@ -93,7 +94,7 @@
         const raw = (v !== undefined && v !== null) ? v : (el ? el.value : '');
         const n = parseFloat(raw);
         if (isNaN(n)) return;
-        const target = Math.max(-100, Math.min(100, Math.round(n * 10) / 10));
+        const target = Math.round(n * 10) / 10;   // 不设上下限
         const sum = book(charId).reduce((a, e) => a + (parseFloat(e.d) || 0), 0);
         S.base[String(charId)] = Math.round((target - sum) * 10) / 10;
         syncOne(charId);
@@ -116,7 +117,7 @@
         const v = parseFloat(d);
         if (isNaN(v) || v === 0) return null;
         const b = book(charId);
-        const e = { id: uid(), at: Date.now(), d: Math.max(-20, Math.min(20, Math.round(v * 10) / 10)), why: String(why || '').slice(0, 50), src: src || '手动' };
+        const e = { id: uid(), at: Date.now(), d: Math.round(v * 10) / 10, why: String(why || ''), src: src || '手动' };   // 一笔加减多少不封顶、原因不截字
         b.push(e);
         const keep = parseInt(S.keep) || 0;
         if (keep > 0 && b.length > keep) b.splice(0, b.length - keep);
@@ -418,16 +419,16 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
               ${open ? `<div style="padding:6px 0 0 46px;">
                 <div style="margin-bottom:8px;">
                   <input class="gyrel-in" id="gyrelWhy" placeholder="因为什么事？比如「她记得我不吃香菜」" style="margin-bottom:6px;">
-                  <input class="gyrel-in" id="gyrelD" type="number" step="0.5" min="-20" max="20" placeholder="加减多少（-20 ~ 20）" style="max-width:180px;display:inline-block;margin-bottom:6px;">
+                  <input class="gyrel-in" id="gyrelD" type="number" step="0.5" placeholder="加减多少（负数是减）" style="max-width:180px;display:inline-block;margin-bottom:6px;">
                   <button class="gyrel-btn" onclick="gyrelAddManual('${c.id}')">记一笔</button>
                   ${b.length ? `<button class="gyrel-btn danger" onclick="gyrelClear('${c.id}')">清空这个人的账</button>` : ''}
                 </div>
                 <div style="margin-bottom:10px;padding:8px 10px;border:1px dashed rgba(128,128,128,.35);border-radius:8px;">
                   <div class="gyrel-hint" style="margin-bottom:6px;">
-                    <b>直接设成</b>：不想一笔一笔记的时候，把好感度拨到你想要的数字（−100 ~ 100）。
+                    <b>直接设成</b>：不想一笔一笔记的时候，把好感度拨到你想要的数字（常用 −100 ~ 100，但不设上下限）。
                     账本一笔都不会动，以后自动记的那些还是在这个数上面加减。${baseOf(c.id) ? `　当前基准 ${baseOf(c.id) > 0 ? '+' : ''}${baseOf(c.id)}` : ''}
                   </div>
-                  <input class="gyrel-in" id="gyrelScore${c.id}" type="number" step="0.5" min="-100" max="100" value="${sc}" style="max-width:140px;display:inline-block;">
+                  <input class="gyrel-in" id="gyrelScore${c.id}" type="number" step="0.5" value="${sc}" style="max-width:140px;display:inline-block;">
                   <button class="gyrel-btn" onclick="gyrelSetScore('${c.id}')">设定</button>
                   ${baseOf(c.id) ? `<button class="gyrel-btn ghost" onclick="gyrelResetScore('${c.id}')">清掉基准</button>` : ''}
                 </div>
@@ -468,12 +469,12 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
           <h4>⚙️ 参数</h4>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
             <span style="font-size:13px;color:#8b98a5;min-width:130px;">注进 prompt 的最近几条</span>
-            <input class="gyrel-in" id="gyrelInject" type="number" min="0" max="20" value="${S.inject}" style="max-width:90px;margin:0;">
+            <input class="gyrel-in" id="gyrelInject" type="number" min="0" value="${S.inject}" style="max-width:90px;margin:0;">
             <span style="font-size:12px;color:#8b98a5;">条原因（0 ＝ 只给阶段不给事）</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
             <span style="font-size:13px;color:#8b98a5;min-width:130px;">每人最多存多少笔</span>
-            <input class="gyrel-in" id="gyrelKeep" type="number" min="0" max="9999" value="${S.keep}" style="max-width:90px;margin:0;">
+            <input class="gyrel-in" id="gyrelKeep" type="number" min="0" value="${S.keep}" style="max-width:90px;margin:0;">
             <span style="font-size:12px;color:#8b98a5;">0 ＝ 不限</span>
           </div>
           <button class="gyrel-btn" onclick="gyrelSaveNums()">💾 保存</button>
@@ -514,8 +515,8 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
     window.gyrelSaveNums = function () {
         const g = id => { const e = document.getElementById(id); return e ? parseInt(e.value) : NaN; };
         const i = g('gyrelInject'), k = g('gyrelKeep');
-        if (!isNaN(i)) S.inject = Math.max(0, Math.min(20, i));
-        if (!isNaN(k)) S.keep = Math.max(0, Math.min(9999, k));
+        if (!isNaN(i)) S.inject = Math.max(0, i);   // 不设上限
+        if (!isNaN(k)) S.keep = Math.max(0, k);
         if (S.keep > 0) Object.keys(S.led).forEach(id => { const b = S.led[id]; if (b.length > S.keep) b.splice(0, b.length - S.keep); });
         save(); renderPanel();
         const st = document.getElementById('gyrelStatus'); if (st) st.innerText = '保存好了。';
@@ -524,7 +525,7 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
         const w = document.getElementById('gyrelWhy'), d = document.getElementById('gyrelD');
         const st = () => document.getElementById('gyrelStatus');
         const v = d ? parseFloat(d.value) : NaN;
-        if (isNaN(v) || v === 0) { alert('填一个不等于 0 的分数（-20 ~ 20）。'); return; }
+        if (isNaN(v) || v === 0) { alert('填一个不等于 0 的分数（负数是减）。'); return; }
         await add(charId, v, (w && w.value) || '', '手动');
         renderPanel();
     };
@@ -559,7 +560,7 @@ body.dark-theme .gyrel-av{background:#2f3336;color:#e7e9ea;}
         ats.forEach((el, i) => {
             const at = parseFloat(el.value);
             const name = (nms[i] && nms[i].value || '').trim();
-            if (!isNaN(at) && name) out.push({ at: Math.max(-100, Math.min(100, at)), name: name.slice(0, 8) });
+            if (!isNaN(at) && name) out.push({ at, name });   // 分数线和名字都不设限
         });
         if (out.length) S.stages = out.sort((a, b) => a.at - b.at);
         save(); renderPanel();
@@ -1078,7 +1079,7 @@ body.dark-theme .gygs-box{background:#16181c;color:#e7e9ea;}
           ${sw('auto', '自动传播：隔一段时间自己挑一条讲给你', '不用你点，池子里有货就自己挑一条、挑个人讲给你，带通知。默认关——这是这个插件唯一会自己花钱的地方。')}
           ${S.auto ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px;">
             <span style="font-size:13px;color:#8b98a5;">每隔</span>
-            <input class="gygs-in" id="gygsAutoH" type="number" min="1" max="72" value="${S.autoHours}" style="max-width:80px;margin:0;">
+            <input class="gygs-in" id="gygsAutoH" type="number" min="1" value="${S.autoHours}" style="max-width:80px;margin:0;">
             <span style="font-size:13px;color:#8b98a5;">小时最多讲一条</span>
           </div>` : ''}
         </div>
@@ -1092,12 +1093,12 @@ body.dark-theme .gygs-box{background:#16181c;color:#e7e9ea;}
           <h4>⚙️ 参数</h4>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
             <span style="font-size:13px;color:#8b98a5;min-width:150px;">每个角色最多注入几条传闻</span>
-            <input class="gygs-in" id="gygsInject" type="number" min="0" max="10" value="${S.inject}" style="max-width:80px;margin:0;">
+            <input class="gygs-in" id="gygsInject" type="number" min="0" value="${S.inject}" style="max-width:80px;margin:0;">
             <span style="font-size:12px;color:#8b98a5;">条（0 ＝ 不注入，只当个看的）</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
             <span style="font-size:13px;color:#8b98a5;min-width:150px;">传闻池最多存</span>
-            <input class="gygs-in" id="gygsKeep" type="number" min="1" max="500" value="${S.keep}" style="max-width:80px;margin:0;">
+            <input class="gygs-in" id="gygsKeep" type="number" min="1" value="${S.keep}" style="max-width:80px;margin:0;">
             <span style="font-size:12px;color:#8b98a5;">条</span>
           </div>
           <button class="gygs-btn" onclick="gygsSaveNums()">💾 保存</button>
@@ -1122,9 +1123,9 @@ body.dark-theme .gygs-box{background:#16181c;color:#e7e9ea;}
     window.gygsSaveNums = function () {
         const g = id => { const e = document.getElementById(id); return e ? parseInt(e.value) : NaN; };
         const i = g('gygsInject'), k = g('gygsKeep'), h = g('gygsAutoH');
-        if (!isNaN(i)) S.inject = Math.max(0, Math.min(10, i));
-        if (!isNaN(k)) S.keep = Math.max(1, Math.min(500, k));
-        if (!isNaN(h)) S.autoHours = Math.max(1, Math.min(72, h));
+        if (!isNaN(i)) S.inject = Math.max(0, i);   // 不设上限
+        if (!isNaN(k)) S.keep = Math.max(1, k);
+        if (!isNaN(h)) S.autoHours = Math.max(1, h);
         if (S.rumors.length > S.keep) S.rumors.splice(0, S.rumors.length - S.keep);
         save(); renderPanel();
         const st = document.getElementById('gygsStatus'); if (st) st.innerText = '保存好了。';

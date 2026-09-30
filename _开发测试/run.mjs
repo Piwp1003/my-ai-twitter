@@ -205,8 +205,8 @@ check('AI 轮次记了耗时', await page.evaluate(() => storySessions[0].turns[
 check('气泡渲染出来', (await page.locator('#ssTurns .ss-turn').count()) === 2);
 check('正文过了 markdown 渲染', await page.evaluate(() =>
   !!document.querySelector('#ssTurns .ss-turn.other .ss-bubble b, #ssTurns .ss-turn.other .ss-bubble strong')));
-// 楼层号跟酒馆对齐：从 0 开始，楼层号就是 message_id
-check('楼层号从 0 开始（酒馆语义）', (await page.locator('#ssTurns .ss-meta').first().textContent()).includes('#0楼'));
+// 楼层号跟同类软件对齐：从 0 开始，楼层号就是 message_id
+check('楼层号从 0 开始（同类软件语义）', (await page.locator('#ssTurns .ss-meta').first().textContent()).includes('#0楼'));
 check('输入框已清空', (await page.inputValue('#ssInput')) === '');
 check('已写进存档', await page.evaluate(async () => {
   const d = await localforage.getItem('myTwitterAppData');

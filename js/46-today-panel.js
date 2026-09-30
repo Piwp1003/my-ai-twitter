@@ -396,6 +396,39 @@
     }
     setInterval(() => { try { if (S.on) render(); } catch (e) {} }, 300000);
 
+    // 🔄 数据变了（写了信、发了帖、自主模式排了下一次…）：开着的「今天」马上重画，不用等切页 / 5 分钟
+    const shown = el => !!(el && el.isConnected && (el.offsetParent !== null || el.getClientRects().length));
+    function refreshIfShown() {
+        try {
+            if (!S.on) return;
+            const box = document.getElementById(ID), mbox = document.getElementById(MID);
+            // 还没建过（开着但从没画过）也画一次；建过的只在看得见时画，省得后台白白重排
+            if ((box || mbox) && !shown(box) && !shown(mbox) && !MOPEN) return;
+            render();
+            if (MOPEN && document.getElementById('gyTileModal')) openTile(MOPEN.cid, MOPEN.gk);   // 点开的那张时间卡也跟着更新
+        } catch (e) {}
+    }
+    let rt = null, rtAt = 0;
+    const soon = (ms) => {
+        const at = Date.now() + ms;
+        if (rt && rtAt <= at) return;          // 已经排了更早的一次
+        if (rt) clearTimeout(rt);
+        rtAt = at; rt = setTimeout(() => { rt = null; rtAt = 0; refreshIfShown(); }, ms);
+    };
+    window.addEventListener('gy:data', () => soon(30));
+    // 各处改完数据几乎都会 saveAllData：顺着它也刷一下（合并成一次，慢一点，别跟着每次存档都重排）
+    (function hookSave(tries) {
+        const s0 = window.saveAllData;
+        if (typeof s0 === 'function') {
+            if (!s0.__gyToday) {
+                window.saveAllData = function () { const r = s0.apply(this, arguments); try { if (S.on) soon(700); } catch (e) {} return r; };
+                window.saveAllData.__gyToday = true;
+            }
+            return;
+        }
+        if ((tries || 0) < 20) setTimeout(() => hookSave((tries || 0) + 1), 300);
+    })(0);
+
     function fillUI() { try { const el = document.getElementById('gyTodayOn'); if (el) el.checked = !!S.on; } catch (e) {} }
     const op0 = window.openSettingsPanel;
     if (op0 && op0.call && !op0.__gyToday) {

@@ -520,10 +520,10 @@ async function autoFillCharProfile(manual = false) {
         if (key === 'handle') v = v.replace(/^@+/, ''); // 保存时会统一加@，这里先去掉免得变成@@
         if (key === 'birthdate' && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return; // 格式不对就不填，免得日期控件报错
         // 拍一拍后缀会被直接拼进「A 拍了拍 B ___」这句话里，不以"的"开头会读不通（"拍了拍 肩膀"）。
-        // AI 偶尔会漏掉这个字，这里补上；补完还是不像后缀（太长/带标点）就宁可不填。
+        // AI 偶尔会漏掉这个字，这里补上；带句读标点的不像后缀，宁可不填。不限长度。
         if (key === 'nudgeText') {
             v = v.replace(/^[的]?/, '的');
-            if (v.length > 9 || /[。！？!?,，、\n]/.test(v)) return;
+            if (/[。！？!?,，、\n]/.test(v)) return;
         }
         if (key === 'anonId') v = v.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
         // 保险：AI 仍然返回"1.2万"这类写法时，用项目里现成的 parseStat 换算成整数，

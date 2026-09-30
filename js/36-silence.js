@@ -194,7 +194,7 @@
         const line = String(r.line || '').replace(/^["「]|["」]$/g, '').trim().slice(0, 70);
 
         logOf(c.id).unshift({ id: uid(), at: Date.now(), gapH: g, why, mood, act, line });
-        if (logOf(c.id).length > 20) logOf(c.id).length = 20;
+        // 记录不设条数上限（以前只留 20 条）
         S.last[String(c.id)] = Date.now();
         await save();
 
@@ -298,7 +298,7 @@
               <option value="fixed"${cfg.mode === 'fixed' ? ' selected' : ''}>我自己定一个时长</option>
             </select>
             ${cfg.mode === 'fixed' ? `<span style="font-size:12.5px;">超过
-              <input type="number" value="${cfg.hours}" min="1" max="240" style="width:60px;padding:5px;border:1px solid var(--gy-accent-line);border-radius:6px;background:transparent;color:inherit;"
+              <input type="number" value="${cfg.hours}" min="1" style="width:60px;padding:5px;border:1px solid var(--gy-accent-line);border-radius:6px;background:transparent;color:inherit;"
                 onchange="gySilenceSet('hours',this.value)"> 小时</span>` : ''}
             <button type="button" class="btn-edit-small" style="margin-left:auto;" onclick="gySilenceNow('${charId}')">让 TA 现在想一次</button>
           </div>

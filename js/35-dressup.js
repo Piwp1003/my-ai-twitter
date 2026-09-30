@@ -85,7 +85,7 @@
         try { ok = K.apply(target, src); } catch (e) { ok = false; }
         if (!ok) { toast('这一样现在换不了'); return false; }
         S.log.unshift({ id: uid(), at: Date.now(), kind, target: String(target), src, by: String(by || 'me'), note: note || '' });
-        if (S.log.length > 60) S.log.length = 60;
+        // 换装记录不设条数上限（以前只留 60 条）
         await save();
         try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
         // 该刷的地方都刷一遍
@@ -482,7 +482,7 @@
             <div class="input-group" id="gydrWhoBox"><label>换给谁</label>
                 <select id="gydrWho">${cs.length ? cs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('') : '<option value="">（还没有角色）</option>'}</select></div>
             <div class="input-group"><label>顺便说一句（选填）</label>
-                <input type="text" id="gydrNote" maxlength="30" placeholder="例：这张挺像你的"></div>
+                <input type="text" id="gydrNote" placeholder="例：这张挺像你的"></div>
             <div class="form-hint" style="margin-bottom:10px;">
                 换角色身上的东西会**先在私聊里问一声**（卡上会把这张图放出来），TA 同意了才换。
                 想直接换不问，就去开关里关掉「换之前先问一声」。

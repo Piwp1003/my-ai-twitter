@@ -1683,12 +1683,12 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
        很多卡在世界书里教模型写"手机里发生的事"：
          <msg>发送人|接收人|内容|时间</msg>、<rednote>…</rednote>（小红书）、
          [消息-谁]: …、[语音-谁|时长]: …、[转账-谁]: …、<朋友圈>…</朋友圈>
-       以前这些要么是一坨方括号、要么靠酒馆插件才画得出来。现在：
+       以前这些要么是一坨方括号、要么靠同类软件插件才画得出来。现在：
          · 发给你的 → 变成谷雨里 TA 真发给你的消息（转账走钱包，语音/表情/图片照样是一条消息）
          · 跟别人的 → 收进 TA 手机对应的 app（消息 / 小红书 / 朋友圈）
          · 聊天里只留一张小卡「📱 TA 刚在手机上…」，点开直接跳到那一页
        另外：手机配色可以跟卡片走（从卡自带的状态栏/小组件样式里取色），图标可以照人设重画一套。 */
-    const CARD_CAP = { msgs: 300, notes: 60, moments: 80 };
+    // 以前这里有 CARD_CAP（消息 300 / 小红书 60 / 朋友圈 80 条），超了就删最早的——不设上限了，全留着
     const cardOf = id => {
         const k = String(id);
         if (!S.card[k]) S.card[k] = { msgs: [], notes: [], moments: [] };
@@ -1790,7 +1790,6 @@ ${c.schedule && c.schedule.text ? `你今天的安排：${String(c.schedule.text
             if (res.logged.note) res.apps.push('rednote');
             if (res.logged.moment) res.apps.push('moment');
             if (res.logged.msg + res.logged.note + res.logged.moment) {
-                Object.keys(CARD_CAP).forEach(k => { if (box[k].length > CARD_CAP[k]) box[k].splice(0, box[k].length - CARD_CAP[k]); });
                 save();
             }
         } catch (e) { console.warn('[卡片手机] 跳过：', e); }

@@ -156,19 +156,22 @@
             const u = await resolve('music', it);
             if (!u) return toast('这条放不了', '没找到能直接播放的音频文件');
             if (typeof window.gymAddTrack !== 'function') return toast('音乐盒没加载', '');
-            window.gymAddTrack({ title: it.title, artist: it.artist, cover: it.cover, src: u, note: it.note || '' }, '🌐 在线找的');
+            const tid = window.gymAddTrack({ title: it.title, artist: it.artist, cover: it.cover, src: u, note: it.note || '' }, '🌐 在线找的');
             toast('🎵 加进音乐盒了', `《${it.title}》${it.note ? '（' + it.note + '）' : ''}，在歌单「🌐 在线找的」里`);
+            return tid ? { trackId: tid } : null;
         } else if (kind === 'film') {
             const u = await resolve('film', it);
             if (!u) return toast('这部放不了', '没找到能直接播放的 mp4');
+            let f = null;
             if (openNow && typeof window.fbOpenUrl === 'function') {
                 closeModal();
                 try { if (typeof switchMainView === 'function') switchMainView('watchTogether'); } catch (e) {}
-                await window.fbOpenUrl(u, it.title, { note: it.from });
+                f = await window.fbOpenUrl(u, it.title, { note: it.from, cover: it.cover });
             } else if (typeof window.fbAddUrl === 'function') {
-                await window.fbAddUrl(u, it.title, { note: it.from });
+                f = await window.fbAddUrl(u, it.title, { note: it.from, cover: it.cover });
                 toast('🎬 加进片库了', `《${it.title}》，在片库里点「接着看」就能放`);
             }
+            return f ? { filmId: f.id } : null;
         } else if (kind === 'book') {
             toast('📖 正在把书拿下来…', it.title);
             const text = await bookText(it);
@@ -180,8 +183,12 @@
                 closeModal();
                 try { if (typeof window.rtOpenOverlay === 'function') window.rtOpenOverlay(); if (typeof window.rtOpenBook === 'function') window.rtOpenBook(b.id); } catch (e) {}
             }
+            return { bookId: b.id };
         }
+        return null;
     }
+    // 给别的模块用：把一条搜索结果导进对应功能。返回 {trackId} / {filmId} / {bookId}，导不进去返回 null / undefined
+    window.gyResAddItem = addItem;
 
     /* ---------- 弹窗 ---------- */
     const KIND = {

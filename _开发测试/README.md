@@ -36,7 +36,7 @@ node _开发测试\today-mobile-test.mjs   # 手机上的「今天」           
 node _开发测试\more-acts-test.mjs      # 自主模式接上各个小功能      16 项
 node _开发测试\life-dice-test.mjs      # 随机事件 + 今天面板滑动      27 项
 node _开发测试\run.mjs                  # 续写工作台全链路           102 项
-node _开发测试\tavern-bridge-test.mjs   # 酒馆助手兼容层             114 项
+node _开发测试\tavern-bridge-test.mjs   # 助手脚本兼容层             114 项
 node _开发测试\feed-test.mjs            # 推特流 / 路人 NPC           40 项
 node _开发测试\input-test.mjs           # 输入框永远能打字            24 项
 node _开发测试\binding-test.mjs         # 按钮有没有绑到不存在的函数

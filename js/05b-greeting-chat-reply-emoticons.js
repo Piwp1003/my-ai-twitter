@@ -490,7 +490,7 @@ function renderChatMessages() {
                     ${!isMe ? avatarHtml : ''}
                     <div class="chat-bubble-wrapper" style="align-items: ${isMe ? 'flex-end' : 'flex-start'};">
                         <div class="chat-sender-name" style="font-size:10px;">${!isMe && isGroup ? senderChar?.name : ''} <i class="chat-msg-time">${timeStr}</i></div>
-                        ${(displayText || msg.mediaUrl || msg.quote || !(__statusCard || __widget)) ? `<div class="chat-bubble ${isMe ? 'me' : 'other'}" oncontextmenu="showChatContextMenu(event, ${idx})" ontouchstart="chatBubbleTouchStart(event, ${idx})" ontouchend="chatBubbleTouchEnd(event)" ontouchmove="chatBubbleTouchEnd(event)">${msg.quote ? `<div class="chat-quote-bubble${msg.quote.type === 'tweet' ? ' tweet-quote-card' : ''}">${msg.quote.type === 'tweet' ? '<div class="tweet-quote-label">🐦 分享的推文</div>' : ''}<b>${msg.quote.name}</b>: ${renderPlainChatText(msg.quote.text)}</div>` : ''}${renderPlainChatText(displayText)}${msg.mediaUrl ? `<img src="${msg.mediaUrl}">` : ''}${swipeHtml}</div>` : ''}
+                        ${(() => { if (!isMe && swipeHtml && !String(displayText || '').replace(/<[^>]*>/g, '').trim() && !msg.mediaUrl) displayText = '（这一版是空的，点 ◀ 翻回去）'; return ''; })()}${(displayText || msg.mediaUrl || msg.quote || !(__statusCard || __widget)) ? `<div class="chat-bubble ${isMe ? 'me' : 'other'}" oncontextmenu="showChatContextMenu(event, ${idx})" ontouchstart="chatBubbleTouchStart(event, ${idx})" ontouchend="chatBubbleTouchEnd(event)" ontouchmove="chatBubbleTouchEnd(event)">${msg.quote ? `<div class="chat-quote-bubble${msg.quote.type === 'tweet' ? ' tweet-quote-card' : ''}">${msg.quote.type === 'tweet' ? '<div class="tweet-quote-label">🐦 分享的推文</div>' : ''}<b>${msg.quote.name}</b>: ${renderPlainChatText(msg.quote.text)}</div>` : ''}${renderPlainChatText(displayText)}${msg.mediaUrl ? `<img src="${msg.mediaUrl}">` : ''}${swipeHtml}</div>` : ''}
                         ${__widget}
                         ${__statusCard}
                         ${(!isMe && msg.reasoningKey && typeof gyVaultChipHtml === 'function') ? gyVaultChipHtml(msg.reasoningKey) : ''}
@@ -529,7 +529,7 @@ function renderChatMessages() {
 // 这里手动把这些脚本"重新创建"一遍来强制执行。⚠️这意味着聊天内容里只要出现<script>标签就会真的运行，
 // 只有在"设置 → AI增强功能"里手动打开对应开关、并且信任你导入的角色卡来源时才应该开启。
 //
-// 🐛 根因修复：不少"手机截图/聊天美化"类角色卡HTML组件，是照搬SillyTavern里"每条消息用一个独立
+// 🐛 根因修复：不少"手机截图/聊天美化"类角色卡HTML组件，是照搬同类软件里"每条消息用一个独立
 // <iframe>文档渲染"的写法习惯，内部初始化逻辑全部挂在 document.addEventListener('DOMContentLoaded', fn)
 // 上——这个假设只有在"这段HTML/JS是被浏览器当成一份全新文档从头加载"时才成立。但本app不是用iframe
 // 渲染这些卡片的，而是把<script>直接重新创建、追加到当前这个早就"加载完毕"的页面里：'DOMContentLoaded'
@@ -960,7 +960,9 @@ ${multiReplyBlock}`;
                 if (typeof aliveCaptureMood === 'function') aliveCaptureMood(char, parsed);   // 🫀 情绪惯性
 
                 if (parsed.replies && Array.isArray(parsed.replies) && parsed.replies.length > 0) {
-                    repText = parsed.replies.map(r => r.text).join('\n');
+                    // 模型有时写成 content / message / 直接字符串——都认；空的那几条不要（以前会拼出一个只有换行的空气泡）
+                    repText = parsed.replies.map(r => typeof r === 'string' ? r : (r && (r.text || r.content || r.message || r.msg)) || '')
+                        .map(t => String(t).trim()).filter(Boolean).join('\n');
                 } else if (parsed.stateUpdate) {
                     repText = `(${parsed.stateUpdate})`;
                 } else {
@@ -973,7 +975,11 @@ ${multiReplyBlock}`;
             repText = rawText.replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
         }
 
-        if (repText && !repText.toUpperCase().startsWith("NO")) {
+        // 思维链、只剩空白的，都不算写出东西来
+        if (typeof stripReasoningBlocks === 'function') { try { repText = stripReasoningBlocks(repText); } catch (e) {} }
+        repText = String(repText || '').trim();
+        if (repText && /^NO\b[.。!！]?$/i.test(repText)) repText = '';
+        if (repText) {
             let emoMatch = repText.match(/\[EMO:(emo_\w+)\]/i);
             if (emoMatch && typeof globalEmoticons !== 'undefined') {
                 let emo = globalEmoticons.find(e => e.id === emoMatch[1]);
@@ -981,6 +987,13 @@ ${multiReplyBlock}`;
                 repText = repText.replace(emoMatch[0], '').trim();
             }
             repText = applyRegexScripts(repText, 'ai_output', char.id);
+            // 显示出来是不是空的（比如整段被正则换成了看不见的东西）——空的就别存成新的一版
+            const shown = (typeof renderPlainChatText === 'function') ? renderPlainChatText(repText).replace(/<br>/g, '').trim() : repText.trim();
+            if (!shown && !repMediaUrl && !(typeof gyExtractChatStatus === 'function' && gyExtractChatStatus(repText, char.id).seg)) {
+                msg.text = oldText; renderChatMessages();
+                try { showToast('', '这次没写出内容', '模型返回的是空的，原来那版还在；再点一次重新生成试试', null, null, false); } catch (e) {}
+                return;
+            }
 
             if (!msg.swipes) { msg.swipes = [oldText]; msg.currentSwipe = 0; }
             msg.swipes.push(repText);
@@ -991,6 +1004,7 @@ ${multiReplyBlock}`;
             saveAllData(); renderChatMessages();
         } else {
             msg.text = oldText; renderChatMessages();
+            try { showToast('', '这次没写出内容', '模型返回的是空的，原来那版还在；再点一次重新生成试试', null, null, false); } catch (e) {}
         }
     } catch(e) { msg.text = oldText; renderChatMessages(); alert("生成失败：" + e.message); }
 };
@@ -1508,11 +1522,11 @@ ${multiReplyBlock}${(typeof aliveMoodFormatNote === 'function') ? aliveMoodForma
                 }
                 repText = applyRegexScripts(repText, 'ai_output', char.id);
                 repText = stripLeftoverMarkers(repText); // 漏网的内部标记不许进气泡（见 js/01 里的说明）
-                // MVU变量补丁块（酒馆"状态栏"预设常见格式）：识别+剥离，并把应用后的状态快照挂在这条消息上，
+                // MVU变量补丁块（同类软件"状态栏"预设常见格式）：识别+剥离，并把应用后的状态快照挂在这条消息上，
                 // 渲染时读快照画一个真正的状态栏卡片，而不是把原始JSON糊在气泡里。
                 const mvuResult = processMvuPatchInText(repText, sessionId);
                 repText = mvuResult.cleanText;
-                // 记忆召回块（酒馆"数据库"类预设常见格式）：同样识别+剥离，渲染成本地的召回面板。
+                // 记忆召回块（同类软件"数据库"类预设常见格式）：同样识别+剥离，渲染成本地的召回面板。
                 const recallResult = processRecallBlockInText(repText, sessionId);
                 repText = recallResult.cleanText;
 
@@ -1631,8 +1645,8 @@ function updateEmoticonDesc(idx, val) { globalEmoticons[idx].desc = val.trim(); 
 
 async function handleEmoticonUpload(event) {
     const files = Array.from(event.target.files); if (!files.length) return;
-    if (files.length > 99) alert('单次最多只能添加99张图片！已自动截取前99张。');
-    for(let file of files.slice(0, 99)) { globalEmoticons.push({ id: 'emo_' + Date.now() + Math.floor(Math.random()*1000), url: await fileToBase64(file), desc: "" }); }
+    // 一次选多少张都收（以前单次最多 99 张，多的截掉）
+    for(let file of files) { globalEmoticons.push({ id: 'emo_' + Date.now() + Math.floor(Math.random()*1000), url: await fileToBase64(file), desc: "" }); }
     renderEmoticonManagerGallery(); event.target.value = ''; saveAllData();
 }
 /* ============================================================

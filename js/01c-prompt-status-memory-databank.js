@@ -554,7 +554,7 @@ function saveReasoningDisplayMode() {
 // ===================== MVU 变量更新块（状态栏）识别与应用 =====================
 // 有些预设（比如"MoM"系列）会强制要求AI在每次回复里附上一段
 // <UpdateVariable><Analysis>...</Analysis><JSONPatch>[ {op,path,value}, ... ]</JSONPatch></UpdateVariable>
-// 这种"变量补丁"块，本来在酒馆里是由专门的插件解析掉、更新到一套隐藏的角色状态数值上，
+// 这种"变量补丁"块，本来在同类软件里是由专门的插件解析掉、更新到一套隐藏的角色状态数值上，
 // 再单独渲染成好看的状态栏——如果什么都不处理，这段本该被隐藏的JSON就会原样糊在聊天气泡最前面，
 // 又长又难看（这正是"角色卡自带状态栏显示不出来"这个问题的根源）。这里做三件事：
 // 1）无论这个块实际出现在正文开头还是结尾（不同预设/模型习惯不一样，不能假设固定位置），都识别出来并从可见正文里去掉；
@@ -760,7 +760,7 @@ function renderMvuStatusBarHtml(snapshot) {
 // ===================== 记忆召回面板（"数据库"类预设常见格式）本地轻量实现 =====================
 // 有些预设（比如"星河璀璨数据库"）会让AI每轮在输出里带一段 <recall>AM001（标题）AM002（标题2）...</recall>
 // （这轮用到的历史记忆编码）+ 可选的 <supplement>- [标签] 补充内容\n...</supplement>（旁支线索）。
-// 酒馆那边真正的"数据库"扩展靠一个远程脚本（本app不会去加载运行来路不明的远程代码，这类脚本一律不执行）
+// 同类软件那边真正的"数据库"扩展靠一个远程脚本（本app不会去加载运行来路不明的远程代码，这类脚本一律不执行）
 // 维护一张可以被AI持续读写的"记忆表格"，命中编码后从表格里查出对应内容、渲染成好看的召回面板。
 // 这里做一个本地、完全可审查的轻量平替：记忆表格由用户自己在设置里维护（增删改查，也可以配合正则/宏
 // 让AI在文本里输出新的记忆条目、后续再手动登记），召回面板的渲染、编码识别、旁支解析这些"看得见"的部分
@@ -1427,8 +1427,7 @@ async function handleDataBankFileUpload(event) {
 
    这里不去改那十几个模块，而是在 document 上蹲一层：
    · 敲字停下 600ms 就先存一次（哪怕你没失焦、没关窗口）
-   · 失焦时把框里的数回填成**真正生效的那个数**
-   · 如果回填的跟你敲的不一样，弹一句说明白为什么
+   · （以前还会在失焦时按 min/max 把数夹回去——现在不夹了，不设上下限，填多少存多少）
 
    只管带着 onchange、又有 min/max 的 number / range 框，别的一律不碰。
    ============================================================ */
@@ -1483,29 +1482,6 @@ async function handleDataBankFileUpload(event) {
             if (document.contains(el)) fire(el);
         }, true));
 
-    // ② 失焦时把框里的数改成真正生效的那个，并说明白
-    document.addEventListener('change', function (e) {
-        const el = e.target;
-        if (!isNum(el)) return;
-        const raw = String(el.value).trim();
-        if (raw === '') return;
-        const lo = el.min === '' ? -Infinity : Number(el.min);
-        const hi = el.max === '' ? Infinity : Number(el.max);
-        const n = Number(raw);
-        if (!isFinite(n)) return;
-        const fixed = Math.max(lo, Math.min(hi, n));
-        if (fixed === n) return;                     // 没越界，什么都不用做
-        el.value = String(fixed);                    // 回填成真正生效的值
-        try {
-            const label = (el.closest('.gyweb-num, .input-group, label, div') || {}).innerText || '';
-            const name = String(label).replace(/\s+/g, ' ').trim().slice(0, 12) || '这一项';
-            if (typeof showToast === 'function')
-                showToast('<div class="avatar" style="width:40px;height:40px;background:#ffad1f;color:#fff;font-size:20px;">🎚️</div>',
-                    '这个数超出范围了',
-                    `${name}只能填 ${isFinite(lo) ? lo : '不限'}～${isFinite(hi) ? hi : '不限'}，你填的 ${n} 已经按 ${fixed} 存下了。`,
-                    null, null, false);
-        } catch (e2) {}
-        // 不用自己再存一次：这是**捕获阶段**，框上原本那个 onchange 随后才跑，
-        // 到时候读到的就是回填后的值了。
-    }, true);
+    // ② 以前这里会在失焦时把超出 min/max 的数硬改回去，还弹「这个数超出范围了」——
+    //    那是一道全局的偷偷上限，删了：你填多少就是多少（非数字的框本来就存不进去，不用管）。
 })();

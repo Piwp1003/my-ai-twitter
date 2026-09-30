@@ -114,7 +114,8 @@
         return w;
     }
     const cardOf = (ownerId, cardId) => walletOf(ownerId).cards.find(c => c.id === cardId) || null;
-    const avail = c => c.kind === 'credit' ? Math.max(0, (c.limit || 0) - (c.balance || 0)) : (c.balance || 0);
+    // 可用多少只是给人看的数（信用卡＝额度减已用，可以是负的＝透支了），**不拿来拦付款**
+    const avail = c => c.kind === 'credit' ? ((c.limit || 0) - (c.balance || 0)) : (c.balance || 0);
     // 一个人现在总共有多少能花的（信用卡的可用额度不算"资产"，单独看）
     function totalOf(ownerId) {
         const w = walletOf(ownerId);
@@ -126,20 +127,22 @@
 
     /* 付款时用哪张卡。
        指定了就用指定的；没指定就按真人的顺序自己挑——
-       够钱的储蓄卡 → 余额 → 红包 → 信用卡兜底。这套规则是死的，不调 API。 */
+       够钱的储蓄卡 → 余额 → 红包 → 信用卡。这套规则是死的，不调 API。
+       **不设上限**：指定的卡/默认卡不管够不够都照扣（可以扣成负数＝透支），
+       一张都不够的时候也不拒付，落到默认卡（没有就第一张）上。 */
     function pickCard(ownerId, amt, prefer) {
         const w = ensureCards(ownerId);
-        if (prefer) { const c = cardOf(ownerId, prefer); if (c && avail(c) >= amt) return c; }
+        if (prefer) { const c = cardOf(ownerId, prefer); if (c) return c; }
         if (!on('walletPayChoice') && w.defaultCard) {
             const d = cardOf(ownerId, w.defaultCard);
-            if (d && avail(d) >= amt) return d;
+            if (d) return d;
         }
         const order = ['debit', 'balance', 'redpacket', 'credit'];
         for (const k of order) {
             const c = w.cards.filter(x => x.kind === k).sort((a, b) => avail(b) - avail(a))[0];
             if (c && avail(c) >= amt) return c;
         }
-        return null;
+        return cardOf(ownerId, w.defaultCard) || w.cards.find(x => x.kind === 'debit') || w.cards[0] || null;
     }
 
     /* ---------- 记账 ----------
@@ -150,11 +153,10 @@
         const arr = logOf(ownerId);
         const rid = uid('r_');
         const e = { id: uid('l_'), at: Date.now(), amt: Math.round(amt * 100) / 100,
-                    why: String(why || '').slice(0, 60), kind, rid,
+                    why: String(why || ''), kind, rid,
                     tag: (meta && meta.tag) || (kind === 'income' ? '收入' : '日常'),
                     card: card ? (card.name + ' ·' + card.no4) : '' };
-        arr.unshift(e);
-        if (arr.length > 800) arr.length = 800;
+        arr.unshift(e);   // 流水不设条数上限，全留着
         S.receipts[rid] = {
             no: (meta && meta.no) || ((amt >= 0 ? 'I' : 'P') + String(Date.now()).slice(-9)),
             at: e.at, who: String(ownerId), label: e.why, amount: Math.abs(e.amt),
@@ -165,23 +167,19 @@
             card: card ? (card.name + ' ****' + card.no4) : '',
             tag: e.tag
         };
-        // 凭证太多会把存档撑大：只留最近 800 张，跟流水条数对齐
-        const ids = Object.keys(S.receipts);
-        if (ids.length > 900) {
-            ids.sort((a, b) => (S.receipts[a].at || 0) - (S.receipts[b].at || 0));
-            ids.slice(0, ids.length - 800).forEach(k => { delete S.receipts[k]; });
-        }
+        // 凭证也不设张数上限（以前只留 800 张，旧账点开是空的）
         return e;
     }
-    // 扣钱。够不够由调用方决定要不要看返回值
+    // 扣钱。不设上限：钱不够也照扣，余额可以变负数（只有这人一张卡都没有才会失败）
     async function pay(ownerId, amt, why, prefer, meta) {
         const n = Math.round((Number(amt) || 0) * 100) / 100;
         if (n <= 0) return { ok: true, card: null };
         const c = pickCard(ownerId, n, prefer);
-        if (!c) return { ok: false, card: null, reason: '所有卡都不够' };
+        if (!c) return { ok: false, card: null, reason: '没有卡' };
         c.balance = Math.round(((c.balance || 0) + (c.kind === 'credit' ? n : -n)) * 100) / 100;
         const e = note(ownerId, -n, why, 'spend', c, meta);
         await save();
+        touched();
         return { ok: true, card: c, rid: e.rid };
     }
     async function earn(ownerId, amt, why, prefer, meta) {
@@ -194,6 +192,7 @@
         c.balance = Math.round(((c.balance || 0) + (c.kind === 'credit' ? -n : n)) * 100) / 100;
         note(ownerId, n, why, 'income', c, meta);
         await save();
+        touched();
         return c;
     }
 
@@ -346,12 +345,11 @@ ${hint}
         const pool = BILLS.filter(x => !(x.n === '房租' && w.lastRentMonth === day().slice(0, 7)));
         const b = pool[Math.floor(Math.random() * pool.length)];
         if (b.n === '房租') w.lastRentMonth = day().slice(0, 7);
-        const gate = Number(S.settings.billMax) || 120;
         let amt = Math.round((b.lo + Math.random() * Math.max(1, b.hi - b.lo)) * 100) / 100;
         let why = b.n, tag = b.t;
         if (on('walletCharDecide')) {
             const r = await askSpend(c, amt);
-            if (r) { why = r.why || why; if (r.amt > 0) amt = Math.min(gate * 30, r.amt); }
+            if (r) { why = r.why || why; if (r.amt > 0) amt = r.amt; }   // TA 说花多少就花多少，不封顶
         }
         const res = await pay(c.id, amt, why, '', { tag });
         if (!res.ok) {
@@ -482,15 +480,13 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
             if (!to || n <= 0) return null;
             const host = String(from) === 'me' ? String(to) : String(from);
             const r = await pay(from, n, (kind === 'red' ? '发红包给' : '转账给') + nameOf(to), cardId);
-            if (!r.ok) {
-                try { if (typeof showToast === 'function') showToast('', '💳 钱不够', '所有卡都付不出 ￥' + money(n), null, null, false); } catch (e) {}
-                return null;
-            }
-            const mo = { id: uid('m_'), kind: kind === 'red' ? 'red' : 'transfer', amt: n, note: String(memo).slice(0, 40),
+            // 不拦：钱不够也照转，付款卡可以透支成负数
+            const mo = { id: uid('m_'), kind: kind === 'red' ? 'red' : 'transfer', amt: n, note: String(memo),
                          from: String(from), to: String(to), status: 'pending', at: Date.now(),
                          payCard: r.card ? (r.card.name + ' ·' + r.card.no4) : '', line: '', intoCard: '' };
             pushMoneyCard(host, String(from) === 'me' ? 'me' : from, mo);
             refreshChat(host);
+            touched();
             // 发给角色的：TA 自己决定收不收（不额外调 API，用的是收礼那一套的规则：默认收）
             if (String(to) !== 'me') setTimeout(() => askTake(mo.id), 600);
             return mo;
@@ -600,7 +596,7 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
                 // 商城那张按订单 id 也存一份（订单详情里按订单号取），内容跟流水里那张一致
                 S.receipts[String(orderId)] = Object.assign({}, S.receipts[r.rid] || {}, {
                     no: 'R' + String(Date.now()).slice(-10), at: Date.now(), sign: -1,
-                    who: String(ownerId), label: String(label).slice(0, 40), amount: n,
+                    who: String(ownerId), label: String(label), amount: n,
                     shop: '谷雨商城', tag: '购物',
                     method: r.card ? kindOf(r.card.kind).name : '未知',
                     card: r.card ? (r.card.name + ' ****' + r.card.no4) : ''
@@ -628,16 +624,15 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
         }
         await save();
         refreshChat(f.sid);
+        touched();
     }
-    // 角色收不收：跟收礼一套逻辑，但**不额外调 API**——
-    // 默认收下；只有金额大得离谱（超过 TA 全部身家）的时候才推回去，理由是死的。
+    // 角色收不收：**不额外调 API**，一律收下。
+    // 以前金额"大得离谱"会被写死的规则自动退回（'太多了，我不能收。'）——那是个偷偷的上限，删了。
     async function askTake(id) {
         const f = findMoney(id);
         if (!f) return;
         const mo = f.mo;
         if (mo.status !== 'pending') return;
-        const big = mo.amt > Math.max(500, totalOf(mo.to) * 2);
-        if (big) return await settleMoney(id, false, '太多了，我不能收。');
         await settleMoney(id, true, '');
     }
 
@@ -690,7 +685,7 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
         const w = walletOf('me');
         const p0 = v => (S.settings.outingPayer || 'random') === v ? ' selected' : '';
         box.innerHTML = `
-            <div class="form-hint">买东西真的扣钱，转账要对方点收。这里的卡和余额只属于你，角色各有各的。</div>
+            <div class="form-hint">买东西真的扣钱，转账要对方点收。这里的卡和余额只属于你，角色各有各的。<br>每张卡上的 ✏️ 可以直接改余额/额度；钱不够也照样能付，只是余额会变成负数。</div>
             <div class="gywl-sum">
                 <div><em>可用</em><b>￥${money(totalOf('me'))}</b></div>
                 <div><em>欠款</em><b class="bad">￥${money(debtOf('me'))}</b></div>
@@ -723,7 +718,7 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
             </div>
             <div class="gywl-set">
                 <span>什么都没花的概率　<b id="gywlFreeLab">${Number(S.settings.outingFreePct)}%</b></span>
-                <input type="range" min="0" max="80" step="5" value="${Number(S.settings.outingFreePct)}"
+                <input type="range" min="0" max="100" step="5" value="${Number(S.settings.outingFreePct)}"
                     oninput="document.getElementById('gywlFreeLab').innerText=this.value+'%'"
                     onchange="gyWalletSet('outingFreePct', parseInt(this.value))">
             </div>
@@ -739,8 +734,30 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
             <div class="gywl-cd-bal">${c.kind === 'credit'
                 ? `已用 ￥${money(c.balance)} / 额度 ￥${money(c.limit)}`
                 : `￥${money(c.balance)}`}</div>
+            <button type="button" class="btn-edit-small" style="margin-top:6px;" onclick="event.stopPropagation();gyWalletEditCard('${ownerId}','${c.id}')">✏️ ${c.kind === 'credit' ? '改额度/已用' : '改余额'}</button>
         </div>`;
     }
+    /* ✏️ 改卡里的钱：起始金额是死的、钱不够又不能自己往里充——所以每张卡都能直接改数。
+       储蓄卡/余额/红包改余额（可以填负数＝透支）；信用卡改额度和已用。不设任何上下限。 */
+    window.gyWalletEditCard = async function (ownerId, cardId) {
+        const c = cardOf(ownerId, cardId);
+        if (!c) return;
+        // 用 app 自己的输入框（appPrompt，js/12）：原生 prompt() 打包成 exe 之后是死的
+        const ask = async (msg, v) => { const t = (typeof appPrompt === 'function') ? await appPrompt(msg, String(v)) : null; if (t === null || t === undefined) return null; const x = parseFloat(String(t).replace(/[,，￥¥\s]/g, '')); return isFinite(x) ? Math.round(x * 100) / 100 : null; };
+        if (c.kind === 'credit') {
+            const lim = await ask('「' + c.name + '」的信用额度改成多少？', c.limit || 0);
+            if (lim !== null) c.limit = lim;
+            const used = await ask('已经用了（欠了）多少？', c.balance || 0);
+            if (used !== null) c.balance = used;
+        } else {
+            const b = await ask('「' + c.name + '」里现在有多少钱？', c.balance || 0);
+            if (b === null) return;
+            c.balance = b;
+        }
+        await save();
+        try { gyWalletPanel(); } catch (e) {}
+        touched();
+    };
     /* ================= 🧾 账单 =================
        以前这儿是一列"最近的钱都去哪儿了"，翻不了历史、也点不开细节。
        现在是一个真正的账单：选年月 → 看这个月的收入/支出/结余 → 按天分组列出每一笔
@@ -858,6 +875,11 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
         walletOf(ownerId).defaultCard = cardId;
         await save(); gyWalletPanel(); renderPanel();
     };
+    // 钱一动（进账/出账）就把开着的钱包面板重画一遍，再告诉别的面板"钱包变了"
+    function touched() {
+        try { renderPanel(); } catch (e) {}
+        try { if (typeof window.gyDataChanged === 'function') window.gyDataChanged('wallet'); } catch (e) {}
+    }
     function renderPanel() {
         try { if (document.getElementById('upWalletBox') && document.getElementById('upPanel-wallet')
             && document.getElementById('upPanel-wallet').style.display !== 'none') gyWalletPanel(); } catch (e) {}
@@ -925,7 +947,7 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
         const cy = (document.getElementById('gywlJobCycle') || {}).value || 'day';
         const w0 = walletOf(charId);
         const same = w0.job && w0.job.cycle === cy && w0.job.title === t.trim();
-        w0.job = t.trim() ? { title: t.trim().slice(0, 30), pay: p, cycle: cy, payday: 15,
+        w0.job = t.trim() ? { title: t.trim(), pay: p, cycle: cy, payday: 15,
                               self: (same && w0.job) ? w0.job.self : null } : null;
         await save();
         // 选了"自己定"又还没想过：这就去想一次
@@ -1296,7 +1318,7 @@ ${w.job && w.job.title ? `你的工作是：${w.job.title}。` : '你没有稳�
             <div class="input-group"><label>金额</label>
                 <input type="number" id="gywlAmt" placeholder="0.00" step="0.01" min="0.01"></div>
             <div class="input-group"><label>留言（选填）</label>
-                <input type="text" id="gywlMemo" maxlength="40" placeholder="拿去买杯热的"></div>
+                <input type="text" id="gywlMemo" placeholder="拿去买杯热的"></div>
             <div class="input-group"><label>用哪张卡</label>
                 <select id="gywlCard">
                     <option value="">让它自己挑（够钱的储蓄卡 → 余额 → 红包 → 信用卡）</option>

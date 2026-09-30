@@ -72,12 +72,12 @@ async function turnOnFromSettings(page, tag) {
   check(`[${tag}] 通讯录点人：右边出资料卡`, pc.includes('沈之遥') && pc.includes('旧书店，下午两点开门') && pc.includes('发消息'), pc.slice(0, 200));
   if (shots) await page.screenshot({ path: `${shots}/wx-${tag}-card.png` });
   await page.evaluate(() => { localStorage.setItem('phoneOn', 'true'); try { setAutoFeature('phoneOn', true, true); } catch (e) {} });
-  await page.evaluate(() => [...document.querySelectorAll('#gyWxPane .pc-btn')].find(b => b.innerText.includes('手机')).click());
+  await page.evaluate(() => [...document.querySelectorAll('#gyWxPane .wx-cbtn')].find(b => b.innerText.includes('手机')).click());
   await page.waitForTimeout(500);
   check(`[${tag}] 资料卡「TA 的手机」：能打开，不被挡住`, await page.evaluate(() => getComputedStyle(document.getElementById('gyWxPane')).display === 'none' && !!document.querySelector('.gyph-screen, [id*="phone"] .gyph-screen, .gyph-phone')));
   await page.evaluate(() => document.querySelector('.wx-si[data-wxtab="contacts"]').click());
   await page.evaluate(() => document.querySelector('[data-wxcontact="9101"]').click());
-  await page.evaluate(() => [...document.querySelectorAll('#gyWxPane .pc-btn')].find(b => b.innerText.includes('发消息')).click());
+  await page.evaluate(() => [...document.querySelectorAll('#gyWxPane .wx-cbtn')].find(b => b.innerText.includes('发消息')).click());
   await page.waitForTimeout(300);
   check(`[${tag}] 资料卡「发消息」→ 回到聊天`, await page.evaluate(() => String(currentChatSessionId) === '9101' && document.querySelector('.wx-si.on').dataset.wxtab === 'chats'));
 

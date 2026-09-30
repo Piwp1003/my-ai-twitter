@@ -30,7 +30,7 @@
             : null);
     const KEY = 'gyMall_state';
     const OLD_KEY = 'mallPluginState_v2';   // 插件版的存档位置，只读一次然后搬过来
-    const KEEP_ORDERS = 200;                // 订单最多留这么多条，再老的自己掉队
+    // 订单不设条数上限（以前只留 200 条，老订单会自己掉队）
 
     let S = {
         products: [],
@@ -58,7 +58,6 @@
 
     async function save() {
         try {
-            if (S.orders.length > KEEP_ORDERS) S.orders = S.orders.slice(0, KEEP_ORDERS);
             if (LF) await LF.setItem(KEY, JSON.parse(JSON.stringify(S)));
             else localStorage.setItem(KEY, JSON.stringify(S));
         } catch (e) { console.warn('[商城] 存档失败：', e); }
@@ -291,7 +290,7 @@
             } else {
                 const mine = String(S.settings.reactCustom || '').trim();
                 ask = '你收到东西之后会怎么样？**不一定要说话**——'
-                    + (mode === 'custom' && mine ? '按下面这个来：\n' + mine.slice(0, 400) + '\n'
+                    + (mode === 'custom' && mine ? '按下面这个来：\n' + mine + '\n'
                        : '默默收进抽屉、当场拆开用上、拿在手里看半天、当天就换上了、翻个白眼扔一边……都行。\n')
                     + '按你的性格挑一种，别为了有反应而硬挤一句感谢。\n\n'
                     + '只输出 JSON，不要解释：\n'
@@ -451,8 +450,8 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
             : (buyer.name + '买了「' + product.name + '」，说是要送给' + nameOf(forWhom) + '。');
 
         const o = newOrder(product, forWhom, buyer.id, reason);
-        // 角色也一样要付得起——买不起就不买了，随机网购不会再无限刷单
-        if (!(await chargeFor(o))) return;
+        // 扣钱（钱包允许透支，不会因为钱不够就不成立）
+        await chargeFor(o);
         S.orders.unshift(o);
         makeParcel(o);
         await save();
@@ -468,6 +467,7 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         } catch (e) {}
         paintBadge();
         if (viewOpen() && tab === 'orders') renderOrders();
+        mallChanged();
     }
 
     async function buyManually(productId, forWhom) {
@@ -475,8 +475,8 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         if (!product) return;
         const o = newOrder(product, forWhom, 'me',
             forWhom === 'me' ? '你自己下单买的。' : ('你给 ' + nameOf(forWhom) + ' 买了一份心意。'));
-        // v108：钱包开着的话真的扣钱 + 出小票；卡里不够这单就不成立
-        if (!(await chargeFor(o))) return;
+        // v108：钱包开着的话真的扣钱 + 出小票；钱不够也照下（卡可以透支）
+        await chargeFor(o);
         S.orders.unshift(o);
         makeParcel(o);
         await save();
@@ -484,21 +484,22 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         genTimeline(o, forWhom === 'me' ? null : charOf(forWhom));
         toast('下单成功 · ' + etaLabel(o));
         tab = 'orders'; renderAll();
+        mallChanged();
     }
 
+    // 通知别的面板"商城数据变了"（全局帮手可能还没装上，所以要判断）
+    function mallChanged() {
+        try { if (typeof window.gyDataChanged === 'function') window.gyDataChanged('mall'); } catch (e) {}
+    }
     const toast = m => { try { if (typeof showToast === 'function') showToast('', '🛒 商城', m, null, null, false); } catch (e) {} };
 
     // v108：真的扣钱。钱包没开（或没装 js/31）就直接放行，行为跟以前一模一样。
-    // 返回 false ＝ 付不出来，这一单不该成立。
+    // 永远返回 true：以前"卡里不够这一单没下成"是个偷偷的上限，删了——钱不够就透支。
     async function chargeFor(o) {
         try {
             if (!window.gyWallet || typeof window.gyWallet.charge !== 'function') return true;
             const price = parseFloat(o.productSnapshot.price) || 0;
-            const r = await window.gyWallet.charge(o.boughtBy, price, o.productSnapshot.name, o.id);
-            if (r && r.ok === false) {
-                if (String(o.boughtBy) === 'me') toast('卡里不够 ￥' + price + '，这一单没下成');
-                return false;
-            }
+            await window.gyWallet.charge(o.boughtBy, price, o.productSnapshot.name, o.id);
             return true;
         } catch (e) { console.warn('[商城] 扣款失败：', e); return true; }
     }
@@ -718,9 +719,9 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         body.innerHTML = list + `
             <div class="gymall-form">
                 <div style="font-weight:700;font-size:13px;margin-bottom:10px;">➕ 上架一样东西</div>
-                <input type="text" id="gymallPName" placeholder="叫什么" maxlength="30">
+                <input type="text" id="gymallPName" placeholder="叫什么">
                 <div class="gymall-row">
-                    <input type="text" id="gymallPEmoji" value="📦" style="width:76px;flex:none;" maxlength="4">
+                    <input type="text" id="gymallPEmoji" value="📦" style="width:76px;flex:none;">
                     <input type="number" id="gymallPPrice" placeholder="多少钱">
                 </div>
                 <textarea id="gymallPDesc" rows="2" placeholder="描述（选填，角色会看到）"></textarea>
@@ -1038,7 +1039,7 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         S.settings.maxDeliveryMin = Math.max(S.settings.minDeliveryMin, parseInt(g('gymallMax')) || 180);
         S.settings.courierCharId = g('gymallCourier') || '';
         S.settings.reactMode = REACT_MODES[g('gymallReactMode')] ? g('gymallReactMode') : 'free';
-        S.settings.reactCustom = String(g('gymallReactCustom') || '').slice(0, 600);
+        S.settings.reactCustom = String(g('gymallReactCustom') || '');
         await save();
         toast('设置已保存');
         renderSettings();
@@ -1061,7 +1062,7 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
     window.gymallOnEnterView = renderAll;   // js/07 的 mall 分支进来时调
 
     // 💬 聊天里角色说"我给你买了个××"时真的下单（js/52 调）。hint 是 TA 说的东西，
-    //    货架上有名字对得上的就买那件，对不上就挑一件——买不起（钱包开着、卡里不够）就不成立，返回 null。
+    //    货架上有名字对得上的就买那件，对不上就挑一件——钱不够也照买（钱包允许透支）。
     window.gymallCharBuy = async function (charId, forWhom, hint, reason) {
         const buyer = charOf(charId);
         if (!buyer || !S.products.length) return null;
@@ -1072,12 +1073,15 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         if (!product) product = S.products[Math.floor(Math.random() * S.products.length)];
         const to = forWhom || 'me';
         const o = newOrder(product, to, buyer.id, reason || (to === 'me' ? (buyer.name + '给你买了「' + product.name + '」') : (buyer.name + '买了「' + product.name + '」')));
-        if (!(await chargeFor(o))) return null;
+        await chargeFor(o);
         S.orders.unshift(o);
         makeParcel(o);
         await save();
         genTimeline(o, buyer);
         paintBadge();
+        // 订单页开着就马上重画，别等下一拍
+        if (viewOpen() && tab === 'orders') renderOrders();
+        mallChanged();
         return product.name;
     };
     window.gymallHasProducts = () => S.products.length > 0;

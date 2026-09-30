@@ -543,7 +543,7 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
 
             if (typeof addNotification === 'function') {
                 addNotification(`<b>${c.name}</b> 在网上看到了点东西 🌐`, null, null, c,
-                    `${topic}　—　${entry.text.slice(0, 40)}`, { feature: 'web_explore' });
+                    `${topic}　—　${entry.text.slice(0, 40)}`, { jump: { fn: 'gywebOpen' } });   // 点了打开「上网看看」页（以前写的 feature 名没人认识，点了没反应）
             }
             const wantShare = (o.share !== undefined) ? o.share : on('webExploreShare');
             if (wantShare && typeof deliverCharMoveToChatMessage === 'function') {
@@ -753,7 +753,7 @@ ${web ? `搜到的内容（网页原文，可能很乱，自己挑有用的看�
         const numRow = (k, label, lo, hi, dft, unit, note) => `
             <div class="gyweb-num">
                 <span style="flex:1;min-width:130px;">${label}</span>
-                <input type="number" min="${lo}" max="${hi}" value="${S[k]}"
+                <input type="number" min="${lo}" value="${S[k]}"
                     onchange="gywebSetNum('${k}',this.value,${lo},${hi},${dft})">
                 <span class="gyweb-hint">${unit}</span>
                 <em>${note}</em>

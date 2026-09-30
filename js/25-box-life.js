@@ -78,9 +78,9 @@
             id: uid(), ownerId, name: '', desc: '', from: 'self', fromName: '',
             at: Date.now(), state: 'have', note: '', close: false
         }, o || {});
-        it.name = String(it.name || '').trim().slice(0, 24);
+        it.name = String(it.name || '').trim();   // 不截字数
         if (!it.name) return null;
-        it.desc = String(it.desc || '').trim().slice(0, 80);
+        it.desc = String(it.desc || '').trim();
         S.items.push(it);
         const keep = parseInt(S.keep) || 0;
         if (keep > 0) {
@@ -397,12 +397,12 @@ body.dark-theme .gykit-av{background:#2f3336;color:#e7e9ea;}
               '"那只钢笔的笔套三个月前掉了，你找了很久"——不在了的东西也是记忆的一部分。最多带最近 4 件。')}
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;">
             <span style="font-size:13px;color:#8b98a5;min-width:140px;">最多注入几件</span>
-            <input class="gykit-in" id="gykitInject" type="number" min="1" max="30" value="${S.inject}" style="max-width:80px;margin:0;">
+            <input class="gykit-in" id="gykitInject" type="number" min="1" value="${S.inject}" style="max-width:80px;margin:0;">
             <span style="font-size:12px;color:#8b98a5;">件（只算还在身上的）</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
             <span style="font-size:13px;color:#8b98a5;min-width:140px;">每人最多存几件</span>
-            <input class="gykit-in" id="gykitKeep" type="number" min="0" max="999" value="${S.keep}" style="max-width:80px;margin:0;">
+            <input class="gykit-in" id="gykitKeep" type="number" min="0" value="${S.keep}" style="max-width:80px;margin:0;">
             <span style="font-size:12px;color:#8b98a5;">0 ＝ 不限</span>
           </div>
           <button class="gykit-btn" onclick="gykitSaveNums()">💾 保存</button>
@@ -433,8 +433,8 @@ body.dark-theme .gykit-av{background:#2f3336;color:#e7e9ea;}
     window.gykitSaveNums = function () {
         const g = id => { const e = document.getElementById(id); return e ? parseInt(e.value) : NaN; };
         const i = g('gykitInject'), k = g('gykitKeep');
-        if (!isNaN(i)) S.inject = Math.max(1, Math.min(30, i));
-        if (!isNaN(k)) S.keep = Math.max(0, Math.min(999, k));
+        if (!isNaN(i)) S.inject = Math.max(1, i);   // 不设上限
+        if (!isNaN(k)) S.keep = Math.max(0, k);
         save(); renderPanel();
     };
     window.gykitAddPlain = async function (charId) {
@@ -1085,7 +1085,7 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
               '主程序自带的纪念日（角色资料页 → 日历 → 加纪念日）<b>本来只画在日历上，不会进 prompt</b>——角色其实一直不知道你记了这些。打开这个就把它们读过来，还会算周年数、按下面的天数提前惦记。不用重录一遍。')}
           ${S.useAnniv ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0 10px;">
             <span style="font-size:13px;color:#8b98a5;min-width:130px;">这些提前几天惦记</span>
-            <input class="gyday-in" id="gydayAnnivAhead" type="number" min="0" max="60" value="${S.annivAhead}" style="max-width:80px;margin:0;">
+            <input class="gyday-in" id="gydayAnnivAhead" type="number" min="0" value="${S.annivAhead}" style="max-width:80px;margin:0;">
             <span style="font-size:12px;color:#8b98a5;">天</span>
           </div>` : ''}
           ${sw('useBuiltin', '内置公历节日', '元旦 / 情人节 / 妇女节 / 愚人节 / 劳动节 / 儿童节 / 教师节 / 国庆 / 万圣夜 / 平安夜 / 圣诞 / 跨年夜。农历的算不了，得自己在「我记的日子」里按当年公历填。')}
@@ -1095,7 +1095,7 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
           </div>` : ''}
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;">
             <span style="font-size:13px;color:#8b98a5;min-width:130px;">最多注入几条</span>
-            <input class="gyday-in" id="gydayInject" type="number" min="1" max="10" value="${S.inject}" style="max-width:80px;margin:0;">
+            <input class="gyday-in" id="gydayInject" type="number" min="1" value="${S.inject}" style="max-width:80px;margin:0;">
             <button class="gyday-btn" onclick="gydaySaveNums()">💾 保存</button>
           </div>
         </div>
@@ -1135,7 +1135,7 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
         });
         const box = document.getElementById('gydayFields');
         if (!box) return;
-        const n = (id, ph, v, min, max) => `<input class="gyday-in" id="${id}" type="number" min="${min}" max="${max}" placeholder="${ph}" value="${v}" style="max-width:110px;display:inline-block;margin-right:6px;">`;
+        const n = (id, ph, v, min, max) => `<input class="gyday-in" id="${id}" type="number" min="${min}"${max != null ? ` max="${max}"` : ''} placeholder="${ph}" value="${v}" style="max-width:110px;display:inline-block;margin-right:6px;">`;
         const now = new Date();
         if (draft.kind === 'weekly') {
             box.innerHTML = `<div class="gyday-hint">每周几：</div><div style="margin-bottom:8px;">${
@@ -1143,11 +1143,11 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
         } else if (draft.kind === 'monthly') {
             box.innerHTML = `<div class="gyday-hint">每月几号：</div>${n('gydayD', '几号', '', 1, 31)}`;
         } else if (draft.kind === 'once') {
-            box.innerHTML = `${n('gydayY', '年', now.getFullYear(), 1900, 2200)}${n('gydayM', '月', '', 1, 12)}${n('gydayD', '日', '', 1, 31)}`;
+            box.innerHTML = `${n('gydayY', '年', now.getFullYear(), 1)}${n('gydayM', '月', '', 1, 12)}${n('gydayD', '日', '', 1, 31)}`;
         } else {
             box.innerHTML = `${n('gydayM', '月', '', 1, 12)}${n('gydayD', '日', '', 1, 31)}`;
         }
-        box.innerHTML += `<div class="gyday-hint" style="margin-top:8px;">提前几天开始惦记：</div>${n('gydayAhead', '天数', 3, 0, 60)}`;
+        box.innerHTML += `<div class="gyday-hint" style="margin-top:8px;">提前几天开始惦记：</div>${n('gydayAhead', '天数', 3, 0)}`;
     }
     window.gydayWd = function (i) { draft.weekday = i; renderFields(); };
     window.gydayAdd = async function () {
@@ -1155,9 +1155,9 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
         const st = document.getElementById('gydayAddStatus');
         const name = String(g('gydayName') || '').trim();
         if (!name) { if (st) st.innerText = '先起个名字。'; return; }
-        const x = { id: uid(), name: name.slice(0, 20), kind: draft.kind, on: true,
+        const x = { id: uid(), name, kind: draft.kind, on: true,
             ahead: Math.max(0, gyNum(g('gydayAhead'), 0)),
-            note: String(g('gydayNote') || '').trim().slice(0, 60),
+            note: String(g('gydayNote') || '').trim(),
             charIds: draft.charIds.slice() };
         if (draft.kind === 'weekly') {
             if (draft.weekday == null) { if (st) st.innerText = '选一个星期几。'; return; }
@@ -1189,10 +1189,10 @@ body.dark-theme .gyday-box{background:#16181c;color:#e7e9ea;}
     window.gydaySaveNums = function () {
         const e = document.getElementById('gydayInject');
         const v = e ? parseInt(e.value) : NaN;
-        if (!isNaN(v)) S.inject = Math.max(1, Math.min(10, v));
+        if (!isNaN(v)) S.inject = Math.max(1, v);   // 不设上限
         const e2 = document.getElementById('gydayAnnivAhead');
         const v2 = e2 ? parseInt(e2.value) : NaN;
-        if (!isNaN(v2)) S.annivAhead = Math.max(0, Math.min(60, v2));
+        if (!isNaN(v2)) S.annivAhead = Math.max(0, v2);
         save(); renderPanel();
     };
     window.gydayPreview = function () {

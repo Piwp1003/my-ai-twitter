@@ -22,15 +22,22 @@
     const num = v => { const m = String(v == null ? '' : v).match(/\d+(?:\.\d+)?/); return m ? parseFloat(m[0]) : 0; };
     const parts = p => String(p || '').split(/[|｜]/).map(x => x.trim());
     const clip = (s, n) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
-    const invite = (c, kind, title, sub, onYes) => {
-        if (typeof window.gyInviteFromChar !== 'function') return null;
-        return window.gyInviteFromChar({ char: c, kind, title: clip(title, 30), sub: clip(sub, 40), onYes });
-    };
     const K = k => (window.GY_INVITE_KINDS || {})[k];
-    const inviteKind = (kind) => (c, param) => {
+    // TA 约你看片 / 读书 / 听歌：如果 TA 点了名，先把那一部 / 那本 / 那首找来导进去（片库 / 书架 / 曲库里有就用，
+    // 没有就在线找），邀请卡上带着 id——你点「好啊」打开的就是那一部，而不是一个空的放映厅。
+    const inviteKind = (kind) => async (c, param) => {
+        if (typeof window.gyInviteFromChar !== 'function') return null;
         const [t, s] = parts(param);
-        const inv = invite(c, kind, t, s, () => { try { const k = K(kind); if (k && k.accept) k.accept({ charId: String(c.id) }); } catch (e) {} });
-        return inv ? ((K(kind) ? K(kind).name : '邀请') + (t ? '「' + t + '」' : '')) : null;
+        const title = String(t || '').replace(/\s+/g, ' ').trim();
+        let extra = null;
+        if (title && /^(film|read|music)$/.test(kind) && typeof window.gyInviteResolveItem === 'function') {
+            try { extra = await window.gyInviteResolveItem(kind, title); } catch (e) { extra = null; }
+        }
+        let inv = null;
+        inv = window.gyInviteFromChar(Object.assign({ char: c, kind, title, sub: String(s || '').trim() }, extra || {}, {
+            onYes: () => { try { const k = K(kind); if (k && k.accept) k.accept(inv || { charId: String(c.id), from: 'char', title }); } catch (e) {} }
+        }));
+        return inv ? ((K(kind) ? K(kind).name : '邀请') + (title ? '「' + title + '」' : '')) : null;
     };
     const games = () => (typeof registeredMiniGames !== 'undefined' && Array.isArray(registeredMiniGames)) ? registeredMiniGames : [];
     const setState = (c, text) => {
@@ -82,7 +89,7 @@
           run: async (c, param) => {
               const [a, note] = parts(param); const amt = num(a) || Math.round((5 + Math.random() * 95) * 100) / 100;
               const red = /红包/.test(String(param || ''));
-              const mo = await window.gyWallet.send({ from: String(c.id), to: 'me', amt, note: clip((note || '').replace(/红包/g, ''), 40), kind: red ? 'red' : 'transfer' });
+              const mo = await window.gyWallet.send({ from: String(c.id), to: 'me', amt, note: String((note || '').replace(/红包/g, '')).trim(), kind: red ? 'red' : 'transfer' });
               return mo ? (red ? '发了个红包 ￥' : '转账 ￥') + amt : null;
           } },
         { key: 'takeout_user', icon: '🛵', short: '给你点外卖', cat: 'you', label: '给对方点一份外卖',
@@ -158,8 +165,12 @@
         const KS = window.GY_INVITE_KINDS;
         if (KS && typeof KS === 'object') {
             if (!KS.groupcall) KS.groupcall = { ico: '📞', name: '群通话', verb: '一起进群通话', go: '进通话',
-                accept(inv) { try { const c0 = String(inv.charId); const g = (typeof groupChats !== 'undefined' ? groupChats : []).find(x => x && x.name === inv.title && (x.members || []).map(String).includes(c0));
-                    if (g && typeof window.gyGroupCallStart === 'function') window.gyGroupCallStart(g); } catch (e) {} } };
+                openOnYes: true,
+                accept(inv) { try { const c0 = String(inv.charId); const gs = (typeof groupChats !== 'undefined' ? groupChats : []);
+                    const g = (inv.data && inv.data.groupId && gs.find(x => x && String(x.id) === String(inv.data.groupId)))
+                        || gs.find(x => x && x.name === inv.title && (x.members || []).map(String).includes(c0));
+                    // TA 拉的群通话：发起人是 TA，TA 不用再被问"接不接"，接通后也是 TA 先开口
+                    if (g && typeof window.gyGroupCallStart === 'function') window.gyGroupCallStart(g, inv.from === 'me' ? {} : { by: c0 }); } catch (e) {} } };
             return;
         }
         if ((tries || 0) < 20) setTimeout(() => regGroupCall((tries || 0) + 1), 300);
@@ -203,11 +214,11 @@
               return { text: '改了日程：' + hm + ' ' + b, jump: { view: 'profile', param: String(c.id) } };
           } },
         { key: 'bio_update', icon: '🪪', short: '改签名', cat: 'self', label: '改一下自己主页的签名 / 简介',
-          hint: 'param 填新的签名（30 字以内）', desc: '心情变了、发生了什么事，换一句签名。',
+          hint: 'param 填新的签名', desc: '心情变了、发生了什么事，换一句签名。',
           need: () => true,
           run: async (c, param) => {
-              const t = clip(param, 60); if (!t || t === c.bio) return null;
-              c.bioHistory = (c.bioHistory || []).concat(c.bio ? [{ at: Date.now(), bio: c.bio }] : []).slice(-20);
+              const t = String(param || '').trim(); if (!t || t === c.bio) return null;
+              c.bioHistory = (c.bioHistory || []).concat(c.bio ? [{ at: Date.now(), bio: c.bio }] : []);
               c.bio = t;
               if (typeof saveAllData === 'function') saveAllData();
               return { text: '签名改成了「' + t + '」', jump: { view: 'profile', param: String(c.id) } };
@@ -253,7 +264,8 @@
               const g = (k && gs.find(x => String(x.name || '').indexOf(k) !== -1)) || gs[Math.floor(Math.random() * gs.length)];
               if (!g) return null;
               const inv = window.gyInviteFromChar({ char: c, kind: 'groupcall', title: g.name || '群', sub: (g.members || []).length + ' 个人',
-                  onYes: () => { try { window.gyGroupCallStart(g); } catch (e) {} } });
+                  data: { groupId: String(g.id) },
+                  onYes: () => { try { window.gyGroupCallStart(g, { by: String(c.id) }); } catch (e) {} } });
               return inv ? { text: '拉你进「' + (g.name || '群') + '」的群通话', jump: { chat: String(c.id) }, selfNotified: true } : null;
           } },
         { key: 'npc_contact', icon: '👤', short: '找身边的人', cat: 'others', label: '用手机联系身边的人（世界书里的 NPC 熟人）',
@@ -361,7 +373,6 @@ ${known.length ? '能看到的熟人：' + known.map(k => k.name + (k.back ? '�
               d.secretPeeks.push(peek);
               if (!Array.isArray(c.diaryPeeks)) c.diaryPeeks = [];
               c.diaryPeeks.push({ entryId: d.id, title: d.title || '无题', at: peek.at, trace: peek.trace, remember: peek.remember, why: peek.why });
-              if (c.diaryPeeks.length > 10) c.diaryPeeks.splice(0, c.diaryPeeks.length - 10);
               if (typeof saveAllData === 'function') saveAllData();
               // 🔔 通知不说是谁——只说"好像被人翻过"和那个痕迹，要不要去质问、质问谁，你自己判断
               if (typeof window.gyNotifyJump === 'function') window.gyNotifyJump(null, `👣 你的日记《${d.title || '无题'}》好像被人翻过`, peek.trace, { fn: 'gyOpenMyDiary' });
@@ -399,7 +410,7 @@ ${known.length ? '能看到的熟人：' + known.map(k => k.name + (k.back ? '�
     };
     // 你在角色编辑页改签名，也记一笔
     window.gyBioRemember = function (c, oldBio) {
-        try { if (!c || !oldBio || oldBio === c.bio) return; c.bioHistory = (c.bioHistory || []).concat([{ at: Date.now(), bio: oldBio }]).slice(-20); } catch (e) {}
+        try { if (!c || !oldBio || oldBio === c.bio) return; c.bioHistory = (c.bioHistory || []).concat([{ at: Date.now(), bio: oldBio }]); } catch (e) {}
     };
 
     window.GY_MORE_ACTS = ACTS;

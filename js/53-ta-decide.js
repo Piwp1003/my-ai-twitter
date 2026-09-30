@@ -26,6 +26,13 @@
     if (!ST.g) ST.g = {}; if (!ST.real) ST.real = {};
     const saveST = () => { try { localStorage.setItem(LSK, JSON.stringify(ST)); } catch (e) {} };
 
+    // 数据变了：让开着的「今天」/时间管理大师重画（js/01 的 gyDataChanged 会合并成一次）
+    const changed = () => {
+        try {
+            if (typeof window.gyDataChanged === 'function') window.gyDataChanged('today');
+            else if (typeof window.gyTodayRender === 'function') setTimeout(window.gyTodayRender, 50);
+        } catch (e) {}
+    };
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     /* ---------- 哪些框可以「TA 定」 ---------- */
@@ -155,10 +162,10 @@ ${d.unit === 'count' ? '按你自己的习惯定，像个真人。' : '想怎么
                 : { ms: Math.round(n * (d.unit === 'sec' ? 1000 : 60000)), why: String((r && r.why) || '').slice(0, 30), at: Date.now() };
             if (typeof saveAllData === 'function') saveAllData();
             console.info(`[TA 定] ${char.name}：${d.say} → ${n}${u}${r && r.why ? '（' + r.why + '）' : ''}`);
-            try { if (typeof window.gyTodayRender === 'function') setTimeout(window.gyTodayRender, 50); } catch (e) {}
+            changed();
             return char.taGap[gk];
         } catch (e) { console.warn('[TA 定] 问间隔失败：', e); }
-        finally { asking[k] = null; try { done(char.taGap && char.taGap[gk]); } catch (e) {} }
+        finally { asking[k] = null; try { done(char.taGap && char.taGap[gk]); } catch (e) {} changed(); }
     }
     window.gyTaAsk = askGap;
 
@@ -177,13 +184,43 @@ ${d.unit === 'count' ? '按你自己的习惯定，像个真人。' : '想怎么
         ['batch', '你连发时等一等', '⏳', '你连着发好几条的时候，TA 会等这么久，等你说完再一起回。']
     ];
     // 这件事上一次是什么时候做的（算"下一次大概什么时候"用）
+    // 不管是计时器、自主模式还是聊天里说到做到做的，都看真实数据（信存的是 date，不是 timestamp）
+    const tsOf = x => { if (!x) return 0; const v = x.date || x.timestamp || x.time || x.at || 0; const n = typeof v === 'number' ? v : Date.parse(v); return isFinite(n) ? n : 0; };
+    const maxOf = (list, pick) => { let t = 0; (list || []).forEach(x => { try { if (pick(x)) t = Math.max(t, tsOf(x)); } catch (e) {} }); return t; };
+    const gArr = name => {
+        try {
+            let v = null;
+            if (name === 'globalPosts') v = typeof globalPosts !== 'undefined' ? globalPosts : null;
+            else if (name === 'forumThreads') v = typeof forumThreads !== 'undefined' ? forumThreads : null;
+            else if (name === 'anonPosts') v = typeof anonPosts !== 'undefined' ? anonPosts : null;
+            return Array.isArray(v) ? v : [];
+        } catch (e) { return []; }
+    };
+    const sameId = (a, b) => a != null && b != null && String(a) === String(b);
+    function realLast(c, what) {
+        try {
+            const id = c.id;
+            if (what === 'post') return maxOf(gArr('globalPosts'), p => p && p.char && sameId(p.char.id, id) && !p.isRepost);
+            if (what === 'forum') return maxOf(gArr('forumThreads'), t => t && sameId(t.authorCharId, id));
+            if (what === 'anon') return maxOf(gArr('anonPosts'), p => p && sameId(p.charId, id));
+            if (what === 'letter') return maxOf((c.diaryData && c.diaryData.letters) || [], l => l && l.author !== 'user');
+            if (what === 'diary') return maxOf((c.diaryData && c.diaryData.diaries) || [], d => d && d.author !== 'user');
+            if (what === 'moment') { let t = 0; (Array.isArray(window.gyPeerLog) ? window.gyPeerLog : []).forEach(e => { if (e && e.kind === 'moment' && sameId(e.aId, id) && e.at > t) t = e.at; }); return t; }
+            if (what === 'comment') { let t = 0; gArr('globalPosts').forEach(p => (p && p.replies || []).forEach(r => { if (r && r.char && sameId(r.char.id, id) && (r.timestamp || 0) > t) t = r.timestamp; })); return t; }
+            if (what === 'nudge') { const h = (typeof globalChats !== 'undefined' && globalChats) ? globalChats[String(id)] : null; let t = 0; (h || []).forEach(m => { if (m && m.sender === 'system' && String(m.text || '').indexOf('"' + c.name + '" 拍了拍') === 0 && (m.timestamp || 0) > t) t = m.timestamp; }); return t; }
+            if (what === 'status') return (c.lifeState && c.lifeState.updatedAt) || 0;
+            if (what === 'todo_add') { let t = 0; (c.todos || []).forEach(x => { if (x && x.source === 'ai' && (x.createdAt || 0) > t) t = x.createdAt; }); return t; }
+            if (what === 'todo_done') { let t = 0; (c.todos || []).forEach(x => { if (x && x.done && (x.doneAt || 0) > t) t = x.doneAt; }); return t; }
+        } catch (e) {}
+        return 0;
+    }
     function lastDone(c, gk) {
         try {
-            if (gk === 'post') return c.lastPostTime || 0;
-            if (gk === 'forum') return c.lastForumPostTime || 0;
-            if (gk === 'anon') return c.lastAnonPostTime || 0;
+            if (gk === 'post') return Math.max(c.lastPostTime || 0, realLast(c, 'post'));
+            if (gk === 'forum') return Math.max(c.lastForumPostTime || 0, realLast(c, 'forum'));
+            if (gk === 'anon') return Math.max(c.lastAnonPostTime || 0, realLast(c, 'anon'));
             if (gk === 'chat') { const h = (typeof globalChats !== 'undefined' && globalChats) ? globalChats[c.id] : null; return (h && h.length) ? (h[h.length - 1].timestamp || 0) : 0; }
-            if (gk === 'letter') { const l = ((c.diaryData && c.diaryData.letters) || []).find(x => x.author !== 'user' && !x.replyToId); return l ? (l.timestamp || l.time || 0) : 0; }
+            if (gk === 'letter') return Math.max(c.lastLetterProactiveTime || 0, realLast(c, 'letter'));
         } catch (e) {}
         return 0;
     }
@@ -253,6 +290,8 @@ ${d.unit === 'count' ? '按你自己的习惯定，像个真人。' : '想怎么
     };
     // 跟上面"到点就做"那几张重复的：那张已经在了就不再多列一张
     const ACT_DUP = { post: 'post', chat: 'chat', letter: 'letter', forum: 'forum', anon: 'anon', web_explore: 'web' };
+    // 自主动作 key → 去哪份真实数据里找"上一次"
+    const REAL_OF = { diary: 'diary', moment_self: 'moment', comment: 'comment', nudge: 'nudge', status: 'status', todo_add: 'todo_add', todo_done: 'todo_done' };
     const actsOf = char => {
         try {
             if (typeof GY_AUTONOMY_ACTIONS === 'undefined') return [];
@@ -271,6 +310,8 @@ ${d.unit === 'count' ? '按你自己的习惯定，像个真人。' : '想怎么
         let t = 0;
         try { (c.autonomyLog || []).forEach(l => { if (l && l.action === key && l.ok !== false && l.at > t) t = l.at; }); } catch (e) {}
         try { if (ACT_DUP[key] && ACT_DUP[key] !== 'web') t = Math.max(t, lastDone(c, ACT_DUP[key]) || 0); } catch (e) {}
+        // 不经过自主日志做的（计时器到点、聊天里说到做到、你在界面上点的）：看真实数据
+        try { const rk = REAL_OF[key]; if (rk) t = Math.max(t, realLast(c, rk) || 0); } catch (e) {}
         try { if (key === 'peer' && typeof window.gyPeerLastOf === 'function') t = Math.max(t, window.gyPeerLastOf(c.id) || 0); } catch (e) {}
         try {
             if (key === 'theater' && typeof globalTheaterLogs !== 'undefined')
@@ -324,7 +365,7 @@ ${list}
                 console.info(`[TA 定] ${char.name}：定了 ${got} 件事的习惯间隔`);
                 return char.taHabit;
             } catch (e) { console.warn('[TA 定] 问习惯失败：', e); return null; }
-            finally { askingH[k] = null; try { if (typeof window.gyTodayRender === 'function') setTimeout(window.gyTodayRender, 50); } catch (e) {} }
+            finally { askingH[k] = null; changed(); }
         })();
         askingH[k] = run;
         return run;
@@ -341,23 +382,22 @@ ${list}
             if (!char.taHabit || typeof char.taHabit !== 'object') char.taHabit = { at: 0, m: {} };
             if (!char.taHabit.m) char.taHabit.m = {};
             char.taHabit.m[key] = { ms: n === 0 ? 0 : Math.round(n * 60000), never: n === 0, why: String(why || '').slice(0, 24), at: Date.now() };
-            try { if (typeof window.gyTodayRender === 'function') setTimeout(window.gyTodayRender, 50); } catch (e) {}
         } catch (e) {}
+        changed();   // 没带 nextSame 也要重画：卡上的"上一次"变了
     };
 
     /* ---------- 身上刚发生的事：真人往往是遇到事了才去做点什么 ---------- */
-    const EV_CAP = 12;
+    // 存下来的全留着（记忆库「最近碰上的事」里翻得到、删得掉）；做决定时只看上次之后的、最近几条（js/14）
     window.gyLifeEvent = function (charId, text, weight) {
         try {
             const c = allChars().find(x => String(x.id) === String(charId)); if (!c || !text) return;
             if (!Array.isArray(c.lifeEvents)) c.lifeEvents = [];
-            c.lifeEvents.push({ at: Date.now(), t: String(text).replace(/\s+/g, ' ').slice(0, 60) });
-            if (c.lifeEvents.length > EV_CAP) c.lifeEvents.splice(0, c.lifeEvents.length - EV_CAP);
+            c.lifeEvents.push({ at: Date.now(), t: String(text).replace(/\s+/g, ' ').trim() });
             // 自主角色：事情越大越可能让 TA 马上停下来想想（不是每件事都会）
             if (isAuto(c)) {
                 const w = Math.max(0, Math.min(1, weight == null ? 0.5 : weight));
                 const soon = Date.now() + (1 + Math.random() * 4) * 60000;   // 很快就停下来想想怎么反应（马上做还是放着，TA 自己定）
-                if ((!c.nextAutonomyAt || c.nextAutonomyAt > soon) && Math.random() < w) c.nextAutonomyAt = soon;
+                if ((!c.nextAutonomyAt || c.nextAutonomyAt > soon) && Math.random() < w) { c.nextAutonomyAt = soon; changed(); }   // 「下次停下来想想」提前了
             }
         } catch (e) {}
     };
@@ -478,6 +518,11 @@ ${list}
     const fmtMs = ms => fmtGap({ ms }, { unit: 'min' }).replace(/^约 /, '');
     const agoTxt = t => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? m + ' 分钟前' : m < 1440 ? Math.round(m / 60) + ' 小时前' : Math.round(m / 1440) + ' 天前'; };
     // 决策菜单里附一句"你一般多久做一次、上次是什么时候"
+    // 给 js/14 自主决策用：这件事 TA 上次什么时候做的、TA 自己说过多久做一次
+    window.gyTaLastAct = (c, key) => { try { return lastAct(c, key) || 0; } catch (e) { return 0; } };
+    window.gyTaHabitOf = (c, key) => { try { return habitOf(c, key); } catch (e) { return null; } };
+    window.gyTaAgo = t => agoTxt(t);
+    window.gyTaFmtMs = ms => fmtMs(ms);
     window.gyTaActNote = function (char, key) {
         try {
             const h = habitOf(char, key); if (!h) return '';
@@ -540,7 +585,9 @@ ${list}
     };
     // 做完一次之后：问下一次
     window.gyTaAfter = function (char, gk) {
-        try { if (char && taFor(char, gk)) { if (char.taGap) delete char.taGap[gk]; askGap(char, gk); } } catch (e) {}
+        // 旧的间隔先留着（问到新的之前卡上照样有"下一次"，问失败了也不会从此没了下文），问到了再覆盖
+        try { if (char && taFor(char, gk)) askGap(char, gk); } catch (e) {}
+        changed();   // 刚做完：卡上"上一次 / 下一次"马上跟着变（问到新间隔之后 askGap 会再刷一次）
     };
     // 次数类（一天最多几次）：没问过先用 fallback，同时去问
     window.gyTaCount = function (char, gk, fallback) {

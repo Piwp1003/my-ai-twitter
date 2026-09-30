@@ -50,6 +50,7 @@
         image: '<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M5 17l4.5-4 3.5 3 2.5-2 3.5 3"/>',
         brain: '<path d="M9 5a3 3 0 0 0-3 3 3 3 0 0 0-1 5.5A3 3 0 0 0 9 19h1V5zM15 5a3 3 0 0 1 3 3 3 3 0 0 1 1 5.5A3 3 0 0 1 15 19h-1V5z"/>',
         gossip: '<circle cx="12" cy="12" r="2"/><circle cx="5" cy="6" r="1.6"/><circle cx="19" cy="6" r="1.6"/><circle cx="5" cy="18" r="1.6"/><circle cx="19" cy="18" r="1.6"/><path d="M6.3 7.2l4.2 3.6M17.7 7.2l-4.2 3.6M6.3 16.8l4.2-3.6M17.7 16.8l-4.2-3.6"/>',
+        lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><path d="M12 14.5v2"/>',
         apps: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/>',
         wallet: '<rect x="3.5" y="6" width="17" height="13" rx="2.5"/><path d="M3.5 10h17M15.5 14.5h2"/>',
         kit: '<path d="M6 9h12l-1 11H7z"/><path d="M9 9a3 3 0 0 1 6 0M4 9h16"/>',
@@ -91,7 +92,8 @@
         ['emo', '表情', 'smile', '#fff4d6', { feature: 'emoticon' }],
         ['notif', '通知', 'bell', '#fff1c2', { view: 'notifications' }],
         ['set', '设置', 'gear', '#ececec', { view: 'settings' }],
-        ['beauty', '美化', 'brush', '#f1e6fa', { sheet: 'beauty' }]
+        ['beauty', '美化', 'brush', '#f1e6fa', { sheet: 'beauty' }],
+        ['lockscr', '锁屏', 'lock', '#e9e9eb', { fn: 'gyPmLockNow' }]
     ];
 
     /* ---------------- 样式 ---------------- */
@@ -166,6 +168,28 @@ body.gyphm.gyphm-app #gyPmBar{display:block}
 #gyPmBar .nav .t{max-width:62%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #gyPmBar .nav .l{position:absolute;left:4px;top:0;bottom:0;display:flex;align-items:center;gap:0;padding:0 8px;cursor:pointer;font-size:16px;font-weight:400;color:var(--pm-text)}
 #gyPmBar .nav .l svg{width:24px;height:24px}
+#gyPmBar .nav .r{position:absolute;right:8px;top:0;bottom:0;display:flex;align-items:center;padding:0 8px;cursor:pointer;color:var(--pm-text);opacity:.85}
+#gyPmBar .nav .r svg{width:21px;height:21px}
+/* 小窗：App 缩成一个能拖的小窗口浮在桌面上，里面照样能点 */
+body.gyphm.gyphm-float #gyPmHome{display:flex!important}
+body.gyphm.gyphm-float #gyPmInd,body.gyphm.gyphm-float .fab-btn{display:none!important}
+body.gyphm-mob.gyphm-float .main-content{position:fixed!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;overflow-y:auto!important;z-index:2002!important;background:var(--pm-card)!important}
+body.gyphm.gyphm-float #gyPmBar,body.gyphm.gyphm-float .main-content,body.gyphm.gyphm-float #gyPmApp{transition:transform .38s cubic-bezier(.2,.85,.25,1)}
+body.gyphm.gyphm-float.pm-fl-drag #gyPmBar,body.gyphm.gyphm-float.pm-fl-drag .main-content,body.gyphm.gyphm-float.pm-fl-drag #gyPmApp{transition:none}
+#gyPmFloat{display:none;position:fixed;z-index:2006;pointer-events:none}
+#gyPmPip{position:fixed;z-index:2007;border-radius:18px;box-shadow:0 0 0 1px rgba(0,0,0,.12),0 18px 40px rgba(0,0,0,.28);background:var(--pm-card,#fff)}
+#gyPmPip .scr{position:absolute;inset:0;border-radius:18px;overflow:hidden}
+#gyPmPip .inner{transform-origin:0 0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;background:var(--pm-bg,#fff)}
+#gyPmPip .inner>*{display:var(--pd)!important;flex:1 0 auto;min-height:100%}
+#gyPmPip.snap .inner{pointer-events:none}#gyPmPip.snap .scr{cursor:pointer}
+#gyPmPip .gb{position:absolute;left:0;right:0;top:-30px;height:28px;display:flex;align-items:center;justify-content:space-between;cursor:grab;touch-action:none;padding:0 4px}
+#gyPmPip .gb i{font-style:normal;width:26px;height:26px;border-radius:50%;background:rgba(30,30,32,.72);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer}
+#gyPmPip .gb b{font-size:11px;padding:3px 10px;border-radius:10px;background:rgba(30,30,32,.62);color:#fff;max-width:60%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:500}
+body.gyphm-float #gyPmFloat{display:block}
+#gyPmFloat .fr{position:absolute;inset:0;border-radius:18px;box-shadow:0 0 0 1px rgba(0,0,0,.12),0 18px 40px rgba(0,0,0,.28)}
+#gyPmFloat .gb{position:absolute;left:0;right:0;top:-30px;height:28px;display:flex;align-items:center;justify-content:space-between;pointer-events:auto;cursor:grab;touch-action:none;padding:0 4px}
+#gyPmFloat .gb i{font-style:normal;width:26px;height:26px;border-radius:50%;background:rgba(30,30,32,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer}
+#gyPmFloat .gb b{width:44px;height:5px;border-radius:3px;background:rgba(60,60,67,.55)}
 #gyPmBar .nav .l.home .hm{width:30px;height:30px;border-radius:9px;background:var(--pm-fill);display:flex;align-items:center;justify-content:center}
 #gyPmBar .nav .l.home svg{width:17px;height:17px}
 body.gyphm-mob #gyPmBar{border-radius:0}
@@ -179,8 +203,8 @@ body.gyphm-desk #mainLayoutContainer{display:block!important;max-width:none!impo
 body.gyphm-desk .main-content{position:fixed!important;left:var(--pm-sl)!important;top:calc(var(--pm-st) + var(--pm-top))!important;width:var(--pm-sw)!important;max-width:none!important;height:calc(var(--pm-sh) - var(--pm-top))!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;z-index:2002!important;border:none!important;padding:0!important;margin:0!important;background:var(--pm-card)!important;border-radius:0 0 var(--pm-sr) var(--pm-sr)}
 body.gyphm-desk #view-chat .chat-input-area{padding-bottom:26px!important}
 body.gyphm-desk #view-chat,body.gyphm-desk #view-worldbook{height:100%!important;position:relative!important;top:auto!important;bottom:auto!important}
-body.gyphm-mob .main-content{padding-top:calc(94px + env(safe-area-inset-top))!important;padding-bottom:0!important}
-body.gyphm-mob #view-chat,body.gyphm-mob #view-worldbook{top:calc(94px + env(safe-area-inset-top))!important;bottom:0!important}
+body.gyphm-mob .main-content{padding-top:calc(62px + env(safe-area-inset-top))!important;padding-bottom:0!important}
+body.gyphm-mob #view-chat,body.gyphm-mob #view-worldbook{top:calc(62px + env(safe-area-inset-top))!important;bottom:0!important}
 body.gyphm .main-content .header-title:has(> .back-btn){display:none!important}
 body.gyphm:not(.gyphm-app) .main-content{visibility:hidden!important}
 body.gyphm-desk .fab-btn{position:fixed!important;left:calc(var(--pm-sl) + var(--pm-sw) - 74px)!important;right:auto!important;top:calc(var(--pm-st) + var(--pm-sh) - 100px)!important;bottom:auto!important;z-index:2003!important}
@@ -189,7 +213,7 @@ body.gyphm:not(.gyphm-app) .fab-btn{display:none!important}
 #gyPmApp{display:none;position:fixed;left:var(--pm-sl);top:calc(var(--pm-st) + var(--pm-top));width:var(--pm-sw);height:calc(var(--pm-sh) - var(--pm-top));z-index:2002;overflow-y:auto;background:var(--pm-bg);border-radius:0 0 var(--pm-sr) var(--pm-sr);font-family:var(--pm-font);color:var(--pm-text);box-sizing:border-box;padding-bottom:28px}
 body.gyphm.gyphm-app #gyPmApp.on{display:block}
 body.gyphm.gyphm-native .main-content{visibility:hidden!important}
-body.gyphm-mob #gyPmApp{top:calc(94px + env(safe-area-inset-top));height:calc(100% - 94px - env(safe-area-inset-top))}
+body.gyphm-mob #gyPmApp{top:calc(62px + env(safe-area-inset-top));height:calc(100% - 62px - env(safe-area-inset-top))}
 /* 聊天页自己那条「‹ 名字」跟上面的顶栏重复了：收起来（返回交给顶栏） */
 body.gyphm #gyChatHead{display:none!important}
 /* 手机上也有底下那条小横杠（回桌面） */
@@ -200,6 +224,10 @@ body.gyphm-mob #view-chat{bottom:calc(20px + env(safe-area-inset-bottom))!import
 body.gyphm-desk .modal-overlay{left:var(--pm-sl)!important;top:var(--pm-st)!important;width:var(--pm-sw)!important;height:var(--pm-sh)!important;border-radius:var(--pm-sr);overflow:hidden;backdrop-filter:blur(6px)}
 body.gyphm-desk .modal-overlay .modal-box,body.gyphm-desk .modal-overlay .modal-content{max-width:calc(var(--pm-sw) - 24px)!important;max-height:calc(var(--pm-sh) - 80px)!important;overflow-y:auto}
 body.gyphm-desk .toast-container{top:calc(var(--pm-st) + 50px)!important;max-width:calc(var(--pm-sw) - 20px)}
+/* 📱 手机上不显示「时间 · 信号 · 电量」那一行（手机自己有），只留一条细细的、能往下拉出通知中心的把手 */
+body.gyphm-mob #gyPmHome .pm-sb,body.gyphm-mob #gyPmBar .pm-sb,body.gyphm-mob .pm-lock .pm-sb,body.gyphm-mob #gyPmNC .nc-sb{height:calc(18px + env(safe-area-inset-top))!important;padding:env(safe-area-inset-top) 0 0!important;justify-content:center}
+body.gyphm-mob .pm-sb>*:not(.pm-ncgrab),body.gyphm-mob #gyPmNC .nc-sb>*{display:none!important}
+body.gyphm-mob .pm-ncgrab{position:static!important;transform:none!important;width:90px!important;height:18px!important}
 /* 🔔 通知中心 */
 #gyPmNC{display:none;position:fixed;left:var(--pm-sl);top:var(--pm-st);width:var(--pm-sw);height:var(--pm-sh);z-index:2012;border-radius:var(--pm-sr);overflow:hidden;background:rgba(242,242,244,.8);backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);transform:translateY(-100%);transition:transform .32s cubic-bezier(.2,.85,.25,1);font-family:var(--pm-font);color:var(--pm-text)}
 body.pm-dark #gyPmNC{background:rgba(20,20,22,.8)}
@@ -217,6 +245,7 @@ body.gyphm-mob #gyPmNC .nc-sb{padding-top:env(safe-area-inset-top);height:calc(4
 #gyPmNC .nc-bar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px 8px}
 #gyPmNC .nc-bar b{font-size:20px;font-weight:700}
 #gyPmNC .nc-bar span{display:flex;gap:8px}
+#gyPmNC .nc-bar i svg{width:14px;height:14px;vertical-align:-2px}
 #gyPmNC .nc-bar i{font-style:normal;font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--pm-glass);cursor:pointer;box-shadow:0 0 0 .5px var(--pm-hair)}
 #gyPmNC .nc-list{flex:1;overflow-y:auto;padding:0 12px 10px;overscroll-behavior:contain}
 #gyPmNC .nc-h{font-size:12px;font-weight:600;color:var(--pm-sub);margin:10px 6px 6px;letter-spacing:.5px}
@@ -230,7 +259,7 @@ body.gyphm-mob #gyPmNC .nc-sb{padding-top:env(safe-area-inset-top);height:calc(4
 #gyPmNC .nc-n em{font-style:normal;font-size:11px;color:var(--pm-sub);flex-shrink:0}
 #gyPmNC .nc-n p{margin:3px 0 0;font-size:13.5px;line-height:1.55;color:var(--pm-text);opacity:.85;white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
 #gyPmNC .nc-empty{text-align:center;color:var(--pm-sub);font-size:14px;padding:50px 0}
-#gyPmNC .nc-grab{height:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;padding-bottom:env(safe-area-inset-bottom)}
+#gyPmNC .nc-grab{touch-action:none;height:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;padding-bottom:env(safe-area-inset-bottom)}
 #gyPmNC .nc-grab i{width:134px;height:5px;border-radius:3px;background:var(--pm-text);opacity:.8}
 /* 状态栏可以拉：浏览器别抢这个手势；整页也别触发下拉刷新 */
 body.gyphm #gyPmHome .pm-sb,body.gyphm #gyPmBar .pm-sb{touch-action:none;cursor:grab}
@@ -316,7 +345,7 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         } else {
             st.setProperty('--pm-sl', '0px'); st.setProperty('--pm-st', '0px');
             st.setProperty('--pm-sw', '100vw'); st.setProperty('--pm-sh', (window.innerHeight) + 'px');
-            st.setProperty('--pm-sr', '0px'); st.setProperty('--pm-top', '94px');
+            st.setProperty('--pm-sr', '0px'); st.setProperty('--pm-top', '62px');
         }
     }
 
@@ -325,7 +354,7 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         const add = (id, html, tag) => { if (document.getElementById(id)) return; const d = document.createElement(tag || 'div'); d.id = id; d.innerHTML = html; document.body.appendChild(d); };
         add('gyPm', `<div class="pm-bg"></div><div class="pm-frame"><i class="pm-btn a"></i><i class="pm-btn b"></i><i class="pm-btn c"></i><div class="pm-cap">guyu · phone</div></div>`);
         add('gyPmHome', '');
-        add('gyPmBar', `<div class="pm-sb" id="gyPmSb2"></div><div class="nav"><span class="l" onclick="gyPmBack()">${svg('back', 2.2)}</span><span class="t" id="gyPmT"></span></div>`);
+        add('gyPmBar', `<div class="pm-sb" id="gyPmSb2"></div><div class="nav"><span class="l" onclick="gyPmBack()">${svg('back', 2.2)}</span><span class="t" id="gyPmT"></span><span class="r" onclick="gyPmFloat(true)" title="小窗"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><rect x="11.5" y="11" width="7" height="6" rx="1.6" fill="currentColor" stroke="none"/></svg></span></div>`);
         add('gyPmApp', '');
         add('gyPmNC', '');
         add('gyPmInd', '<i></i>');
@@ -405,8 +434,8 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         // 能往回退就是「‹」；已经在最外层就换成回桌面的小方格——任何时候顶上都有出口
         const b = canBack();
         l.style.visibility = 'visible';
-        l.classList.toggle('home', !b);
-        l.innerHTML = b ? svg('back', 2.2) : `<span class="hm">${svg('apps', 1.8)}</span>`;
+        l.classList.remove('home');
+        l.innerHTML = svg('back', 2.2);   // 一直是「‹」：能往回退就退一层，已经在最外层就回桌面
         l.title = b ? '返回' : '回桌面';
         if (!S.native && S.view === 'chat') setTitle(viewTitle('chat'));
     }
@@ -421,39 +450,124 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         window.gyPmHome();
     };
     // 打开的那一下：从图标的位置放大出来
-    function zoomFrom(key) {
+    // 打开的那一下：动画可以在「美化 → 打开 App 的方式」里选
+    const FX = {
+        zoom: [[{ transform: 'scale(.12)', opacity: 0, borderRadius: '40px' }, { transform: 'none', opacity: 1 }], 340, 'cubic-bezier(.2,.85,.25,1)', 'icon'],
+        slide: [[{ transform: 'translateY(100%)' }, { transform: 'none' }], 380, 'cubic-bezier(.2,.85,.25,1)', 'screen'],
+        push: [[{ transform: 'translateX(100%)', boxShadow: '-12px 0 30px rgba(0,0,0,.12)' }, { transform: 'none', boxShadow: 'none' }], 360, 'cubic-bezier(.25,.8,.3,1)', 'screen'],
+        fade: [[{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], 260, 'ease-out', 'center'],
+        pop: [[{ opacity: 0, transform: 'scale(.55)' }, { opacity: 1, transform: 'scale(1.03)', offset: .7 }, { transform: 'none' }], 420, 'cubic-bezier(.3,1.3,.5,1)', 'center'],
+        flip: [[{ opacity: 0, transform: 'perspective(1200px) rotateY(-80deg)' }, { opacity: 1, transform: 'perspective(1200px) rotateY(0)' }], 480, 'cubic-bezier(.2,.8,.25,1)', 'center'],
+        card: [[{ opacity: 0, transform: 'translateY(60px) scale(.92)', borderRadius: '28px' }, { opacity: 1, transform: 'none' }], 380, 'cubic-bezier(.2,.85,.25,1)', 'center'],
+        none: null
+    };
+    window.__gyPmFX = FX;
+    function zoomFrom(key, fxName) {
         try {
+            const fx = FX[fxName || (typeof window.gyPmOpenFx === 'function' ? window.gyPmOpenFx() : 'zoom')] || FX.zoom;
+            if (!fx || !Element.prototype.animate) return;
+            let cx, cy;
             const ic = document.querySelector(`#gyPmHome [data-pmapp="${key}"] .pm-ic`);
-            if (!ic || !Element.prototype.animate) return;
-            const r = ic.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            if (fx[3] === 'icon' && ic && ic.offsetParent !== null) { const r = ic.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2; }
+            else { const r = scrRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2; }
             requestAnimationFrame(() => {
                 ['gyPmBar', 'gyPmApp'].map(id => document.getElementById(id)).concat([document.querySelector('.main-content')]).forEach(el => {
                     if (!el || el.offsetParent === null && getComputedStyle(el).position !== 'fixed') return;
                     const b = el.getBoundingClientRect(); if (!b.width) return;
-                    el.style.transformOrigin = `${cx - b.left}px ${cy - b.top}px`;
-                    el.animate([{ transform: 'scale(.12)', opacity: 0, borderRadius: '40px' }, { transform: 'none', opacity: 1 }], { duration: 340, easing: 'cubic-bezier(.2,.85,.25,1)' });
+                    el.style.transformOrigin = fx[3] === 'screen' ? '' : `${cx - b.left}px ${cy - b.top}px`;
+                    el.animate(fx[0], { duration: fx[1], easing: fx[2] });
                 });
             });
         } catch (e) {}
+    }
+    window.gyPmPreviewFx = function (name) { enterApp(); zoomFrom('set', name); setTimeout(() => { if (!S.app && !S.native && S.stack.length === 0) window.gyPmHome(); }, 900); };
+
+    /* ---------------- 🪟 小窗：App 缩成小窗口浮在桌面上，可以拖，里面照样能点 ---------------- */
+    const F = { on: false, x: 0, y: 0, s: .42 };
+    const flEls = () => ['gyPmBar', 'gyPmApp'].map(id => document.getElementById(id)).concat([document.querySelector('.main-content')]).filter(el => el && getComputedStyle(el).display !== 'none');
+    function scrRect() {
+        const r = document.documentElement.style, n = k => parseFloat(r.getPropertyValue(k));
+        const sl = n('--pm-sl') || 0, st = n('--pm-st') || 0, sw = n('--pm-sw') || 0, sh = n('--pm-sh') || 0;
+        return { left: isDesk() ? sl : 0, top: isDesk() ? st : 0, width: isDesk() ? sw : innerWidth, height: isDesk() ? sh : innerHeight };
+    }
+    function flApply() {
+        const r = scrRect(), w = r.width * F.s, h = r.height * F.s;
+        F.x = Math.max(r.left + 6, Math.min(r.left + r.width - w - 6, F.x)); F.y = Math.max(r.top + 40, Math.min(r.top + r.height - h - 10, F.y));
+        flEls().forEach(el => { el.style.transform = `translate(${F.x - r.left}px,${F.y - r.top}px) scale(${F.s})`; });
+        const fl = document.getElementById('gyPmFloat');
+        if (fl) Object.assign(fl.style, { left: F.x + 'px', top: F.y + 'px', width: w + 'px', height: h + 'px' });
+    }
+    function flClear() {
+        flEls().concat([document.querySelector('.main-content')]).forEach(el => { if (el) { el.style.transform = ''; el.style.transformOrigin = ''; } });
+    }
+    window.gyPmFloat = function (on, instant) {
+        if (!document.body.classList.contains('gyphm')) return;
+        if (on) {
+            if (!document.body.classList.contains('gyphm-app') || F.on) return;
+            closeSheet();
+            let fl = document.getElementById('gyPmFloat');
+            if (!fl) {
+                fl = document.createElement('div'); fl.id = 'gyPmFloat';
+                fl.innerHTML = '<div class="fr"></div><div class="gb"><i data-fl="max" title="放大">⤢</i><b></b><i data-fl="x" title="关掉">✕</i></div>';
+                document.body.appendChild(fl); flBind(fl);
+            }
+            const r = scrRect();
+            flEls().forEach(el => { const b = el.getBoundingClientRect(); el.style.transformOrigin = `${r.left - b.left}px ${r.top - b.top}px`; el.style.transform = 'none'; });
+            F.on = true; document.body.classList.add('gyphm-float');
+            void document.body.offsetWidth;
+            F.x = r.left + r.width * (1 - F.s) - 12; F.y = r.top + r.height * (1 - F.s) - 118;
+            flApply(); renderHome();
+            return;
+        }
+        if (!F.on) return;
+        F.on = false;
+        const done = () => { document.body.classList.remove('gyphm-float', 'pm-fl-drag'); flClear(); };
+        if (instant) { done(); return; }
+        flEls().forEach(el => { el.style.transform = 'none'; });
+        setTimeout(done, 390);
+    };
+    window.gyPmFloatOn = () => F.on;
+    // 小窗开着时点了别的 App：小窗不收，里面换成这个 App 接着浮着（想看大的点 ⤢）
+    function flKeep() {
+        if (!F.on) return;
+        document.body.classList.add('gyphm-app', 'gyphm-float');
+        const r = scrRect();
+        flEls().forEach(el => { if (!el.style.transformOrigin) { const pt = el.style.transform; el.style.transform = 'none'; const b = el.getBoundingClientRect(); el.style.transformOrigin = `${r.left - b.left}px ${r.top - b.top}px`; el.style.transform = pt; } });
+        flApply(); renderHome();
+        requestAnimationFrame(() => { if (F.on) flApply(); });
+    }
+    function flBind(fl) {
+        const gb = fl.querySelector('.gb'); let d = null;
+        gb.addEventListener('pointerdown', e => { if (e.target.closest('[data-fl]')) return; d = { x: e.clientX - F.x, y: e.clientY - F.y, id: e.pointerId }; document.body.classList.add('pm-fl-drag'); try { gb.setPointerCapture(e.pointerId); } catch (er) {} });
+        gb.addEventListener('pointermove', e => { if (!d || e.pointerId !== d.id) return; F.x = e.clientX - d.x; F.y = e.clientY - d.y; flApply(); });
+        const up = () => { if (!d) return; d = null; document.body.classList.remove('pm-fl-drag'); const r = scrRect(), w = r.width * F.s; F.x = (F.x + w / 2 < r.left + r.width / 2) ? r.left + 12 : r.left + r.width - w - 12; flApply(); };
+        gb.addEventListener('pointerup', up); gb.addEventListener('pointercancel', up);
+        gb.addEventListener('click', e => { const b = e.target.closest('[data-fl]'); if (!b) return; if (b.dataset.fl === 'max') window.gyPmFloat(false); else { window.gyPmFloat(false, true); window.gyPmHome(); } });
+        gb.addEventListener('dblclick', () => window.gyPmFloat(false));
     }
     function closeNative() { const n = document.getElementById('gyPmApp'); if (n) { n.innerHTML = ''; n.classList.remove('on'); } S.native = null; document.body.classList.remove('gyphm-native'); }
     // 小手机自己的「原生 App」（日历这种）：盖在屏幕里，跟谷雨的页面一样有顶栏和返回
     window.gyPmNative = function (title, html, opts) {
         const n = document.getElementById('gyPmApp'); if (!n) return null;
+        const pp = F.on ? pipBegin() : null;
         enterApp(); document.body.classList.add('gyphm-native');
         S.native = { back: opts && opts.back };
         n.innerHTML = html; n.classList.add('on'); n.scrollTop = 0;
         setTitle(title); syncNav();
+        if (pp) pipEnd(pp);
         return n;
     };
     window.gyPmOpen = function (key) {
         const a = appOf(key); if (!a) return;
         const j = a[4];
+        // 开别的 App：小窗不收起来，里面换成新 App 接着浮着（以前是先收起来）
         if (j.sheet) { if (typeof window.gyPmBeauty === 'function') window.gyPmBeauty(); return; }
         // 弹窗类（相册、账单）：直接盖在桌面上，不用进 App
         if (j.fn && !j.native) { try { window[j.fn].apply(null, j.args || []); } catch (e) { console.warn('[小手机] 打开失败：', e); } return; }
+        // 🪟 小窗开着时点了别的 App：原来那个留在小窗里（还能点），新的这个全屏打开
+        const pp = F.on ? pipBegin() : null;
         closeNative();
-        if (j.native) { try { window[j.fn].apply(null, j.args || []); } catch (e) { console.warn('[小手机] 打开失败：', e); } zoomFrom(key); return; }
+        if (j.native) { try { window[j.fn].apply(null, j.args || []); } catch (e) { console.warn('[小手机] 打开失败：', e); } if (pp && !pp.done) pipEnd(pp); zoomFrom(key); return; }
         enterApp(); setTitle(a[1]); S.stack = []; S.app = key;
         S.nav = true;
         try {
@@ -475,18 +589,129 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         setTitle(t); S.stack = [{ v: j.today ? 'today' : (j.feature ? 'featurePage' : S.view), p: j.param, t }];
         syncNav();
         try { document.querySelector('.main-content').scrollTop = 0; } catch (e) {}
+        if (pp) pipEnd(pp);
         zoomFrom(key);
     };
     window.gyPmOpenChat = function (id) {
+        const pp = F.on ? pipBegin() : null;
         closeNative(); enterApp();
         S.nav = true;
         try { switchMainView('chat'); switchChatSession(String(id)); } catch (e) {}
         S.nav = false;
         S.stack = [{ v: 'chat', t: '聊天' }];
         const s = sessOf(id); setTitle(s ? (s.remark || s.name) : '聊天'); syncNav();
+        if (pp) pipEnd(pp);
         zoomFrom('chat');
     };
+
+    /* ---------------- 🪟 画中画：小窗里留着原来那个 App，屏幕上是新点开的 ----------------
+       · 原来那页和新开的不是同一页（比如聊天 → 日记）：把原来那页**整个搬进小窗**，里面照样能点、能打字、会实时更新。
+       · 是同一页（比如跟 A 聊着又点开跟 B 聊）：小窗里放一张原来那页的快照，点 ⤢ 就回到原来那个。
+       · ⤢：回到小窗里那个 App（全屏）；✕：关掉小窗；拖顶上那条能挪，松手自己靠边。 */
+    const PIP = { on: false };
+    const viewEls = () => [...document.querySelectorAll('.main-content > [id^="view-"]')];
+    const shown = el => !!el && getComputedStyle(el).display !== 'none';
+    function pipBegin() {
+        if (PIP.on) pipClose();
+        const nat = !!S.native;
+        const el = nat ? document.getElementById('gyPmApp') : viewEls().find(shown);
+        const info = { el, native: nat, title: (document.getElementById('gyPmT') || {}).textContent || '', stack: S.stack.slice(), view: S.view, app: S.app,
+            chat: (!nat && S.view === 'chat' && chatOpen() && typeof currentChatSessionId !== 'undefined') ? String(currentChatSessionId) : null,
+            disp: el ? getComputedStyle(el).display : 'block', snap: null, parent: el && el.parentNode, next: el && el.nextSibling };
+        if (el) { const c = el.cloneNode(true); c.querySelectorAll('[id]').forEach(x => x.removeAttribute('id')); c.removeAttribute('id'); c.querySelectorAll('input,textarea,button,select').forEach(x => { x.disabled = true; }); info.snap = c; }
+        window.gyPmFloat(false, true);
+        return info;
+    }
+    function pipEnd(info) {
+        if (!info || info.done) return; info.done = true;
+        if (!info.el) return;
+        const live = !info.native && !shown(info.el) && info.el.parentNode;
+        const r = scrRect();
+        let pp = document.getElementById('gyPmPip');
+        if (!pp) {
+            pp = document.createElement('div'); pp.id = 'gyPmPip';
+            pp.innerHTML = '<div class="gb"><i data-pp="max" title="回到这个 App">⤢</i><b></b><i data-pp="x" title="关掉小窗">✕</i></div><div class="scr"><div class="inner"></div></div>';
+            document.body.appendChild(pp); pipBind(pp);
+        }
+        const inner = pp.querySelector('.inner');
+        inner.innerHTML = '';
+        Object.assign(inner.style, { width: r.width + 'px', height: r.height + 'px', transform: `scale(${F.s})` });
+        inner.style.setProperty('--pd', info.disp === 'none' ? 'block' : info.disp);
+        pp.querySelector('.gb b').textContent = info.title || '';
+        if (live) { inner.appendChild(info.el); info.el.classList.add('gy-in-pip'); pp.classList.remove('snap'); }
+        else { inner.appendChild(info.snap); pp.classList.add('snap'); }
+        Object.assign(PIP, info, { on: true, live: !!live });
+        const w = r.width * F.s, h = r.height * F.s;
+        PIP.x = PIP.x != null ? PIP.x : r.left + r.width - w - 12; PIP.y = PIP.y != null ? PIP.y : r.top + r.height - h - 118;
+        pipApply();
+        document.body.classList.add('gyphm-pip');
+    }
+    function pipApply() {
+        const pp = document.getElementById('gyPmPip'); if (!pp) return;
+        const r = scrRect(), w = r.width * F.s, h = r.height * F.s;
+        PIP.x = Math.max(r.left + 6, Math.min(r.left + r.width - w - 6, PIP.x)); PIP.y = Math.max(r.top + 40, Math.min(r.top + r.height - h - 10, PIP.y));
+        Object.assign(pp.style, { left: PIP.x + 'px', top: PIP.y + 'px', width: w + 'px', height: h + 'px' });
+    }
+    // 把搬进小窗的那页放回原处
+    function putBack() {
+        if (PIP.live && PIP.el) {
+            PIP.el.classList.remove('gy-in-pip');
+            try { if (PIP.next && PIP.next.parentNode === PIP.parent) PIP.parent.insertBefore(PIP.el, PIP.next); else PIP.parent.appendChild(PIP.el); } catch (e) { try { document.querySelector('.main-content').appendChild(PIP.el); } catch (er) {} }
+        }
+    }
+    function pipClose() {
+        if (!PIP.on) return;
+        const keep = PIP.live && PIP.el && PIP.el.style.display !== 'none';
+        putBack();
+        if (PIP.live && PIP.el && !keep) PIP.el.style.display = 'none';
+        const pp = document.getElementById('gyPmPip'); if (pp) pp.remove();
+        PIP.on = false; PIP.live = false; PIP.el = null;
+        document.body.classList.remove('gyphm-pip');
+    }
+    window.gyPmPipOn = () => PIP.on;
+    window.gyPmPipClose = pipClose;
+    window.gyPmPipInfo = () => PIP.on ? { live: PIP.live, title: PIP.title, view: PIP.view, chat: PIP.chat, el: PIP.el && PIP.el.id } : null;
+    // ⤢：回到小窗里那个 App
+    window.gyPmPipMax = function () {
+        if (!PIP.on) return;
+        const info = { stack: PIP.stack, view: PIP.view, chat: PIP.chat, title: PIP.title, native: PIP.native };
+        pipClose();
+        closeSheet(); closeNative(); enterApp();
+        S.nav = true;
+        try {
+            if (info.chat) { switchMainView('chat'); switchChatSession(info.chat); }
+            else if (info.view === 'today') { if (typeof openMobileTrendsView === 'function') openMobileTrendsView(); }
+            else { const top = info.stack[info.stack.length - 1]; if (top && top.v === 'featurePage' && S.app) window.gyPmOpen(S.app); else if (top) switchMainView(top.v, top.p); }
+        } catch (e) {}
+        S.nav = false;
+        S.stack = info.stack.length ? info.stack : S.stack; S.view = info.view;
+        setTitle(info.title); syncNav();
+    };
+    function pipBind(pp) {
+        const gb = pp.querySelector('.gb'); let d = null;
+        gb.addEventListener('pointerdown', e => { if (e.target.closest('[data-pp]')) return; d = { x: e.clientX - PIP.x, y: e.clientY - PIP.y, id: e.pointerId }; try { gb.setPointerCapture(e.pointerId); } catch (er) {} });
+        gb.addEventListener('pointermove', e => { if (!d || e.pointerId !== d.id) return; PIP.x = e.clientX - d.x; PIP.y = e.clientY - d.y; pipApply(); });
+        const up = () => { if (!d) return; d = null; const r = scrRect(), w = r.width * F.s; PIP.x = (PIP.x + w / 2 < r.left + r.width / 2) ? r.left + 12 : r.left + r.width - w - 12; pipApply(); };
+        gb.addEventListener('pointerup', up); gb.addEventListener('pointercancel', up);
+        gb.addEventListener('click', e => { const b = e.target.closest('[data-pp]'); if (!b) return; if (b.dataset.pp === 'max') window.gyPmPipMax(); else pipClose(); });
+        // 快照模式：点里面任何地方都是「回到这个 App」
+        pp.querySelector('.scr').addEventListener('click', () => { if (pp.classList.contains('snap')) window.gyPmPipMax(); });
+    }
+    // 别处又要显示小窗里那一页（比如从桌面又点开同一个 App）：先把它放回去，小窗收起
+    function hookRouter() {
+        if (typeof window.switchMainView !== 'function' || window.switchMainView.__gyPip) return;
+        const f0 = window.switchMainView;
+        window.switchMainView = function () {
+            const r = f0.apply(this, arguments);
+            try { if (PIP.on && PIP.live && PIP.el && PIP.el.style.display && PIP.el.style.display !== 'none') pipClose(); } catch (e) {}
+            return r;
+        };
+        window.switchMainView.__gyPip = true;
+    }
+    hookRouter(); setTimeout(hookRouter, 1500);
+    window.addEventListener('resize', () => { if (PIP.on) pipApply(); });
     window.gyPmHome = function () {
+        if (F.on) window.gyPmFloat(false, true);
         closeSheet(); closeNative();
         const was = document.body.classList.contains('gyphm-app');
         document.body.classList.remove('gyphm-app');
@@ -539,14 +764,15 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
     }
     function ncHtml() {
         const d = new Date();
+        try { if (typeof window.gyNotifEnsureIds === 'function') window.gyNotifEnsureIds(); } catch (e) {}
         let list = []; try { list = (typeof globalNotifications !== 'undefined' ? globalNotifications : []).slice(0, 60); } catch (e) {}
         const today0 = new Date(); today0.setHours(0, 0, 0, 0);
-        const card = (n, i) => { const det = ncDetail(n); return `<div class="nc-n" onclick="gyPmNCGo(${i})"><span class="ic">${ncIcon(n)}</span><div class="tx"><div class="hd"><b>${esc(String(n.text || '').replace(/<[^>]+>/g, ''))}</b><em>${(() => { try { return timeAgo(n.timestamp); } catch (e) { return ''; } })()}</em></div>${det ? `<p>${esc(det)}</p>` : ''}</div></div>`; };
+        const card = (n, i) => { const det = ncDetail(n); return `<div class="nc-n" data-nid="${esc(String(n.id || ''))}" onclick="gyPmNCGo('${String(n.id || '').replace(/[^\w-]/g, '')}')"><span class="ic">${ncIcon(n)}</span><div class="tx"><div class="hd"><b>${esc(String(n.text || '').replace(/<[^>]+>/g, ''))}</b><em>${(() => { try { return timeAgo(n.timestamp); } catch (e) { return ''; } })()}</em></div>${det ? `<p>${esc(det)}</p>` : ''}</div></div>`; };
         const tod = [], old = [];
         list.forEach((n, i) => ((n.timestamp || 0) >= today0.getTime() ? tod : old).push(card(n, i)));
         return `<div class="nc-in">
             <div class="nc-sb">${sbHtml()}</div>
-            <div class="nc-bar"><b>通知中心</b><span><i onclick="gyPmNCAll()">全部</i><i onclick="gyPmNCRead()">已读</i></span></div>
+            <div class="nc-bar"><b>通知中心</b><span><i onclick="gyPmNCAll()">全部</i><i onclick="gyPmNCRead()">已读</i><i onclick="gyPmNC(false);gyPmLockNow()" title="锁屏">${svg('lock', 2)}</i></span></div>
             <div class="nc-list">${list.length ? (tod.length ? `<div class="nc-h">今天</div>${tod.join('')}` : '') + (old.length ? `<div class="nc-h">更早</div>${old.join('')}` : '') : '<div class="nc-empty">没有新通知</div>'}</div>
             <div class="nc-grab" onclick="gyPmNC(false)"><i></i></div></div>`;
     }
@@ -556,12 +782,21 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         nc.innerHTML = ncHtml(); nc.classList.remove('drag'); nc.style.transform = ''; nc.classList.add('on');
         try { unreadNotifs = 0; if (typeof updateNotifBadge === 'function') updateNotifBadge(); } catch (e) {}
     };
-    window.gyPmNCGo = function (i) {
-        const n = (typeof globalNotifications !== 'undefined' ? globalNotifications : [])[i]; window.gyPmNC(false);
-        if (!n) return;
+    // 按通知 id 找（不再按列表下标——通知中心开着时又来一条，下标全错位，点了跳到别人那儿去）。
+    // 老调用传数字下标也还认。
+    window.gyPmNCGo = function (key) {
+        let n = null;
+        try {
+            const all = (typeof globalNotifications !== 'undefined' ? globalNotifications : []);
+            if (typeof key === 'number') n = all[key];
+            else n = (typeof window.gyNotifFind === 'function') ? window.gyNotifFind(key) : all.find(x => x && String(x.id) === String(key));
+        } catch (e) {}
+        window.gyPmNC(false);
         closeNative(); enterApp(); S.stack = [];
         try {
-            if (n.jump && typeof window.gyJump === 'function') window.gyJump(n.jump);
+            if (!n) switchMainView('notifications');
+            else if (typeof window.gyOpenNotif === 'function') window.gyOpenNotif(n);
+            else if (n.jump && typeof window.gyJump === 'function') window.gyJump(n.jump);
             else if (n.chatCharId) { switchMainView('chat'); switchChatSession(String(n.chatCharId)); }
             else if (n.postId) switchMainView('postDetail', n.postId);
             else if (n.feature && typeof gyOpenFeaturePage === 'function') gyOpenFeaturePage(n.feature);
@@ -599,10 +834,32 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         };
         document.addEventListener('pointerup', end, true);
         document.addEventListener('pointercancel', end, true);
-        // 在通知中心里往上划：收回去
-        let uy = null;
-        document.addEventListener('pointerdown', e => { const nc = e.target.closest && e.target.closest('#gyPmNC.on'); uy = nc && !e.target.closest('.nc-list') ? e.clientY : null; }, true);
-        document.addEventListener('pointerup', e => { if (uy != null && uy - e.clientY > 50) window.gyPmNC(false); uy = null; }, true);
+        // 在通知中心里往上划：跟着手指往上收；划过一小段就收回去（在列表里的话，要列表已经滚到底才算）
+        const U = { on: false, y: 0, dy: 0, moved: false, id: null };
+        document.addEventListener('pointerdown', e => {
+            const nc = e.target.closest && e.target.closest('#gyPmNC.on'); if (!nc) return;
+            const list = e.target.closest('.nc-list');
+            if (list && list.scrollTop + list.clientHeight < list.scrollHeight - 2) return;
+            U.on = true; U.y = e.clientY; U.dy = 0; U.moved = false; U.id = e.pointerId;
+        }, true);
+        document.addEventListener('pointermove', e => {
+            if (!U.on || e.pointerId !== U.id) return;
+            U.dy = Math.min(0, e.clientY - U.y);
+            if (U.dy < -8) { U.moved = true; const nc = document.getElementById('gyPmNC'); nc.classList.add('drag'); nc.style.transform = `translateY(${U.dy}px)`; }
+        }, true);
+        const upEnd = e => {
+            if (!U.on || (e && e.pointerId !== U.id)) return;
+            U.on = false; const nc = document.getElementById('gyPmNC'); if (!nc) return;
+            nc.classList.remove('drag');
+            if (U.moved) {
+                if (U.dy < -70) window.gyPmNC(false); else nc.style.transform = '';
+                // 划动之后别再当成点了一条通知
+                const stop = ev => { ev.stopPropagation(); ev.preventDefault(); document.removeEventListener('click', stop, true); };
+                document.addEventListener('click', stop, true); setTimeout(() => document.removeEventListener('click', stop, true), 60);
+            }
+        };
+        document.addEventListener('pointerup', upEnd, true);
+        document.addEventListener('pointercancel', upEnd, true);
         document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.querySelector('#gyPmNC.on')) { e.stopImmediatePropagation(); window.gyPmNC(false); } }, true);
     }
 

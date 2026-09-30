@@ -235,7 +235,7 @@ ${menu}
         if (!rec || rec.mediaUrl || rec.gyArt) return false;
         rec.gyArt = 1;                                    // 不管成没成，这条只考虑一次
         if (!artOnFor(kind) || !char) return false;
-        if (Math.random() * 100 > (S.artRate || 100)) return false;
+        if (Math.random() * 100 >= (S.artRate == null || isNaN(Number(S.artRate)) ? 100 : Number(S.artRate))) return false;   // 0＝一张都不配
         const mode = artMode(char.id);
         if (mode === 'off' || mode === 'card') return false;   // 卡片档是"只写文字描述"，配图没意义
         if (busy[kind]) return false;
@@ -308,7 +308,7 @@ ${menu}
 
     /* ================= 注册 / 开关 / 设置 ================= */
     window.gyChatPlusSet = function (k, v) {
-        S[k] = (k === 'artMode') ? String(v) : (k === 'artRate') ? Math.max(1, Math.min(100, parseInt(v) || 100)) : !!v;
+        S[k] = (k === 'artMode') ? String(v) : (k === 'artRate') ? (isNaN(parseInt(v)) ? 100 : Math.max(0, Math.min(100, parseInt(v)))) : !!v;
         save();
         if (k === 'at' && !v) atClose();
         if (/^art/.test(k)) artKick();

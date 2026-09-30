@@ -169,8 +169,14 @@ body.gywx.dark-theme span[style*="color:#536471"] { color: #888888 !important; }
 body.gywx a, body.gywx.dark-theme a { color: #576b95 !important; }
 body.gywx input[type="checkbox"], body.gywx input[type="radio"] { accent-color: #07c160 !important; }
 body.gywx input[type="range"] { accent-color: #07c160 !important; }
+/* 滚动条：平时透明看不见，鼠标放上去 / 正在滚的时候才浮出来（.gy-sb-on 由 js/04b 加） */
 body.gywx ::-webkit-scrollbar-thumb,
-body.gywx.dark-theme ::-webkit-scrollbar-thumb { background-color: rgba(0, 0, 0, .18) !important; }
+body.gywx.dark-theme ::-webkit-scrollbar-thumb { background-color: transparent !important; }
+body.gywx .gy-sb-on::-webkit-scrollbar-thumb,
+body.gywx.gy-sb-on::-webkit-scrollbar-thumb,
+body.gywx.dark-theme .gy-sb-on::-webkit-scrollbar-thumb { background-color: rgba(0, 0, 0, .18) !important; }
+body.gywx ::-webkit-scrollbar-thumb:hover { background-color: rgba(0, 0, 0, .32) !important; }
+@supports not selector(::-webkit-scrollbar) { body.gywx, body.gywx * { scrollbar-color: transparent transparent; } body.gywx *:hover { scrollbar-color: rgba(0,0,0,.18) transparent; } }
 
 
 /* ===================== 补的：其它页面 ===================== */

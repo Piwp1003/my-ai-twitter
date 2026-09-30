@@ -26,13 +26,13 @@
 
     /* ---------------- 布局（存本机） ---------------- */
     const DEF = () => ({
-        v: 2,
+        v: 3,
         pages: [
             [{ id: uid(), t: 'w', k: 'aclock', size: 's' }, { id: uid(), t: 'w', k: 'cal', size: 's' }, { id: uid(), t: 'w', k: 'music', size: 'm' },
              ...['diary', 'theater', 'today', 'forum', 'gossip', 'music', 'film', 'beauty'].map(k => ({ id: uid(), t: 'app', k }))],
             [{ id: uid(), t: 'w', k: 'week', size: 'm' }, { id: uid(), t: 'w', k: 'todo', size: 's', d: { items: [{ t: '起床喝一杯热水', done: false }, { t: '回 TA 的消息', done: false }, { t: '午睡二十分钟', done: false }] } },
              { id: uid(), t: 'w', k: 'photo', size: 's', d: { cap: '今天' } },
-             ...['calendar', 'book', 'mall', 'map', 'anon', 'photos', 'wallet', 'kit', 'days', 'rel', 'now', 'emo', 'mini', 'chars', 'mem'].map(k => ({ id: uid(), t: 'app', k }))]
+             ...['calendar', 'book', 'mall', 'map', 'anon', 'photos', 'wallet', 'kit', 'days', 'rel', 'now', 'emo', 'mini', 'chars', 'mem', 'lockscr'].map(k => ({ id: uid(), t: 'app', k }))]
         ],
         dock: ['chat', 'notif', 'home', 'set'],
         names: {}, colors: {}, imgs: {},
@@ -49,9 +49,16 @@
         try {
             const s = store(); if (!s) return;
             const c = await s.getItem('cfg');
-            if (c && c.pages && c.v >= 2) C = Object.assign(DEF(), c);
+            if (c && c.pages && c.v >= 2) {
+                C = Object.assign(DEF(), c);
+                if (c.v < 3) {   // v3：每个东西记自己的位置（挪走了不自动补位）+ 多一个「锁屏」图标
+                    const has = C.dock.includes('lockscr') || C.pages.some(pg => pg.some(x => x.t === 'app' && x.k === 'lockscr'));
+                    if (!has && C.pages[0]) { const f = firstFree(C.pages[0]) || { x: 0, y: 0 }; C.pages[0].push({ id: uid(), t: 'app', k: 'lockscr', x: f.x, y: f.y }); }
+                    C.v = 3; save();
+                }
+            }
             else if (c && c.pages) {   // 上一版（手绘风）的布局：换成新的默认摆法，自己改过的名字/图标/壁纸留着
-                C = Object.assign(DEF(), { names: c.names || {}, colors: c.colors || {}, imgs: c.imgs || {}, wall: c.wall || null, wallColor: c.wallColor || null, lock: c.lock !== false, labels: c.labels !== false });
+                C = norm(Object.assign(DEF(), { names: c.names || {}, colors: c.colors || {}, imgs: c.imgs || {}, wall: c.wall || null, wallColor: c.wallColor || null, lock: c.lock !== false, labels: c.labels !== false }));
                 save();
             }
             else {  // 老版本只存了壁纸
@@ -60,6 +67,104 @@
             }
         } catch (e) {}
         applyPrefs();
+    };
+
+    /* ---------------- 摆放：图标排格子（一行 4 个或 5 个，挪走了不自动补位）；小组件想放哪放哪、想多大拉多大 ---------------- */
+    const MAXR = 7;
+    const ncols = () => C.cols === 5 ? 5 : 4;
+    let M = null;   // 这一次画的时候量出来的尺寸
+    function mt() {
+        const home = document.getElementById('gyPmHome');
+        let hw = home && home.clientWidth;
+        if (!hw) { const v = document.documentElement.style.getPropertyValue('--pm-sw'); hw = /px$/.test(v) ? parseFloat(v) : window.innerWidth; }
+        const W = Math.max(220, (hw || 390) - 40), n = ncols();
+        const gx = n === 5 ? 8 : 10, gy = n === 5 ? 12 : 14, rh = n === 5 ? 70 : 76;
+        return { W, n, gx, gy, rh, cw: (W - gx * (n - 1)) / n, bcw: (W - 30) / 4 };
+    }
+    const SZ = { s: [2, 2], m: [4, 2], l: [4, 4], x: [4, 1], t: [2, 1] };
+    // 小组件的标准大小（按一行 4 个算），存成「占屏幕宽的比例」，换手机大小也不走样
+    function nom(z, m) { m = m || M || mt(); const [a, b] = SZ[z] || SZ.s; return [(a * m.bcw + (a - 1) * 10) / m.W, (b * 76 + (b - 1) * 14) / m.W]; }
+    const isW = it => !!it && it.t !== 'app';
+    const dim = () => [1, 1];
+    const rectOf = (w, m) => { const g = w.g; return { l: g.x * m.W, t: g.y * m.W, r: (g.x + g.w) * m.W, b: (g.y + g.h) * m.W }; };
+    const cellR = (x, y, m) => ({ l: x * (m.cw + m.gx), t: y * (m.rh + m.gy), r: x * (m.cw + m.gx) + m.cw, b: y * (m.rh + m.gy) + m.rh });
+    const hit = (a, b, k) => { const ow = Math.min(a.r, b.r) - Math.max(a.l, b.l), oh = Math.min(a.b, b.b) - Math.max(a.t, b.t); return ow > 0 && oh > 0 && ow * oh > (a.r - a.l) * (a.b - a.t) * (k == null ? .12 : k); };
+    // 被小组件盖住的格子 + 已经有图标的格子
+    function occ(pg, except, m) {
+        m = m || M || mt(); const o = new Set(), ws = pg.filter(w => isW(w) && w.g && w !== except).map(w => rectOf(w, m));
+        const maxY = Math.ceil(ws.reduce((a, r) => Math.max(a, r.b), 0) / (m.rh + m.gy)) + 1;
+        for (let y = 0; y <= maxY; y++) for (let x = 0; x < m.n; x++) { const c = cellR(x, y, m); if (ws.some(r => hit(c, r))) o.add(y * m.n + x); }
+        pg.forEach(it => { if (it === except || isW(it) || it.x == null) return; o.add(it.y * m.n + it.x); });
+        return o;
+    }
+    function firstFree(pg, except, near, maxY, m) {
+        m = m || M || mt(); const o = occ(pg, except, m);
+        const top = pg.reduce((a, it) => it === except ? a : isW(it) ? (it.g ? Math.max(a, Math.ceil(rectOf(it, m).b / (m.rh + m.gy))) : a) : (it.x == null ? a : Math.max(a, it.y + 1)), 0) + 3;
+        let best = null, bd = 1e9;
+        for (let y = 0; y < top; y++) for (let x = 0; x < m.n; x++) {
+            if (maxY != null && y + 1 > maxY) continue;
+            if (o.has(y * m.n + x)) continue;
+            if (!near) return { x, y };
+            const d = Math.abs(y - near.y) * 4.2 + Math.abs(x - near.x) + (y < near.y ? .5 : 0);
+            if (d < bd) { bd = d; best = { x, y }; }
+        }
+        return best;
+    }
+    // 给新的小组件找个地方：先找「不压图标也不压别的小组件」的位置，没有就放到最下面
+    function spotFor(pg, gw, gh, m, except) {
+        m = m || M || mt();
+        const ws = pg.filter(w => isW(w) && w.g && w !== except).map(w => rectOf(w, m)), ics = pg.filter(it => !isW(it) && it.x != null).map(it => cellR(it.x, it.y, m));
+        const pw = m.bcw + 10, ph = m.rh + m.gy, rows = MAXR + 2;
+        for (let y = 0; y < rows; y++) for (let xi = 0; xi < 4; xi++) {
+            const x = xi * pw; if (x + gw * m.W > m.W + 1) continue;
+            const r = { l: x, t: y * ph, r: x + gw * m.W, b: y * ph + gh * m.W };
+            if (ws.some(o => hit(r, o, 0)) || ics.some(c => hit(c, r, .12))) continue;
+            return { x: x / m.W, y: y * ph / m.W };
+        }
+        const bottom = Math.max(ws.reduce((a, r) => Math.max(a, r.b), 0), ics.reduce((a, r) => Math.max(a, r.b), 0));
+        return { x: 0, y: (bottom + m.gy) / m.W };
+    }
+    // 摆好：老的格子坐标换成自由坐标；被小组件盖住 / 重叠 / 超出一行格数的图标挪去最近的空格（别的不动，不自动补位）
+    function layout(pg, m) {
+        m = m || M || mt(); let moved = false;
+        const done = [];
+        pg.forEach(w => {
+            if (!isW(w)) return;
+            if (!(w.g && w.g.w)) {
+                const [nw, nh] = nom(w.size, m);
+                if (w.x != null && w.y != null) w.g = { x: Math.min(w.x * (m.bcw + 10) / m.W, Math.max(0, 1 - nw)), y: w.y * 90 / m.W, w: nw, h: nh };
+                else { const f = spotFor(done, nw, nh, m); w.g = { x: f.x, y: f.y, w: nw, h: nh }; }
+                moved = true;
+            }
+            done.push(w);
+        });
+        const taken = occ(pg.filter(isW), null, m), bad = [];
+        pg.forEach(it => { if (isW(it)) return; const k = it.y * m.n + it.x; if (it.x == null || it.y == null || it.x >= m.n || it.x < 0 || taken.has(k)) bad.push(it); else taken.add(k); });
+        const was = bad.map(it => it.x == null ? null : { x: Math.min(it.x, m.n - 1), y: it.y || 0 });
+        bad.forEach(it => { it.x = null; });
+        bad.forEach((it, n) => { const f = firstFree(pg, it, was[n], null, m) || { x: 0, y: 0 }; it.x = f.x; it.y = f.y; moved = true; });
+        return moved;
+    }
+    function norm(c, m) { let mv = false; (c.pages || []).forEach(pg => { if (layout(pg, m)) mv = true; }); return mv; }
+    // 图标放进 (x,y)：那格有图标 → 互换（从同一页拖过来的）或者把它挤到最近的空格；那格被小组件盖着 → 放最近的空格
+    function place(pg, it, x, y, from, m) {
+        m = m || M || mt(); x = Math.max(0, Math.min(m.n - 1, x)); y = Math.max(0, y);
+        if (!pg.includes(it)) pg.push(it);
+        if (occ(pg.filter(isW), null, m).has(y * m.n + x)) { it.x = null; const f = firstFree(pg, it, { x, y }, null, m) || { x, y }; x = f.x; y = f.y; }
+        const other = pg.find(o => o !== it && !isW(o) && o.x === x && o.y === y);
+        it.x = x; it.y = y;
+        if (other) { if (from) { other.x = from.x; other.y = from.y; } else { other.x = null; const f = firstFree(pg, other, { x, y }, null, m) || { x: 0, y: 0 }; other.x = f.x; other.y = f.y; } }
+    }
+    // 大小对应哪一档（决定小组件里面怎么排版）
+    function sizeFor(def, gw, gh, m) {
+        let best = def.sizes[0], bd = 1e9;
+        def.sizes.forEach(z => { const [a, b] = nom(z, m); const d = Math.abs(Math.log(gw / a)) + Math.abs(Math.log(gh / b)); if (d < bd) { bd = d; best = z; } });
+        return best;
+    }
+    const gp = it => {
+        if (!it) return '';
+        if (isW(it)) { const m = M || mt(), g = it.g; return g ? ` style="left:${(g.x * 100).toFixed(3)}%;top:${(g.y * m.W).toFixed(1)}px;width:${(g.w * 100).toFixed(3)}%;height:${(g.h * m.W).toFixed(1)}px"` : ''; }
+        return it.x != null ? ` style="grid-column:${it.x + 1};grid-row:${it.y + 1}"` : '';
     };
 
     /* ---------------- App 的样子（可改名/换色/换图） ---------------- */
@@ -76,7 +181,8 @@
         const fg = bg && isDark(bg) ? ';color:#fff' : (bg ? ';color:#111' : '');
         const inner = img ? `<img src="${img}" alt="">` : svg(a[2], 1.6);
         const pos = where === 'lib' ? `data-where="lib"` : `data-where="${where}" data-p="${p}" data-i="${i}"${where === 'page' && C.pages[p] && C.pages[p][i] ? ` data-id="${C.pages[p][i].id}"` : ''}`;
-        return `<div class="pm-app pm-item" data-pmapp="${k}" ${pos}><i class="pm-del" data-del="1">−</i><div class="pm-ic${img ? ' img' : ''}"${bg ? ` style="background:${bg}!important${fg}"` : ''}>${inner}</div><span class="pm-lb">${esc(appName(k))}</span>${badge}</div>`;
+        const gst = where === 'page' && C.pages[p] ? gp(C.pages[p][i]) : '';
+        return `<div class="pm-app pm-item" data-pmapp="${k}" ${pos}${gst}><i class="pm-del" data-del="1">−</i><div class="pm-ic${img ? ' img' : ''}"${bg ? ` style="background:${bg}!important${fg}"` : ''}>${inner}</div><span class="pm-lb">${esc(appName(k))}</span>${badge}</div>`;
     }
 
     const isDark = c => { const m = String(c).match(/^#([0-9a-f]{6})$/i); if (!m) return false; const n = parseInt(m[1], 16); return (((n >> 16) & 255) * .299 + ((n >> 8) & 255) * .587 + (n & 255) * .114) < 140; };
@@ -118,6 +224,8 @@
         return null;
     }
     const plain = (t, cid) => (G().plain ? G().plain(t, cid) : String(t || ''));
+    // 小组件上的字：都能改（编辑桌面时直接点字改，或者在小组件的设置里改）；清空就回到原来的字
+    const T = (w, key, def) => { const v = w && w.d && w.d.tx && w.d.tx[key]; return `<span data-tx="${key}" data-d="${esc(def)}">${esc(v != null && v !== '' ? v : def)}</span>`; };
     const WD = {
         clock: { n: '数字时钟', sizes: ['s', 'm'], tap: () => window.gyPmOpen('now'), r(w) {
             const d = new Date(), wk = WK[d.getDay()];
@@ -125,13 +233,13 @@
             const un = G().unread ? G().unread() : 0;
             const hi = d.getHours() < 5 ? '夜深了，早点睡' : d.getHours() < 11 ? '早上好' : d.getHours() < 14 ? '记得吃午饭' : d.getHours() < 18 ? '下午也要好好的' : '晚上好';
             return `<div class="pm-clock"><span class="t pm-hf" id="gyPmClock">${pad(d.getHours())}:${pad(d.getMinutes())}</span><span class="d"><b>${d.getMonth() + 1}月${d.getDate()}日</b>星期${wk}</span></div>
-                <div class="pm-note">${un ? `<span class="dot"></span>有 ${un} 个人在等你回` : hi}</div>`;
+                <div class="pm-note">${un ? `<span class="dot"></span>有 ${un} 个人在等你回` : T(w, 'hi', hi)}</div>`;
         } },
         aclock: { n: '指针时钟', sizes: ['s', 'm'], tap: () => window.gyPmOpen('now'), r(w) {
             if (w.size === 's') { const d = new Date(); return `<div class="wg-ac s">${dial('', w.d && w.d.dark, 118)}</div>`; }
             const cities = [['', '本地'], ['Europe/London', '伦敦'], ['America/New_York', '纽约']];
             const d = new Date();
-            return `<div class="wg-ac m">${cities.map(([tz, n], i) => `<div class="c">${dial(tz, i === 1, 78)}<b>${n}</b><span>${tz ? `${tzOff(tz) >= 0 ? '+' : ''}${tzOff(tz)}小时` : `${d.getMonth() + 1}月${d.getDate()}日`}</span></div>`).join('')}</div>`;
+            return `<div class="wg-ac m">${cities.map(([tz, n], i) => `<div class="c">${dial(tz, i === 1, 78)}<b>${T(w, 'c' + i, n)}</b><span>${tz ? `${tzOff(tz) >= 0 ? '+' : ''}${tzOff(tz)}小时` : `${d.getMonth() + 1}月${d.getDate()}日`}</span></div>`).join('')}</div>`;
         }, edit: w => w.size === 's' ? `<div class="lbl">表盘</div><div class="chips"><span class="chip${!(w.d && w.d.dark) ? ' on' : ''}" onclick="gyPmWSet('${w.id}','dark',false)">白</span><span class="chip${w.d && w.d.dark ? ' on' : ''}" onclick="gyPmWSet('${w.id}','dark',true)">黑</span></div>` : '' },
         cal: { n: '日历', sizes: ['s', 'm'], tap: () => window.gyPmCalendar(), r(w) {
             const d = new Date(), wk = WK[d.getDay()];
@@ -145,18 +253,18 @@
             for (let i = 0; i < first; i++) g += '<i></i>';
             for (let i = 1; i <= days; i++) g += `<i class="${i === d.getDate() ? 'on' : ''}${calHas(d.getFullYear(), d.getMonth(), i) ? ' has' : ''}" data-day="${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(i)}">${i}</i>`;
             return `<div class="wg-cal-m"><div class="big"><em>${MON[d.getMonth()]}</em><b class="pm-hf">${d.getDate()}</b><span>星期${wk}</span></div><div class="wg-cal-g">${g}</div></div>`;
-        }, edit: w => w.size === 's' ? `<label class="it">上面放一张照片<input type="file" accept="image/*" style="display:none" onchange="gyPmWPhoto('${w.id}',this)"></label>${w.d && w.d.img ? `<button class="it muted" onclick="gyPmWSet('${w.id}','img','')">去掉照片</button>` : ''}` : '' },
+        }, edit: w => w.size === 's' ? `<label class="it">上面放一张照片<input type="file" accept="image/*,video/*" style="display:none" onchange="gyPmWPhoto('${w.id}',this)"></label>${w.d && w.d.img ? `<button class="it muted" onclick="gyPmWSet('${w.id}','img','')">去掉照片</button>` : ''}` : '' },
         week: { n: '本周', sizes: ['m'], r() {
             const d = new Date(), mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
             let h = '';
             for (let i = 0; i < 7; i++) { const x = new Date(mon); x.setDate(mon.getDate() + i); const on = x.toDateString() === d.toDateString(); h += `<div class="dy${on ? ' on' : ''}${calHas(x.getFullYear(), x.getMonth(), x.getDate()) ? ' has' : ''}" data-day="${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}"><em>${['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'][i]}</em><b>${x.getDate()}</b><i></i></div>`; }
             return `<div class="wg-week">${h}</div>`;
         } },
-        music: { n: '正在播放', sizes: ['m'], tap: () => window.gyPmOpen('music'), r() {
+        music: { n: '正在播放', sizes: ['m'], tap: () => window.gyPmOpen('music'), r(w) {
             const m = typeof window.gymNowInfo === 'function' ? window.gymNowInfo() : null;
             const cov = m && m.cover ? `<div class="cv" style="background-image:url('${esc(m.cover)}')"></div>` : `<div class="cv empty">${MSV.note}</div>`;
             const pct = m && m.d ? Math.min(100, m.t / m.d * 100) : 0;
-            return `<div class="wg-mu"><div class="top">${cov}<div class="tt"><b>${esc(m ? m.title : '没有在放歌')}</b><span>${esc(m ? (m.artist || '未知歌手') : '轻点去音乐盒挑一首')}</span></div></div>
+            return `<div class="wg-mu"><div class="top">${cov}<div class="tt"><b>${m ? esc(m.title) : T(w, 'none', '没有在放歌')}</b><span>${m ? esc(m.artist || '未知歌手') : T(w, 'none2', '轻点去音乐盒挑一首')}</span></div></div>
                 <div class="ctl"><span data-mc="prev">${MSV.prev}</span><span data-mc="toggle" class="pp">${m && m.playing ? MSV.pause : MSV.play}</span><span data-mc="next">${MSV.next}</span></div>
                 <div class="bar"><span>${fmtT(m && m.t)}</span><i><u style="width:${pct}%"></u></i><span>${fmtT(m && m.d)}</span></div></div>`;
         } },
@@ -164,25 +272,25 @@
             const x = typeof window.gymapWeatherInfo === 'function' ? window.gymapWeatherInfo() : null;
             if (!x) return `<div class="wg-empty">还没有天气<br><small>去「地图 → 天气」填个城市</small></div>`;
             const now = x.now != null ? x.now : x.max;
-            if (w.size === 's') return `<div class="wg-we s"><span class="ct">${esc(x.city || '你这边')}</span><b class="pm-hf">${now}°</b><div class="ic">${x.icon || ''}</div><span>${esc(x.desc)}</span><span class="rg">最高${x.max}° 最低${x.min}°</span></div>`;
-            return `<div class="wg-we m"><div><span class="ct">${esc(x.city || '你这边')}</span><b class="pm-hf">${now}°</b></div><div class="r"><div class="ic">${x.icon || ''}</div><span>${esc(x.desc)}</span><span class="rg">${x.min}° ~ ${x.max}°${x.rain != null ? ` · 降水 ${x.rain}%` : ''}</span></div></div>`;
+            if (w.size === 's') return `<div class="wg-we s"><span class="ct">${T(w, 'city', x.city || '你这边')}</span><b class="pm-hf">${now}°</b><div class="ic">${x.icon || ''}</div><span>${esc(x.desc)}</span><span class="rg">最高${x.max}° 最低${x.min}°</span></div>`;
+            return `<div class="wg-we m"><div><span class="ct">${T(w, 'city', x.city || '你这边')}</span><b class="pm-hf">${now}°</b></div><div class="r"><div class="ic">${x.icon || ''}</div><span>${esc(x.desc)}</span><span class="rg">${x.min}° ~ ${x.max}°${x.rain != null ? ` · 降水 ${x.rain}%` : ''}</span></div></div>`;
         } },
-        battery: { n: '电量', sizes: ['s'], tap: () => window.gyPmSaver(), r() {
+        battery: { n: '电量', sizes: ['s'], tap: () => window.gyPmSaver(), r(w) {
             const b = typeof window.gyPmBattery === 'function' ? window.gyPmBattery() : null;
             const lv = b ? b.lv : 100, sv = saverOn();
             const C2 = 2 * Math.PI * 34, off = C2 * (1 - lv / 100);
             const col = sv ? '#ffcc00' : (lv <= 20 ? 'var(--pm-red)' : 'currentColor');
-            return `<div class="wg-bt${sv ? ' sv' : ''}"><svg viewBox="0 0 80 80" width="88" height="88"><circle cx="40" cy="40" r="34" fill="none" stroke="var(--pm-fill)" stroke-width="7"/><circle cx="40" cy="40" r="34" fill="none" stroke="${col}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${C2}" stroke-dashoffset="${off}" transform="rotate(-90 40 40)"/></svg><div class="in"><b>${b ? lv + '%' : '—'}</b><span>${b && b.ch ? '充电中' : '本机'}</span></div><em class="svl">${sv ? '省电模式 · 开' : '点一下省电'}</em></div>`;
+            return `<div class="wg-bt${sv ? ' sv' : ''}"><svg viewBox="0 0 80 80" width="88" height="88"><circle cx="40" cy="40" r="34" fill="none" stroke="var(--pm-fill)" stroke-width="7"/><circle cx="40" cy="40" r="34" fill="none" stroke="${col}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${C2}" stroke-dashoffset="${off}" transform="rotate(-90 40 40)"/></svg><div class="in"><b>${b ? lv + '%' : '—'}</b><span>${b && b.ch ? '充电中' : T(w, 'lb', '本机')}</span></div><em class="svl">${sv ? '省电模式 · 开' : T(w, 'tip', '点一下省电')}</em></div>`;
         } },
         todo: { n: '待办', sizes: ['s', 'm'], tap: () => {}, r(w) {
             const it = (w.d && w.d.items) || [];
-            return `<div class="wg-todo"><div class="h"><b>今天</b><span>${it.filter(x => x.done).length}/${it.length}<em data-todoadd="${w.id}">＋</em></span></div>${it.length ? it.slice(0, w.size === 's' ? 4 : 5).map((x, i) => `<div class="ti${x.done ? ' done' : ''}" data-todo="${w.id}|${i}"><i></i><span>${esc(x.t)}</span></div>`).join('') : '<div class="wg-empty">还没写待办</div>'}</div>`;
+            return `<div class="wg-todo"><div class="h"><b>${T(w, 'h', '今天')}</b><span>${it.filter(x => x.done).length}/${it.length}<em data-todoadd="${w.id}">＋</em></span></div>${it.length ? it.slice(0, w.size === 's' ? 4 : 5).map((x, i) => `<div class="ti${x.done ? ' done' : ''}" data-todo="${w.id}|${i}"><i></i><span>${esc(x.t)}</span></div>`).join('') : '<div class="wg-empty">还没写待办</div>'}</div>`;
         }, edit: w => `<div class="lbl">一行一件事</div><textarea class="ta" rows="5" oninput="gyPmTodoText('${w.id}',this.value)">${esc(((w.d && w.d.items) || []).map(x => x.t).join('\n'))}</textarea>` },
-        recent: { n: '最近在聊', sizes: ['m'], tap: () => { const lc = G().lastChat && G().lastChat(); if (lc) window.gyPmOpenChat(lc.x.id); else window.gyPmOpen('chat'); }, r() {
+        recent: { n: '最近在聊', sizes: ['m'], tap: () => { const lc = G().lastChat && G().lastChat(); if (lc) window.gyPmOpenChat(lc.x.id); else window.gyPmOpen('chat'); }, r(w) {
             const lc = G().lastChat && G().lastChat();
             if (!lc) return `<div class="wg-empty pm-hf">还没有人跟你聊天</div>`;
             const av = G().av;
-            return `<div class="wg-h">最近在聊</div><div class="pm-last"><div class="av">${av(lc.x, 44)}</div>
+            return `<div class="wg-h">${T(w, 'h', '最近在聊')}</div><div class="pm-last"><div class="av">${av(lc.x, 44)}</div>
                 <div class="m"><div class="n pm-hf">${esc(lc.x.remark || lc.x.name)}</div><div class="p">${esc((lc.m.sender === 'me' ? '我：' : '') + (plain(lc.m.text, lc.x.members ? lc.m.sender : lc.x.id) || '[图片]'))}</div></div>
                 <span class="k">${esc(ago(lc.m.timestamp))}</span></div>`;
         } },
@@ -195,7 +303,7 @@
         }, edit: w => `<div class="lbl">放谁</div><div class="chips">${(G().chars ? G().chars() : []).map(c => `<span class="chip${String((w.d && w.d.cid) || firstChar()) === String(c.id) ? ' on' : ''}" onclick="gyPmWSet('${w.id}','cid','${esc(c.id)}')">${esc(c.remark || c.name)}</span>`).join('')}</div>` },
         note: { n: '便签', sizes: ['s', 'm'], tap: w => window.gyPmItemSheet(w.id), r(w) {
             const t = (w.d && w.d.text) || '写点什么……';
-            return `<div class="wg-note pm-hf">${esc(t).replace(/\n/g, '<br>')}</div>`;
+            return `<div class="wg-note pm-hf"><em class="nh">${T(w, 'h', 'NOTE')}</em>${esc(t).replace(/\n/g, '<br>')}</div>`;
         }, edit: w => `<div class="lbl">便签内容</div><textarea class="ta pm-hf" rows="4" oninput="gyPmWSet('${w.id}','text',this.value,1)">${esc((w.d && w.d.text) || '')}</textarea>` },
         count: { n: '纪念日', sizes: ['s', 'm'], tap: w => window.gyPmItemSheet(w.id), r(w) {
             const d0 = Object.assign(nextBirthday(), w.d || {});
@@ -213,10 +321,10 @@
             const cap = w.d && w.d.cap ? `<span class="cap pm-hf">${esc(w.d.cap)}</span>` : '';
             const dots = L.length > 1 ? `<span class="pdots">${L.map((_, k) => `<i class="${k === (w.d.i || 0) % L.length ? 'on' : ''}"></i>`).join('')}</span>` : '';
             return img ? `<div class="wg-photo" style="background-image:url('${img}')">${cap}${dots}</div>` : `<div class="wg-photo empty"><span class="cam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>${cap}</div>`;
-        }, edit: w => { const L = photosOf(w); return `<div class="lbl">照片（最多 9 张，点小组件轮着换）</div><div class="pm-thumbs">${L.map((u, k) => `<span style="background-image:url('${u}')"><i onclick="gyPmPhotoDel('${w.id}',${k})">×</i></span>`).join('')}<label class="add">＋<input type="file" accept="image/*" multiple style="display:none" onchange="gyPmWPhoto('${w.id}',this)"></label></div><div class="lbl">角落的小字（可以不写）</div><input class="in" value="${esc((w.d && w.d.cap) || '')}" oninput="gyPmWSet('${w.id}','cap',this.value,1)">`; } },
-        unread: { n: '未读', sizes: ['s'], tap: () => window.gyPmOpen('chat'), r() {
+        }, edit: w => { const L = photosOf(w); return `<div class="lbl">照片（想放几张放几张，点小组件轮着换）</div><div class="pm-thumbs">${L.map((u, k) => `<span style="background-image:url('${u}')"><i onclick="gyPmPhotoDel('${w.id}',${k})">×</i></span>`).join('')}<label class="add">＋<input type="file" accept="image/*,video/*" multiple style="display:none" onchange="gyPmWPhoto('${w.id}',this)"></label></div><div class="lbl">角落的小字（可以不写）</div><input class="in" value="${esc((w.d && w.d.cap) || '')}" oninput="gyPmWSet('${w.id}','cap',this.value,1)">`; } },
+        unread: { n: '未读', sizes: ['s'], tap: () => window.gyPmOpen('chat'), r(w) {
             const un = G().unread ? G().unread() : 0; let nn = 0; try { nn = unreadNotifs || 0; } catch (e) {}
-            return `<div class="wg-un"><span class="h">等你回</span><b class="pm-hf">${un}</b><span>${nn ? `还有 ${nn} 条通知` : '通知都看完了'}</span></div>`;
+            return `<div class="wg-un"><span class="h">${T(w, 'h', '等你回')}</span><b class="pm-hf">${un}</b><span>${nn ? `还有 ${nn} 条通知` : '通知都看完了'}</span></div>`;
         } },
         say: { n: 'TA 说过的话', sizes: ['m'], tap: w => { const m = pickSay(w); if (m) window.gyPmOpenChat(m.cid); }, r(w) {
             const m = pickSay(w);
@@ -224,6 +332,8 @@
             return `<div class="wg-say"><span class="q pm-hf">「${esc(m.t.slice(0, 60))}${m.t.length > 60 ? '…' : ''}」</span><span class="by">—— ${esc(m.name)}</span></div>`;
         }, edit: w => `<div class="lbl">挑谁说过的话</div><div class="chips"><span class="chip${!(w.d && w.d.cid) ? ' on' : ''}" onclick="gyPmWSet('${w.id}','cid','')">谁都行</span>${(G().chars ? G().chars() : []).map(c => `<span class="chip${String(w.d && w.d.cid) === String(c.id) ? ' on' : ''}" onclick="gyPmWSet('${w.id}','cid','${esc(c.id)}')">${esc(c.remark || c.name)}</span>`).join('')}</div>` }
     };
+    // 给 js/66（更多小组件、款式）用
+    window.__gyPmW = { WD, T, esc, pad, dial, MSV, fmtT, plain, charOf, firstChar, lastOf, ago, WK, WKE, MON, isDark, G, save: () => save(), render: () => render(), findW: id => findW(id), photosOf: w => photosOf(w), saverOn: () => saverOn(), pickSay: w => pickSay(w), calHas: (y, m, d) => calHas(y, m, d) };
     // 挑一句：按小时换一次（别每 30 秒刷新一下就变）
     function pickSay(w) {
         const pool = [];
@@ -233,7 +343,7 @@
             msgs.slice(-60).forEach(m => { if (m && String(m.sender) === String(c.id)) { const t = plain(m.text, c.id); if (t && t.length >= 4) pool.push({ t, cid: c.id, name: c.remark || c.name }); } });
         });
         if (!pool.length) return null;
-        const h = Math.floor(Date.now() / 3600000) + (w.id || '').length;
+        const h = Math.floor(Date.now() / 3600000) + (w.id || '').length + ((w.d && w.d.sh) || 0) * 7;
         return pool[h % pool.length];
     }
     // 🔋 省电模式：把「角色自己会去调 API」的那些自动功能先全关掉，再点一下原样恢复（只恢复它关掉的那些）
@@ -265,7 +375,8 @@
     function widgetHtml(w, p, i) {
         const def = WD[w.k]; if (!def) return '';
         let body = ''; try { body = def.r(w); } catch (e) { body = '<div class="wg-empty">这个小组件出错了</div>'; }
-        return `<div class="pm-w pm-item wg wk-${w.k} sz-${w.size}" data-id="${w.id}" data-wid="${w.id}" data-where="page" data-p="${p}" data-i="${i}"><i class="pm-del" data-del="1">−</i>${body}</div>`;
+        const th = w.d && w.d.th ? ` th-${w.d.th}` : '', va = w.d && w.d.v ? ` v-${w.d.v}` : '';
+        return `<div class="pm-w pm-item wg wk-${w.k} sz-${w.size}${th}${va}"${gp(w)} data-id="${w.id}" data-wid="${w.id}" data-where="page" data-p="${p}" data-i="${i}"><i class="pm-del" data-del="1">−</i>${body}</div>`;
     }
 
     /* ---------------- 画桌面 ---------------- */
@@ -273,7 +384,7 @@
         const b = document.body.classList;
         ['black', 'glass', 'hand'].forEach(x => b.toggle('pm-st-' + x, C.style === x));
         b.toggle('pm-font-serif', C.font === 'serif'); b.toggle('pm-font-hand', C.font === 'hand');
-        b.toggle('pm-nolabel', C.labels === false); b.toggle('pm-dark', !!C.dark);
+        b.toggle('pm-nolabel', C.labels === false); b.toggle('pm-dark', !!C.dark); b.toggle('pm-cols5', C.cols === 5);
     }
     // 音乐小组件：歌在放的时候每几秒刷一下进度（只刷它自己，不整页重画）
     function tickMusic() {
@@ -288,16 +399,17 @@
     window.gyPmHomeRender = function () {
         const home = document.getElementById('gyPmHome'); if (!home) return;
         applyPrefs();
+        M = mt(); if (norm(C, M)) save();
+        const flip = flipNext ? new Map([...home.querySelectorAll('.pm-page .pm-item[data-id]')].map(e => [e.dataset.id, e.getBoundingClientRect()])) : null; flipNext = false;
         const keepX = (() => { const el = home.querySelector('.pm-pages'); return el ? el.scrollLeft : null; })();
         const keepY = [...home.querySelectorAll('.pm-page')].map(e => e.scrollTop);
         home.classList.toggle('has-wall', !!C.wall);
-        home.style.backgroundImage = C.wall ? `url('${C.wall}')` : '';
-        home.style.background = C.wall ? '' : (C.wallColor || '');
-        if (C.wall) { home.style.backgroundImage = `url('${C.wall}')`; home.style.backgroundSize = 'cover'; home.style.backgroundPosition = 'center'; }
+        home.style.background = ''; home.style.backgroundImage = '';
         home.classList.toggle('dark-wall', !C.wall && /#1c1c1e|#000000|#2c2c2e/.test(C.wallColor || ''));
-        const pages = C.pages.map((pg, p) => `<div class="pm-page" data-page="${p}"><div class="pm-grid">${pg.map((it, i) => it.t === 'app' ? iconHtml(it.k, 'page', p, i) : widgetHtml(it, p, i)).join('')}</div></div>`).join('');
+        const pgH = pg => { const r = pg.reduce((a, it) => isW(it) ? Math.max(a, (it.g.y + it.g.h) * M.W) : Math.max(a, (it.y + 1) * (M.rh + M.gy)), 0); return Math.ceil(r + 16); };
+        const pages = C.pages.map((pg, p) => `<div class="pm-page" data-page="${p}"><div class="pm-grid" style="min-height:max(100%,${pgH(pg)}px)">${pg.map((it, i) => it.t === 'app' ? iconHtml(it.k, 'page', p, i) : widgetHtml(it, p, i)).join('')}</div></div>`).join('');
         const nP = C.pages.length;
-        home.innerHTML = `<div class="pm-sb">${G().sbHtml ? G().sbHtml() : ''}</div>
+        home.innerHTML = `${wallHtml(C.wall, C.wallColor, C.wallBlur, null, 'home')}<div class="pm-sb">${G().sbHtml ? G().sbHtml() : ''}</div>
             <div class="pm-editbar"><span class="add" onclick="gyPmAddWidget()" title="加小组件">＋</span><span class="lib" onclick="gyPmLibrary()">资源库</span><span class="done" onclick="gyPmEdit(false)">完成</span></div>
             <div class="pm-pages">${pages}</div>
             <div class="pm-pg">${Array.from({ length: nP }, (_, i) => `<i class="${i === cur ? 'on' : ''}" onclick="gyPmPage(${i})"></i>`).join('')}<i class="newpg" onclick="gyPmNewPage()" title="加一页">＋</i></div>
@@ -312,7 +424,35 @@
         home.scrollTop = 0; home.scrollLeft = 0;   // 桌面本身不许被「滚」走（overflow:hidden 的元素也能被代码滚动）
         if (!home.__pmBound) { home.__pmBound = true; bind(home); home.addEventListener('scroll', () => { if (home.scrollTop || home.scrollLeft) { home.scrollTop = 0; home.scrollLeft = 0; } }); }
         if (D.srcId) { const el = home.querySelector(`[data-id="${D.srcId}"]`); if (el) { el.classList.add('pm-src'); D.src = el; } }
+        if (locked) bindLock(home.querySelector('.pm-lock'));
+        if (flip) home.querySelectorAll('.pm-page .pm-item[data-id]').forEach(el => {
+            const a = flip.get(el.dataset.id); if (!a) return; const b = el.getBoundingClientRect();
+            const dx = a.left - b.left, dy = a.top - b.top; if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(a.width - b.width) < 1) return;
+            try { el.animate([{ transform: `translate(${dx}px,${dy}px)`, width: a.width !== b.width ? a.width + 'px' : undefined }, { transform: 'none' }].map(k => { if (k.width === undefined) delete k.width; return k; }), { duration: 280, easing: 'cubic-bezier(.2,.85,.25,1)' }); } catch (e) {}
+        });
+        tilt();
     };
+    let flipNext = false;
+    // 🖼 壁纸一层（单独一层才能做 3D 视差、景深模糊、实况/视频）
+    function wallHtml(img, color, blur, fg, kind) {
+        const bg = img ? `background-image:url('${img}')` : (color ? `background:${color}` : '');
+        return `<div class="pm-wall ${kind}${C.p3d ? ' p3d' : ''}"><div class="bg" style="${bg}${blur ? `;filter:blur(${blur}px)` : ''}"></div>${fg ? `<div class="fg" style="background-image:url('${fg}')"></div>` : ''}</div>`;
+    }
+    // 🌀 3D 视差：电脑跟着鼠标，手机跟着陀螺仪；壁纸往反方向挪一点，图标轻轻跟着，就有了「纵深」
+    const TL = { x: 0, y: 0, raf: 0, bound: false };
+    function tilt() {
+        const home = document.getElementById('gyPmHome'); if (!home) return;
+        home.classList.toggle('pm-3d', !!C.p3d);
+        if (!C.p3d || TL.bound) return;
+        TL.bound = true;
+        const setv = (x, y) => { TL.x = Math.max(-1, Math.min(1, x)); TL.y = Math.max(-1, Math.min(1, y)); if (TL.raf) return; TL.raf = requestAnimationFrame(() => { TL.raf = 0; const h = document.getElementById('gyPmHome'); if (h) { h.style.setProperty('--tx', TL.x.toFixed(3)); h.style.setProperty('--ty', TL.y.toFixed(3)); } }); };
+        document.addEventListener('pointermove', e => {
+            if (!C.p3d || e.pointerType === 'touch' || !document.body.classList.contains('gyphm')) return;
+            const r = document.getElementById('gyPmHome').getBoundingClientRect(); if (!r.width) return;
+            setv((e.clientX - r.left - r.width / 2) / (r.width / 2), (e.clientY - r.top - r.height / 2) / (r.height / 2));
+        }, { passive: true });
+        window.addEventListener('deviceorientation', e => { if (!C.p3d || e.gamma == null) return; setv(e.gamma / 30, (e.beta - 45) / 30); });
+    }
     const render = () => window.gyPmHomeRender();
     window.gyPmPage = function (n) {
         const box = document.querySelector('#gyPmHome .pm-pages'); if (!box) return;
@@ -344,19 +484,48 @@
         const d = new Date(), wk = '日一二三四五六'[d.getDay()];
         let ns = []; try { ns = (globalNotifications || []).slice(0, 4); } catch (e) {}
         const lw = C.lockWall || (!C.lockColor && C.wall), lc = C.lockColor || (!C.lockWall && C.wallColor);
-        const bg = lw ? `background-image:url('${lw}')` : (lc ? `background:${lc}` : '');
-        return `<div class="pm-lock${lw || /#1c1c1e|#000000|#2c2c2e/.test(lc || '') ? ' has-wall' : ''}" style="${bg}" onclick="gyPmUnlock()">
+        const fg = C.lockDepth !== false && C.lockFg ? C.lockFg : null;
+        return `<div class="pm-lock${lw || /#1c1c1e|#000000|#2c2c2e/.test(lc || '') ? ' has-wall' : ''}${fg ? ' depth' : ''}">
+            ${wallHtml(lw, lc, C.lockBlur, null, 'lock')}
             <div class="pm-sb">${G().sbHtml ? G().sbHtml() : ''}</div>
             <div class="lk-d pm-hf">${d.getMonth() + 1}月${d.getDate()}日 星期${wk}</div>
-            <div class="lk-t pm-hf">${pad(d.getHours())}:${pad(d.getMinutes())}</div>
+            <div class="lk-t pm-hf">${pad(d.getHours())}:${pad(d.getMinutes())}</div>${fg ? `<div class="pm-fg${C.p3d ? ' p3d' : ''}" style="background-image:url('${fg}')"></div>` : ''}
             <div class="lk-ns">${ns.map(n => `<div class="lk-n"><b>${esc(String(n.text || '').replace(/<[^>]+>/g, '').slice(0, 60))}</b><span>${esc(ago(n.timestamp))}</span></div>`).join('')}</div>
-            <div class="lk-u">︿<br>轻点解锁</div></div>`;
+            <div class="lk-u">︿<br>上滑解锁</div></div>`;
     }
-    window.gyPmLockNow = function () { locked = C.lock !== false; render(); };
+    // 上滑解锁：锁屏跟着手指往上走，过了一段（或者往上甩一下）就解开，不够就弹回去；点一下只会「跳」一下提示你往上滑
+    function bindLock(el) {
+        if (!el || el.__lk) return; el.__lk = 1;
+        let sy = null, t0 = 0, dy = 0, id = null;
+        el.addEventListener('pointerdown', e => { if (e.button === 2) return; sy = e.clientY; t0 = Date.now(); dy = 0; id = e.pointerId; el.style.transition = 'none'; try { el.setPointerCapture(id); } catch (er) {} });
+        el.addEventListener('pointermove', e => { if (sy == null || e.pointerId !== id) return; dy = Math.min(0, e.clientY - sy); el.style.transform = `translateY(${dy}px)`; el.style.opacity = String(1 - Math.min(.6, -dy / 600)); });
+        const end = e => {
+            if (sy == null) return; sy = null; el.style.transition = '';
+            const fast = dy < -40 && dy / Math.max(1, Date.now() - t0) < -.6;
+            if (dy < -90 || fast) { window.gyPmUnlock(); return; }
+            el.style.transform = ''; el.style.opacity = '';
+            if (dy > -6 && e.type === 'pointerup') { const u = el.querySelector('.lk-u'); if (u) { u.classList.remove('hop'); void u.offsetWidth; u.classList.add('hop'); } }
+        };
+        el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+        let wy = 0, wt = null;
+        el.addEventListener('wheel', e => { wy += e.deltaY; clearTimeout(wt); wt = setTimeout(() => { wy = 0; }, 300); if (Math.abs(wy) > 120) { wy = 0; window.gyPmUnlock(); } }, { passive: true });
+    }
+    document.addEventListener('keydown', e => {
+        if (!locked || !document.body.classList.contains('gyphm') || !document.querySelector('#gyPmHome .pm-lock')) return;
+        if (/^(Enter| |ArrowUp)$/.test(e.key) && !/INPUT|TEXTAREA/.test((e.target && e.target.tagName) || '')) { e.preventDefault(); window.gyPmUnlock(); }
+    });
+    window.gyPmLockNow = function () {
+        locked = C.lock !== false;
+        if (!locked) { render(); return; }
+        if (window.gyPmEdit && editing) window.gyPmEdit(false);
+        try { if (window.gyPmNC) window.gyPmNC(false); } catch (e) {}
+        const b = document.body.classList;
+        if ((b.contains('gyphm-app') || b.contains('gyphm-native')) && typeof window.gyPmHome === 'function') window.gyPmHome(); else render();
+    };
     window.gyPmUnlock = function () {
         const el = document.querySelector('#gyPmHome .pm-lock');
         locked = false;
-        if (el) { el.classList.add('out'); setTimeout(() => { el.remove(); }, 380); } else render();
+        if (el) { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; el.classList.add('out'); setTimeout(() => { el.remove(); }, 380); } else render();
     };
 
     /* ---------------- 编辑桌面：长按、拖动、删除 ---------------- */
@@ -372,20 +541,92 @@
         return el.closest('#gyPmHome .pm-item, #gyPmHome .pm-dock, #gyPmHome .pm-page');
     }
     // 拖动的状态放外面：拖的过程中桌面会重画（图标自动让位），不能跟着重画丢掉
-    const D = { t: null, sx: 0, sy: 0, src: null, srcId: null, ghost: null, drag: false, edgeT: null, hot: null, lastMove: 0 };
+    const D = { t: null, sx: 0, sy: 0, src: null, srcId: null, ghost: null, drag: false, edgeT: null, hot: null, cell: null };
+    // 拖着的东西（按它左上角）落在哪一页的哪儿：图标 → 哪一格；小组件 → 随便哪儿（按比例记）
+    function cellAt(px, py) {
+        if (!D.ghost) return null;
+        const el = document.elementFromPoint(px, py), pgEl = el && el.closest('#gyPmHome .pm-page');
+        if (!pgEl) return null;
+        const grid = pgEl.querySelector('.pm-grid'), r = grid.getBoundingClientRect(), m = M || mt();
+        const it = srcItem(); if (!it) return null;
+        const gl = parseFloat(D.ghost.style.left), gt = parseFloat(D.ghost.style.top);
+        if (isW(it)) {
+            const g = it.g || { w: .5, h: .5 };
+            return { p: +pgEl.dataset.page, free: 1, x: Math.max(0, Math.min(1 - g.w, (gl - r.left) / m.W)), y: Math.max(0, (gt - r.top - 2) / m.W) };
+        }
+        const x = Math.max(0, Math.min(m.n - 1, Math.round((gl - r.left) / (m.cw + m.gx)))), y = Math.max(0, Math.round((gt - r.top) / (m.rh + m.gy)));
+        return { p: +pgEl.dataset.page, x, y, w: 1, h: 1 };
+    }
+    function srcItem() {
+        if (!D.src) return null;
+        if (D.src.dataset.where === 'dock') return { t: 'app', k: D.src.dataset.pmapp };
+        const s0 = posOf(D.src); return s0 && s0.where === 'page' ? C.pages[s0.p][s0.i] : null;
+    }
+    function hl(cell) {
+        if (cell && cell.free) cell = null;   // 小组件不用格子提示，影子就是它落下的位置
+        document.querySelectorAll('#gyPmHome .pm-slot-hl').forEach(x => { if (!cell || x.dataset.k !== [cell.p, cell.x, cell.y].join()) x.remove(); });
+        if (!cell) return;
+        const k = [cell.p, cell.x, cell.y].join();
+        if (document.querySelector(`#gyPmHome .pm-slot-hl[data-k="${k}"]`)) return;
+        const g = document.querySelector(`#gyPmHome .pm-page[data-page="${cell.p}"] .pm-grid`); if (!g) return;
+        g.insertAdjacentHTML('beforeend', `<div class="pm-slot-hl app" data-k="${k}" style="grid-column:${cell.x + 1};grid-row:${cell.y + 1}"></div>`);
+    }
+    // 松手：图标放进那一格（压到的挪开 / 同页互换）；小组件就放在松手的地方，压到的图标自己挪开
+    function dropCell(srcEl, cell) {
+        const s0 = posOf(srcEl); if (!s0 || !C.pages[cell.p]) return;
+        flipNext = true;
+        if (cell.free) {
+            const it = C.pages[s0.p][s0.i]; if (!it) return;
+            C.pages[s0.p].splice(s0.i, 1); C.pages[cell.p].push(it);   // 放到最上层
+            it.g = Object.assign({}, it.g, { x: cell.x, y: cell.y });
+            layout(C.pages[cell.p]); save(); render(); return;
+        }
+        let it, from = null;
+        if (s0.where === 'dock') { const k = C.dock.splice(s0.i, 1)[0]; it = { id: uid(), t: 'app', k }; }
+        else { it = C.pages[s0.p][s0.i]; if (s0.p === cell.p) from = { x: it.x, y: it.y }; else { C.pages[s0.p].splice(s0.i, 1); } }
+        place(C.pages[cell.p], it, cell.x, cell.y, from);
+        save(); render();
+    }
+    // ↘ 按住小组件的边（或角）拖：随便调大小；里面的排版跟着大小自动换
+    const EDGE = 14;
+    function edgeOf(el, x, y) {
+        const r = el.getBoundingClientRect(), e = { l: x - r.left < EDGE, r: r.right - x < EDGE, t: y - r.top < EDGE, b: r.bottom - y < EDGE };
+        return e.l || e.r || e.t || e.b ? e : null;
+    }
+    const CUR = e => (e.t && e.l) || (e.b && e.r) ? 'nwse-resize' : (e.t && e.r) || (e.b && e.l) ? 'nesw-resize' : (e.l || e.r) ? 'ew-resize' : 'ns-resize';
+    function resizeMove(e) {
+        const R = D.rs, m = M || mt(), dx = (e.clientX - D.sx) / m.W, dy = (e.clientY - D.sy) / m.W, g = Object.assign({}, R.g0), mn = .2;
+        if (R.e.r) g.w = Math.max(mn, Math.min(1 - g.x, R.g0.w + dx));
+        if (R.e.b) g.h = Math.max(mn, R.g0.h + dy);
+        if (R.e.l) { const nx = Math.max(0, Math.min(R.g0.x + R.g0.w - mn, R.g0.x + dx)); g.w = R.g0.w + (R.g0.x - nx); g.x = nx; }
+        if (R.e.t) { const ny = Math.max(0, Math.min(R.g0.y + R.g0.h - mn, R.g0.y + dy)); g.h = R.g0.h + (R.g0.y - ny); g.y = ny; }
+        R.w.g = g;
+        const el = R.el; Object.assign(el.style, { left: g.x * 100 + '%', top: g.y * m.W + 'px', width: g.w * 100 + '%', height: g.h * m.W + 'px' });
+        const z = sizeFor(WD[R.w.k], g.w, g.h, m);
+        if (z !== R.w.size) { R.w.size = z; el.className = el.className.replace(/\bsz-\w+/, 'sz-' + z); const del = el.querySelector('.pm-del'); el.innerHTML = ''; if (del) el.appendChild(del); try { el.insertAdjacentHTML('beforeend', WD[R.w.k].r(R.w)); } catch (er) {} }
+    }
     function bind(home) {
         const clear = () => { clearTimeout(D.t); D.t = null; };
         home.onpointerdown = e => {
             if (locked || e.button === 2) return;
-            if (e.target.closest('.pm-editbar,.pm-pg,.pm-lib-s,input,textarea,[data-mc],[data-todo],[data-todoadd],.pm-sb')) return;
+            if (e.target.closest('.pm-editbar,.pm-pg,.pm-lib-s,input,textarea,[data-mc],[data-todo],[data-todoadd],.pm-sb,.pm-txe')) return;
             D.sx = e.clientX; D.sy = e.clientY; D.drag = false;
             D.src = e.target.closest('.pm-item');
             if (!editing) { clear(); D.t = setTimeout(() => { suppress = true; window.gyPmEdit(true); }, 520); return; }
             if (D.src && (D.src.dataset.where === 'lib' || e.target.closest('[data-del]'))) D.src = null;
+            if (D.src && D.src.dataset.wid) {
+                const ed = edgeOf(D.src, e.clientX, e.clientY), w = findW(D.src.dataset.wid);
+                if (ed && w && w.g) { D.rs = { e: ed, el: D.src, w, g0: Object.assign({}, w.g) }; D.src.classList.add('pm-rs'); try { home.setPointerCapture(e.pointerId); } catch (er) {} }
+            }
         };
         home.onpointermove = e => {
             if (!editing) { if (D.t && (Math.abs(e.clientX - D.sx) > 8 || Math.abs(e.clientY - D.sy) > 8)) clear(); return; }
-            if (!D.src) return;
+            if (D.rs) { resizeMove(e); D.rsMoved = true; return; }
+            if (!D.src) {   // 鼠标停在小组件边上：换成调大小的光标
+                const w = e.target.closest && e.target.closest('#gyPmHome .pm-w.pm-item'), ed = w && edgeOf(w, e.clientX, e.clientY);
+                home.style.cursor = ed ? CUR(ed) : '';
+                return;
+            }
             if (!D.drag && Math.hypot(e.clientX - D.sx, e.clientY - D.sy) > 6) {
                 D.drag = true;
                 try { home.setPointerCapture(e.pointerId); } catch (er) {}
@@ -400,16 +641,11 @@
             D.ghost.style.left = (e.clientX - D.ghost.__dx) + 'px'; D.ghost.style.top = (e.clientY - D.ghost.__dy) + 'px';
             const tg = itemAt(e.clientX, e.clientY);
             if (D.hot && D.hot !== tg) D.hot.classList.remove('pm-hot');
-            D.hot = tg && tg !== D.src ? tg : null;
-            // 在桌面上拖：碰到谁就马上挤进它的位置，其他图标自动让开（跟真手机一样）
-            if (D.hot && D.srcId && D.hot.classList.contains('pm-item') && D.hot.dataset.where === 'page' && D.src.dataset.where === 'page' && Date.now() - D.lastMove > 170) {
-                const s0 = posOf(D.src), t0 = posOf(D.hot);
-                if (s0 && t0) {
-                    const it = C.pages[s0.p].splice(s0.i, 1)[0];
-                    C.pages[t0.p].splice(Math.min(t0.i, C.pages[t0.p].length), 0, it);
-                    D.lastMove = Date.now(); D.hot = null; render();
-                }
-            } else if (D.hot) D.hot.classList.add('pm-hot');
+            D.hot = null;
+            // 在 Dock 上：Dock 亮一下；在桌面上：算出落在哪个格子，那几格亮出来（其他图标先不动，松手才让位）
+            const dock = tg && (tg.classList.contains('pm-dock') ? tg : tg.closest('.pm-dock'));
+            if (dock) { D.hot = dock; dock.classList.add('pm-hot'); D.cell = null; hl(null); }
+            else { D.cell = cellAt(e.clientX, e.clientY); hl(D.cell); }
             // 拖到屏幕左右边上停一下：翻页
             const box = home.querySelector('.pm-pages'), br = box.getBoundingClientRect();
             const edge = e.clientX > br.right - 22 ? 1 : e.clientX < br.left + 22 ? -1 : 0;
@@ -418,25 +654,27 @@
         };
         home.onpointerup = e => {
             clear(); clearTimeout(D.edgeT); D.edgeT = null;
+            if (D.rs) {
+                const R = D.rs; D.rs = null; R.el.classList.remove('pm-rs');
+                if (D.rsMoved) { const pg = C.pages.find(x => x.includes(R.w)); flipNext = true; if (pg) layout(pg); save(); render(); suppress = true; setTimeout(() => { suppress = false; }, 50); }
+                D.rsMoved = false; D.src = null; return;
+            }
             if (D.hot) D.hot.classList.remove('pm-hot');
             if (D.drag) {
                 const tg = itemAt(e.clientX, e.clientY);
                 if (D.ghost) D.ghost.remove(); D.ghost = null;
                 const src = D.src; if (src) src.classList.remove('pm-src');
-                // 桌面上已经边拖边排好了；这里只管「拖进 / 拖出 Dock」和「拖到别的页的空地」
-                if (src && tg && tg !== src && (tg.classList.contains('pm-dock') || tg.dataset.where === 'dock' || src.dataset.where === 'dock' || tg.classList.contains('pm-page'))) dropOn(src, tg);
-                else if (src && tg && tg !== src && tg.classList.contains('pm-item') && tg.dataset.where === 'page' && src.dataset.where === 'page') {
-                    // 拖得太快、边拖边让位没跟上：松手时落在谁上面就放到谁的位置
-                    const s0 = posOf(src), t0 = posOf(tg);
-                    if (s0 && t0) { const it = C.pages[s0.p].splice(s0.i, 1)[0]; C.pages[t0.p].splice(Math.min(t0.i, C.pages[t0.p].length), 0, it); }
-                    save(); render();
-                }
+                D.srcId = null;   // 松手了：重画的时候别再把它标成「半透明的原位」
+                const cell = D.cell || (tg && !tg.closest('.pm-dock') ? cellAt(e.clientX, e.clientY) : null);
+                hl(null);
+                if (src && tg && (tg.classList.contains('pm-dock') || tg.closest('.pm-dock'))) dropOn(src, tg.closest('.pm-item[data-where="dock"]') || tg.closest('.pm-dock'));
+                else if (src && cell) dropCell(src, cell);
                 else { save(); render(); }
                 suppress = true; setTimeout(() => { suppress = false; }, 50);
             }
-            D.src = null; D.srcId = null; D.drag = false; D.hot = null;
+            D.src = null; D.srcId = null; D.drag = false; D.hot = null; D.cell = null;
         };
-        home.onpointercancel = () => { clear(); if (D.ghost) D.ghost.remove(); D.ghost = null; if (D.src) D.src.classList.remove('pm-src'); D.src = null; D.srcId = null; D.drag = false; };
+        home.onpointercancel = () => { clear(); if (D.rs) { D.rs.el.classList.remove('pm-rs'); D.rs = null; render(); } hl(null); D.cell = null; if (D.ghost) D.ghost.remove(); D.ghost = null; if (D.src) D.src.classList.remove('pm-src'); D.src = null; D.srcId = null; D.drag = false; };
         home.oncontextmenu = e => { if (locked) return; e.preventDefault(); if (!editing) window.gyPmEdit(true); };
         home.onclick = e => {
             if (locked) return;
@@ -445,6 +683,8 @@
             if (!it) return;
             if (editing) {
                 if (e.target.closest('[data-del]')) { removeItem(it); return; }
+                const tx = e.target.closest('[data-tx]');
+                if (tx && it.dataset.wid) { editTx(tx, it.dataset.wid); return; }
                 window.gyPmItemSheet(it.dataset.wid || null, it.dataset.wid ? null : it.dataset.pmapp, it.dataset.where === 'dock');
                 return;
             }
@@ -461,6 +701,8 @@
                 if (w && w.d && w.d.items && w.d.items[+ix]) { w.d.items[+ix].done = !w.d.items[+ix].done; save(); render(); }
                 return;
             }
+            const ac = e.target.closest('[data-act]');
+            if (ac && it.dataset.wid) { const w = findW(it.dataset.wid), def = w && WD[w.k]; if (def && def.act) def.act(w, ac.dataset.act, ac); return; }
             const wd = e.target.closest('[data-day]');
             if (wd) { window.gyPmCalendar(wd.dataset.day); return; }
             if (it.dataset.wid) {
@@ -470,6 +712,15 @@
             }
             if (it.dataset.pmapp) window.gyPmOpen(it.dataset.pmapp);
         };
+    }
+    // 编辑桌面时直接点小组件上的字：原地改，回车或点别处就存
+    function editTx(el, wid) {
+        if (el.isContentEditable) return;
+        el.contentEditable = 'true'; el.classList.add('pm-txe'); el.focus();
+        try { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (e) {}
+        const fin = () => { el.removeEventListener('blur', fin); el.contentEditable = 'false'; el.classList.remove('pm-txe'); const v = el.textContent.trim(); window.gyPmTx(wid, el.dataset.tx, v === el.dataset.d ? '' : v); };
+        el.addEventListener('blur', fin);
+        el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } if (e.key === 'Escape') { el.textContent = el.dataset.d; el.blur(); } e.stopPropagation(); });
     }
     const findW = id => { for (const pg of C.pages) { const w = pg.find(x => x.id === id); if (w) return w; } return null; };
     function posOf(el) {
@@ -483,24 +734,13 @@
     }
     function dropOn(srcEl, tgEl) {
         const s = posOf(srcEl), t = posOf(tgEl);
-        if (!s || !t) return;
-        const isW = !!srcEl.dataset.wid;
-        if (t.where === 'dock' && isW) { toast('小组件放不进 Dock'); return; }
-        // 取出来
-        let item;
-        if (s.where === 'page') item = C.pages[s.p].splice(s.i, 1)[0];
-        else { const k = C.dock.splice(s.i, 1)[0]; item = { id: uid(), t: 'app', k }; }
-        let ti = t.i;
-        if (s.where === t.where && (t.where === 'dock' || s.p === t.p) && s.i < ti && tgEl.classList.contains('pm-item')) ti = ti;   // 往后拖：落到目标后面
-        if (t.where === 'dock') {
-            if (C.dock.length >= 5) {   // 满了：跟目标换
-                const k2 = C.dock.splice(Math.min(ti, C.dock.length - 1), 1)[0];
-                if (s.where === 'page') C.pages[s.p].splice(s.i, 0, { id: uid(), t: 'app', k: k2 }); else C.dock.push(k2);
-            }
-            C.dock.splice(Math.min(ti, C.dock.length), 0, item.k);
+        if (!s || !t || t.where !== 'dock') { save(); render(); return; }
+        if (srcEl.dataset.wid) { toast('小组件放不进 Dock'); render(); return; }
+        if (s.where === 'dock') {   // Dock 里换顺序
+            const k = C.dock.splice(s.i, 1)[0]; C.dock.splice(Math.min(t.i, C.dock.length), 0, k);
         } else {
-            const pg = C.pages[t.p];
-            pg.splice(Math.min(ti, pg.length), 0, item);
+            const it = C.pages[s.p].splice(s.i, 1)[0];
+            C.dock.splice(Math.min(t.i, C.dock.length), 0, it.k);
         }
         save(); render();
     }
@@ -513,19 +753,30 @@
         }
         save(); render();
     }
+    // 找一页有空位的放进去（从当前页开始找；都满了就新开一页）
+    function putFree(it, pref) {
+        const order = [pref, ...C.pages.map((_, i) => i).filter(i => i !== pref)].filter(i => C.pages[i]);
+        for (const p of order) { const f = firstFree(C.pages[p], null, null, MAXR); if (f) { it.x = f.x; it.y = f.y; C.pages[p].push(it); return p; } }
+        C.pages.push([Object.assign(it, { x: 0, y: 0 })]); return C.pages.length - 1;
+    }
     function addBack(k) {
-        let p = C.pages.findIndex(pg => pg.length < 24); if (p < 0) { C.pages.push([]); p = C.pages.length - 1; }
-        C.pages[p].push({ id: uid(), t: 'app', k }); save(); toast(`「${appName(k)}」放回了第 ${p + 1} 页`); render();
+        const p = putFree({ id: uid(), t: 'app', k }, cur); save(); toast(`「${appName(k)}」放回了第 ${p + 1} 页`); render();
     }
 
     /* ---------------- 编辑单个：App / 小组件 ---------------- */
+    const ZN = { s: '小', m: '中', l: '大', x: '长条', t: '小条' };
+    // 小组件配色：不选就跟着「外观」走
+    const TH = [['', '跟随', 'var(--pm-card)'], ['white', '白', '#fff'], ['black', '黑', '#111'], ['grey', '灰', '#e5e5ea'], ['glass', '玻璃', 'linear-gradient(135deg,rgba(255,255,255,.9),rgba(200,200,210,.5))'], ['cream', '奶油', '#f4ecdb'], ['rose', '玫瑰', '#f3dede'], ['sky', '雾蓝', '#dfe8f3'], ['sage', '鼠尾草', '#e1eadb'], ['mocha', '摩卡', '#6b5a4e'], ['ink', '墨绿', '#2f3b33']];
     const SWATCH = ['#ffffff', '#f2f2f4', '#d1d1d6', '#8e8e93', '#3a3a3c', '#111111', '#f6e7e7', '#e7eef6', '#eaf2e6', '#f6f0e1'];
     window.gyPmItemSheet = function (wid, appKey, inDock) {
         if (wid) {
             const w = findW(wid); if (!w) return; const def = WD[w.k];
             const page = C.pages.findIndex(pg => pg.includes(w));
             window.gyPmSheet(`<h4>${esc(def.n)}</h4>
-                ${def.sizes.length > 1 ? `<div class="lbl">大小</div><div class="seg">${def.sizes.map(z => `<span class="chip${w.size === z ? ' on' : ''}" onclick="gyPmWSize('${w.id}','${z}')">${{ s: '小', m: '中', l: '大' }[z]}</span>`).join('')}</div>` : ''}
+                ${def.sizes.length > 1 ? `<div class="lbl">大小</div><div class="seg">${def.sizes.map(z => `<span class="chip${w.size === z ? ' on' : ''}" onclick="gyPmWSize('${w.id}','${z}')">${ZN[z]}</span>`).join('')}</div>` : ''}
+                ${def.vars ? `<div class="lbl">款式</div><div class="chips">${def.vars.filter(v => !v[2] || v[2].includes(w.size)).map(v => `<span class="chip${((w.d && w.d.v) || def.vars[0][0]) === v[0] ? ' on' : ''}" onclick="gyPmWSet('${w.id}','v','${v[0]}')">${v[1]}</span>`).join('')}</div>` : ''}
+                ${txEdit(w)}
+                <div class="lbl">颜色</div><div class="pm-th">${TH.map(t => `<span class="${((w.d && w.d.th) || '') === t[0] ? 'on' : ''}" onclick="gyPmWSet('${w.id}','th','${t[0]}')"><i style="background:${t[2]}"></i>${t[1]}</span>`).join('')}</div>
                 ${def.edit ? def.edit(w) : ''}
                 ${C.pages.length > 1 ? `<div class="lbl">放到</div><div class="chips">${C.pages.map((_, i) => `<span class="chip${i === page ? ' on' : ''}" onclick="gyPmMoveTo('${w.id}',null,${i})">第 ${i + 1} 页</span>`).join('')}</div>` : ''}
                 <button class="it danger" onclick="gyPmWDel('${w.id}')">删掉这个小组件</button>
@@ -538,11 +789,28 @@
             <div class="lbl">名字</div><input class="in" value="${esc(appName(k))}" oninput="gyPmAppSet('${k}','name',this.value)">
             <div class="lbl">底色</div><div class="sw">${SWATCH.map(c => `<span style="background:${c}" onclick="gyPmAppSet('${k}','color','${c}')"></span>`).join('')}</div>
             <div class="lbl">图标</div>
-            <label class="it">换成自己的图片<input type="file" accept="image/*" style="display:none" onchange="gyPmAppImg('${k}',this)"></label>
+            <label class="it">换成自己的图片<input type="file" accept="image/*,video/*" style="display:none" onchange="gyPmAppImg('${k}',this)"></label>
             <button class="it muted" onclick="gyPmAppSet('${k}','reset')">恢复原来的样子</button>
             ${inDock ? `<button class="it" onclick="gyPmDock('${k}',false)">从 Dock 拿下来放到桌面</button>` : (page >= 0 ? `<button class="it" onclick="gyPmDock('${k}',true)">放进 Dock</button>` : '')}
             ${!inDock && C.pages.length > 1 && page >= 0 ? `<div class="lbl">放到</div><div class="chips">${C.pages.map((_, i) => `<span class="chip${i === page ? ' on' : ''}" onclick="gyPmMoveTo(null,'${k}',${i})">第 ${i + 1} 页</span>`).join('')}</div>` : ''}
             <button class="it pri" onclick="gyPmCloseSheet();gyPmHomeRender()">好了</button>`);
+    };
+    // 这个小组件上有哪些字能改
+    function txEdit(w) {
+        let h = ''; try { h = WD[w.k].r(w); } catch (e) {}
+        const t = document.createElement('template'); t.innerHTML = h;
+        const seen = new Set(), rows = [];
+        t.content.querySelectorAll('[data-tx]').forEach(el => { const k = el.dataset.tx; if (seen.has(k)) return; seen.add(k); const cur = (w.d && w.d.tx && w.d.tx[k]) || ''; rows.push(`<input class="in tx" data-k="${esc(k)}" placeholder="${esc(el.dataset.d)}" value="${esc(cur)}" oninput="gyPmTx('${w.id}','${esc(k)}',this.value)">`); });
+        return rows.length ? `<div class="lbl">小组件上的字（空着就是原来的字；编辑桌面时也可以直接点字改）</div><div class="pm-txs">${rows.join('')}</div>` : '';
+    }
+    function paintW(w) {
+        document.querySelectorAll(`#gyPmHome [data-wid="${w.id}"]`).forEach(el => { const del = el.querySelector('.pm-del'); el.innerHTML = ''; if (del) el.appendChild(del); try { el.insertAdjacentHTML('beforeend', WD[w.k].r(w)); } catch (e) {} });
+    }
+    window.gyPmTx = function (id, k, v) {
+        const w = findW(id); if (!w) return;
+        w.d = Object.assign({}, w.d || {}); w.d.tx = Object.assign({}, w.d.tx || {});
+        v = String(v || ''); if (v.trim()) w.d.tx[k] = v; else delete w.d.tx[k];
+        save(); paintW(w);
     };
     window.gyPmWSet = function (id, key, val, quiet) {
         const w = findW(id); if (!w) return; w.d = Object.assign({}, w.d || {}, { [key]: val }); save();
@@ -555,97 +823,254 @@
     };
     window.gyPmTodoAddGo = function (id) {
         const w = findW(id), v = ((document.getElementById('gyPmTodoIn') || {}).value || '').trim(); if (!w || !v) return;
-        w.d = w.d || {}; w.d.items = (w.d.items || []).concat([{ t: v.slice(0, 40), done: false }]).slice(-12); save(); G().closeSheet(); render();
+        w.d = w.d || {}; w.d.items = (w.d.items || []).concat([{ t: v, done: false }]); save(); G().closeSheet(); render();
     };
     window.gyPmTodoText = function (id, v) {
         const w = findW(id); if (!w) return;
         const old = (w.d && w.d.items) || [];
-        w.d = Object.assign({}, w.d || {}, { items: String(v || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 12).map(t => ({ t, done: !!(old.find(o => o.t === t) || {}).done })) });
+        w.d = Object.assign({}, w.d || {}, { items: String(v || '').split('\n').map(x => x.trim()).filter(Boolean).map(t => ({ t, done: !!(old.find(o => o.t === t) || {}).done })) });
         save(); render();
     };
-    window.gyPmWSize = function (id, z) { const w = findW(id); if (!w) return; w.size = z; save(); render(); window.gyPmItemSheet(id); };
+    window.gyPmWSize = function (id, z) {
+        const w = findW(id); if (!w) return; const pg = C.pages.find(x => x.includes(w));
+        const [nw, nh] = nom(z); w.size = z;
+        w.g = Object.assign({ x: 0, y: 0 }, w.g, { w: nw, h: nh }); w.g.x = Math.min(w.g.x, Math.max(0, 1 - nw));   // 变大了压到的图标挪开；变小了空出来的就空着
+        flipNext = true; if (pg) layout(pg); save(); render(); window.gyPmItemSheet(id);
+    };
     window.gyPmWDel = function (id) { C.pages.forEach(pg => { const i = pg.findIndex(x => x.id === id); if (i >= 0) pg.splice(i, 1); }); save(); G().closeSheet(); render(); };
     window.gyPmMoveTo = function (wid, k, p) {
         let it = null;
         C.pages.forEach(pg => { const i = pg.findIndex(x => wid ? x.id === wid : (x.t === 'app' && x.k === k)); if (i >= 0 && !it) it = pg.splice(i, 1)[0]; });
-        if (it) C.pages[p].push(it);
+        if (it && isW(it)) { const f = spotFor(C.pages[p], it.g.w, it.g.h); it.g = Object.assign({}, it.g, f); C.pages[p].push(it); layout(C.pages[p]); }
+        else if (it) { const f = firstFree(C.pages[p]) || { x: 0, y: 0 }; it.x = f.x; it.y = f.y; C.pages[p].push(it); }
         save(); G().closeSheet(); cur = p; render(); window.gyPmPage(p);
     };
     window.gyPmDock = function (k, into) {
         if (into) {
-            if (C.dock.length >= 5) { toast('Dock 满了', '最多放 5 个，先拿下来一个'); return; }
             C.pages.forEach(pg => { const i = pg.findIndex(x => x.t === 'app' && x.k === k); if (i >= 0) pg.splice(i, 1); });
             C.dock.push(k);
         } else {
             C.dock = C.dock.filter(x => x !== k);
-            (C.pages[cur] || C.pages[0]).push({ id: uid(), t: 'app', k });
+            putFree({ id: uid(), t: 'app', k }, cur);
         }
         save(); G().closeSheet(); render();
     };
     window.gyPmAppSet = function (k, what, v) {
-        if (what === 'name') { if (v && v.trim()) C.names[k] = v.trim().slice(0, 8); else delete C.names[k]; save(); render(); return; }
+        if (what === 'name') { if (v && v.trim()) C.names[k] = v.trim(); else delete C.names[k]; save(); render(); return; }
         if (what === 'color') C.colors[k] = v;
         if (what === 'reset') { delete C.colors[k]; delete C.imgs[k]; delete C.names[k]; }
         if (what === 'resetimg') { delete C.imgs[k]; save(); render(); window.gyPmIcons(); return; }
         save(); render(); window.gyPmItemSheet(null, k, C.dock.includes(k));
     };
-    function shrink(file, W, H, cb, q) {
-        const img = new Image(), url = URL.createObjectURL(file);
-        img.onload = () => {
-            const r = Math.max(W / img.width, H / img.height);
-            const c = document.createElement('canvas'); c.width = W; c.height = H;
-            c.getContext('2d').drawImage(img, (W - img.width * r) / 2, (H - img.height * r) / 2, img.width * r, img.height * r);
-            URL.revokeObjectURL(url); cb(c.toDataURL('image/jpeg', q || .85));
-        };
-        img.onerror = () => { URL.revokeObjectURL(url); toast('这张图打不开'); };
+    /* ✂️ 裁剪：在手机屏幕里打开，拖动挪位置，滚轮 / 两指 / 下面的滑条放大缩小，框里的就是最后的样子 */
+    window.gyPmCrop = function (file, aspect, outW, cb, opt) {
+        opt = opt || {};
+        const url = typeof file === 'string' ? file : URL.createObjectURL(file);
+        const img = new Image();
+        img.onerror = () => { toast('这张图打不开'); done(); };
+        const old = document.getElementById('gyPmCrop'); if (old) old.remove();
+        const ov = document.createElement('div'); ov.id = 'gyPmCrop';
+        ov.innerHTML = `<div class="cr-hd"><span class="x">取消</span><b>${esc(opt.title || '移动和缩放')}</b><span class="ok">完成</span></div>
+            <div class="cr-st"><img alt=""><div class="cr-fr${opt.round ? ' round' : ''}"><i></i><i></i><i></i><i></i></div></div>
+            <div class="cr-ft"><span>−</span><input type="range" min="1" max="5" step="0.01" value="1"><span>＋</span></div>
+            <div class="cr-tip">拖动挪位置 · 滚轮或两指捏合缩放${opt.left ? ` · 还有 ${opt.left} 张` : ''}</div>`;
+        document.body.appendChild(ov); document.body.classList.add('gyphm-crop');
+        const st = ov.querySelector('.cr-st'), im = ov.querySelector('img'), fr = ov.querySelector('.cr-fr'), rg = ov.querySelector('input');
+        let W = 0, H = 0, fw = 0, fh = 0, base = 1, z = 1, ox = 0, oy = 0;
+        function done() { if (typeof file !== 'string') { try { URL.revokeObjectURL(url); } catch (e) {} } ov.remove(); if (!document.getElementById('gyPmCrop')) document.body.classList.remove('gyphm-crop'); }
+        function clamp() { const s = base * z, mx = Math.max(0, (W * s - fw) / 2), my = Math.max(0, (H * s - fh) / 2); ox = Math.max(-mx, Math.min(mx, ox)); oy = Math.max(-my, Math.min(my, oy)); }
+        function paint() {
+            clamp(); const s = base * z, r = st.getBoundingClientRect();
+            im.style.width = W * s + 'px'; im.style.height = H * s + 'px';
+            im.style.left = (r.width / 2 + ox - W * s / 2) + 'px'; im.style.top = (r.height / 2 + oy - H * s / 2) + 'px';
+            rg.value = z;
+        }
+        function fit() {
+            const r = st.getBoundingClientRect();
+            fw = Math.min(r.width - 36, (r.height - 36) * aspect); fh = fw / aspect;
+            fr.style.width = fw + 'px'; fr.style.height = fh + 'px';
+            base = Math.max(fw / W, fh / H); paint();
+        }
+        img.onload = () => { W = img.naturalWidth; H = img.naturalHeight; im.src = url; fit(); };
         img.src = url;
-    }
-    window.gyPmAppImg = function (k, inp, fromList) {
-        const f = inp && inp.files && inp.files[0]; if (!f) return;
-        shrink(f, 144, 144, u => { C.imgs[k] = u; save(); render(); if (fromList) window.gyPmIcons(); else window.gyPmItemSheet(null, k, C.dock.includes(k)); });
+        const pts = new Map(); let pd = 0, pz = 1;
+        st.addEventListener('pointerdown', e => { pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); try { st.setPointerCapture(e.pointerId); } catch (er) {} if (pts.size === 2) { const [a, b] = [...pts.values()]; pd = Math.hypot(a.x - b.x, a.y - b.y); pz = z; } });
+        st.addEventListener('pointermove', e => {
+            const p0 = pts.get(e.pointerId); if (!p0) return;
+            if (pts.size === 1) { ox += e.clientX - p0.x; oy += e.clientY - p0.y; }
+            pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (pts.size === 2 && pd) { const [a, b] = [...pts.values()]; z = Math.max(1, Math.min(5, pz * Math.hypot(a.x - b.x, a.y - b.y) / pd)); }
+            paint();
+        });
+        const up = e => { pts.delete(e.pointerId); if (pts.size < 2) pd = 0; };
+        st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
+        st.addEventListener('wheel', e => { e.preventDefault(); z = Math.max(1, Math.min(5, z * (e.deltaY < 0 ? 1.08 : 1 / 1.08))); paint(); }, { passive: false });
+        rg.oninput = () => { z = +rg.value; paint(); };
+        ov.querySelector('.x').onclick = () => { done(); if (opt.cancel) opt.cancel(); };
+        ov.querySelector('.ok').onclick = () => {
+            if (!W) return;
+            const s = base * z, sx = (W * s / 2 - ox - fw / 2) / s, sy = (H * s / 2 - oy - fh / 2) / s, sw = fw / s, sh = fh / s;
+            const ow = Math.round(Math.max(Math.min(outW, sw), Math.min(outW, 320))), oh = Math.round(ow / aspect);
+            const c = document.createElement('canvas'); c.width = ow; c.height = oh;
+            const g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
+            if (opt.png) { g.drawImage(img, sx, sy, sw, sh, 0, 0, ow, oh); } else { g.fillStyle = '#fff'; g.fillRect(0, 0, ow, oh); g.drawImage(img, sx, sy, sw, sh, 0, 0, ow, oh); }
+            let out = ''; try { out = opt.png ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', .88); } catch (er) {}
+            done(); if (out) cb(out);
+        };
+        return ov;
     };
-    window.gyPmWPhoto = function (id, inp) {
+    /* 🧍 锁屏景深：在锁屏壁纸上把人物（或想放前面的东西）涂出来，时间就跑到它后面。
+       手动涂不用联网；「自动抠图」要联网，第一次会下载一个几十 MB 的模型。 */
+    window.gyPmDepth = function () {
+        const src = C.lockWall || (!C.lockColor && C.wall);
+        if (!src || /^gylive:/.test(src)) { toast('锁屏先用一张照片当壁纸'); return; }
+        G().closeSheet();
+        const img = new Image();
+        img.onerror = () => toast('这张壁纸读不出来');
+        img.onload = () => {
+            const sc = Math.min(1, 900 / img.naturalWidth), cw = Math.round(img.naturalWidth * sc), ch = Math.round(img.naturalHeight * sc);
+            const old = document.getElementById('gyPmCrop'); if (old) old.remove();
+            const ov = document.createElement('div'); ov.id = 'gyPmCrop'; ov.className = 'pm-depth';
+            ov.innerHTML = `<div class="cr-hd"><span class="x">取消</span><b>涂出挡在时间前面的主体</b><span class="ok">完成</span></div>
+                <div class="cr-st dp"><div class="dp-box"><img alt=""><div class="dp-clock pm-hf">${pad(new Date().getHours())}:${pad(new Date().getMinutes())}</div><canvas class="mk"></canvas></div></div>
+                <div class="dp-tools"><span class="on" data-t="brush">画笔</span><span data-t="erase">橡皮</span><span data-t="auto">自动抠图</span><span data-t="clear">清空</span></div>
+                <div class="cr-ft"><span>细</span><input type="range" min="6" max="120" value="40"><span>粗</span></div>
+                <div class="cr-tip">在人物身上涂一涂（红色的部分会挡在时间前面）</div>`;
+            document.body.appendChild(ov); document.body.classList.add('gyphm-crop');
+            const box = ov.querySelector('.dp-box'), st = ov.querySelector('.cr-st'), im = ov.querySelector('img'), mk = ov.querySelector('canvas'), rg = ov.querySelector('input');
+            im.src = src; mk.width = cw; mk.height = ch;
+            const g = mk.getContext('2d');
+            const fit = () => { const r = st.getBoundingClientRect(), k = Math.min((r.width - 24) / cw, (r.height - 16) / ch); box.style.width = cw * k + 'px'; box.style.height = ch * k + 'px'; };
+            fit();
+            const tint = () => { g.globalCompositeOperation = 'source-in'; g.fillStyle = '#ff3b30'; g.fillRect(0, 0, cw, ch); g.globalCompositeOperation = 'source-over'; };
+            // 已经涂过：接着改
+            if (C.lockFg) { const f = new Image(); f.onload = () => { g.drawImage(f, 0, 0, cw, ch); tint(); }; f.src = C.lockFg; }
+            let tool = 'brush', last = null;
+            const at = e => { const r = mk.getBoundingClientRect(); return { x: (e.clientX - r.left) * cw / r.width, y: (e.clientY - r.top) * ch / r.height, k: cw / r.width }; };
+            const dot = (a, b) => {
+                g.globalCompositeOperation = tool === 'erase' ? 'destination-out' : 'source-over';
+                g.strokeStyle = g.fillStyle = '#ff3b30'; g.lineCap = g.lineJoin = 'round'; g.lineWidth = +rg.value * b.k;
+                g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+                g.globalCompositeOperation = 'source-over';
+            };
+            mk.addEventListener('pointerdown', e => { last = at(e); dot(last, last); try { mk.setPointerCapture(e.pointerId); } catch (er) {} });
+            mk.addEventListener('pointermove', e => { if (!last) return; const p = at(e); dot(last, p); last = p; });
+            ['pointerup', 'pointercancel'].forEach(t => mk.addEventListener(t, () => { last = null; }));
+            const done = () => { ov.remove(); document.body.classList.remove('gyphm-crop'); };
+            ov.querySelector('.dp-tools').onclick = async e => {
+                const t = e.target.closest('[data-t]'); if (!t) return;
+                if (t.dataset.t === 'clear') { g.clearRect(0, 0, cw, ch); return; }
+                if (t.dataset.t === 'auto') {
+                    t.textContent = '抠图中…';
+                    try {
+                        toast('✂️ 自动抠图中', '第一次要下载模型（几十 MB），要联网，稍等一下');
+                        const lib = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1/+esm');
+                        const blob = await (lib.removeBackground || lib.default)(src);
+                        const u = URL.createObjectURL(blob), f = new Image();
+                        await new Promise((ok, no) => { f.onload = ok; f.onerror = no; f.src = u; });
+                        g.clearRect(0, 0, cw, ch); g.drawImage(f, 0, 0, cw, ch); tint(); URL.revokeObjectURL(u);
+                        toast('抠好了', '哪里不对用画笔 / 橡皮修一下');
+                    } catch (er) { console.warn('[小手机] 自动抠图失败', er); toast('自动抠图没成功', '可能是没联网；用画笔手动涂一下也一样'); }
+                    t.textContent = '自动抠图'; return;
+                }
+                tool = t.dataset.t; ov.querySelectorAll('.dp-tools [data-t="brush"],.dp-tools [data-t="erase"]').forEach(x => x.classList.toggle('on', x === t));
+            };
+            ov.querySelector('.x').onclick = done;
+            ov.querySelector('.ok').onclick = () => {
+                const px = g.getImageData(0, 0, cw, ch).data; let any = false; for (let i = 3; i < px.length; i += 64) if (px[i] > 10) { any = true; break; }
+                if (!any) { C.lockFg = null; save(); done(); render(); window.gyPmBeauty(); return; }
+                const o = document.createElement('canvas'); o.width = cw; o.height = ch; const og = o.getContext('2d');
+                og.drawImage(img, 0, 0, cw, ch);
+                og.globalCompositeOperation = 'destination-in'; og.filter = 'blur(1.5px)'; og.drawImage(mk, 0, 0);
+                C.lockFg = o.toDataURL('image/png'); C.lockDepth = true; save(); done();
+                window.gyPmLockNow(); toast('景深做好了', '上滑解锁回到桌面');
+            };
+        };
+        img.src = src;
+    };
+    // 一次选了好几张：一张一张裁
+    function cropQueue(files, aspect, outW, each, opt) {
+        const L = [...files]; const next = () => { const f = L.shift(); if (!f) return; window.gyPmCrop(f, aspect, outW, u => { each(u); next(); }, Object.assign({}, opt || {}, { left: L.length || 0, cancel: next })); }; next();
+    }
+    // 小组件在屏幕上实际是多宽多高（裁出来的比例就跟它一样）
+    function aspectOf(w) {
+        const el = document.querySelector(`#gyPmHome [data-wid="${w.id}"]`);
+        if (el) { const r = el.getBoundingClientRect(); if (r.width && r.height) return r.width / r.height; }
+        return { s: 1, m: 2.1, l: 1, x: 4.4, t: 2.2 }[w.size] || 1;
+    }
+    const screenAspect = () => { const h = document.getElementById('gyPmHome'); const r = h && h.getBoundingClientRect(); return r && r.width && r.height ? r.width / r.height : 9 / 19.5; };
+    window.gyPmAppImg = function (k, inp, fromList) {
+        takeMedia(inp, 1, 240, u => { C.imgs[k] = u; save(); render(); if (fromList) window.gyPmIcons(); else window.gyPmItemSheet(null, k, C.dock.includes(k)); }, { png: true, title: '图标' });
+    };
+    window.gyPmWPhoto = function (id, inp, aspect) {
         const w = findW(id); if (!w || !inp || !inp.files || !inp.files.length) return;
-        const files = [...inp.files];
+        const files0 = [...inp.files]; inp.value = '';
+        // 动图 / 视频 / 实况：原样放进去（不裁）
+        const lv = files0.filter(f => /^video\/|^image\/gif$/i.test(f.type || '')), files = files0.filter(f => !lv.includes(f));
+        if (lv.length && typeof window.gyLiveTake === 'function') {
+            (async () => { for (const f of lv) { const tok = await window.gyLiveTake(f); if (!tok) continue; if (w.k === 'photo') { const L = photosOf(w); L.push(tok); } else w.d = Object.assign({}, w.d || {}, { img: tok }); } save(); render(); window.gyPmItemSheet(id); })();
+            if (!files.length) return;
+        }
+        const a = aspect || (w.k === 'photo' ? photoAspect(w) : w.k === 'cal' ? 1.55 : 1), ow = Math.round(Math.min(1100, 560 * Math.max(1, a)));
         if (w.k === 'photo') {
             const L = photosOf(w);
-            files.slice(0, Math.max(0, 9 - L.length)).forEach(f => shrink(f, 640, 640, u => { L.push(u); save(); render(); window.gyPmItemSheet(id); }));
+            cropQueue(files, a, ow, u => { L.push(u); save(); render(); window.gyPmItemSheet(id); }, { title: '裁一下这张' });
             return;
         }
-        shrink(files[0], 640, 640, u => { w.d = Object.assign({}, w.d || {}, { img: u }); save(); render(); window.gyPmItemSheet(id); });
+        window.gyPmCrop(files[0], a, ow, u => { w.d = Object.assign({}, w.d || {}, { img: u }); save(); render(); window.gyPmItemSheet(id); });
     };
+    // 相片小组件：拍立得/心形/圆形 这几个款式照片区域是方的
+    const photoAspect = w => (w.d && /polaroid|heart|circle/.test(w.d.v || '')) ? 1 : aspectOf(w);
+    window.__gyPmAspect = aspectOf;
 
     /* ---------------- 加小组件 ---------------- */
     // ＋ 小组件：一张一张带预览，看得见长什么样再挑大小
     window.gyPmAddWidget = function () {
         const card = k => {
-            const def = WD[k], z0 = def.sizes.includes('m') ? 'm' : def.sizes[0];
-            let pv = ''; try { pv = def.r({ id: 'pv_' + k, k, size: z0, d: k === 'todo' ? { items: [{ t: '起床喝一杯热水', done: true }, { t: '回 TA 的消息', done: false }] } : (k === 'note' ? { text: '今天也要好好的。' } : {}) }); } catch (e) {}
-            return `<div class="pm-wg-card"><div class="pv sz-${z0}"><div class="pm-w wk-${k} sz-${z0}">${pv}</div></div>
-                <div class="nm"><b>${def.n}</b><span>${def.sizes.map(z => `<span class="chip" onclick="gyPmAddW('${k}','${z}')">${{ s: '小', m: '中', l: '大' }[z]}</span>`).join('')}</span></div></div>`;
+            const def = WD[k], z0 = def.pv || (def.sizes.includes('m') ? 'm' : def.sizes[0]);
+            const d0 = k === 'todo' ? { items: [{ t: '起床喝一杯热水', done: true }, { t: '回 TA 的消息', done: false }] } : (k === 'note' ? { text: '今天也要好好的。' } : {});
+            const one = v => { const vs = v && def.vars && def.vars.find(x => x[0] === v); const z = vs && vs[2] && !vs[2].includes(z0) ? vs[2][0] : z0; let pv = ''; try { pv = def.r({ id: 'pv_' + k, k, size: z, d: Object.assign({}, d0, v ? { v } : {}) }); } catch (e) {} return `<div class="pv sz-${z}${v ? ` pvv${(AWV[k] || def.vars[0][0]) === v ? ' on' : ''}` : ''}"${v ? ` onclick="gyPmAWV('${k}','${v}')"` : ''}><div class="pm-w wk-${k} sz-${z}${v ? ' v-' + v : ''}">${pv}</div>${v ? `<em>${vs[1]}</em>` : ''}</div>`; };
+            const pvs = def.vars && def.vars.length > 1 ? `<div class="pvs">${def.vars.map(v => one(v[0])).join('')}</div>` : one('');
+            return `<div class="pm-wg-card" data-k="${k}">${pvs}
+                <div class="nm"><b>${def.n}</b><span>${def.sizes.map(z => `<span class="chip" onclick="gyPmAddW('${k}','${z}')">${ZN[z]}</span>`).join('')}</span></div></div>`;
         };
-        window.gyPmSheet(`<h4>小组件</h4><div class="pm-wg-tip">挑一个，点大小就放到当前这页最上面；放上去以后长按能拖到任何位置，图标会自己让开。</div>
+        window.gyPmSheet(`<h4>小组件</h4><div class="pm-wg-tip">挑一个，点大小就放进当前这页的空位；放上去以后长按拖到哪一格就在哪一格，压到的图标会挪开，空出来的格子不会被自动填上。</div>
             <div class="pm-wg-list">${Object.keys(WD).map(card).join('')}</div>
             <button class="it muted" onclick="gyPmCloseSheet()">好了</button>`);
     };
+    const AWV = {};   // 挑小组件时选中的款式
+    window.gyPmAWV = function (k, v) { AWV[k] = v; document.querySelectorAll(`#gyPmSheet .pm-wg-card[data-k="${k}"] .pvv`).forEach(e => e.classList.toggle('on', e.getAttribute('onclick').includes(`'${v}'`))); };
     window.gyPmAddW = function (k, z) {
         const p = Math.min(cur, C.pages.length - 1);
-        C.pages[p].unshift({ id: uid(), t: 'w', k, size: z, d: {} }); save(); G().closeSheet(); render();
-        const pg = document.querySelector(`#gyPmHome .pm-page[data-page="${p}"]`); if (pg) pg.scrollTop = 0;
+        const it = { id: uid(), t: 'w', k, size: z, d: AWV[k] ? { v: AWV[k] } : {} }, [nw, nh] = nom(z);
+        const f = spotFor(C.pages[p], nw, nh); it.g = { x: f.x, y: f.y, w: nw, h: nh };
+        C.pages[p].push(it); layout(C.pages[p]); flipNext = true; save(); G().closeSheet(); render();
+        const el = document.querySelector(`#gyPmHome [data-id="${it.id}"]`); if (el) el.scrollIntoView({ block: 'nearest' });
     };
 
     /* ---------------- 美化 ---------------- */
     const WALLS = ['#f2f2f4', '#ffffff', '#e9e6e1', '#e6e9ee', '#1c1c1e', '#000000', 'linear-gradient(160deg,#f5f5f7,#d9d9de)', 'linear-gradient(160deg,#e8e8ea,#bfc0c6)', 'linear-gradient(160deg,#2c2c2e,#0b0b0c)'];
+    const FXN = [['zoom', '从图标放大'], ['slide', '从下往上'], ['push', '从右推进'], ['card', '卡片浮起'], ['pop', '弹出来'], ['fade', '淡入'], ['flip', '翻转'], ['none', '不要动画']];
+    window.gyPmOpenFx = () => C.openFx || 'zoom';
+    const ACC = 'image/*,video/*';
     window.gyPmBeauty = function () {
-        const opt = (key, val, lab) => `<span class="chip${C[key] === val ? ' on' : ''}" onclick="gyPmPref('${key}',${JSON.stringify(val).replace(/"/g, '&quot;')})">${lab}</span>`;
+        const opt = (key, val, lab) => `<span class="chip${(C[key] === undefined ? DEF()[key] : C[key]) === val ? ' on' : ''}" onclick="gyPmPref('${key}',${JSON.stringify(val).replace(/"/g, '&quot;')})">${lab}</span>`;
+        const lockImg = C.lockWall || (!C.lockColor && C.wall);
         window.gyPmSheet(`<h4>美化</h4>
             <div class="lbl">外观</div><div class="seg">${opt('dark', false, '浅色')}${opt('dark', true, '深色')}</div>
-            <div class="lbl">壁纸</div><div class="sw">${WALLS.map((c, i) => `<span style="background:${c}" onclick="gyPmWall('color',${i})"></span>`).join('')}</div>
-            <label class="it">从相册选一张桌面壁纸<input type="file" accept="image/*" style="display:none" onchange="gyPmWallFile(this)"></label>
+            <div class="lbl">桌面壁纸</div><div class="sw">${WALLS.map((c, i) => `<span style="background:${c}" onclick="gyPmWall('color',${i})"></span>`).join('')}</div>
+            <label class="it">从相册选（照片 / 动图 / 视频 / 实况都行）<input type="file" accept="${ACC}" style="display:none" onchange="gyPmWallFile(this)"></label>
+            <div class="lbl">桌面景深（背景虚化）<em class="val" id="gyPmWbV">${C.wallBlur || 0}</em></div><input class="rg" type="range" min="0" max="24" step="1" value="${C.wallBlur || 0}" oninput="gyPmPrefQ('wallBlur',+this.value,'gyPmWbV')">
             <div class="lbl">锁屏壁纸</div><div class="sw"><span class="same${!C.lockWall && !C.lockColor ? ' on' : ''}" title="跟桌面一样" onclick="gyPmLockWall('same')">同</span>${WALLS.map((c, i) => `<span style="background:${c}" onclick="gyPmLockWall('color',${i})"></span>`).join('')}</div>
-            <label class="it">从相册选一张锁屏壁纸<input type="file" accept="image/*" style="display:none" onchange="gyPmLockWallFile(this)"></label>
-            <button class="it" onclick="gyPmIcons()">换图标（每个 App 都能换成自己的图片）</button>
+            <label class="it">从相册选锁屏壁纸（照片 / 动图 / 视频 / 实况）<input type="file" accept="${ACC}" style="display:none" onchange="gyPmLockWallFile(this)"></label>
+            <div class="lbl">锁屏景深：人物挡在时间前面</div>
+            ${lockImg && !/^gylive:/.test(lockImg) ? `<div class="chips"><span class="chip${C.lockFg ? ' on' : ''}" onclick="gyPmDepth()">${C.lockFg ? '重新选主体' : '选出主体'}</span>${C.lockFg ? `<span class="chip${C.lockDepth !== false ? ' on' : ''}" onclick="gyPmPref('lockDepth',${C.lockDepth === false})">${C.lockDepth === false ? '已关（点开）' : '开着'}</span><span class="chip" onclick="gyPmPref('lockFg',null)">去掉</span>` : ''}</div>` : '<div class="pm-wg-tip" style="text-align:left;margin:0 4px">锁屏用一张照片当壁纸以后就能做（纯色 / 视频不行）</div>'}
+            <div class="lbl">锁屏背景虚化<em class="val" id="gyPmLbV">${C.lockBlur || 0}</em></div><input class="rg" type="range" min="0" max="24" step="1" value="${C.lockBlur || 0}" oninput="gyPmPrefQ('lockBlur',+this.value,'gyPmLbV')">
+            <div class="lbl">3D 视差（壁纸跟着鼠标 / 手机倾斜微微移动）</div><div class="seg">${opt('p3d', false, '关')}${opt('p3d', true, '开')}</div>
+            <div class="lbl">打开 App 的方式（点一下先看看）</div><div class="chips">${FXN.map(([k, n]) => `<span class="chip${(C.openFx || 'zoom') === k ? ' on' : ''}" onclick="gyPmPref('openFx','${k}');gyPmPreviewFx('${k}')">${n}</span>`).join('')}</div>
+            <button class="it" onclick="gyPmIcons()">换图标（每个 App 都能换成自己的图片 / 动图）</button>
             <div class="lbl">图标</div><div class="seg">${opt('style', 'white', '白')}${opt('style', 'black', '黑')}${opt('style', 'glass', '玻璃')}${opt('style', 'hand', '手绘')}</div>
+            <div class="lbl">一行几个图标</div><div class="seg">${opt('cols', 4, '4 个（大一点）')}${opt('cols', 5, '5 个（小一点）')}</div>
             <div class="lbl">字体</div><div class="seg">${opt('font', 'sys', '系统')}${opt('font', 'serif', '衬线')}${opt('font', 'hand', '手写')}</div>
             <div class="lbl">图标名字</div><div class="seg">${opt('labels', true, '显示')}${opt('labels', false, '不显示')}</div>
             <div class="lbl">锁屏</div><div class="seg">${opt('lock', true, '进来先锁屏')}${opt('lock', false, '不要锁屏')}</div>
@@ -655,29 +1080,45 @@
             <button class="it" onclick="gyPmResetLayout()">桌面恢复默认摆法</button>
             <button class="it muted" onclick="gyPmCloseSheet()">好了</button>`);
     };
+    // 滑条：边拖边看，不重画整张抽屉
+    window.gyPmPrefQ = function (k, v, lab) { C[k] = v; const l = document.getElementById(lab); if (l) l.textContent = v; save(); render(); };
+    // 选文件：照片 → 裁剪；动图 / 视频 / 实况 → 交给「动图和视频」那套（原样存，不裁）
+    function takeMedia(inp, aspect, outW, cb, opt) {
+        const f = inp && inp.files && inp.files[0]; if (!f) return; inp.value = '';
+        if (/^video\/|^image\/gif$/i.test(f.type || '')) {
+            if (typeof window.gyLiveTake === 'function') { window.gyLiveTake(f).then(tok => { if (tok) cb(tok); }); return; }
+            if (/^video\//.test(f.type)) { toast('这里传不了视频', '设置 → 外观 →「动图和视频」要开着'); return; }
+        }
+        window.gyPmCrop(f, aspect, outW, cb, opt);
+    }
+    window.__gyPmTake = takeMedia;
+
     window.gyPmLockWall = function (kind, v) {
         if (kind === 'same') { C.lockWall = null; C.lockColor = null; } else { C.lockWall = null; C.lockColor = WALLS[v]; }
         save(); window.gyPmBeauty();
     };
     window.gyPmLockWallFile = function (inp) {
-        const f = inp && inp.files && inp.files[0]; if (!f) return;
-        shrink(f, 780, 1688, u => { C.lockWall = u; C.lockColor = null; save(); window.gyPmBeauty(); }, .86);
+        takeMedia(inp, screenAspect(), 1080, u => { C.lockWall = u; C.lockColor = null; C.lockFg = null; save(); window.gyPmBeauty(); }, { title: '锁屏壁纸' });
     };
     // 🎨 换图标：所有 App 一张表，每个都能换图片 / 还原
     window.gyPmIcons = function () {
         window.gyPmSheet(`<h4>换图标</h4><div class="pm-wg-tip">点「换图片」挑一张，会自动裁成方的；「还原」回到原来的样子。改名字、换底色在编辑桌面时点图标。</div>
             <div class="pm-ic-list">${(G().APPS || []).map(a => `<div class="row">${iconHtml(a[0], 'lib')}<b>${esc(appName(a[0]))}</b>
-                <label class="mini">换图片<input type="file" accept="image/*" style="display:none" onchange="gyPmAppImg('${a[0]}',this,1)"></label>${C.imgs[a[0]] ? `<span class="mini" onclick="gyPmAppSet('${a[0]}','resetimg')">还原</span>` : ''}</div>`).join('')}</div>
+                <label class="mini">换图片<input type="file" accept="image/*,video/*" style="display:none" onchange="gyPmAppImg('${a[0]}',this,1)"></label>${C.imgs[a[0]] ? `<span class="mini" onclick="gyPmAppSet('${a[0]}','resetimg')">还原</span>` : ''}</div>`).join('')}</div>
             <button class="it muted" onclick="gyPmBeauty()">返回美化</button>`);
     };
-    window.gyPmPref = function (k, v) { C[k] = v; save(); applyPrefs(); render(); window.gyPmBeauty(); };
+    window.gyPmPref = function (k, v) {
+        C[k] = v; save(); applyPrefs();
+        // 手机上的陀螺仪（iPhone 要先问一下才给）
+        if (k === 'p3d' && v) { try { if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') DeviceOrientationEvent.requestPermission().catch(() => {}); } catch (e) {} }
+        render(); if (k !== 'openFx') window.gyPmBeauty(); else document.querySelectorAll('#gyPmSheet .chip[onclick*="openFx"]').forEach(c => c.classList.toggle('on', c.getAttribute('onclick').includes(`'${v}'`)));
+    };
     window.gyPmWall = function (kind, v) {
         if (kind === 'color') { C.wall = null; C.wallColor = typeof v === 'number' ? WALLS[v] : v; } else { C.wall = null; C.wallColor = null; }
         save(); render(); window.gyPmBeauty();
     };
     window.gyPmWallFile = function (inp) {
-        const f = inp && inp.files && inp.files[0]; if (!f) return;
-        shrink(f, 780, 1688, u => { C.wall = u; C.wallColor = null; save(); render(); window.gyPmBeauty(); }, .86);
+        takeMedia(inp, screenAspect(), 1080, u => { C.wall = u; C.wallColor = null; if (!C.lockWall && !C.lockColor) C.lockFg = null; save(); render(); window.gyPmBeauty(); }, { title: '桌面壁纸' });
     };
     window.gyPmResetLayout = function () {
         if (!confirm('桌面恢复成默认的摆法？（壁纸和美化设置不变，小组件和自己改的图标会还原）')) return;
@@ -708,7 +1149,7 @@
         for (let d = 1; d <= days; d++) {
             const k = dkey(CAL.y, CAL.m, d), x = calDay(k);
             const dots = [x.mine.length ? '<i class="a"></i>' : '', x.anniv.length ? '<i class="b"></i>' : '', x.birth.length ? '<i class="c"></i>' : '', x.diaries.length ? '<i class="d"></i>' : ''].join('');
-            cells += `<span class="c${k === tk ? ' today' : ''}${k === CAL.sel ? ' sel' : ''}" onclick="gyPmCalPick('${k}')"><b>${d}</b><em>${dots}</em></span>`;
+            cells += `<span class="c${k === tk ? ' today' : ''}${k === CAL.sel ? ' sel' : ''}${window.gyPeriodCell ? window.gyPeriodCell(k) : ''}" onclick="gyPmCalPick('${k}')"><b>${d}</b><em>${dots}</em></span>`;
         }
         const k = CAL.sel || tk, x = calDay(k), dd = new Date(k + 'T00:00:00');
         const rows = [
@@ -721,9 +1162,9 @@
             <div class="pmc-hd"><div><em>${CAL.y}年</em><b>${CAL.m + 1}月</b></div><span class="nav"><i onclick="gyPmCalMove(-1)">‹</i><i class="t" onclick="gyPmCalMove(0)">今天</i><i onclick="gyPmCalMove(1)">›</i></span></div>
             <div class="pmc-wk">${'日一二三四五六'.split('').map(x => `<span>${x}</span>`).join('')}</div>
             <div class="pmc-grid">${cells}</div>
-            <div class="pmc-lg"><span><i class="a"></i>我的日程</span><span><i class="b"></i>纪念日</span><span><i class="c"></i>生日</span><span><i class="d"></i>日记</span></div>
+            <div class="pmc-lg"><span><i class="a"></i>我的日程</span><span><i class="b"></i>纪念日</span><span><i class="c"></i>生日</span><span><i class="d"></i>日记</span>${window.gyPeriodOpen ? '<span onclick="gyPeriodOpen()" style="cursor:pointer;color:#e5566f">🩸 经期记录 ›</span>' : ''}</div>
             <div class="pmc-day"><h5>${dd.getMonth() + 1}月${dd.getDate()}日 星期${WK[dd.getDay()]}${k === tk ? ' · 今天' : ''}</h5>
-                ${rows.length ? rows.join('') : '<div class="none">这一天什么都没有</div>'}
+                ${(window.gyPeriodDayRow ? window.gyPeriodDayRow(k) : '')}${rows.length ? rows.join('') : (window.gyPeriodDayRow && window.gyPeriodDayRow(k) ? '' : '<div class="none">这一天什么都没有</div>')}
                 <button class="pmc-add" onclick="gyPmCalAdd('${k}')">＋ 在这一天记一条</button></div></div>`;
     }
     function calPaint() { const n = document.getElementById('gyPmApp'); if (n && document.body.classList.contains('gyphm-native')) n.innerHTML = calHtml(); }
@@ -756,12 +1197,88 @@
 #gyPmHome .pm-pages::-webkit-scrollbar{display:none}
 #gyPmHome .pm-page{flex:0 0 100%;scroll-snap-align:start;overflow-y:auto;overflow-x:hidden;padding:8px 20px 12px;box-sizing:border-box;scrollbar-width:none}
 #gyPmHome .pm-page::-webkit-scrollbar{display:none}
-#gyPmHome .pm-grid{grid-auto-rows:76px;gap:14px 10px;grid-auto-flow:row dense;min-height:100%;align-content:start;padding-top:2px}
+#gyPmHome .pm-grid{grid-auto-rows:76px;gap:14px 10px;min-height:100%;align-content:start;padding-top:2px}
+#gyPmHome .pm-slot-hl{border-radius:22px;background:rgba(120,120,128,.16);box-shadow:inset 0 0 0 1.5px rgba(120,120,128,.45);pointer-events:none;z-index:0;animation:pmHl .18s ease-out}
+#gyPmHome .pm-slot-hl.app{border-radius:16px;width:62px;height:62px;justify-self:center}
+@keyframes pmHl{from{transform:scale(.92);opacity:0}}
+body.gyphm-edit #gyPmHome .pm-grid{padding-bottom:90px}
 #gyPmHome .pm-app{justify-content:flex-start}
-#gyPmHome .pm-w{margin:0;padding:14px 15px;overflow:hidden;box-sizing:border-box;cursor:pointer;position:relative;border-radius:22px}
-#gyPmHome .sz-s{grid-column:span 2;grid-row:span 2}
-#gyPmHome .sz-m{grid-column:span 4;grid-row:span 2}
-#gyPmHome .sz-l{grid-column:span 4;grid-row:span 4}
+#gyPmHome .pm-w{margin:0;padding:14px 15px;overflow:hidden;box-sizing:border-box;cursor:pointer;border-radius:22px}
+#gyPmHome .pm-grid>.pm-w{position:absolute;z-index:1}
+#gyPmHome .pm-grid{position:relative}
+#gyPmHome .pm-grid>.pm-app{z-index:0}
+#gyPmHome .sz-x{padding:10px 16px}
+#gyPmHome .sz-t{padding:10px 14px}
+#gyPmHome .pm-w.pm-rs{animation:none!important;box-shadow:0 0 0 1.5px var(--pm-text),var(--pm-shadow)!important}
+/* 设置里换了自定义字体（js/68）：小手机跟着一起换 */
+html.gy-ufont body.gyphm{--pm-font:var(--gy-user-font),-apple-system,"PingFang SC","Microsoft YaHei",sans-serif!important;--pm-num:var(--gy-user-font),-apple-system,"Helvetica Neue",sans-serif!important}
+/* 一行 5 个：图标小一号 */
+body.pm-cols5 #gyPmHome .pm-page .pm-grid{grid-template-columns:repeat(5,1fr);grid-auto-rows:70px;gap:12px 8px}
+body.pm-cols5 #gyPmHome .pm-page .pm-ic{width:50px;height:50px;border-radius:13px}
+body.pm-cols5 #gyPmHome .pm-page .pm-ic svg{width:24px;height:24px}
+body.pm-cols5 #gyPmHome .pm-page .pm-lb{font-size:10.5px}
+body.pm-cols5 #gyPmHome .pm-page .pm-app .pm-del{left:calc(50% - 32px)}
+/* 壁纸那一层 + 3D 视差 + 景深 */
+#gyPmHome .pm-wall{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;border-radius:inherit}
+#gyPmHome .pm-wall .bg{position:absolute;inset:0;background:var(--pm-bg);background-size:cover;background-position:center;transition:transform .3s ease-out}
+#gyPmHome>.pm-sb,#gyPmHome>.pm-pages,#gyPmHome>.pm-pg,#gyPmHome>.pm-dock{position:relative;z-index:1}
+#gyPmHome>.pm-editbar{z-index:5}
+#gyPmHome.pm-3d .pm-wall .bg,#gyPmHome.pm-3d .pm-lock .pm-fg{inset:-6%;transform:translate(calc(var(--tx,0) * -16px),calc(var(--ty,0) * -16px))}
+#gyPmHome.pm-3d>.pm-pages{transform:translate(calc(var(--tx,0) * 5px),calc(var(--ty,0) * 5px));transition:transform .3s ease-out}
+body.gyphm-edit #gyPmHome.pm-3d>.pm-pages{transform:none}
+.pm-lock>*:not(.pm-wall):not(.pm-fg){position:relative;z-index:1}
+.pm-lock .pm-fg{position:absolute;inset:0;z-index:2;background-size:cover;background-position:center;pointer-events:none;transition:transform .3s ease-out}
+.pm-lock.depth .lk-t{font-size:104px;letter-spacing:-3px}
+#gyPmHome.pm-3d .pm-lock .lk-t,#gyPmHome.pm-3d .pm-lock .lk-d{transform:translate(calc(var(--tx,0) * 6px),calc(var(--ty,0) * 6px));transition:transform .3s ease-out}
+/* 小组件配色：只改这一块的颜色变量 */
+.pm-w.th-white{--pm-card:#fff;--pm-text:#111;--pm-sub:#8e8e93;--pm-fill:#f2f2f4;--pm-accent:#111;--pm-accent-fg:#fff;--pm-hair:rgba(0,0,0,.08)}
+.pm-w.th-black{--pm-card:#111;--pm-text:#f5f5f7;--pm-sub:#8e8e93;--pm-fill:#2c2c2e;--pm-accent:#f5f5f7;--pm-accent-fg:#111;--pm-hair:rgba(255,255,255,.12)}
+.pm-w.th-grey{--pm-card:#e5e5ea;--pm-text:#111;--pm-sub:#6e6e73;--pm-fill:#d4d4da;--pm-accent:#111;--pm-accent-fg:#fff}
+.pm-w.th-glass{--pm-card:rgba(255,255,255,.34);--pm-text:#111;--pm-sub:rgba(0,0,0,.5);--pm-fill:rgba(255,255,255,.4);--pm-accent:#111;--pm-accent-fg:#fff;backdrop-filter:blur(22px) saturate(1.6);-webkit-backdrop-filter:blur(22px) saturate(1.6);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.7),0 8px 24px rgba(0,0,0,.08)!important}
+body.pm-dark .pm-w.th-glass,#gyPmHome.has-wall .pm-w.th-glass{--pm-card:rgba(30,30,32,.32);--pm-text:#fff;--pm-sub:rgba(255,255,255,.7);--pm-fill:rgba(255,255,255,.16);--pm-accent:#fff;--pm-accent-fg:#111}
+.pm-w.th-cream{--pm-card:#f4ecdb;--pm-text:#4a4036;--pm-sub:#9b8f7e;--pm-fill:#e9dfc8;--pm-accent:#4a4036;--pm-accent-fg:#f4ecdb}
+.pm-w.th-rose{--pm-card:#f3dede;--pm-text:#5a3a3a;--pm-sub:#a88383;--pm-fill:#e9cccc;--pm-accent:#b86a6a;--pm-accent-fg:#fff;--pm-red:#b86a6a}
+.pm-w.th-sky{--pm-card:#dfe8f3;--pm-text:#2f3e52;--pm-sub:#7f93ab;--pm-fill:#cddbeb;--pm-accent:#4a6b94;--pm-accent-fg:#fff}
+.pm-w.th-sage{--pm-card:#e1eadb;--pm-text:#36452f;--pm-sub:#85967c;--pm-fill:#d0dcc8;--pm-accent:#5c7a4f;--pm-accent-fg:#fff}
+.pm-w.th-mocha{--pm-card:#6b5a4e;--pm-text:#fbf6f0;--pm-sub:rgba(251,246,240,.62);--pm-fill:rgba(255,255,255,.14);--pm-accent:#fbf6f0;--pm-accent-fg:#6b5a4e;--pm-red:#ffb4a8}
+.pm-w.th-ink{--pm-card:#2f3b33;--pm-text:#eef2ec;--pm-sub:rgba(238,242,236,.6);--pm-fill:rgba(255,255,255,.12);--pm-accent:#eef2ec;--pm-accent-fg:#2f3b33;--pm-red:#f3b7a0}
+.pm-w[class*=" th-"]{color:var(--pm-text)}
+#gyPmSheet .pm-th{display:flex;flex-wrap:wrap;gap:10px 8px}
+#gyPmSheet .pm-th span{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--pm-sub);cursor:pointer;width:46px}
+#gyPmSheet .pm-th i{width:34px;height:34px;border-radius:50%;box-shadow:0 0 0 .5px var(--pm-hair),0 2px 6px rgba(0,0,0,.08)}
+#gyPmSheet .pm-th span.on{color:var(--pm-text);font-weight:600}
+#gyPmSheet .pm-th span.on i{box-shadow:0 0 0 2px var(--pm-bg),0 0 0 3.5px var(--pm-text)}
+/* ✂️ 裁剪 */
+#gyPmCrop{position:fixed;left:var(--pm-sl);top:var(--pm-st);width:var(--pm-sw);height:var(--pm-sh);border-radius:var(--pm-sr);overflow:hidden;z-index:2030;background:#000;color:#fff;display:flex;flex-direction:column;font-family:var(--pm-font);user-select:none;-webkit-user-select:none}
+body.gyphm-crop .toast-container{display:none!important}
+body.gyphm-mob #gyPmCrop{left:0;top:0;width:100%;height:100%;border-radius:0}
+#gyPmCrop .cr-hd{display:flex;justify-content:space-between;align-items:center;padding:calc(18px + env(safe-area-inset-top)) 18px 10px;font-size:15px}
+#gyPmCrop .cr-hd span{cursor:pointer;padding:6px 4px}#gyPmCrop .cr-hd .ok{font-weight:700;color:#ffd60a}
+#gyPmCrop .cr-st{flex:1;position:relative;overflow:hidden;touch-action:none;cursor:move}
+#gyPmCrop .cr-st img{position:absolute;max-width:none;pointer-events:none;user-select:none}
+#gyPmCrop .cr-fr{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 9999px rgba(0,0,0,.58);outline:1px solid rgba(255,255,255,.9);pointer-events:none;background-image:linear-gradient(rgba(255,255,255,.28) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.28) 1px,transparent 1px);background-size:33.34% 33.34%;background-position:-1px -1px}
+#gyPmCrop .cr-fr.round{border-radius:50%}
+#gyPmCrop .cr-st.dp{display:flex;align-items:center;justify-content:center;cursor:crosshair}
+#gyPmCrop .dp-box{position:relative;flex-shrink:0;container-type:inline-size}
+#gyPmCrop .dp-box img,#gyPmCrop .dp-box canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#gyPmCrop .dp-box canvas{opacity:.5;touch-action:none}
+#gyPmCrop .dp-clock{position:absolute;left:0;right:0;top:12%;text-align:center;color:#fff;font-size:24cqw;font-weight:600;font-family:var(--pm-num);letter-spacing:-.04em;text-shadow:0 2px 10px rgba(0,0,0,.25);pointer-events:none}
+#gyPmCrop .dp-tools{display:flex;justify-content:center;gap:8px;padding:12px 16px 0;flex-wrap:wrap}
+#gyPmCrop .dp-tools span{padding:7px 14px;border-radius:999px;background:rgba(255,255,255,.14);font-size:13px;cursor:pointer}
+#gyPmCrop .dp-tools span.on{background:#fff;color:#111;font-weight:600}
+.pm-lock .lk-ns,.pm-lock .lk-u{z-index:3!important}
+.pm-ic.img .gylive-wrap{display:block;width:100%;height:100%}.pm-ic.img .gylive-wrap img{width:100%;height:100%;object-fit:cover;max-width:none}
+#gyPmSheet .lbl .val{font-style:normal;float:right;color:var(--pm-text);font-family:var(--pm-num)}
+#gyPmHome .pm-txe{user-select:text;-webkit-user-select:text;outline:1.5px dashed currentColor;outline-offset:2px;border-radius:4px;cursor:text;animation:none}
+body.gyphm-edit #gyPmHome .pm-w [data-tx]{cursor:text}
+#gyPmSheet .pm-txs{display:flex;flex-direction:column;gap:6px}
+#gyPmSheet .rg{width:100%;accent-color:var(--pm-accent);margin:2px 0 4px}
+#gyPmCrop .cr-fr i{position:absolute;width:18px;height:18px;border:3px solid #fff}
+#gyPmCrop .cr-fr i:nth-child(1){left:-3px;top:-3px;border-width:3px 0 0 3px}#gyPmCrop .cr-fr i:nth-child(2){right:-3px;top:-3px;border-width:3px 3px 0 0}
+#gyPmCrop .cr-fr i:nth-child(3){left:-3px;bottom:-3px;border-width:0 0 3px 3px}#gyPmCrop .cr-fr i:nth-child(4){right:-3px;bottom:-3px;border-width:0 3px 3px 0}
+#gyPmCrop .cr-ft{display:flex;align-items:center;gap:12px;padding:14px 26px 4px}
+#gyPmCrop .cr-ft input{flex:1;accent-color:#fff}
+#gyPmCrop .cr-tip{font-size:11.5px;color:rgba(255,255,255,.55);text-align:center;padding:4px 0 calc(22px + env(safe-area-inset-bottom))}
 .wg-h{font-size:11px;color:var(--pm-sub);margin-bottom:9px;letter-spacing:1.5px;font-weight:600;text-transform:uppercase}
 .wg-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--pm-sub);font-size:13.5px;line-height:1.6}
 .wg-empty small{font-size:11.5px;opacity:.8}
@@ -846,7 +1363,7 @@
 .wg-ct b{font-size:16px;font-weight:600}
 .wg-ct span{font-size:12px;color:var(--pm-sub);width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wg-note{height:100%;font-size:15px;line-height:1.7;overflow:hidden;color:var(--pm-text)}
-.wg-note::before{content:"NOTE";display:block;font-family:var(--pm-font);font-size:10.5px;letter-spacing:2px;color:var(--pm-sub);font-weight:700;margin-bottom:4px}
+.wg-note .nh{display:block;font-style:normal;font-family:var(--pm-font);font-size:10.5px;letter-spacing:2px;color:var(--pm-sub);font-weight:700;margin-bottom:4px}
 .wg-count{height:100%;display:flex;flex-direction:column;justify-content:center;gap:3px}
 .wg-count .tt{font-size:13px;color:var(--pm-sub);font-weight:500}
 .wg-count .nn{display:flex;align-items:baseline;gap:4px}
@@ -873,7 +1390,8 @@
 #gyPmHome .pm-pg .newpg{display:none;width:auto;height:auto;background:none;opacity:.8;font-style:normal;font-size:14px;line-height:1;margin-left:6px;color:var(--pm-text)}
 body.gyphm-edit #gyPmHome .pm-pg .newpg{display:inline}
 #gyPmHome.has-wall .pm-pg i,#gyPmHome.dark-wall .pm-pg i{background:#fff}
-#gyPmHome .pm-dock{grid-template-columns:repeat(auto-fit,minmax(0,1fr));min-height:64px}
+#gyPmHome .pm-dock{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(58px,1fr);min-height:64px;overflow-x:auto;scrollbar-width:none}
+#gyPmHome .pm-dock::-webkit-scrollbar{display:none}
 .pm-lib-h{font-size:30px;font-weight:700;margin:6px 2px 12px;letter-spacing:-.5px}
 .pm-lib-s{display:flex;align-items:center;gap:6px;height:38px;border-radius:12px;background:var(--pm-card);padding:0 12px;margin-bottom:16px;box-shadow:0 0 0 .5px var(--pm-hair)}
 .pm-lib-s input{border:none;outline:none;background:transparent;flex:1;font-size:15px;color:var(--pm-text);padding:0;box-shadow:none;font-family:inherit}
@@ -893,6 +1411,7 @@ body.gyphm-edit #gyPmHome .pm-sb{visibility:hidden}
 #gyPmHome.has-wall .pm-editbar .mid{color:#fff}
 .pm-del{display:none;position:absolute;top:-7px;left:-5px;width:22px;height:22px;border-radius:50%;background:rgba(120,120,128,.85);backdrop-filter:blur(8px);font-style:normal;font-size:17px;line-height:20px;text-align:center;z-index:3;cursor:pointer;color:#fff;font-weight:600}
 #gyPmHome .pm-app .pm-del{left:calc(50% - 38px)}
+#gyPmHome .pm-w>.pm-del{top:7px;left:7px}
 body.gyphm-edit #gyPmHome .pm-item:not([data-where="lib"]) .pm-del{display:block}
 body.gyphm-edit #gyPmHome .pm-item:not([data-where="lib"]){animation:pmJig .3s ease-in-out infinite alternate;touch-action:none}
 body.gyphm-edit #gyPmHome .pm-item:nth-child(2n){animation-delay:-.15s;animation-direction:alternate-reverse}
@@ -915,7 +1434,10 @@ body.pm-nolabel #gyPmHome .pm-page .pm-lb{visibility:hidden}
 body.pm-font-serif .pm-hf,body.pm-font-serif .pm-clock .t,body.pm-font-serif .pm-lock .lk-t,body.pm-font-serif .pm-lib-h,body.pm-font-serif #gyPmBar .nav{font-family:"Songti SC","STSong","Noto Serif SC","Source Han Serif SC",Georgia,serif!important;font-weight:400!important}
 body.pm-font-hand .pm-hf,body.pm-font-hand .pm-clock .t,body.pm-font-hand .pm-lock .lk-t,body.pm-font-hand .pm-lib-h,body.pm-font-hand #gyPmBar .nav{font-family:"LXGW WenKai","霞鹜文楷","KaiTi","STKaiti","楷体",serif!important;font-weight:400!important}
 /* 锁屏 */
-.pm-lock{position:absolute;inset:0;z-index:30;background:var(--pm-bg);background-size:cover;background-position:center;display:flex;flex-direction:column;align-items:center;cursor:pointer;transition:transform .42s cubic-bezier(.4,0,.2,1),opacity .42s;color:var(--pm-text)}
+.pm-lock{position:absolute;inset:0;z-index:30;background:var(--pm-bg);background-size:cover;background-position:center;display:flex;flex-direction:column;align-items:center;cursor:grab;transition:transform .42s cubic-bezier(.4,0,.2,1),opacity .42s;color:var(--pm-text);touch-action:none}
+.pm-lock:active{cursor:grabbing}
+.pm-lock .lk-u.hop{animation:pmHop .5s cubic-bezier(.3,1.6,.5,1)}
+@keyframes pmHop{40%{transform:translateY(-16px)}}
 .pm-lock.out{transform:translateY(-100%);opacity:.4}
 .pm-lock .pm-sb{align-self:stretch}
 .pm-lock .lk-d{margin-top:34px;font-size:18px;font-weight:600;opacity:.85}
@@ -974,6 +1496,14 @@ body.pm-font-hand .pm-hf,body.pm-font-hand .pm-clock .t,body.pm-font-hand .pm-lo
 .pm-wg-card .pv .pm-w{transform:scale(.62);transform-origin:center;flex-shrink:0;margin:0;overflow:hidden;box-sizing:border-box;position:relative}
 .pm-wg-card .pv.sz-s .pm-w{width:170px;height:170px}
 .pm-wg-card .pv.sz-m .pm-w,.pm-wg-card .pv.sz-l .pm-w{width:350px;height:170px}
+.pm-wg-card .pv.sz-x .pm-w{width:350px;height:76px}.pm-wg-card .pv.sz-t .pm-w{width:170px;height:76px}
+.pm-wg-card .pvs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin:0 -4px}.pm-wg-card .pvs::-webkit-scrollbar{display:none}
+.pm-wg-card .pvs .pv{flex:0 0 auto;pointer-events:auto;cursor:pointer;flex-direction:column;border-radius:14px;padding:0 2px 4px;box-sizing:border-box;position:relative}
+.pm-wg-card .pvs .pv.sz-s,.pm-wg-card .pvs .pv.sz-t{width:118px}.pm-wg-card .pvs .pv.sz-m,.pm-wg-card .pvs .pv.sz-x,.pm-wg-card .pvs .pv.sz-l{width:230px}
+.pm-wg-card .pvs .pv .pm-w{pointer-events:none}
+.pm-wg-card .pvs .pv.sz-s .pm-w{transform:scale(.6)}.pm-wg-card .pvs .pv.sz-m .pm-w,.pm-wg-card .pvs .pv.sz-l .pm-w,.pm-wg-card .pvs .pv.sz-x .pm-w{transform:scale(.6)}.pm-wg-card .pvs .pv.sz-t .pm-w{transform:scale(.62)}
+.pm-wg-card .pvs .pv em{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-style:normal;font-size:11px;color:var(--pm-sub)}
+.pm-wg-card .pvs .pv.on{box-shadow:inset 0 0 0 2px var(--pm-text)}.pm-wg-card .pvs .pv.on em{color:var(--pm-text);font-weight:600}
 .pm-wg-card .pv .wg-photo{position:absolute;inset:0;background-size:cover}
 .pm-wg-card .pv .wg-photo.empty{display:flex;align-items:center;justify-content:center;color:var(--pm-sub)}.pm-wg-card .pv .cam svg{width:34px;height:34px}
 .pm-wg-card .nm{display:flex;justify-content:space-between;align-items:center}

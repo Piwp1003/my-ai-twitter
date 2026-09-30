@@ -140,6 +140,56 @@ body.gywx-desk #gyWx .wx-mob{display:none!important}
 .wx-mo .cm{background:#f7f7f7;margin-top:6px;padding:5px 8px;font-size:14px;line-height:1.65;border-radius:3px;color:#191919;position:relative}
 .wx-mo .cm::before{content:"";position:absolute;top:-6px;left:12px;border:6px solid transparent;border-top:0;border-bottom-color:#f7f7f7}
 .wx-mo .cm span{color:#576b95;font-weight:500}
+/* 通讯录右边的字母索引 */
+#gyWxIdx{position:absolute;right:2px;transform:translateY(-50%);z-index:5;display:flex;flex-direction:column;align-items:center;padding:4px 2px;touch-action:none;user-select:none;-webkit-user-select:none}
+#gyWxIdx i{font-style:normal;font-size:10.5px;line-height:15.5px;width:16px;text-align:center;color:#555;cursor:pointer;border-radius:50%;font-weight:500}
+#gyWxIdx i:not(.has){color:#b0b0b0}
+#gyWxIdx i.on{background:#07c160;color:#fff}
+#gyWxIdx .pop{position:absolute;right:30px;width:52px;height:52px;margin-top:-26px;border-radius:50% 50% 0 50%;transform:rotate(-45deg);background:#c9c9c9;display:none;align-items:center;justify-content:center;font-size:0}
+#gyWxIdx .pop.on{display:flex}
+#gyWxIdx .pop::after{content:attr(data-k);font-size:24px;color:#fff;transform:rotate(45deg)}
+/* 资料页 */
+.wx-prof{background:#ededed;min-height:100%}
+.wx-prof .wx-card{padding-top:26px}
+.wx-prow{display:flex;align-items:center;gap:12px;background:#fff;padding:14px 16px;cursor:pointer;border-top:1px solid #efefef}
+.wx-prow:active{background:#ececec}
+.wx-prow>div:first-child{flex:1;min-width:0}.wx-prow b{font-size:16.5px;font-weight:500;color:#191919;flex-shrink:0}
+.wx-prow span{display:block;font-size:13.5px;color:#9a9a9a;margin-top:4px;line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.wx-prow em{font-style:normal;color:#c4c4c4;font-size:20px}
+.wx-prow.mo{border-top:none}.wx-prow.mo b{width:64px}
+.wx-prow .th{flex:1;display:flex;gap:6px;min-width:0}
+.wx-prow .th i{width:54px;height:54px;flex-shrink:0;background:#f2f2f2 center/cover;border-radius:2px;font-style:normal;font-size:10px;color:#666;padding:4px;box-sizing:border-box;overflow:hidden;line-height:1.35}
+.wx-prow .th .none{font-size:14px;color:#b2b2b2}
+.wx-cbtn.sub{color:#8a8a8a;font-size:14.5px;height:48px}
+#gyWxPane .wx-pcw{padding:0;max-width:520px;margin:0 auto;background:#ededed;min-height:100%}
+#gyWxPane .wx-pcw .wx-card{background:#fff;padding:30px 28px 26px;display:flex;gap:18px}
+#gyWxPane .wx-pcw .wx-card .wx-av{width:64px;height:64px;border-radius:8px}
+/* 朋友圈：点「··」出来的赞 / 评论 */
+.wx-mo .tm{position:relative}.wx-mo .tm .more{cursor:pointer}
+.wx-moact{position:absolute;right:34px;bottom:-6px;display:flex;background:#4c4c4c;border-radius:4px;overflow:hidden;z-index:3;animation:wxAct .15s ease-out}
+.wx-moact span{color:#fff;font-size:14px;padding:8px 16px;cursor:pointer;white-space:nowrap}
+.wx-moact span+span{border-left:1px solid #3a3a3a}
+@keyframes wxAct{from{opacity:0;transform:translateX(12px)}}
+.wx-mo .lk{background:#f7f7f7;margin-top:6px;padding:5px 8px;font-size:13.5px;color:#576b95;border-radius:3px}
+.wx-mo .wx-av,.wx-mo .who{cursor:pointer}
+/* 相册 */
+.wx-cover.al{margin-bottom:12px}
+.al-bio{text-align:right;color:#8a8a8a;font-size:13.5px;padding:18px 16px 18px 110px;min-height:10px;background:#fff}
+.al-pin{display:flex;gap:16px;align-items:center;padding:16px;background:#fff;border-bottom:1px solid #efefef}
+.al-pin b{font-size:22px;font-weight:600;width:70px;flex-shrink:0}
+.al-pin .g{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;flex:1;max-width:220px}.al-pin .g i{aspect-ratio:1;background:#eee center/cover}
+.al-list{background:#fff;padding:6px 0 30px;min-height:60vh}
+.al-y{font-size:22px;font-weight:600;padding:18px 16px 6px}
+.al-d{display:flex;gap:14px;padding:12px 16px}
+.al-d .dl{width:74px;flex-shrink:0;line-height:1}
+.al-d .dl b{font-size:28px;font-weight:700;color:#191919}.al-d .dl b.w{font-size:24px}
+.al-d .dl small{font-size:13px;font-weight:600;margin-left:2px}
+.al-d .its{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
+.al-i{display:flex;gap:10px;cursor:pointer;min-width:0}
+.al-i .ph{width:88px;height:88px;flex-shrink:0;background:#f2f2f2 center/cover}
+.al-i span{font-size:15px;line-height:1.5;color:#191919;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;word-break:break-word}
+.al-i.tx{background:#f3f3f3;padding:8px 10px}.al-i.tx span{-webkit-line-clamp:4}
+.al-i.cam{width:88px;height:88px;background:#f3f3f3;align-items:center;justify-content:center;color:#c2c2c2}.al-i.cam svg{width:34px;height:34px}
 
 /* 📱 点进去以后：顶上那条「‹ 标题 ···」 */
 #gyWxBar{display:none;position:fixed;top:0;left:0;right:0;z-index:2001;height:calc(52px + var(--app-safe-top, env(safe-area-inset-top, 0px)));padding-top:var(--app-safe-top, env(safe-area-inset-top, 0px));background:#ededed;align-items:center;justify-content:center;font-size:17px;font-weight:600;color:#191919;box-sizing:border-box;border-bottom:1px solid #e0e0e0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -161,7 +211,7 @@ body.gywx #chatTopBar,body.gywx #chatCharRow,body.gywx #chatListVertical{display
 body.gywx #view-chat .chat-bubble{border-radius:5px!important;box-shadow:none!important;border:none!important;overflow:visible!important;position:relative;color:#191919!important;font-size:15.5px}
 body.gywx #view-chat .chat-bubble.me{background:#95ec69!important}
 body.gywx #view-chat .chat-bubble.me::before,body.gywx #view-chat .chat-bubble.other::before{content:"";position:absolute;top:12px;width:9px;height:9px;transform:rotate(45deg);border-radius:1px}
-body.gywx #view-chat .chat-bubble.me::before{right:-4px;background:#95ec69}
+body.gywx #view-chat .chat-bubble.me::before{right:-4px;background:inherit}
 body.gywx #view-chat .chat-bubble.other::before{left:-4px}
 body.gywx #view-chat .avatar{border-radius:5px!important;border:none!important}
 body.gywx #view-chat .chat-msg-time{display:none!important}
@@ -234,7 +284,7 @@ body.gywx-desk.gywx-pane #gyWxPane{display:block}
 /* 电脑：聊天页 → 电脑版微信 */
 body.gywx-desk #view-chat{background:#fff!important;height:100vh!important}
 body.gywx-desk #view-chat .chat-bubble.other{background:#f2f2f2!important}
-body.gywx-desk #view-chat .chat-bubble.other::before{background:#f2f2f2}
+body.gywx-desk #view-chat .chat-bubble.other::before{background:inherit}
 body.gywx-desk #gyChatHead{background:#fff!important;border-bottom:1px solid #ececec!important;padding:0 24px!important;height:60px;display:flex!important;align-items:center;justify-content:flex-start!important}
 body.gywx-desk #gyChatHead .gych-back{display:none!important}
 body.gywx-desk #gyChatHead .gych-mid{justify-content:flex-start!important;padding:0!important;gap:6px}
@@ -363,8 +413,23 @@ body.gywx .fab-btn{display:none!important}
                 <div class="wx-p">${esc(p.pv)}</div></div></div>`;
         }).join('');
     }
+    /* 🔤 首字母：按拼音排（浏览器自带的中文拼音排序，不用额外的字典）；英文按字母；别的归到 # */
+    const LET = 'ABCDEFGHJKLMNOPQRSTWXYZ'.split(''), LZH = '阿八嚓哒妸发旮哈讥咔垃痳拏噢妑七呥仨他屲夕丫帀'.split('');
+    let zhColl = null; try { zhColl = new Intl.Collator('zh-Hans-CN-u-co-pinyin'); } catch (e) { try { zhColl = new Intl.Collator('zh'); } catch (er) {} }
+    const cmpZh = (a, b) => zhColl ? zhColl.compare(a, b) : String(a).localeCompare(String(b), 'zh');
+    function initialOf(name) {
+        const ch = String(name || '').trim().replace(/^[\s\p{P}\p{S}]+/u, '').charAt(0);
+        if (!ch) return '#';
+        if (/[a-z]/i.test(ch)) return ch.toUpperCase();
+        if (!/[㐀-鿿]/.test(ch) || !zhColl) return '#';
+        for (let i = LET.length - 1; i >= 0; i--) if (cmpZh(ch, LZH[i]) >= 0) return LET[i];
+        return '#';
+    }
+    window.gyWxInitial = initialOf;
+    const starred = id => { try { return pinnedSessionIds.some(p => String(p) === String(id)); } catch (e) { return false; } };
     function contactCells() {
-        const cs = chars().slice().sort((a, b) => String(a.remark || a.name || '').localeCompare(String(b.remark || b.name || ''), 'zh'));
+        const nm = c => String(c.remark || c.name || '');
+        const cs = chars().slice().sort((a, b) => cmpZh(nm(a), nm(b)));
         const q = S.q.trim().toLowerCase();
         const list = q ? cs.filter(c => String(c.name || '').toLowerCase().includes(q) || String(c.remark || '').toLowerCase().includes(q)) : cs;
         const ico = (bg, svg) => `<div class="wx-ico" style="background:${bg}">${svg}</div>`;
@@ -373,10 +438,56 @@ body.gywx .fab-btn{display:none!important}
             <div class="wx-cell wx-cont" onclick="gyWxGo({view:'factionOverview'})">${ico('#2782d7', I.discover)}<div class="wx-mid"><div class="wx-n"><b>势力</b></div></div></div>`;
         const gs = groups().filter(g => !q || String(g.name || '').toLowerCase().includes(q));
         if (gs.length) h += `<div class="wx-hd">群聊</div>` + gs.map(g => `<div class="wx-cell wx-cont" onclick="gyWxOpenChat('${esc(g.id)}')"><div class="wx-av">${av(g, 40)}</div><div class="wx-mid"><div class="wx-n"><b>${esc(g.name)}</b></div></div></div>`).join('');
-        h += `<div class="wx-hd">联系人</div>`;
-        h += list.length ? list.map(c => `<div class="wx-cell wx-cont ${S.card != null && String(S.card) === String(c.id) && isDesk() ? 'sel' : ''}" data-wxcontact="${esc(c.id)}" onclick="gyWxCard('${esc(c.id)}')"><div class="wx-av">${av(c, 40)}</div><div class="wx-mid"><div class="wx-n"><b>${esc(c.remark || c.name)}</b></div></div></div>`).join('')
-            : `<div class="wx-empty">${q ? '没有找到' : '还没有联系人'}</div>`;
+        const cell = c => `<div class="wx-cell wx-cont ${S.card != null && String(S.card) === String(c.id) && isDesk() ? 'sel' : ''}" data-wxcontact="${esc(c.id)}" onclick="gyWxCard('${esc(c.id)}')"><div class="wx-av">${av(c, 40)}</div><div class="wx-mid"><div class="wx-n"><b>${esc(nm(c))}</b></div></div></div>`;
+        if (!list.length) return h + `<div class="wx-empty">${q ? '没有找到' : '还没有联系人'}</div>`;
+        // 星标朋友（置顶的聊天）排最前，然后按首字母分段
+        const stars = q ? [] : list.filter(c => starred(c.id));
+        if (stars.length) h += `<div class="wx-hd" data-wxl="☆">星标朋友</div>` + stars.map(cell).join('');
+        const by = {};
+        list.forEach(c => { const k = initialOf(nm(c)); (by[k] = by[k] || []).push(c); });
+        const keys = Object.keys(by).sort((a, b) => a === '#' ? 1 : b === '#' ? -1 : a.localeCompare(b));
+        h += keys.map(k => `<div class="wx-hd" data-wxl="${k}">${k}</div>` + by[k].map(cell).join('')).join('');
         return h + (q ? '' : `<div class="wx-hd" style="text-align:center;padding:18px;background:transparent">${cs.length} 个朋友</div>`);
+    }
+    // 右边那一竖排字母：点 / 按住滑，跳到那一段
+    function paintIndex() {
+        const box = document.getElementById('gyWxCells'), old = document.getElementById('gyWxIdx');
+        const show = box && S.tab === 'contacts' && !S.sub && !S.q.trim() && document.body.classList.contains('gywx');
+        if (!show) { if (old) old.remove(); return; }
+        // 真正在滚的那一层（电脑上是列表那一栏，手机上是整个页面体）：往上找第一个能滚的
+        let scroller = box;
+        while (scroller && scroller !== document.body) { const cs = getComputedStyle(scroller); if (/(auto|scroll)/.test(cs.overflowY) && scroller.scrollHeight > scroller.clientHeight + 2) break; scroller = scroller.parentElement; }
+        if (!scroller || scroller === document.body) scroller = isDesk() ? box : (document.getElementById('gyWxBody') || box);
+        const host = scroller && scroller.parentElement; if (!host) return;
+        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        const have = new Set([...box.querySelectorAll('[data-wxl]')].map(e => e.dataset.wxl));
+        const keys = ['↑', ...(have.has('☆') ? ['☆'] : []), ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), '#'];
+        let idx = old;
+        if (!idx || idx.parentElement !== host) { if (idx) idx.remove(); idx = document.createElement('div'); idx.id = 'gyWxIdx'; host.appendChild(idx); bindIndex(idx); }
+        idx.innerHTML = keys.map(k => `<i data-k="${k}" class="${k === '↑' || have.has(k) ? 'has' : ''}">${k}</i>`).join('') + '<b class="pop"></b>';
+        idx.__scroller = scroller; idx.__box = box;
+        const hr = host.getBoundingClientRect(), sr = scroller.getBoundingClientRect();
+        idx.style.top = (sr.top - hr.top + sr.height / 2) + 'px';
+    }
+    function bindIndex(idx) {
+        let down = false;
+        const go = (x, y) => {
+            const el = document.elementFromPoint(x, y), i = el && el.closest && el.closest('#gyWxIdx i'); if (!i) return;
+            const k = i.dataset.k, sc = idx.__scroller, box = idx.__box; if (!sc || !box) return;
+            const pop = idx.querySelector('.pop');
+            if (k === '↑') { sc.scrollTop = 0; pop.classList.remove('on'); return; }
+            // 没有这个字母开头的人：跳到它后面最近的那一段（跟微信一样）
+            const all = [...box.querySelectorAll('[data-wxl]')];
+            const order = ['☆', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), '#'];
+            const target = all.find(e => e.dataset.wxl === k) || all.find(e => order.indexOf(e.dataset.wxl) > order.indexOf(k)) || all[all.length - 1];
+            if (target) sc.scrollTop += target.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+            pop.dataset.k = k; pop.style.top = (i.offsetTop + i.offsetHeight / 2) + 'px'; pop.classList.add('on');
+            idx.querySelectorAll('i').forEach(x => x.classList.toggle('on', x === i));
+        };
+        idx.addEventListener('pointerdown', e => { down = true; e.preventDefault(); try { idx.setPointerCapture(e.pointerId); } catch (er) {} go(e.clientX, e.clientY); });
+        idx.addEventListener('pointermove', e => { if (down) go(e.clientX, e.clientY); });
+        const up = () => { down = false; setTimeout(() => { const p = idx.querySelector('.pop'); if (p) p.classList.remove('on'); idx.querySelectorAll('i.on').forEach(x => x.classList.remove('on')); }, 350); };
+        idx.addEventListener('pointerup', up); idx.addEventListener('pointercancel', up);
     }
 
     // 发现（手机） / 小程序（电脑）
@@ -397,7 +508,8 @@ body.gywx .fab-btn{display:none!important}
                 if (!p || !p.char || p.isStory) return;
                 const who = p.char.id === 'me' || p.char.id == null ? me() : (charOf(p.char.id) || p.char);
                 const cm = (p.replies || []).slice(0, 8).map(r => ({ by: (r.char && r.char.name) || r.name || r.author || '', t: r.text || r.content || '' })).filter(r => r.t);
-                out.push({ who, cid: p.char.id, t: p.text || '', img: p.mediaUrl, at: p.timestamp, cm });
+                const likes = (p.likedBy || []).map(x => x === 'me' ? me().name : ((charOf(x) || {}).name || '')).filter(Boolean);
+                out.push({ who, cid: p.char.id, pid: p.id, t: p.text || '', img: p.mediaUrl, at: p.timestamp, cm, likes });
             });
         } catch (e) {}
         try {
@@ -414,10 +526,11 @@ body.gywx .fab-btn{display:none!important}
         const u = me(), list = collectMoments();
         const img = s => (typeof s === 'string' && /^(data:image|https?:|blob:)/.test(s)) ? `<img src="${esc(s)}" loading="lazy">` : '';
         const cover = (u.bgImg && typeof u.bgImg === 'string') ? ` style="background-image:url('${esc(u.bgImg)}')"` : '';
-        return `<div class="wx-cover"${cover}><div class="who"><b>${esc(u.name)}</b><div class="wx-av">${av(u, 70)}</div></div></div>` +
-            (list.length ? list.map((m, i) => `<div class="wx-mo"><div class="wx-av">${av(m.who, 42)}</div><div class="wx-mid" style="flex:1;min-width:0">
-                <div class="who">${esc(m.who && (m.who.remark || m.who.name))}</div><div class="tx">${richOf(m.t, m.cid, 'wxm' + i)}</div>${img(m.img)}
-                <div class="tm">${esc(ago(m.at))}<span>··</span></div>
+        return `<div class="wx-cover"${cover}><div class="who" onclick="gyWxAlbum('me')" style="cursor:pointer"><b>${esc(u.name)}</b><div class="wx-av">${av(u, 70)}</div></div></div>` +
+            (list.length ? list.map((m, i) => `<div class="wx-mo"><div class="wx-av" onclick="gyWxAlbum('${esc(m.cid == null ? 'me' : m.cid)}')">${av(m.who, 42)}</div><div class="wx-mid" style="flex:1;min-width:0">
+                <div class="who" onclick="gyWxAlbum('${esc(m.cid == null ? 'me' : m.cid)}')">${esc(m.who && (m.who.remark || m.who.name))}</div><div class="tx">${richOf(m.t, m.cid, 'wxm' + i)}</div>${img(m.img)}
+                <div class="tm">${esc(ago(m.at))}${m.pid != null ? `<span class="more" onclick="gyWxMoAct(this,'${esc(m.pid)}')">··</span>` : '<span>··</span>'}</div>
+                ${m.likes && m.likes.length ? `<div class="lk">♡ ${esc(m.likes.join('，'))}</div>` : ''}
                 ${m.cm && m.cm.length ? `<div class="cm">${m.cm.map(x => `<div><span>${esc(x.by)}</span>：${esc(plainOf(x.t))}</div>`).join('')}</div>` : ''}
             </div></div>`).join('') : `<div class="wx-empty">朋友圈还空着</div>`);
     }
@@ -433,6 +546,13 @@ body.gywx .fab-btn{display:none!important}
         top.className = 'wx-top wx-mob'; top.style.display = ''; top.style.background = '';
         const srch = `<div class="wx-srch"><label>${I.search}<input id="gyWxQ" placeholder="搜索" value="${esc(S.q)}" oninput="gyWxSearch(this.value)"></label></div>`;
         let title = '', l = '', r = '', html = '';
+        if (S.sub && String(S.sub).indexOf('album:') === 0) {
+            const aid = String(S.sub).slice(6);
+            top.className = 'wx-top wx-mob clear';
+            l = `<span class="wx-l" onclick="gyWxSub(${S.tab === 'contacts' && aid !== 'me' ? `'${esc(aid)}'` : (S.tab === 'discover' ? "'moments'" : 'null')})">${I.back}</span>`;
+            r = aid === 'me' ? `<span class="wx-r" title="发朋友圈" onclick="gyWxCompose()">${I.camera}</span>` : '';
+            top.innerHTML = l + '<span></span>' + r; body.innerHTML = albumHtml(aid); syncIdx(); return;
+        }
         if (S.tab === 'chats') {
             title = '微信' + (un ? `(${un})` : '');
             r = `<span class="wx-r"><span onclick="gyWxGo({fn:'openCreateGroupModal'},1)" title="发起群聊">${I.plus}</span></span>`;
@@ -453,19 +573,96 @@ body.gywx .fab-btn{display:none!important}
         } else { top.style.display = 'none'; html = meHtmlMob(); }
         top.innerHTML = l + `<span>${esc(title)}</span>` + r;
         body.innerHTML = html;
+        syncIdx();
     }
-    function cardHtmlMob(id) {
+    function syncIdx() { try { paintIndex(); } catch (e) {} }
+    function cardHtmlMob(id) { return profileHtml(id); }
+    /* 👤 资料页：头像、名字、微信号 → 朋友资料 → 朋友圈（最近几张）→ 发消息 / 音视频通话 */
+    function profileHtml(id) {
         const c = charOf(id);
         if (!c) return `<div class="wx-empty">找不到这个人了</div>`;
-        return `<div class="wx-card"><div class="wx-av">${av(c, 64)}</div><div class="wx-mid">
+        const items = albumItems(c.id).slice(0, 12);
+        const thumbs = items.filter(m => m.img).slice(0, 4);
+        const tiles = (thumbs.length ? thumbs : items.slice(0, 4)).map(m => m.img ? `<i style="background-image:url('${esc(m.img)}')"></i>` : `<i class="tx">${esc(plainOf(m.t).slice(0, 16))}</i>`).join('');
+        const sub = [c.remark ? '备注：' + c.remark : '', c.group ? '分组：' + c.group : '', c.bio ? '签名：' + c.bio : ''].filter(Boolean).join('　');
+        return `<div class="wx-prof">
+            <div class="wx-card"><div class="wx-av">${av(c, 64)}</div><div class="wx-mid">
                 <div class="wx-cname">${esc(c.remark || c.name)}</div>
                 <div class="wx-cmeta">${c.remark ? `昵称：${esc(c.name)}<br>` : ''}微信号：${esc(String(c.handle || '').replace(/^@/, '') || c.id)}${c.location ? `<br>地区：${esc(c.location)}` : ''}</div></div></div>
-            ${c.bio ? `<div class="wx-row" style="cursor:default;height:auto;padding:14px 16px"><span style="color:#191919;width:70px;flex-shrink:0">个性签名</span><span class="t" style="color:#7f7f7f;font-size:15px">${esc(c.bio)}</span></div>` : ''}
-            <div class="wx-row" onclick="gyWxGo({view:'profile',param:'${esc(c.id)}'})"><span class="t">朋友圈</span><span class="ar">›</span></div>
+            <div class="wx-prow" onclick="gyWxGo({fn:'openFormForEdit',args:['${esc(c.id)}']},1)"><div><b>朋友资料</b><span>${esc(sub || '改备注、签名、人设、头像……')}</span></div><em>›</em></div>
+            <div class="wx-gap"></div>
+            <div class="wx-prow mo" onclick="gyWxAlbum('${esc(c.id)}')"><b>朋友圈</b><div class="th">${tiles || '<span class="none">还没发过</span>'}</div><em>›</em></div>
             <div class="wx-gap"></div>
             <div class="wx-cbtn" onclick="gyWxOpenChat('${esc(c.id)}')">${I.chat}发消息</div>
-            ${typeof window.gyPhoneOpen === 'function' ? `<div class="wx-cbtn" onclick="gyWxGo({fn:'gyPhoneOpen',args:['${esc(c.id)}']})">📱 看看 TA 的手机</div>` : ''}`;
+            ${typeof window.gyCallStart === 'function' ? `<div class="wx-cbtn" onclick="gyWxGo({fn:'gyCallStart',args:['${esc(c.id)}']})">📞 音视频通话</div>` : ''}
+            ${typeof window.gyPhoneOpen === 'function' ? `<div class="wx-cbtn" onclick="gyWxGo({fn:'gyPhoneOpen',args:['${esc(c.id)}']})">📱 看看 TA 的手机</div>` : ''}
+            <div class="wx-cbtn sub" onclick="gyWxGo({view:'profile',param:'${esc(c.id)}'})">打开 TA 的主页</div>
+        </div>`;
     }
+    /* 🖼 相册（点头像 / 资料页的朋友圈进来）：封面、签名，按天排的一条条 */
+    function albumItems(id) {
+        const isMe = String(id) === 'me', out = [];
+        try {
+            (typeof globalPosts !== 'undefined' ? globalPosts : []).forEach(p => {
+                if (!p || !p.char || p.isStory) return;
+                const pid = p.char.id == null ? 'me' : String(p.char.id);
+                if (isMe ? pid !== 'me' : pid !== String(id)) return;
+                out.push({ pid: p.id, t: p.text || '', img: (typeof p.mediaUrl === 'string' && /^(data:image|https?:|blob:|gylive:)/.test(p.mediaUrl)) ? p.mediaUrl : '', at: p.timestamp || 0, pinned: !!p.pinned });
+            });
+        } catch (e) {}
+        try {
+            const c = isMe ? null : charOf(id);
+            if (c && typeof window.gyPeerMoments === 'function') (window.gyPeerMoments(c.id) || []).forEach(m => { if (String(m.by || '') === String(c.name)) out.push({ t: m.t, at: m.at, img: '' }); });
+        } catch (e) {}
+        return out.filter(m => m.t || m.img).sort((a, b) => (b.at || 0) - (a.at || 0));
+    }
+    function albumHtml(id) {
+        const isMe = String(id) === 'me', who = isMe ? me() : charOf(id);
+        if (!who) return `<div class="wx-empty">找不到这个人了</div>`;
+        const items = albumItems(id), now = new Date();
+        const dkey = t => { const d = new Date(t); return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); };
+        const today = dkey(now), yest = dkey(Date.now() - 864e5);
+        const groupsD = []; items.forEach(m => { const k = dkey(m.at); const g = groupsD[groupsD.length - 1]; if (g && g.k === k) g.list.push(m); else groupsD.push({ k, at: m.at, list: [m] }); });
+        if (isMe && (!groupsD.length || groupsD[0].k !== today)) groupsD.unshift({ k: today, at: Date.now(), list: [] });
+        let lastY = now.getFullYear();
+        const dayLabel = g => { if (g.k === today) return '<b class="w">今天</b>'; if (g.k === yest) return '<b class="w">昨天</b>'; const d = new Date(g.at); return `<b>${d.getDate()}</b><small>${d.getMonth() + 1}月</small>`; };
+        const item = m => {
+            const go = m.pid != null ? `onclick="gyWxGo({view:'postDetail',param:'${esc(m.pid)}'})"` : '';
+            return m.img ? `<div class="al-i" ${go}><i class="ph" style="background-image:url('${esc(m.img)}')"></i><span>${esc(plainOf(m.t).slice(0, 60))}</span></div>`
+                : `<div class="al-i tx" ${go}><span>${esc(plainOf(m.t).slice(0, 80))}</span></div>`;
+        };
+        const rowsH = groupsD.map(g => {
+            const y = new Date(g.at).getFullYear();
+            const yh = y !== lastY ? `<div class="al-y">${y}年</div>` : ''; lastY = y;
+            const cam = isMe && g.k === today ? `<div class="al-i cam" onclick="gyWxCompose()">${I.camera}</div>` : '';
+            return yh + `<div class="al-d"><div class="dl">${dayLabel(g)}</div><div class="its">${cam}${g.list.map(item).join('')}</div></div>`;
+        }).join('');
+        const pins = items.filter(m => m.pinned && m.img).slice(0, 9);
+        const cover = (who.bgImg && typeof who.bgImg === 'string') ? ` style="background-image:url('${esc(who.bgImg)}')"` : '';
+        return `<div class="wx-cover al"${cover}><div class="who"><b>${esc(isMe ? who.name : (who.remark || who.name))}</b><div class="wx-av">${av(who, 70)}</div></div></div>
+            <div class="al-bio">${esc(who.bio || '')}</div>
+            ${pins.length ? `<div class="al-pin"><b>置顶</b><div class="g">${pins.map(m => `<i style="background-image:url('${esc(m.img)}')"></i>`).join('')}</div></div>` : ''}
+            <div class="al-list">${rowsH || '<div class="wx-empty">还没有发过朋友圈</div>'}</div>`;
+    }
+    window.gyWxAlbum = function (id) {
+        closeFloat();
+        if (!isDesk()) { S.sub = 'album:' + id; render(); try { document.getElementById('gyWxBody').scrollTop = 0; } catch (e) {} return; }
+        const m = document.createElement('div'); m.id = 'gyWxMo';
+        m.innerHTML = `<div class="mo-bar">${String(id) === 'me' ? `<span title="发朋友圈" onclick="gyWxCompose()">${I.camera}</span>` : ''}<span title="朋友圈" onclick="gyWxMoments()">↩</span><span title="关闭" onclick="document.getElementById('gyWxMo').remove()">${I.close}</span></div><div class="mo-body">${albumHtml(id)}</div>`;
+        document.body.appendChild(m);
+    };
+    // 朋友圈里点「··」：赞 / 评论
+    window.gyWxMoAct = function (el, pid) {
+        const old = document.querySelector('.wx-moact'); if (old) { const same = old.dataset.pid === String(pid); old.remove(); if (same) return; }
+        const p = (typeof globalPosts !== 'undefined' ? globalPosts : []).find(x => String(x.id) === String(pid)); if (!p) return;
+        const d = document.createElement('div'); d.className = 'wx-moact'; d.dataset.pid = String(pid);
+        d.innerHTML = `<span onclick="gyWxMoLike('${esc(pid)}')">♡ ${p.userLiked ? '取消' : '赞'}</span><span onclick="gyWxGo({view:'postDetail',param:'${esc(pid)}'})">💬 评论</span>`;
+        el.parentElement.appendChild(d);
+    };
+    window.gyWxMoLike = function (pid) {
+        try { if (typeof toggleMainPostLike === 'function') toggleMainPostLike(String(pid), null); if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+        const b = document.querySelector('#gyWxMo .mo-body'); if (b) b.innerHTML = momentsHtml(); else render();
+    };
     function meHtmlMob() {
         const u = me();
         let n = 0; try { n = unreadNotifs || 0; } catch (e) {}
@@ -474,7 +671,7 @@ body.gywx .fab-btn{display:none!important}
             <div class="wx-gap"></div>` +
             rows([['🔔', '通知' + (n ? `（${n}）` : ''), "gyWxGo({view:'notifications'})"]]) +
             `<div class="wx-gap"></div>` +
-            rows([['✉️', '信件与日记', "gyWxGo({view:'diary'})"], ['🎒', '收藏（随身物）', "gyWxGo({fn:'gykitOpen'},1)"], ['🌐', '朋友圈', "gyWxTab('discover');gyWxSub('moments')"], ['😊', '表情', "gyWxGo({feature:'emoticon'})"]]) +
+            rows([['✉️', '信件与日记', "gyWxGo({view:'diary'})"], ['🎒', '收藏（随身物）', "gyWxGo({fn:'gykitOpen'},1)"], ['🌐', '朋友圈', "gyWxTab('discover');gyWxSub('moments')"], ['🖼️', '我的朋友圈（相册）', "gyWxAlbum('me')"], ['😊', '表情', "gyWxGo({feature:'emoticon'})"]]) +
             `<div class="wx-gap"></div>` + rows([['⚙️', '设置', "gyWxGo({view:'settings'})"]]);
     }
 
@@ -502,25 +699,15 @@ body.gywx .fab-btn{display:none!important}
         else if (S.tab === 'contacts') body = contactCells();
         else body = FEATS.map(g => `<div class="wx-hd"></div>` + g.map(([i, t, fn]) => `<div class="wx-cell wx-cont" onclick="${fn}"><div class="wx-ico" style="background:#fff;font-size:20px;color:#191919">${i}</div><div class="wx-mid"><div class="wx-n"><b>${t}</b></div></div></div>`).join('')).join('');
         list.innerHTML = head + `<div class="wx-lbody" id="gyWxCells">${body}</div>`;
+        setTimeout(() => { try { paintIndex(); } catch (e) {} }, 0);
         // 右边
         if (S.pane === 'card') pane.innerHTML = cardHtmlDesk(S.card);
         else if (S.pane) pane.innerHTML = `<div class="welcome">${I.logo}</div>`;
         layoutClass();
     }
     function cardHtmlDesk(id) {
-        const c = charOf(id);
-        if (!c) return `<div class="welcome">${I.logo}</div>`;
-        return `<div class="pc"><div class="pc-top"><div><div class="wx-cname">${esc(c.remark || c.name)}</div>
-                <div class="wx-cmeta">${c.remark ? `昵称：${esc(c.name)}<br>` : ''}微信号：${esc(String(c.handle || '').replace(/^@/, '') || c.id)}${c.location ? `<br>地区：${esc(c.location)}` : ''}</div></div>
-                <div class="wx-av">${av(c, 64)}</div></div>
-            ${c.remark ? `<div class="pc-f"><span>备注</span><span>${esc(c.remark)}</span></div>` : ''}
-            <div class="pc-f"><span>个性签名</span><span>${esc(c.bio || '—')}</span></div>
-            ${c.group ? `<div class="pc-f"><span>分组</span><span>${esc(c.group)}</span></div>` : ''}
-            <div class="pc-btns">
-                <div class="pc-btn" onclick="gyWxOpenChat('${esc(c.id)}')">${I.chat}发消息</div>
-                <div class="pc-btn" onclick="gyWxGo({view:'profile',param:'${esc(c.id)}'})">${I.moments}朋友圈</div>
-                ${typeof window.gyPhoneOpen === 'function' ? `<div class="pc-btn" onclick="gyWxGo({fn:'gyPhoneOpen',args:['${esc(c.id)}']})">${I.contacts}TA 的手机</div>` : ''}
-            </div></div>`;
+        if (!charOf(id)) return `<div class="welcome">${I.logo}</div>`;
+        return `<div class="pc wx-pcw">${profileHtml(id)}</div>`;
     }
 
     function render() {
@@ -556,11 +743,13 @@ body.gywx .fab-btn{display:none!important}
         render();
         try { document.getElementById('gyWxBody').scrollTop = 0; } catch (e) {}
     };
+    window.gyWxState = () => ({ sub: S.sub, tab: S.tab, pane: S.pane });   // 给 js/73「返回」用
     window.gyWxSub = function (s) { S.sub = s; render(); try { document.getElementById('gyWxBody').scrollTop = 0; } catch (e) {} };
     window.gyWxSearch = function (v) {
         S.q = String(v || '');
         const box = document.getElementById('gyWxCells'); if (!box) return;
         box.innerHTML = S.tab === 'contacts' ? contactCells() : chatCells(isDesk());
+        try { paintIndex(); } catch (e) {}
     };
     window.gyWxCard = function (id) {
         if (isDesk()) { S.card = id; S.pane = 'card'; render(); }

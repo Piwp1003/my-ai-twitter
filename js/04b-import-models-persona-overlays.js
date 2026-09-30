@@ -466,7 +466,10 @@ function __gyToastSummary(n) {
         <div class="toast-desc">点这里去通知页看，一条都没少</div></div>`;
 }
 
-function showToast(avatarHtml, titleText, contentText, postId, chatCharId, isAnon = false) {
+// 第 7 个参数 notif（可选）：这条弹窗对应的那条通知（对象，或者它的 id）。
+// 带了它，点弹窗就跟点通知页里那条走同一套跳转（js/60 gyOpenNotif）——信件、商城、地图、群聊……都能跳；
+// 不带的老调用照旧按 postId / chatCharId 跳。
+function showToast(avatarHtml, titleText, contentText, postId, chatCharId, isAnon = false, notif = null) {
     sendBrowserNotification(titleText, contentText);
     const container = document.getElementById('toastContainer');
     if(!container) return;
@@ -508,11 +511,20 @@ function showToast(avatarHtml, titleText, contentText, postId, chatCharId, isAno
     }, false);
 
     // 点击操作
+    if (notif && typeof notif === 'object' && notif.id) toast.dataset.nid = String(notif.id);
+    else if (notif && typeof notif !== 'object') toast.dataset.nid = String(notif);
+    toast.style.cursor = 'pointer';
     toast.onclick = () => {
-        if (chatCharId) { switchMainView('chat'); switchChatSession(chatCharId); }
-        else if (postId && isAnon) { switchMainView('anonForum'); }
-        else if (postId) { switchMainView('postDetail', postId); }
         toast.remove();
+        try {
+            let n = (notif && typeof notif === 'object') ? notif : null;
+            if (!n && notif != null && typeof window.gyNotifFind === 'function') n = window.gyNotifFind(notif);
+            if (!n && (postId || chatCharId)) n = { postId, chatCharId, isAnon: !!isAnon };
+            if (n && typeof window.gyOpenNotif === 'function') { window.gyOpenNotif(n); return; }
+            if (chatCharId) { switchMainView('chat'); switchChatSession(String(chatCharId)); }
+            else if (postId && isAnon) { switchMainView('anonForum'); }
+            else if (postId) { switchMainView('postDetail', postId); }
+        } catch (e) { console.warn('[弹窗跳转] 失败：', e); }
     };
 
     container.appendChild(toast);

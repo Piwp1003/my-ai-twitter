@@ -141,9 +141,9 @@
         if (!date || !text) { toast('日期和内容都要填'); return; }
         const who = (g('gymdWho') || {}).value || 'all';
         const it = {
-            id: uid(), date, text: text.slice(0, 80),
-            time: ((g('gymdTime') || {}).value || '').trim().slice(0, 12),
-            place: ((g('gymdPlace') || {}).value || '').trim().slice(0, 20),
+            id: uid(), date, text: text,   // 不限字数
+            time: ((g('gymdTime') || {}).value || '').trim(),
+            place: ((g('gymdPlace') || {}).value || '').trim(),
             who, chars: [], fac: '', at: Date.now()
         };
         if (who === 'some') it.chars = Array.from(document.querySelectorAll('.gymd-ck:checked')).map(x => x.value);
@@ -239,10 +239,10 @@
           <div class="gymd-list">${list.length ? list.map(itemRow).join('')
             : '<div class="gymd-hint" style="padding:18px 0;text-align:center;">还没记过。上面写一条试试。</div>'}</div>
           <div class="gymd-nums">
-            <label>最多注入 <input type="number" min="1" max="12" value="${Number(S.inject) || 4}" onchange="gyMyDaySet('inject', this.value)"> 条</label>
-            <label>往前看 <input type="number" min="0" max="14" value="${Number(S.past) || 0}" onchange="gyMyDaySet('past', this.value)"> 天</label>
-            <label>往后看 <input type="number" min="1" max="30" value="${Number(S.ahead) || 7}" onchange="gyMyDaySet('ahead', this.value)"> 天</label>
-            <label>「自己决定」的分数线 <input type="number" min="0" max="100" value="${Number(S.relLine) || 30}" onchange="gyMyDaySet('relLine', this.value)"></label>
+            <label>最多注入 <input type="number" min="1" value="${Number(S.inject) || 4}" onchange="gyMyDaySet('inject', this.value)"> 条</label>
+            <label>往前看 <input type="number" min="0" value="${Number(S.past) || 0}" onchange="gyMyDaySet('past', this.value)"> 天</label>
+            <label>往后看 <input type="number" min="1" value="${Number(S.ahead) || 7}" onchange="gyMyDaySet('ahead', this.value)"> 天</label>
+            <label>「自己决定」的分数线 <input type="number" value="${Number(S.relLine) || 30}" onchange="gyMyDaySet('relLine', this.value)"></label>
           </div>`;
     }
     window.gyMyDayRender = render;
@@ -292,7 +292,7 @@
             const dd = dayData(k);
             const dots = [dd.mine.length ? '<i class="mine"></i>' : '', dd.anniv.length ? '<i class="ann"></i>' : '',
                           dd.birth.length ? '<i class="bir"></i>' : ''].join('');
-            cells += `<div class="gymc-cell${k === tk ? ' today' : ''}${calSel === k ? ' on' : ''}" onclick="gyMyCalPick('${k}')">
+            cells += `<div class="gymc-cell${k === tk ? ' today' : ''}${calSel === k ? ' on' : ''}${window.gyPeriodCell ? window.gyPeriodCell(k) : ''}" onclick="gyMyCalPick('${k}')">
                 <b>${d}</b><div class="gymc-dots">${dots}</div></div>`;
         }
         const sel = calSel ? dayData(calSel) : null;
@@ -304,7 +304,7 @@
           </div>
           <div class="gymc-week">${['日','一','二','三','四','五','六'].map(x => `<span>${x}</span>`).join('')}</div>
           <div class="gymc-grid">${cells}</div>
-          <div class="gymc-legend"><i class="mine"></i>我的日程　<i class="ann"></i>纪念日　<i class="bir"></i>生日</div>
+          <div class="gymc-legend"><i class="mine"></i>我的日程　<i class="ann"></i>纪念日　<i class="bir"></i>生日${window.gyPeriodOpen ? '　<span onclick="gyPeriodOpen()" style="cursor:pointer;color:#e5566f">🩸 经期记录 ›</span>' : ''}</div>
           ${sel ? `<div class="gymc-day">
             <div class="gymc-day-hd">${esc(calSel)}${calSel === tk ? '（今天）' : ''}</div>
             ${sel.mine.map(it => `<div class="gymc-li">🗓️ ${it.time ? esc(it.time) + '　' : ''}${esc(it.text)}

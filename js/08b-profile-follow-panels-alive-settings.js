@@ -774,14 +774,13 @@ function renderNovelSrcListDiary(container) {
         (c.diaryData.letters || []).forEach(d => items.push({ charId: c.id, charName: c.name, kind: 'letter', id: d.id, title: d.title, content: d.content, date: d.date }));
     });
     items.sort((a, b) => (b.date || 0) - (a.date || 0));
-    const truncated = items.length > 60;
-    items = items.slice(0, 60);
+    // 全部列出来（以前只显示最近 60 条，更早的选不到）
     if (items.length === 0) { container.innerHTML = '<div class="novel-src-empty">暂无日记/信件</div>'; return; }
     container.innerHTML = items.map(it => {
         const key = `${it.charId}::${it.kind}::${it.id}`;
         const preview = (it.content || '').replace(/\n+/g, ' ').slice(0, 40);
         return `<label class="novel-src-item"><input type="checkbox" onchange="toggleNovelSrcItem('diary','${key}')">【${escapeHtml(it.charName)}】${it.kind === 'letter' ? '✉️' : '📔'} ${escapeHtml(it.title || '无标题')} - ${escapeHtml(preview)}${(it.content || '').length > 40 ? '...' : ''}</label>`;
-    }).join('') + (truncated ? '<div class="novel-src-hint">仅显示最近60条，其余未显示的不会被选中</div>' : '');
+    }).join('');
 }
 
 function renderNovelSrcListChat(container) {
@@ -791,27 +790,25 @@ function renderNovelSrcListChat(container) {
 }
 
 function renderNovelSrcListTweet(container) {
-    const truncated = (globalPosts || []).length > 60;
-    let posts = (globalPosts || []).slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 60);
+    let posts = (globalPosts || []).slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));   // 不再只列 60 条
     if (posts.length === 0) { container.innerHTML = '<div class="novel-src-empty">暂无推文</div>'; return; }
     container.innerHTML = posts.map(p => {
         const preview = (p.text || '').replace(/\n+/g, ' ').slice(0, 40);
         return `<label class="novel-src-item"><input type="checkbox" onchange="toggleNovelSrcItem('tweet','${p.id}')">【${escapeHtml((p.char && p.char.name) || '未知')}】${escapeHtml(preview)}${(p.text || '').length > 40 ? '...' : ''}</label>`;
-    }).join('') + (truncated ? '<div class="novel-src-hint">仅显示最近60条，其余未显示的不会被选中</div>' : '');
+    }).join('');
 }
 
 function renderNovelSrcListComment(container) {
     let comments = [];
     (globalPosts || []).forEach(p => (p.replies || []).forEach(r => comments.push({ postId: p.id, replyId: r.id, name: (r.char && r.char.name) || r.name || '未知', text: r.text, timestamp: r.timestamp })));
     comments.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    const truncated = comments.length > 60;
-    comments = comments.slice(0, 60);
+    // 全部列出来（以前只显示最近 60 条）
     if (comments.length === 0) { container.innerHTML = '<div class="novel-src-empty">暂无评论</div>'; return; }
     container.innerHTML = comments.map(c => {
         const key = `${c.postId}::${c.replyId}`;
         const preview = (c.text || '').replace(/\n+/g, ' ').slice(0, 40);
         return `<label class="novel-src-item"><input type="checkbox" onchange="toggleNovelSrcItem('comment','${key}')">【${escapeHtml(c.name)}】${escapeHtml(preview)}${(c.text || '').length > 40 ? '...' : ''}</label>`;
-    }).join('') + (truncated ? '<div class="novel-src-hint">仅显示最近60条，其余未显示的不会被选中</div>' : '');
+    }).join('');
 }
 
 function renderNovelSrcListMemory(container) {
@@ -1091,7 +1088,7 @@ function aliveSetSwitch(key, on) {
 function aliveNum(id, label, val, min, max, unit) {
     return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
         <span style="font-size:13px; color:#536471; min-width:120px;">${label}</span>
-        <input id="${id}" type="number" min="${min}" max="${max}" value="${val}" style="width:88px; padding:6px 8px; border:1px solid #cfd9de; border-radius:6px; font-size:13px;">
+        <input id="${id}" type="number" min="${min}" value="${val}" style="width:88px; padding:6px 8px; border:1px solid #cfd9de; border-radius:6px; font-size:13px;">
         <span style="font-size:12px; color:#8b98a5;">${unit}</span></div>`;
 }
 
@@ -1559,7 +1556,7 @@ function gyCssMapRender(force) {
         if (!items.length) return;
         html += `<div class="gy-css-grp">
             <div class="gy-css-grp-hd">${escapeHtml(name)}　<code>#${view.id}</code></div>
-            <div class="gy-css-line">${items.slice(0, 60).map(chip).join('')}</div>
+            <div class="gy-css-line">${items.map(chip).join('')}</div>
         </div>`;
     });
     box.innerHTML = html || '<div style="color:#8b98a5;font-size:13px;padding:14px 2px;">没有匹配的选择器。</div>';

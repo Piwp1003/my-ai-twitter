@@ -70,22 +70,55 @@
     }
 
     /* ---------- 存一份，拿回一个短字符串 ---------- */
-    async function put(file) {
+    async function put(file, opt) {
+        opt = opt || {};
         if (!store) { alertBox('这个浏览器不支持本地媒体库，动图/视频存不下。'); return null; }
-        if (file.size > S.maxMB * 1024 * 1024)
-            throw new Error('这个文件 ' + (file.size / 1048576).toFixed(1) + 'MB，超过了上限 ' + S.maxMB + 'MB。可以在 设置 → 外观 →「🎞️ 动图和视频」里把上限调大，或者先压一下。');
+        // 文件大小不设上限（以前超过 maxMB 就报错不收；maxMB 这个设置项还留着，只是不再拦）
         const id = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
         const poster = isVideo(file.type) ? await firstFrame(file) : '';
-        await store.setItem(id, { mime: file.type, blob: file, poster, bytes: file.size, at: Date.now() });
-        MAP[id] = { mime: file.type, url: URL.createObjectURL(file), poster, bytes: file.size };
+        const live = !!opt.live && isVideo(file.type);
+        await store.setItem(id, { mime: file.type, blob: file, poster, bytes: file.size, at: Date.now(), live });
+        MAP[id] = { mime: file.type, url: URL.createObjectURL(file), poster, bytes: file.size, live };
         return 'gylive:' + id;
     }
     window.gyLivePut = put;
 
+    /* ---------- 选了视频：问一下当「循环视频」还是「实况」 ----------
+       实况 = 平时是一张照片，按住（电脑上鼠标移上去）才动一下，跟 iPhone 的实况照片一样 */
+    function askMode(file) {
+        return new Promise(resolve => {
+            const old = document.getElementById('gyLiveAsk'); if (old) old.remove();
+            const d = document.createElement('div'); d.id = 'gyLiveAsk';
+            const url = URL.createObjectURL(file);
+            d.innerHTML = '<div class="bx"><video src="' + url + '" muted autoplay loop playsinline></video>' +
+                '<b>这段视频要怎么放？</b>' +
+                '<button data-m="loop">🔁 循环视频<small>一直在动（静音）</small></button>' +
+                '<button data-m="live">◎ 实况<small>平时是照片，按住 / 鼠标移上去才动一下</small></button>' +
+                '<button data-m="" class="no">算了</button></div>';
+            document.body.appendChild(d);
+            d.addEventListener('click', e => {
+                const b = e.target.closest('button'); if (!b && e.target !== d) return;
+                const m = b ? b.dataset.m : '';
+                try { URL.revokeObjectURL(url); } catch (er) {}
+                d.remove(); resolve(m || null);
+            });
+        });
+    }
+    // 统一入口：照片以外的（动图 / 视频 / 实况）都走这里，返回 gylive:编号
+    async function take(file) {
+        if (!S.on) { toast('「动图和视频」关着：设置 → 外观 里打开'); return null; }
+        try {
+            if (isVideo(file.type)) { const m = await askMode(file); if (!m) return null; const tok = await put(file, { live: m === 'live' }); kick(); if (tok) toast(m === 'live' ? '实况设好了：按住或者鼠标移上去就会动' : '视频设好了，循环播放中'); return tok; }
+            const tok = await put(file); kick(); return tok;
+        } catch (err) { alertBox(String(err && err.message || err)); return null; }
+    }
+    window.gyLiveTake = take;
+
     /* ---------- 把 gylive: 换成真东西 ---------- */
     function mkVideo(rec) {
         const v = document.createElement('video');
-        v.className = 'gylive-v';
+        v.className = 'gylive-v' + (rec.live ? ' live' : '');
+        if (rec.live) { v.src = rec.url; v.loop = false; v.autoplay = false; v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.preload = 'auto'; if (rec.poster) v.poster = rec.poster; v.onended = () => liveStop(v); return v; }
         v.src = rec.url; v.loop = true; v.autoplay = true; v.controls = false;
         v.muted = !S.sound; v.playsInline = true;
         v.setAttribute('playsinline', ''); v.setAttribute('loop', '');
@@ -113,10 +146,35 @@
         } catch (e) {}
         const v = mkVideo(rec); v.dataset.gyid = id;
         host.appendChild(v);
+        if (rec.live) {
+            // 实况：角上一个小标（地方够大才显示），刚出现时自己动一下
+            const r = host.getBoundingClientRect();
+            if (r.width >= 110 && !host.querySelector(':scope > .gylive-badge')) { const b = document.createElement('span'); b.className = 'gylive-badge'; b.textContent = '◎ 实况'; host.appendChild(b); }
+            if (!liveSeen.has(id)) { liveSeen.add(id); setTimeout(() => livePlay(v), 400); }   // 第一次出现时自己动一下；之后重画不再动
+            return;
+        }
         kickPlay(v);
         unlocked = false;   // 新盖上的这颗要是被拦了，下次点页面再补一次
         try { ['pointerdown', 'keydown', 'touchstart'].forEach(e => document.addEventListener(e, unlock, { once: true, passive: true })); } catch (e) {}
     }
+    /* 实况：按住 / 鼠标停在上面就从头播一遍，松开 / 移走就回到照片 */
+    const liveSeen = new Set();
+    function livePlay(v) { if (!v || !v.isConnected) return; v.classList.add('on'); try { v.currentTime = 0; } catch (e) {} kickPlay(v); }
+    function liveStop(v) { if (!v) return; v.classList.remove('on'); try { v.pause(); } catch (e) {} setTimeout(() => { try { if (!v.classList.contains('on')) v.currentTime = 0; } catch (e) {} }, 320); }
+    const liveAt = (x, y) => [...document.querySelectorAll('.gylive-v.live')].filter(v => { const r = (v.parentElement || v).getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom && r.width > 0; });
+    let pressT = null, pressed = [], hovered = [];
+    document.addEventListener('pointerdown', e => { clearTimeout(pressT); const L = liveAt(e.clientX, e.clientY); if (!L.length) return; pressT = setTimeout(() => { pressed = L; L.forEach(livePlay); }, 220); }, true);
+    const release = () => { clearTimeout(pressT); pressed.forEach(liveStop); pressed = []; };
+    document.addEventListener('pointerup', release, true); document.addEventListener('pointercancel', release, true);
+    let hvT = 0;
+    document.addEventListener('pointermove', e => {
+        if (e.pointerType === 'touch') return;
+        if (!hovered.length && Date.now() - hvT < 60) return; hvT = Date.now();   // 没东西在播的时候才省着点查
+        const L = liveAt(e.clientX, e.clientY).filter(v => (v.parentElement || v).getBoundingClientRect().width < 300);   // 大的（壁纸）要按住才动，小的（头像、配图）鼠标移上去就动
+        hovered.filter(v => !L.includes(v) && !pressed.includes(v)).forEach(liveStop);
+        L.filter(v => !hovered.includes(v)).forEach(livePlay);
+        hovered = L;
+    }, { passive: true });
     function fixBg(el) {
         const st = el.getAttribute('style') || '';
         const m = st.match(TOKRE); if (!m) return;
@@ -148,6 +206,7 @@
     }
     function sweep() {
         if (!S.on) return;
+        widenInputs();   // 后来才出现的上传框（回复框、相册、小手机里的）也放行视频
         try {
             document.querySelectorAll('[style*="gylive:"]').forEach(fixBg);
             document.querySelectorAll('img[src*="gylive:"]').forEach(fixImg);
@@ -159,12 +218,12 @@
     const kick = () => { if (t) return; t = setTimeout(() => { t = null; sweep(); }, 120); };
 
     /* ---------- 文件选择框也得放行视频 ---------- */
-    const ACCEPT = 'image/*,image/gif,video/mp4,video/webm,video/quicktime';
+    const ACCEPT = 'image/*,image/gif,video/*';
     function widenInputs() {
         try {
             document.querySelectorAll('input[type="file"][accept]').forEach(i => {
                 const a = i.getAttribute('accept') || '';
-                if (!/^image\//.test(a)) return;
+                if (!/^image\//.test(a) || (S.on && /video/.test(a))) return;
                 if (S.on) { if (a !== ACCEPT) { i.dataset.gyAccept0 = i.dataset.gyAccept0 || a; i.setAttribute('accept', ACCEPT); } }
                 else if (i.dataset.gyAccept0) i.setAttribute('accept', i.dataset.gyAccept0);
             });
@@ -176,12 +235,12 @@
     if (crop0 && crop0.call && !crop0.__gyLive) {
         window.handleImageCrop = function (file, aspect, callback) {
             if (S.on && isLiveFile(file)) {
-                put(file).then(tok => {
+                take(file).then(tok => {
                     if (!tok) return;
                     try { callback(tok); } catch (e) { console.error('[动图视频] 回调出错', e); }
                     kick();
-                    toast(/^video\//.test(file.type) ? '视频设好了，循环播放中' : '动图设好了');
-                }).catch(err => alertBox(String(err && err.message || err)));
+                    if (!/^video\//.test(file.type)) toast('动图设好了');
+                });
                 return;
             }
             return crop0.apply(this, arguments);
@@ -192,8 +251,7 @@
     if (f2b0 && f2b0.call && !f2b0.__gyLive) {
         window.fileToBase64 = function (file) {
             if (S.on && isLiveFile(file)) {
-                return put(file).then(tok => { kick(); return tok; })
-                    .catch(err => { alertBox(String(err && err.message || err)); return null; });
+                return take(file);
             }
             return f2b0.apply(this, arguments);
         };
@@ -213,7 +271,7 @@
                 const pack = {};
                 for (const id of used) {
                     const rec = await store.getItem(id);
-                    if (rec && rec.blob) pack[id] = { mime: rec.mime, poster: rec.poster || '', b64: await blobToB64(rec.blob) };
+                    if (rec && rec.blob) pack[id] = { mime: rec.mime, poster: rec.poster || '', live: !!rec.live, b64: await blobToB64(rec.blob) };
                 }
                 if (Object.keys(pack).length) data.__gyLiveMedia = pack;
                 saveTextFileForApp('twitter_ai_backup.json', JSON.stringify(data, null, 2), 'application/json');
@@ -237,8 +295,8 @@
             try {
                 if (MAP[id]) continue;
                 const blob = await (await fetch(pack[id].b64)).blob();
-                await store.setItem(id, { mime: pack[id].mime, blob, poster: pack[id].poster || '', bytes: blob.size, at: Date.now() });
-                MAP[id] = { mime: pack[id].mime, url: URL.createObjectURL(blob), poster: pack[id].poster || '', bytes: blob.size };
+                await store.setItem(id, { mime: pack[id].mime, blob, poster: pack[id].poster || '', bytes: blob.size, at: Date.now(), live: !!pack[id].live });
+                MAP[id] = { mime: pack[id].mime, url: URL.createObjectURL(blob), poster: pack[id].poster || '', bytes: blob.size, live: !!pack[id].live };
                 n++;
             } catch (e) {}
         }
@@ -295,7 +353,16 @@
             '.gylive-v{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;' +
             'border-radius:inherit;pointer-events:none;z-index:0;display:block;background:transparent;}' +
             '.gylive-wrap{position:relative;display:inline-block;line-height:0;max-width:100%;}' +
-            '.gylive-wrap>img{display:block;max-width:100%;}';
+            '.gylive-wrap>img{display:block;max-width:100%;}' +
+            '.gylive-v.live{opacity:0;transition:opacity .3s}.gylive-v.live.on{opacity:1}' +
+            '.gylive-badge{position:absolute;left:8px;top:8px;z-index:1;font-size:10.5px;line-height:1;padding:4px 7px;border-radius:999px;background:rgba(255,255,255,.72);color:#333;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);pointer-events:none;font-weight:600;letter-spacing:.5px}' +
+            '#gyLiveAsk{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:20px}' +
+            '#gyLiveAsk .bx{background:#fff;color:#111;border-radius:20px;padding:16px;width:min(320px,100%);display:flex;flex-direction:column;gap:9px;box-shadow:0 20px 50px rgba(0,0,0,.25);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}' +
+            '#gyLiveAsk video{width:100%;max-height:180px;object-fit:cover;border-radius:12px;background:#000}' +
+            '#gyLiveAsk b{font-size:16px;text-align:center;margin:4px 0}' +
+            '#gyLiveAsk button{border:none;border-radius:14px;padding:11px 14px;background:#f2f2f4;font-size:15px;font-weight:600;cursor:pointer;text-align:left;color:#111;font-family:inherit}' +
+            '#gyLiveAsk button small{display:block;font-size:12px;font-weight:400;color:#8e8e93;margin-top:2px}' +
+            '#gyLiveAsk button.no{text-align:center;background:none;color:#8e8e93;font-weight:500}';
         document.head.appendChild(st);
     } catch (e) {}
 
@@ -323,7 +390,7 @@
         if (store) {
             try {
                 await store.iterate((v, k) => {
-                    try { MAP[k] = { mime: v.mime, url: URL.createObjectURL(v.blob), poster: v.poster || '', bytes: v.bytes || 0 }; } catch (e) {}
+                    try { MAP[k] = { mime: v.mime, url: URL.createObjectURL(v.blob), poster: v.poster || '', bytes: v.bytes || 0, live: !!v.live }; } catch (e) {}
                 });
             } catch (e) {}
         }

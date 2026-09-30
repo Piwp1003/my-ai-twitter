@@ -207,7 +207,7 @@ function saveWorldbook() {
     const depthRoleRaw = document.getElementById('newWbDepthRole')?.value;
     const depthRole = (depthRoleRaw === 'user' || depthRoleRaw === 'assistant') ? depthRoleRaw : 'system';
     const depth = Math.max(0, parseInt(document.getElementById('newWbDepth')?.value) || 0);
-    // 次要关键词/触发节奏（仿SillyTavern World Info的sticky/cooldown/delay/概率触发），只在聊天里真正生效
+    // 次要关键词/触发节奏（仿照同类软件 World Info的sticky/cooldown/delay/概率触发），只在聊天里真正生效
     const secondaryKeywords = document.getElementById('newWbSecondaryKeywords')?.value.trim() || '';
     const secondaryLogic = document.getElementById('newWbSecondaryLogic')?.value || 'and_any';
     const stickyTurns = Math.max(0, parseInt(document.getElementById('newWbSticky')?.value) || 0);
@@ -700,18 +700,15 @@ async function checkAndAutoSummarizeChat(sessionId) {
         if(data.error) return; 
         let newSummary = data.choices?.[0]?.message?.content?.trim() || ""; if(!newSummary) return;
         
-        // 数组化存储，加入时间戳，最多保留 20 轮
+        // 数组化存储，加入时间戳。不设条数上限（以前只留 20 轮，更早的记忆会被剔掉）
         let summaryArr = char.chatSummary ? char.chatSummary.split('\n').filter(line => line.trim()) : [];
         summaryArr.push(`[${new Date().toLocaleString()}] ${newSummary}`);
-        if (summaryArr.length > 20) {
-            summaryArr = summaryArr.slice(summaryArr.length - 20); // 剔除最早的记忆
-        }
         char.chatSummary = summaryArr.join('\n');
         saveAllData();
     } catch(e) { console.error("聊天总结失败", e); }
 }
 
-// 群聊版的"聊天总结"：配置方式和角色个人聊天总结一样（数组化+时间戳+上限20条），
+// 群聊版的"聊天总结"：配置方式和角色个人聊天总结一样（数组化+时间戳，不设条数上限），
 // 区别只是触发频率改成每50条消息一次（群聊人多话多，20条太频繁），总结存在群聊对象自己的 summary 字段上，
 // 不属于任何单个角色，这样群里每个成员发推文时都能读到同一份"群聊话题"。
 async function checkAndAutoSummarizeGroupChat(sessionId) {
@@ -738,12 +735,9 @@ async function checkAndAutoSummarizeGroupChat(sessionId) {
         if (data.error) return;
         let newSummary = data.choices?.[0]?.message?.content?.trim() || ""; if (!newSummary) return;
 
-        // 数组化存储，加入时间戳，最多保留 20 条
+        // 数组化存储，加入时间戳。不设条数上限
         let summaryArr = group.summary ? group.summary.split('\n').filter(line => line.trim()) : [];
         summaryArr.push(`[${new Date().toLocaleString()}] ${newSummary}`);
-        if (summaryArr.length > 20) {
-            summaryArr = summaryArr.slice(summaryArr.length - 20);
-        }
         group.summary = summaryArr.join('\n');
         saveAllData();
     } catch (e) { console.error("群聊总结失败", e); }
@@ -773,12 +767,9 @@ async function updateCharMemoryAsync(char) {
         const data = await sendChatRequest(api, prompt, { max_tokens: 1200 });
         let newSum = data.choices?.[0]?.message?.content?.trim();
         if(newSum) {
-            // 数组化存储，加入时间戳，最多保留 20 轮
+            // 数组化存储，加入时间戳。不设条数上限
             let memoryArr = char.memorySummary ? char.memorySummary.split('\n').filter(line => line.trim()) : [];
             memoryArr.push(`[${new Date().toLocaleString()}] ${newSum}`);
-            if (memoryArr.length > 20) {
-                memoryArr = memoryArr.slice(memoryArr.length - 20);
-            }
             char.memorySummary = memoryArr.join('\n');
             saveAllData();
         }
