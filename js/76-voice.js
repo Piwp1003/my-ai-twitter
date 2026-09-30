@@ -122,7 +122,7 @@
             b = await SYN[c.prov](c, text);
             if (!b || !b.size) throw new Error('没拿到声音');
             await put(k, b);
-            const L = await get('ttsKeys', []); L.push(k); while (L.length > 300) { const o = L.shift(); try { await LF.removeItem(o); } catch (e) {} } await put('ttsKeys', L);
+            
         }
         const u = URL.createObjectURL(b); MEM.set(k, u); return u;
     }
@@ -188,7 +188,7 @@
     const VRE = /^\s*[\[【]\s*语音\s*[\]】]/;
     const isVoiceMsg = m => m && m.sender !== 'system' && VRE.test(String(m.text || ''));
     window.gyIsVoiceMsg = isVoiceMsg;
-    const secOf = m => m.voiceSec || Math.max(1, Math.min(60, Math.round(clean(m.text).length / 4)));
+    const secOf = m => m.voiceSec || Math.max(1, Math.round(clean(m.text).length / 4));
     const isAuto = c => { try { return typeof getCharActMode === 'function' ? getCharActMode(c) === 'auto' : c.actMode === 'auto'; } catch (e) { return false; } };
     // 这个角色有没有「能念出来的声音」（语音模型 / 语音库）。没有的话，语音条只能转文字
     const canSound = (ch, text) => { const c = cfgFor(ch); if (c.prov !== 'browser') return true; const t = String(text || ''); return !!(VL && VL.some(v => (!v.chars.length || (ch && v.chars.includes(ch.name))) && (v.keys.length ? v.keys : [v.name]).some(k => k && t.includes(k)))); };
@@ -203,7 +203,7 @@
             const m = /showChatContextMenu\(event,\s*(\d+)\)/.exec(b.getAttribute('oncontextmenu') || ''); if (!m) return;
             const i = +m[1], msg = H[i]; if (!isVoiceMsg(msg)) return;
             const me = msg.sender === 'me', s = secOf(msg), txt = clean(msg.text);
-            b.classList.add('gyvc'); if (me) b.classList.add('gyvc-me'); b.style.minWidth = Math.min(230, 78 + s * 5) + 'px';
+            b.classList.add('gyvc'); if (me) b.classList.add('gyvc-me'); b.style.minWidth = Math.min(260, 78 + s * 5) + 'px';
             b.innerHTML = `<div class="gyvc-bar" onclick="gyVoicePlayMsg(${i}, this)">${me ? `<span class="gyvc-len">${s}″</span>${WAVE}` : `${WAVE}<span class="gyvc-len">${s}″</span>`}${msg.voicePlayed || me ? '' : '<i class="gyvc-dot"></i>'}</div>
                 <div class="gyvc-tx" style="display:none">${esc(txt)}</div><span class="gyvc-to" onclick="event.stopPropagation();gyVoiceToText(this)">转文字</span>`;
         });
@@ -256,7 +256,7 @@
                 if (m.vChk || m.sender === 'me' || m.sender === 'system' || m.type || m.mediaUrl || (m.timestamp || 0) < BOOT_T - 5000) continue;
                 const ch = charOf(m.sender); if (!ch || isAuto(ch) || isVoiceMsg(m)) continue;
                 m.vChk = 1;
-                const t = clean(m.text); if (t.length < 2 || t.length > 80 || /<|```|STATUS|status/.test(String(m.text))) continue;
+                const t = clean(m.text); if (!t || /<|```|STATUS|status/.test(String(m.text))) continue;
                 if (Math.random() * 100 < (FREQ[freqOf(ch)] || 0)) { m.text = '[语音]' + String(m.text).trim(); changed = true; }
             }
         });
@@ -291,7 +291,7 @@
         pn.innerHTML = `<div class="gyvr-box"><div class="gyvr-t"><i class="gyvr-dot"></i><b id="gyVoRecT">0″</b></div><div id="gyVoRecTx" class="gyvr-tx">${REC.err ? esc(REC.err) : '说吧，我在听'}</div>
             <div class="gyvr-bt"><button onclick="gyVoiceRecStop(false)">取消</button><button class="pri" onclick="gyVoiceRecStop(true)">发送</button></div></div>`;
         pn.style.display = 'flex';
-        REC.timer = setInterval(() => { const el = document.getElementById('gyVoRecT'); if (el && REC) el.textContent = Math.round((Date.now() - REC.t0) / 1000) + '″'; if (REC && Date.now() - REC.t0 > 60000) window.gyVoiceRecStop(true); }, 250);
+        REC.timer = setInterval(() => { const el = document.getElementById('gyVoRecT'); if (el && REC) el.textContent = Math.round((Date.now() - REC.t0) / 1000) + '″'; }, 250);
     };
     window.gyVoiceRecStop = async function (send) {
         const R = REC; if (!R) return; REC = null; clearInterval(R.timer);
@@ -317,7 +317,7 @@
         try { await sendChatMessage(); } catch (e) {}
         const H = (typeof globalChats !== 'undefined' && globalChats[currentChatSessionId]) || [];
         const m = [...H].reverse().find(x => x.sender === 'me' && String(x.text) === body);
-        if (m) { m.voiceSec = Math.min(60, sec || Math.max(1, Math.round(text.length / 4))); if (blob) { m.uvoice = 'uv:' + (m.timestamp || Date.now()) + Math.random().toString(36).slice(2, 6); await put(m.uvoice, blob); } try { saveAllData(); } catch (e) {} try { renderChatMessages(); } catch (e) {} }
+        if (m) { m.voiceSec = sec || Math.max(1, Math.round(text.length / 4)); if (blob) { m.uvoice = 'uv:' + (m.timestamp || Date.now()) + Math.random().toString(36).slice(2, 6); await put(m.uvoice, blob); } try { saveAllData(); } catch (e) {} try { renderChatMessages(); } catch (e) {} }
         if (keep && !inp.value) inp.value = keep;
         return m || null;
     };

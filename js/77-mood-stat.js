@@ -45,11 +45,11 @@
                     const H = ((typeof globalChats !== 'undefined' && globalChats[id]) || []).filter(x => x.sender !== 'system').slice(-14)
                         .map(x => (x.sender === 'me' ? '她' : ch.name) + '：' + plain(x.text).slice(0, 80)).join('\n');
                     const me = d.me ? `她今天在心情手账里记的是「${d.me.m}」${d.me.note ? '，写着：' + d.me.note : ''}。` : '';
-                    const prompt = `你是${ch.name}。${String(ch.persona || ch.description || '').slice(0, 600)}\n\n最近你们的聊天：\n${H || '（今天还没聊）'}\n\n${me}今天是 ${k}。用你自己的口吻，给你的心情手账写今天这一页：从这些心情里挑一个最贴近你今天的：${MOODS.map(x => x[0]).join('、')}；再写一两句今天的心情（不超过 60 字，像写给自己看的，不要写成对她说话）。\n只输出 JSON：{"m":"心情","note":"一两句"}`;
+                    const prompt = `你是${ch.name}。${String(ch.persona || ch.description || '').slice(0, 600)}\n\n最近你们的聊天：\n${H || '（今天还没聊）'}\n\n${me}今天是 ${k}。用你自己的口吻，给你的心情手账写今天这一页：从这些心情里挑一个最贴近你今天的：${MOODS.map(x => x[0]).join('、')}；再写今天的心情，长短随你（像写给自己看的，不要写成对她说话）。\n只输出 JSON：{"m":"心情","note":"一两句"}`;
                     const data = await sendChatRequest(api, prompt);
                     const txt = String(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || '');
                     const j = JSON.parse((txt.match(/\{[\s\S]*\}/) || ['{}'])[0]);
-                    if (j && j.m) { m = MOODS.some(x => x[0] === j.m) ? j.m : (MOODS.find(x => String(j.m).includes(x[0])) || [null])[0]; note = String(j.note || '').slice(0, 120); }
+                    if (j && j.m) { m = MOODS.some(x => x[0] === j.m) ? j.m : (MOODS.find(x => String(j.m).includes(x[0])) || [null])[0]; note = String(j.note || ''); }
                 }
             } catch (e) {}
             if (!m) { m = pick(MOODS)[0]; note = note || ''; }
@@ -160,7 +160,7 @@
         const ch = charById(WHO), arr = ((ch && typeof globalChats !== 'undefined' && globalChats[ch.id]) || []).filter(m => m.sender !== 'system');
         const me = arr.filter(m => m.sender === 'me'), ta = arr.filter(m => String(m.sender) === String(ch && ch.id));
         const first = arr[0], last = arr[arr.length - 1], fmt = t => t ? new Date(t).toLocaleString() : '—';
-        const top = L => { const c = {}; L.forEach(m => { const t = plain(m.text); if (t && t.length <= 30) c[t] = (c[t] || 0) + 1; }); return Object.entries(c).filter(x => x[1] > 1).sort((a, b) => b[1] - a[1]).slice(0, 5); };
+        const top = L => { const c = {}; L.forEach(m => { const t = plain(m.text); if (t && t.length <= 30) c[t] = (c[t] || 0) + 1; }); return Object.entries(c).filter(x => x[1] > 1).sort((a, b) => b[1] - a[1]).slice(0, 10); };
         // 几点最爱聊
         const hrs = new Array(24).fill(0); arr.forEach(m => { if (m.timestamp) hrs[new Date(m.timestamp).getHours()]++; });
         const hm = Math.max(1, ...hrs), peak = hrs.indexOf(Math.max(...hrs));
@@ -171,7 +171,7 @@
             (t.match(/[a-zA-Z]{3,}/g) || []).forEach(w => { w = w.toLowerCase(); words[w] = (words[w] || 0) + 1; });
             t.replace(/[^一-龥]+/g, ' ').split(' ').forEach(seg => { for (let n = 4; n >= 2; n--) for (let i = 0; i + n <= seg.length; i++) { const w = seg.slice(i, i + n); if (STOP.has(w[0]) || STOP.has(w[w.length - 1])) continue; words[w] = (words[w] || 0) + (n === 4 ? 2.4 : n === 3 ? 1.8 : 1); } });
         });
-        const kept = []; Object.entries(words).filter(x => x[1] >= 2).sort((a, b) => b[1] - a[1]).forEach(([w, v]) => { if (kept.length < 60 && !kept.some(([k]) => k.includes(w) && k !== w)) kept.push([w, v]); });
+        const kept = []; Object.entries(words).filter(x => x[1] >= 2).sort((a, b) => b[1] - a[1]).forEach(([w, v]) => { if (kept.length < 120 && !kept.some(([k]) => k.includes(w) && k !== w)) kept.push([w, v]); });
         const mx = Math.max(1, ...kept.map(x => x[1])), mn = Math.min(mx, ...kept.map(x => x[1]));
         const size = v => 11 + (Math.log(v) - Math.log(mn)) / Math.max(0.01, Math.log(mx) - Math.log(mn)) * 43;
         const cols = ['#1d9bf0', '#f06292', '#ba68c8', '#4db6ac', '#ffb74d', '#7986cb', '#e57373', '#81c784'];
