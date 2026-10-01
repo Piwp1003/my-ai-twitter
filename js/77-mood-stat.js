@@ -195,6 +195,7 @@
         return pool.length ? pick(pool) : '今天也想你';
     }
     function intro(force) {
+        if (!force && window.__gyxIntroOwn) return;   // 装了「开场动画合集」插件并打开时，由插件来放
         if (!force && (D.intro.on === false || navigator.webdriver)) return;
         if (document.getElementById('gyIntro')) return;
         const ov = document.createElement('div'); ov.id = 'gyIntro';
