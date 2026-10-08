@@ -73,11 +73,11 @@ check('面板：默认声音、每个角色、语音条、你发语音条（转�
 // ================= TA 的语音条 =================
 await page.evaluate(() => { switchMainView('chat'); switchChatSession('9951'); });
 await page.waitForTimeout(400);
-const vb = await page.evaluate(() => { const b = document.querySelector('#chatMessagesArea .chat-bubble.gyvc'); return b ? { t: b.innerText, dot: !!b.querySelector('.gyvc-dot') } : null; });
-check('TA 发的 [语音] 画成语音条（秒数 + 未听红点 + 转文字）', vb && /″/.test(vb.t) && vb.dot && /转文字/.test(vb.t) && !/晚安呀/.test(vb.t.replace(/转文字/, '').split('″')[0]), JSON.stringify(vb));
+const vb = await page.evaluate(() => { const b = document.querySelector('#chatMessagesArea .chat-bubble.gyvc'); if (!b) return null; const idx = +/showChatContextMenu\(event,\s*(\d+)\)/.exec(b.getAttribute('oncontextmenu'))[1]; showChatContextMenu({ preventDefault() {}, pageX: 50, pageY: 50 }, idx); const m = document.getElementById('chatContextMenu').innerText; document.getElementById('chatContextMenu').style.display = 'none'; return { t: b.innerText, dot: !!b.querySelector('.gyvc-dot'), menu: /转文字/.test(m), idx }; });   // v210 起「转文字」在长按 / 右键菜单里
+check('TA 发的 [语音] 画成语音条（秒数 + 未听红点；长按菜单里有转文字）', vb && /″/.test(vb.t) && vb.dot && vb.menu && !/晚安呀/.test(vb.t.split('″')[0]), JSON.stringify(vb));
 const pl = await page.evaluate(async () => { const el = document.querySelector('#chatMessagesArea .gyvc .gyvc-bar'); const idx = +/(\d+)/.exec(el.getAttribute('onclick'))[1]; const r = await gyVoicePlayMsg(idx, el); return { r, played: globalChats['9951'][idx].voicePlayed }; });
 check('接了语音模型：点语音条用 TA 的声音（onyx）念', pl.r === 'model' && pl.played && REQ.some(x => /"voice":"onyx"/.test(x.body) && /晚安呀/.test(x.body)), JSON.stringify(pl));
-check('转文字：点一下露出文字', await page.evaluate(() => { const b = document.querySelector('#chatMessagesArea .gyvc'); gyVoiceToText(b.querySelector('.gyvc-to')); return getComputedStyle(b.querySelector('.gyvc-tx')).display !== 'none' && /晚安呀/.test(b.querySelector('.gyvc-tx').innerText); }));
+check('转文字：点一下露出文字', await page.evaluate(() => { const b = document.querySelector('#chatMessagesArea .gyvc'); gyVoiceToText(+/showChatContextMenu\(event,\s*(\d+)\)/.exec(b.getAttribute('oncontextmenu'))[1], true); return getComputedStyle(b.querySelector('.gyvc-tx')).display !== 'none' && /晚安呀/.test(b.querySelector('.gyvc-tx').innerText); }));
 // 没接模型的角色
 await page.evaluate(async () => { await gyVoiceOpen('9952'); await gyVoiceMode('def'); await gyVoiceSetProv('def', 'browser'); document.getElementById('gyVoOv').remove(); switchChatSession('9952'); });
 await page.waitForTimeout(300);

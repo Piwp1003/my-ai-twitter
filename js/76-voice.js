@@ -196,6 +196,26 @@
     const FREQ_N = [['never', '从不'], ['some', '偶尔'], ['often', '经常'], ['always', '总是']];
     const freqOf = ch => { const o = (ch && CFG.chars[String(ch.id)]) || {}; return o.freq || (o.noBubble ? 'never' : 'some'); };
     const WAVE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 12h.01"/><path class="w1" d="M9.5 8.5a5 5 0 0 1 0 7"/><path class="w2" d="M13 5.5a9.5 9.5 0 0 1 0 13"/></svg>';
+    // 语音条三种样子：微信款 / 声波条 / 胶囊播放器（设置里切换，CFG.vstyle）
+    const VSTYLES = [['wx', '微信款'], ['wave', '声波条'], ['pill', '胶囊播放器']];
+    const vstyle = () => (VSTYLES.some(v => v[0] === CFG.vstyle) ? CFG.vstyle : 'wx');
+    const hashOf = t => { let h = 2166136261; for (const ch of String(t)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0; return h; };
+    function bars(txt, n) { let h = hashOf(txt) || 7, out = []; for (let k = 0; k < n; k++) { h = Math.imul(h ^ (h >>> 13), 1103515245) + 12345 >>> 0; const v = 0.25 + (h % 1000) / 1000 * 0.75, edge = Math.min(1, (k + 1) / 3, (n - k) / 3); out.push(Math.max(0.18, v * (0.55 + 0.45 * edge))); } return out; }
+    function vbHtml(i, msg, me, s, txt) {
+        const st = vstyle(), dot = msg.voicePlayed || me ? '' : '<i class="gyvc-dot"></i>', len = `<span class="gyvc-len">${s}″</span>`, D = `style="--d:${s}s"`;
+        let bar;
+        if (st === 'wave') {
+            const n = Math.max(12, Math.min(34, 10 + s * 1.4 | 0)), B = bars(txt, n);
+            bar = `<div class="gyvc-bar s-wave" ${D} onclick="gyVoicePlayMsg(${i}, this)"><span class="gyvc-play"></span><span class="gyvc-bars">${B.map((v, k) => `<i style="height:${Math.round(v * 100)}%;--k:${(k / n).toFixed(3)}"></i>`).join('')}</span>${len}${dot}</div>`;
+        } else if (st === 'pill') {
+            bar = `<div class="gyvc-bar s-pill" ${D} onclick="gyVoicePlayMsg(${i}, this)"><span class="gyvc-play"></span><span class="gyvc-track"><i></i></span>${len}${dot}</div>`;
+        } else {
+            bar = `<div class="gyvc-bar s-wx" style="--d:${s}s;min-width:${Math.min(210, 64 + s * 6)}px" onclick="gyVoicePlayMsg(${i}, this)">${me ? `${len}${WAVE}` : `${WAVE}${len}`}${dot}</div>`;
+        }
+        // 「转文字」不再挂在气泡下面：长按 / 右键这条语音 → 菜单里的「📝 转文字」
+        return `${bar}<div class="gyvc-tx" style="display:none">${esc(txt)}</div>`;
+    }
+    window.gyVoiceStyle = async v => { CFG.vstyle = v; await saveCfg(); document.querySelectorAll('.chat-bubble.gyvc').forEach(b => b.classList.remove('gyvc', 'gyvc-me')); try { if (typeof renderChatMessages === 'function') renderChatMessages(); } catch (e) {} try { paint(); } catch (e) {} };
     function decorate() {
         const area = document.getElementById('chatMessagesArea'); if (!area || typeof currentChatSessionId === 'undefined' || !currentChatSessionId) return;
         const H = (typeof globalChats !== 'undefined' && globalChats[currentChatSessionId]) || [];
@@ -203,9 +223,8 @@
             const m = /showChatContextMenu\(event,\s*(\d+)\)/.exec(b.getAttribute('oncontextmenu') || ''); if (!m) return;
             const i = +m[1], msg = H[i]; if (!isVoiceMsg(msg)) return;
             const me = msg.sender === 'me', s = secOf(msg), txt = clean(msg.text);
-            b.classList.add('gyvc'); if (me) b.classList.add('gyvc-me'); b.style.minWidth = Math.min(260, 78 + s * 5) + 'px';
-            b.innerHTML = `<div class="gyvc-bar" onclick="gyVoicePlayMsg(${i}, this)">${me ? `<span class="gyvc-len">${s}″</span>${WAVE}` : `${WAVE}<span class="gyvc-len">${s}″</span>`}${msg.voicePlayed || me ? '' : '<i class="gyvc-dot"></i>'}</div>
-                <div class="gyvc-tx" style="display:none">${esc(txt)}</div><span class="gyvc-to" onclick="event.stopPropagation();gyVoiceToText(this)">转文字</span>`;
+            b.classList.add('gyvc'); if (me) b.classList.add('gyvc-me');
+            b.innerHTML = vbHtml(i, msg, me, s, txt);
         });
     }
     window.gyVoiceDecorate = decorate;
@@ -219,19 +238,22 @@
         // 你自己发的：放你录的那段
         if (msg.sender === 'me') {
             const b = msg.uvoice ? await get(msg.uvoice, null) : null;
-            if (!b) { if (bar) { const t = bar.querySelector('.gyvc-to'); if (t) window.gyVoiceToText(t); } return 'text'; }
+            if (!b) { if (bar) window.gyVoiceToText(bar, true); return 'text'; }
             document.querySelectorAll('.gyvc.on').forEach(x => x.classList.remove('on')); if (bar) bar.classList.add('on');
             await playUrl(URL.createObjectURL(b), done); return 'mine';
         }
         const ch = charOf(msg.sender);
         // 没接语音模型的角色：语音条只能转文字
-        if (!canSound(ch, msg.text)) { if (bar) { const t = bar.querySelector('.gyvc-to'); if (t && t.textContent === '转文字') window.gyVoiceToText(t); } return 'text'; }
+        if (!canSound(ch, msg.text)) { if (bar) window.gyVoiceToText(bar, true); return 'text'; }
         document.querySelectorAll('.gyvc.on').forEach(x => x.classList.remove('on')); if (bar) bar.classList.add('on');
         const r = await window.gyVoiceSpeak(msg.sender, msg.text, { onEnd: done });
         if (!r) done();
         return r;
     };
-    window.gyVoiceToText = function (el) { const b = el.closest('.gyvc'), t = b && b.querySelector('.gyvc-tx'); if (!t) return; const on = t.style.display === 'none'; t.style.display = on ? '' : 'none'; el.textContent = on ? '收起' : '转文字'; };
+    // 转文字：可以传气泡里任何一个元素，也可以传消息序号（右键菜单用）
+    function bubbleOfIdx(i) { const area = document.getElementById('chatMessagesArea'); if (!area) return null; return [...area.querySelectorAll('.chat-bubble.gyvc')].find(b => new RegExp('showChatContextMenu\\(event,\\s*' + i + '\\)').test(b.getAttribute('oncontextmenu') || '')) || null; }
+    window.gyVoiceToText = function (el, force) { const b = typeof el === 'number' ? bubbleOfIdx(el) : el && el.closest('.gyvc'), t = b && b.querySelector('.gyvc-tx'); if (!t) return false; const on = force != null ? !!force : t.style.display === 'none'; t.style.display = on ? '' : 'none'; return on; };
+    window.gyVoiceTextShown = i => { const b = bubbleOfIdx(i), t = b && b.querySelector('.gyvc-tx'); return !!(t && t.style.display !== 'none'); };
 
     // 告诉模型：自主模式的 TA 自己决定发不发语音；谁都要知道 [语音] 开头的是语音条
     window.__gyVoiceCtxFor = function (charId) {
@@ -328,6 +350,19 @@
         // 聊天渲染完：把 [语音] 那几条画成语音条
         const r = window.renderChatMessages;
         if (typeof r === 'function' && !r.__gyVo) { const w = function () { const x = r.apply(this, arguments); try { decorate(); } catch (e) {} return x; }; w.__gyVo = true; window.renderChatMessages = w; try { renderChatMessages = w; } catch (e) {} }
+        // 右键 / 长按菜单：语音条多一项「📝 转文字」（放在最上面）
+        const cm = window.showChatContextMenu;
+        if (typeof cm === 'function' && !cm.__gyVo) {
+            const w = function (e, idx) {
+                const x = cm.apply(this, arguments);
+                try {
+                    const msg = (globalChats[currentChatSessionId] || [])[idx], menu = document.getElementById('chatContextMenu');
+                    if (menu && isVoiceMsg(msg)) { const bt = document.createElement('button'); bt.className = 'context-btn'; bt.textContent = window.gyVoiceTextShown(idx) ? '📝 收起文字' : '📝 转文字'; bt.onclick = () => { menu.style.display = 'none'; window.gyVoiceToText(idx); }; menu.insertBefore(bt, menu.firstChild); }
+                } catch (er) {}
+                return x;
+            };
+            w.__gyVo = true; window.showChatContextMenu = w; try { showChatContextMenu = w; } catch (er) {}
+        }
         // 长按「朗读」：TA 说的话用 TA 的声音
         const s = window.contextActionSpeakChat;
         if (typeof s === 'function' && !s.__gyVo) {
@@ -366,8 +401,63 @@
             let vs = []; try { vs = speechSynthesis.getVoices().filter(x => /zh|Chinese|cmn|yue/i.test(x.lang + x.name)); } catch (e) {}
             return `<label class="gyvo-f"><span>${esc(label)}</span><select onchange="gyVoiceSetF('${path}','${k}',this.value)"><option value="">自动（第一个中文声音）</option>${vs.map(x => `<option${x.name === v ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>`;
         }
-        return `<label class="gyvo-f"><span>${esc(label)}</span><input type="${type === 'pw' ? 'password' : type === 'num' ? 'number' : 'text'}"${type === 'num' ? ' step="0.05" min="0.3" max="3"' : ''} value="${esc(v)}" placeholder="${esc(d)}" onchange="gyVoiceSetF('${path}','${k}',this.value)"></label>`;
+        // 模型 / 音色：能「拉取」接口上有的，下拉里挑，也能照样手填
+        const pull = (k === 'model' || (k === 'voice' && /^(openai|minimax|fish)$/.test(c.prov)));
+        const dl = pull ? `gyvoDL_${path}_${k}` : '';
+        const L = pull ? (PULLED[c.prov + ':' + k] || []) : [];
+        return `<label class="gyvo-f"><span>${esc(label)}${pull ? ` <a class="gyvo-pull" onclick="event.preventDefault();gyVoicePull('${path}','${k}',this)">⟳ 拉取${k === 'model' ? '模型' : '音色'}</a>${L.length ? ` <em>${L.length} 个</em>` : ''}` : ''}</span><input${dl ? ` list="${dl}"` : ''} type="${type === 'pw' ? 'password' : type === 'num' ? 'number' : 'text'}"${type === 'num' ? ' step="0.05" min="0.3" max="3"' : ''} value="${esc(v)}" placeholder="${esc(d)}" onchange="gyVoiceSetF('${path}','${k}',this.value)">${dl ? `<datalist id="${dl}">${L.map(x => `<option value="${esc(x.id)}">${esc(x.n || '')}</option>`).join('')}</datalist>` : ''}</label>`;
     }).join('');
+    // ---------- 拉取模型 / 音色 ----------
+    const PULLED = {};
+    const cfgOf = path => path === 'def' ? CFG.def : path === 'own' ? (slot().own || {}) : path === 'stt' ? Object.assign({ prov: 'openai' }, CFG.stt) : slot();
+    // 地址整理：去掉 /audio/speech、/audio/transcriptions、/t2a_v2、/tts 之类的尾巴，只剩到 /v1
+    function baseOf(u) {
+        u = String(u || '').trim().replace(/\/+$/, '');
+        if (!u) return '';
+        u = u.replace(/\/(audio\/(speech|transcriptions)|t2a_v2|t2a_pro|tts|chat\/completions|models)$/i, '');
+        if (!/\/v\d+$/.test(u) && !/\/v\d+\//.test(u)) u += '/v1';
+        return u;
+    }
+    async function getJ(url, opt) { const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 15000); try { const r = await (typeof smartFetch === 'function' ? smartFetch : fetch)(url, Object.assign({ signal: ctl.signal }, opt || {})); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); } finally { clearTimeout(t); } }
+    async function pullList(c, k, path) {
+        const key = c.key ? { Authorization: 'Bearer ' + c.key } : {}, prov = c.prov || 'openai';
+        if (k === 'model') {
+            const base = baseOf(c.url || (path === 'stt' ? CFG.stt.url : '')) || 'https://api.openai.com/v1';
+            const j = await getJ(base + '/models', { headers: key });
+            let L = (j.data || j.models || j.result || []).map(m => typeof m === 'string' ? { id: m } : { id: m.id || m.name || m.model, n: m.owned_by || '' }).filter(x => x.id);
+            const want = path === 'stt' ? /whisper|sense|asr|stt|transcri|paraformer|audio/i : /tts|speech|audio|voice|cosy|fish|sovits|index|spark|minimax|speech-0/i;
+            const hit = L.filter(x => want.test(x.id));
+            return (hit.length ? hit.concat(L.filter(x => !want.test(x.id))) : L).sort((a, b) => (want.test(b.id) - want.test(a.id)) || a.id.localeCompare(b.id));
+        }
+        if (prov === 'openai') {   // 硅基流动这类：自己克隆的音色在 /audio/voice/list
+            const base = baseOf(c.url);
+            try { const j = await getJ(base + '/audio/voice/list', { headers: key }); const L = (j.result || j.data || []).map(v => ({ id: v.uri || v.id || v.voice, n: v.customName || v.name || '' })).filter(x => x.id); if (L.length) return L; } catch (e) {}
+            return ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'ash', 'coral', 'sage', 'ballad', 'verse'].map(id => ({ id, n: 'OpenAI 自带' }));
+        }
+        if (prov === 'minimax') {
+            const base = baseOf(c.url).replace(/\/v1$/, '/v1');
+            const j = await getJ(base + '/get_voice', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, key), body: JSON.stringify({ voice_type: 'all' }) });
+            return [].concat(j.voice_cloning || [], j.voice_generation || [], j.system_voice || []).map(v => ({ id: v.voice_id, n: v.voice_name || (v.description || []).join(' ') || '' })).filter(x => x.id);
+        }
+        if (prov === 'fish') {
+            const j = await getJ('https://api.fish.audio/model?self=true&page_size=100', { headers: key });
+            const L = (j.items || []).map(v => ({ id: v._id || v.id, n: v.title || '' }));
+            if (L.length) return L;
+            const j2 = await getJ('https://api.fish.audio/model?page_size=100&sort_by=task_count&language=zh', { headers: key });
+            return (j2.items || []).map(v => ({ id: v._id || v.id, n: v.title || '' }));
+        }
+        return [];
+    }
+    window.gyVoicePull = async function (path, k, a) {
+        const c = cfgOf(path); if (a) a.textContent = '拉取中…';
+        try {
+            const L = await pullList(c, k, path); PULLED[(path === 'stt' ? 'stt' : c.prov) + ':' + k] = L;
+            if (!L.length) throw new Error('接口没返回列表');
+            if (!c[k] && L[0]) await window.gyVoiceSetF(path, k, L[0].id);
+            toast('拉到了 ' + L.length + ' 个', '点输入框就能从下拉里挑，也可以照样手填');
+        } catch (e) { toast('没拉到', (String(e && e.message || e).includes('Failed to fetch') ? '可能是接口不让网页直接访问（跨域）或者地址/Key 不对' : String(e && e.message || e)) + '。手填也一样能用'); }
+        paint();
+    };
     const provSel = (p, path) => `<select class="gyvo-p" onchange="gyVoiceSetProv('${path}',this.value)">${Object.entries(PROV).map(([k, v]) => `<option value="${k}"${k === p ? ' selected' : ''}>${esc(v.n)}</option>`).join('')}</select>`;
     function paint() {
         const box = document.getElementById('gyVoBody'); if (!box) return;
@@ -390,13 +480,14 @@
                 <div class="gyvo-try"><input id="gyVoTry" value="${esc(ch ? '是我，' + (ch.name || '') + '。今天有没有想我？' : '你好呀')}"><button onclick="gyVoiceTry()">试听</button></div>
                 <div class="gyvo-tip">现在用的：${esc(PROV[eff.prov].n)}${eff.voice ? ' · ' + esc(eff.voice) : ''}</div></div>
             <div class="gyvo-sec"><div class="gyvo-h">🎤 语音条</div>
+                <div class="gyvo-tip">语音条的样子：</div><div class="gyvo-vs">${VSTYLES.map(([k, n]) => `<label class="${vstyle() === k ? 'on' : ''}"><input type="radio" name="gyvoVs" ${vstyle() === k ? 'checked' : ''} onchange="gyVoiceStyle('${k}')" style="display:none">${n}</label>`).join('')}</div>
                 <label class="gyvo-ck"><input type="checkbox"${CFG.bubbles ? ' checked' : ''} onchange="gyVoiceSetF('root','bubbles',this.checked)"> 允许 TA 在聊天里发语音条（点一下用 TA 的声音念，也能转文字）</label>
                 <div class="gyvo-tip">接了语音模型的角色：语音条点一下用 TA 的声音念；没接的：只能转文字。长按 TA 的消息 →「朗读」、打电话时 TA 说话，也用这里的声音。念过的句子会存起来，再放不花钱。</div></div>
             <div class="gyvo-sec"><div class="gyvo-h">🗣️ 你发语音条 <em>聊天栏的 🎙️</em></div>
                 <div class="gyvo-tip">录下来的声音会留着（点你的语音条能放）。转文字默认用浏览器自带的识别；桌面版 / 部分手机上浏览器识别用不了的话，填一个 Whisper 格式（/v1/audio/transcriptions）的接口，硅基流动、OpenAI 都行。都没有就让你打一下刚才说了什么。</div>
                 <label class="gyvo-f"><span>转文字接口地址（可空）</span><input value="${esc(CFG.stt.url)}" placeholder="https://api.siliconflow.cn/v1/audio/transcriptions" onchange="gyVoiceSetF('stt','url',this.value)"></label>
                 <label class="gyvo-f"><span>Key</span><input type="password" value="${esc(CFG.stt.key)}" onchange="gyVoiceSetF('stt','key',this.value)"></label>
-                <label class="gyvo-f"><span>模型</span><input value="${esc(CFG.stt.model)}" placeholder="whisper-1 / FunAudioLLM/SenseVoiceSmall" onchange="gyVoiceSetF('stt','model',this.value)"></label></div>
+                <label class="gyvo-f"><span>模型 <a class="gyvo-pull" onclick="event.preventDefault();gyVoicePull('stt','model',this)">⟳ 拉取模型</a></span><input list="gyvoDL_stt_model" value="${esc(CFG.stt.model)}" placeholder="whisper-1 / FunAudioLLM/SenseVoiceSmall" onchange="gyVoiceSetF('stt','model',this.value)"><datalist id="gyvoDL_stt_model">${(PULLED['stt:model'] || []).map(x => `<option value="${esc(x.id)}">`).join('')}</datalist></label></div>
             <div class="gyvo-sec"><div class="gyvo-h">🎙️ 语音库 <em>TA 本人的录音</em></div>
                 <div class="gyvo-tip">上传 TA 的录音（笑声、晚安、叫你名字……）。TA 说的话里带着关键词就直接放这段，不走模型。关键词默认就是文件名。</div>
                 <div class="gyvo-row"><select id="gyVoClipWho"><option value="">谁都能用</option>${cs.map(c => `<option${ch && c.id === ch.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
@@ -474,19 +565,31 @@
 .gyvo-hd{display:flex;justify-content:space-between;font-size:18px;margin-bottom:6px}.gyvo-hd span{cursor:pointer;color:#999}
 .gyvo-sec{border-top:1px solid #f0f0f0;padding:10px 0}.gyvo-sec:first-child{border-top:none}.gyvo-h{font-weight:600;margin-bottom:6px}.gyvo-h em{font-style:normal;font-weight:normal;font-size:12px;color:#999;margin-left:6px}
 .gyvo-p,.gyvo-f input,.gyvo-f select,.gyvo-row select,.gyvo-try input{width:100%;box-sizing:border-box;padding:7px 10px;border-radius:10px;border:1px solid #e3e3e6;background:#fafafa;font-family:inherit;font-size:13.5px}
-.gyvo-f{display:block;margin:6px 0}.gyvo-f span{display:block;font-size:12px;color:#888;margin-bottom:3px}
+.gyvo-f{display:block;margin:6px 0}.gyvo-pull{margin-left:6px;color:#1d9bf0;cursor:pointer;text-decoration:none;font-size:12px}.gyvo-f span em{font-style:normal;color:#aaa;font-size:11px}.gyvo-f span{display:block;font-size:12px;color:#888;margin-bottom:3px}
 .gyvo-tip{font-size:12px;color:#999;line-height:1.7;margin:6px 0}.gyvo-ck{display:block;font-size:13.5px;margin:8px 0;cursor:pointer}
 .gyvo-modes{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.gyvo-modes span{padding:5px 11px;border-radius:999px;background:#f2f2f4;font-size:12.5px;cursor:pointer}.gyvo-modes span.on{background:#111;color:#fff}
 .gyvo-try{display:flex;gap:8px;margin-top:8px}.gyvo-try button,.gyvo-btn{padding:7px 14px;border-radius:10px;border:none;background:#111;color:#fff;cursor:pointer;font-family:inherit;font-size:13px;white-space:nowrap}
 .gyvo-row{display:flex;gap:8px;align-items:center}.gyvo-clip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;padding:6px 0;border-bottom:1px solid #f4f4f4}.gyvo-clip span{color:#999;font-size:12px;flex:1}.gyvo-clip i{font-style:normal;color:#1d9bf0;cursor:pointer}.gyvo-clip i.del{color:#e0245e}
 .gyvo-link{font-size:12.5px;color:#888;margin:6px 0}.gyvo-link b{color:#1d9bf0;cursor:pointer}
-.chat-bubble.gyvc{cursor:pointer;user-select:none;padding-bottom:6px}
-.gyvc-bar{display:flex;align-items:center;gap:8px;position:relative;min-height:22px}.gyvc-len{font-size:13.5px;opacity:.8;margin-left:auto}
-.gyvc-dot{position:absolute;right:-18px;top:50%;width:8px;height:8px;border-radius:50%;background:#f5222d;transform:translateY(-50%)}
-.gyvc.on .w1{animation:gyvcW 1s infinite}.gyvc.on .w2{animation:gyvcW 1s .3s infinite}@keyframes gyvcW{0%,100%{opacity:1}50%{opacity:.15}}
-.gyvc-tx{font-size:13.5px;margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);line-height:1.6}
-.gyvc-to{display:inline-block;font-size:11px;opacity:.55;margin-top:4px;cursor:pointer}
-.gyvc-me .gyvc-bar{justify-content:flex-end}.gyvc-me .gyvc-len{margin-left:0;margin-right:auto}.gyvc-me svg{transform:scaleX(-1)}
+.chat-bubble.gyvc{cursor:pointer;user-select:none;-webkit-user-select:none;padding:9px 12px 6px}
+.gyvc-bar{display:flex;align-items:center;gap:9px;position:relative;min-height:24px}.gyvc-len{font-size:13px;opacity:.75;font-variant-numeric:tabular-nums;white-space:nowrap}
+.gyvc-dot{position:absolute;right:-20px;top:50%;width:8px;height:8px;border-radius:50%;background:#fa5151;transform:translateY(-50%);box-shadow:0 0 0 2px rgba(250,81,81,.15)}
+.gyvc-me .gyvc-dot{right:auto;left:-20px}
+.gyvc-tx{font-size:13.5px;margin-top:7px;padding:7px 9px;border-radius:10px;background:rgba(0,0,0,.05);line-height:1.6;animation:gyvcIn .25s ease}@keyframes gyvcIn{from{opacity:0;transform:translateY(-3px)}}
+.gyvc-to{display:inline-block;font-size:11px;opacity:.5;margin-top:5px;cursor:pointer;padding:1px 6px;border-radius:8px;background:rgba(0,0,0,.05)}.gyvc-to:hover{opacity:.85}
+/* 微信款 */
+.s-wx .gyvc-len{margin-left:auto}.gyvc-me .s-wx{justify-content:flex-end}.gyvc-me .s-wx .gyvc-len{margin:0 auto 0 0}.gyvc-me .s-wx svg{transform:scaleX(-1)}
+.gyvc.on .s-wx .w1{animation:gyvcW 1s infinite}.gyvc.on .s-wx .w2{animation:gyvcW 1s .3s infinite}@keyframes gyvcW{0%,100%{opacity:1}50%{opacity:.12}}
+/* 声波条 */
+.s-wave{gap:8px}.gyvc-play{flex:none;width:24px;height:24px;border-radius:50%;border:1.8px solid currentColor;box-sizing:border-box;position:relative;opacity:.9}.gyvc-play::after{content:'';position:absolute;left:8px;top:5.5px;border-left:8px solid currentColor;border-top:5px solid transparent;border-bottom:5px solid transparent}
+.gyvc.on .gyvc-play::after{left:6.5px;top:6.5px;width:3px;height:8px;border:none;background:currentColor;box-shadow:5px 0 0 currentColor}
+.gyvc-bars{display:flex;align-items:center;gap:2px;height:22px;flex:1;min-width:60px}.gyvc-bars i{flex:1;max-width:3px;min-width:2px;border-radius:2px;background:currentColor;opacity:.35}
+.gyvc.on .gyvc-bars i{animation:gyvcB 0s linear forwards;animation-delay:calc(var(--d) * var(--k))}@keyframes gyvcB{to{opacity:1}}
+.gyvc.on .gyvc-bars i:nth-child(odd){transform-origin:center}
+/* 胶囊播放器 */
+.s-pill{gap:9px}.gyvc-track{flex:1;min-width:80px;height:4px;border-radius:2px;background:currentColor;opacity:.25;position:relative;overflow:hidden}.gyvc-track i{position:absolute;inset:0;width:0;background:currentColor}
+.s-pill .gyvc-track{opacity:1;background:rgba(127,127,127,.28)}.gyvc.on .gyvc-track i{animation:gyvcP var(--d) linear forwards}@keyframes gyvcP{to{width:100%}}
+.gyvo-vs{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}.gyvo-vs label{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:12px;background:#f5f5f7;cursor:pointer;font-size:13px}.gyvo-vs label.on{background:#111;color:#fff}
 #gyVoRec{position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,.25);display:none;align-items:flex-end;justify-content:center;padding:0 14px 110px}
 .gyvr-box{background:rgba(30,30,32,.94);color:#fff;border-radius:22px;padding:16px 18px;width:min(360px,100%);text-align:center}
 .gyvr-t{display:flex;align-items:center;justify-content:center;gap:8px;font-size:22px}.gyvr-dot{width:10px;height:10px;border-radius:50%;background:#ff4d4f;animation:gyvcW 1s infinite}
