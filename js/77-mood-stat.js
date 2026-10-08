@@ -30,6 +30,22 @@
     const day = k => (D.days[k] = D.days[k] || { me: null, ta: {} });
     window.gyMoodData = () => D;
 
+
+    // 让 TA 用自己的口吻说一句短话（没接 API / 白露：从备选里挑）
+    async function taLine(c, ask, fb) {
+        try {
+            const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+            if (c && api && api.key && typeof callChatCompletionAPI === 'function' && !window.bailuCards) {
+                const msgs = (typeof buildStructuredMessages === 'function' && typeof buildBasePrompt === 'function') ? buildStructuredMessages(buildBasePrompt(c, false, ''), [], ask) : [{ role: 'user', content: ask }];
+                const d = await callChatCompletionAPI(api, msgs);
+                let t = String((d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '').trim();
+                if (typeof stripReasoningBlocks === 'function') t = stripReasoningBlocks(t);
+                t = plain(t).replace(/^["'“”「」]+|["'“”「」]+$/g, '');
+                if (t && t.length <= 60) return t;
+            }
+        } catch (e) {}
+        return pick(fb);
+    }
     /* ---------------- TA 写今天的心情 ---------------- */
     const writing = {};
     async function taWrite(ch, force) {
@@ -183,11 +199,13 @@
             <div class="gymd-tip">第一次聊：${fmt(first && first.timestamp)}　最近一次：${fmt(last && last.timestamp)}${arr.length ? `　最爱在 <b>${peak} 点</b>聊` : ''}</div>
             <div class="gymd-hrs">${hrs.map((n, h) => `<i style="height:${Math.round(4 + n / hm * 46)}px" title="${h} 点：${n} 条"${h === peak && n ? ' class="pk"' : ''}></i>`).join('')}</div><div class="gymd-hl"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>
             <div class="gymd-two"><div><div class="gymd-dh">你最常说</div><ol>${li(top(me))}</ol></div><div><div class="gymd-dh">${nm}最常说</div><ol>${li(top(ta))}</ol></div></div>
+            ${(D.statLog || []).filter(x => ch && x.cid === String(ch.id)).length ? `<div class="gymd-dh">${nm} 翻过这里，说过</div>${(D.statLog || []).filter(x => x.cid === String(ch.id)).slice(0, 5).map(x => `<div class="gymd-tip">${new Date(x.at).toLocaleDateString()} · ${esc(x.t)}</div>`).join('')}` : ''}
             <div class="gymd-dh">词云</div><div class="gymd-cloud">${cloud || '<span class="gymd-mute">聊得再多一点就有了</span>'}</div>`;
     }
 
     /* ---------------- 🎬 开场动画 ---------------- */
     function introLine() {
+        const g = D.intro.gift; if (g && !g.seen && g.line) { g.seen = Date.now(); save(); return g.line + (g.who ? '　—— ' + g.who : ''); }
         const own = (D.intro.lines || []).map(s => String(s).trim()).filter(Boolean);
         if (own.length) return pick(own);
         const pool = [];
@@ -219,9 +237,47 @@
         return `<label class="gymd-ck"><input type="checkbox"${D.intro.on !== false ? ' checked' : ''} onchange="gyIntroSet('on',this.checked)"> 打开谷雨时放开场动画（点一下就跳过）</label>
             <label class="gymd-f"><span>大标题</span><input value="${esc(D.intro.title || '谷雨')}" onchange="gyIntroSet('title',this.value)"></label>
             <label class="gymd-f"><span>副标题：自己写几句，一行一句，每次随机一句（空着＝随机挑 TA 最近对你说过的一句）</span><textarea rows="4" onchange="gyIntroSet('lines',this.value)">${esc((D.intro.lines || []).join('\n'))}</textarea></label>
-            <button class="gymd-btn" onclick="gyIntroPlay()">预览一下</button>`;
+            <button class="gymd-btn" onclick="gyIntroPlay()">预览一下</button>
+            ${(D.introGifts || []).length ? `<div class="gymd-dh">TA 偷偷换过的开场</div>${(D.introGifts || []).slice(0, 6).map(x => `<div class="gymd-tip">${new Date(x.at).toLocaleDateString()} · ${esc((charById(x.cid) || {}).name || 'TA')}：「${esc(x.line)}」</div>`).join('')}` : ''}`;
     }
     window.gyIntroSet = async (k, v) => { if (k === 'lines') v = String(v).split('\n').map(s => s.trim()).filter(Boolean); D.intro[k] = v; await save(); };
+
+    /* ---------------- 📊 TA 翻了你们的聊天统计（自主行动 stat_tease） ---------------- */
+    const HOT = ['困', '累', '饿', '烦', '想你', '哈哈', '晚安', '好吧', '嗯嗯', '救命', '笑死', '可恶', '呜呜', '抱抱', '好困', '不想'];
+    function statFacts(ch, days) {
+        const from = Date.now() - (days || 7) * 864e5;
+        const arr = ((ch && typeof globalChats !== 'undefined' && globalChats[ch.id]) || []).filter(m => m.sender !== 'system' && m.timestamp >= from);
+        if (arr.length < 20) return [];
+        const me = arr.filter(m => m.sender === 'me'), out = [];
+        const cnt = {}; me.forEach(m => { const t = plain(m.text); HOT.forEach(w => { const n = t.split(w).length - 1; if (n) cnt[w] = (cnt[w] || 0) + n; }); });
+        const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+        if (top && top[1] >= 3) out.push(`这 ${days || 7} 天她说了 ${top[1]} 次「${top[0]}」`);
+        const hrs = new Array(24).fill(0); arr.forEach(m => hrs[new Date(m.timestamp).getHours()]++); const pk = hrs.indexOf(Math.max(...hrs));
+        if (pk <= 3 || pk >= 23) out.push(`这 ${days || 7} 天你们最常在凌晨 ${pk} 点聊天`);
+        out.push(`这 ${days || 7} 天你们一共聊了 ${arr.length} 句，她说了 ${me.length} 句、你说了 ${arr.length - me.length} 句`);
+        const ds = new Set(arr.map(m => dayKey(new Date(m.timestamp)))); if (ds.size >= 5) out.push(`你们这 ${days || 7} 天里有 ${ds.size} 天都在聊`);
+        return out;
+    }
+    window.gyStatFacts = statFacts;
+    /* ---------------- 🎬 TA 偷偷给你换开场（自主行动 intro_swap） ---------------- */
+    function introPluginOn() { try { const c = JSON.parse(localStorage.getItem('gyxIntroCfg') || 'null'); return !!(c && c.on); } catch (e) { return false; } }
+    function introGiftPending() { if (introPluginOn()) { try { const c = JSON.parse(localStorage.getItem('gyxIntroCfg') || '{}'); return !!(c.gift && !c.gift.seen); } catch (e) { return false; } } return !!(D.intro.gift && !D.intro.gift.seen); }
+    async function introSwap(c) {
+        const line = await taLine(c, '你想偷偷给她换一个打开 app 时的开场动画，再在上面留一句话给她，她下次打开时会看到。写这句话：18 字以内，像你会说的，不要引号。只输出这句话。', ['今天也要开心一点', '想你了，打开就能看到', '我在这儿等你', '这一屏是我挑的', '欢迎回来']);
+        const who = c.name, at = Date.now();
+        let style = '';
+        if (introPluginOn()) {
+            try {
+                const cfg = JSON.parse(localStorage.getItem('gyxIntroCfg') || '{}'); const L = window.__gyxIntroLib ? Object.keys(window.__gyxIntroLib.styles) : [];
+                const pool = (cfg.styles && cfg.styles.length ? cfg.styles : L).filter(k => k !== '__none' && L.includes(k)); style = pool.length ? pick(pool) : '';
+                cfg.gift = { line, who, style, at, cid: String(c.id) }; localStorage.setItem('gyxIntroCfg', JSON.stringify(cfg));
+            } catch (e) {}
+        } else { D.intro.gift = { line, who, at, cid: String(c.id) }; }
+        D.introGifts = (D.introGifts || []); D.introGifts.unshift({ id: 'ig' + at.toString(36), cid: String(c.id), at, line, style }); D.introGifts = D.introGifts.slice(0, 60);
+        await save();
+        return line;
+    }
+    window.gyIntroSwap = id => introSwap(charById(id));
 
     /* ---------------- 小手机小组件「心情」 ---------------- */
     function repaintWidget() { try { const X = window.__gyPmW; if (X && X.render && document.body.classList.contains('gyphm') && !document.body.classList.contains('gyphm-app') && !document.querySelector('#gyPmHome .pm-lock')) X.render(); } catch (e) {} }
@@ -247,6 +303,30 @@
                 need: c => { const d = D.days[dayKey()]; return !(d && d.ta && d.ta[String(c.id)]); },
                 run: async c => { const r = await taWrite(c); repaintWidget(); return r ? '写了今天的心情手账：' + moodOf(r.m)[1] + r.m : null; }
             });
+        } catch (e) {}
+        try {
+            if (typeof GY_AUTONOMY_ACTIONS !== 'undefined' && !GY_AUTONOMY_ACTIONS.some(a => a.key === 'stat_tease')) GY_AUTONOMY_ACTIONS.push({
+                key: 'stat_tease', label: '翻了你们的聊天统计，拿一个数来逗她（「这周你说了 23 次困」）', hint: '你偷偷看了你们的聊天统计',
+                need: c => typeof sendProactiveChatMessage === 'function' && Date.now() - ((D.statAct || {})[String(c.id)] || 0) > 3 * 864e5 && statFacts(c, 7).length > 0,
+                run: async c => {
+                    const F = statFacts(c, 7); if (!F.length) return null; const f = F[0];
+                    NUDGE[String(c.id)] = `你偷偷翻了你们的聊天统计，看到：${f}。拿这个数来逗她、或者感慨一句、或者借题关心她（按你的性格；可以直接说出这个数）`;
+                    try { await sendProactiveChatMessage(c); (D.statAct = D.statAct || {})[String(c.id)] = Date.now(); (D.statLog = D.statLog || []).unshift({ id: 'sl' + Date.now().toString(36), cid: String(c.id), at: Date.now(), t: f }); D.statLog = D.statLog.slice(0, 60); await save(); return '拿聊天统计说了一句：' + f; }
+                    catch (e) { return null; } finally { delete NUDGE[String(c.id)]; }
+                }
+            });
+            if (typeof GY_AUTONOMY_ACTIONS !== 'undefined' && !GY_AUTONOMY_ACTIONS.some(a => a.key === 'intro_swap')) GY_AUTONOMY_ACTIONS.push({
+                key: 'intro_swap', label: '偷偷给她换一个开场动画，留一句话（她下次打开时看到）', hint: '一个小惊喜，不用告诉她',
+                need: c => (D.intro.on !== false || introPluginOn()) && !introGiftPending() && Date.now() - ((D.introGifts || [])[0] || { at: 0 }).at > 3 * 864e5,
+                run: async c => { const l = await introSwap(c); return l ? '偷偷换了开场，留了一句话（下次打开就看到）' : null; }
+            });
+        } catch (e) {}
+        try {
+            if (typeof window.gyMemExAdd === 'function' && !window.__gyMoodMemX) {
+                window.__gyMoodMemX = 1;
+                window.gyMemExAdd({ k: 'gyStatLog', ico: '📊', n: 'TA 拿聊天统计说过的', d: 'TA 翻你们聊天统计后说起的数', on: () => true, items: c => (D.statLog || []).filter(x => x.cid === String(c.id)), text: x => x.t, edit: (x, v) => { x.t = String(v); }, del: (c, i) => { const L = (D.statLog || []).filter(x => x.cid === String(c.id)), it = L[i]; D.statLog = (D.statLog || []).filter(x => x !== it); }, meta: x => new Date(x.at).toLocaleString(), save });
+                window.gyMemExAdd({ k: 'gyIntroGift', ico: '🎬', n: 'TA 留在开场上的话', d: 'TA 偷偷换开场时留的那句（改了下次开场就显示改过的）', on: () => true, items: c => (D.introGifts || []).filter(x => x.cid === String(c.id)), text: x => x.line, edit: (x, v) => { x.line = String(v); if (D.intro.gift && D.intro.gift.at === x.at) D.intro.gift.line = x.line; }, del: (c, i) => { const L = (D.introGifts || []).filter(x => x.cid === String(c.id)), it = L[i]; D.introGifts = (D.introGifts || []).filter(x => x !== it); }, meta: x => new Date(x.at).toLocaleString(), save });
+            }
         } catch (e) {}
         try {
             if (typeof registerMiniFeature === 'function' && typeof GY_MINI_FEATURES !== 'undefined') {
