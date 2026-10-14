@@ -609,11 +609,11 @@ async function submitForumReply(threadId) {
             // 让角色进行回复，并记录角色回复的文本
             lastRepText = await triggerForumCharReply(thread, char, text) || lastRepText;
         }
-        // 🎯 核心修改：角色回复完毕后，继续召唤路人NPC对角色的发言跟帖推进！
-        await generateNpcForumReplies(thread, nextFloor, lastRepText);
+        // 🎯 角色回复完毕后，路人接着跟帖——接的还是你这一楼（角色那句一起给路人看）
+        await generateNpcForumReplies(thread, nextFloor, text, { who: currentUser.name || '楼主', charReply: lastRepText !== text ? lastRepText : '', charName: mentionedChars.map(c => c.name).join('、') });
     } else {
         // 没有艾特角色时，直接触发路人NPC跟帖
-        await generateNpcForumReplies(thread, nextFloor, text);
+        await generateNpcForumReplies(thread, nextFloor, text, { who: currentUser.name || '楼主' });
     }
 
     btn.innerText = oldTxt; btn.disabled = false;
@@ -759,32 +759,54 @@ async function triggerForumCharReply(thread, char, userText) {
 }
 
 // === AI 生成普通 NPC 论坛言论 ===
-async function generateNpcForumReplies(thread, targetFloor, userText) {
+async function generateNpcForumReplies(thread, targetFloor, userText, opt) {
     const api = getApiConfig(true);
     if (!api.key) { console.warn('[论坛NPC跟帖] 未配置API Key，跳过生成'); return; }
+    opt = opt || {};
+    const lim = typeof commentWordLimit !== 'undefined' ? commentWordLimit : 30;
+    const cut = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, n) + '……' : t; };
 
-    let recentReplies = thread.replies.slice(-6).map(r => `${r.floor}楼 [${r.author}]: ${r.content}`).join('\n');
-    // 🐛 修复：这里之前引用的 globalWorldbook 这个变量在整个项目里根本不存在（typeof永远是'undefined'），
-    // wbContext 实际上一直是空字符串，世界书设定从来没真正传给过论坛NPC跟帖的生成——现在改成跟其它地方一样，
-    // 读全局世界书条目（isGlobal且启用）拼成文本。
+    let recentReplies = thread.replies.slice(-6).map(r => `${r.floor}楼 [${r.author}]: ${cut(r.content, 300)}`).join('\n');
+    // 🐛 修复（v219）：以前这里①根本没把主帖正文发给模型，只有标题；②整份全局世界书原样塞在最前面当「背景设定」；
+    // ③用户刚发的那一楼只是一句「刚刚前排回复了」，没说是谁、也没要求回它。结果路人跟帖全在复述世界书，
+    // 不接用户的话。现在：主帖正文和「这一次要接的那一楼」放在最显眼的位置、明确要求围绕它回；
+    // 世界书只当世界观参考（截短），并且明说不许复述设定。
     let wbContext = (typeof worldbooks !== 'undefined' ? worldbooks.filter(w => w.isGlobal && w.enabled !== false).map(w => `${w.title}：${w.content}`).join('\n') : '');
-    let txtContext = thread.txtContext ? `【附加参考背景】：${thread.txtContext.substring(0, 1500)}` : '';
+    wbContext = cut(wbContext, 1200);
+    let txtContext = thread.txtContext ? cut(thread.txtContext, 1500) : '';
 
-    let prompt = `你现在是一个活跃在中文互联网论坛的资深吃瓜网友群体。请结合以下背景，生成 2 到 4 条路人网友跟帖。
-    【背景设定】：${wbContext} ${txtContext}
-    【主帖】标题：《${thread.title}》
-    【最近跟帖】：\n${recentReplies}
-    ${userText ? `【刚刚前排回复了】：${userText}` : ''}
+    const me = (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || '楼主';
+    const tFloor = targetFloor > 1 ? thread.replies.find(r => r.floor === targetFloor) : null;
+    const whoSaid = opt.who || (tFloor ? tFloor.author : (thread.author || '楼主'));
+    const focusText = userText || (tFloor ? tFloor.content : '') || thread.content || '';
+    let focus;
+    if (targetFloor > 1 && focusText) {
+        focus = `【这一次要接的楼层】${targetFloor}楼 [${whoSaid}${whoSaid === me ? '（就是正在逛帖的这位网友）' : ''}]：${cut(focusText, 600)}`;
+        if (opt.charReply && opt.charName) focus += `\n（${opt.charName} 也被点名回了一句：${cut(opt.charReply, 300)}）`;
+    } else {
+        focus = `【这一次要接的是主帖本身】楼主 ${thread.author || '楼主'} 刚发帖，大家第一次看到。`;
+    }
 
-    要求：
-    1. 语气贴近真实论坛网民（使用吃瓜、离谱、楼主等口癖），每条不超过${typeof commentWordLimit !== 'undefined' ? commentWordLimit : 30}字。
-    2. 可以引用之前的楼层（quoteFloor填数字，如不引用填null）。
-    3. **重要**：这几条跟帖里至少要有一条是在回复上面某位网友（不是回复楼主）——网友之间互相抬杠、附和、
-       纠正对方是论坛最常见的样子。回谁就把 quoteFloor 填成那一楼的楼层号，内容里也自然地带上对方的观点。
-       不要几个人各说各的、都只对着楼主说话，那样看起来像一堆机器人排队发言。
-    必须且只能返回纯 JSON 数组格式：
-    [{"author": "网友ID", "content": "回复文本", "quoteFloor": null, "likes": 23}]
-    ${getFinalAnswerMarkerPromptNote()}`;
+    let prompt = `你现在是一个活跃在中文互联网论坛的吃瓜网友群体。请生成 2 到 4 条路人网友跟帖。
+
+【主帖】标题：《${thread.title}》 楼主：${thread.author || '楼主'}
+正文：${cut(thread.content || '（没有正文）', 1200)}
+
+【最近跟帖】：
+${recentReplies || '（还没有人回）'}
+
+${focus}
+
+${wbContext || txtContext ? `【世界观参考（只用来让说话符合这个世界，不是讨论话题）】：\n${wbContext}\n${txtContext}` : ''}
+
+要求：
+1. **围绕上面「这一次要接的」内容回**：${targetFloor > 1 ? `至少一半的跟帖要直接回应 ${targetFloor} 楼说的具体内容（附和、反驳、追问、玩梗都行），这些跟帖的 quoteFloor 填 ${targetFloor}` : '每条跟帖都要针对主帖正文里的具体内容发表看法'}。
+2. **不要复述、介绍世界观设定**，不要把跟帖写成设定说明；网友只会对帖子里说的事做反应。
+3. 语气贴近真实论坛网民（吃瓜、离谱、楼主等口癖），每条不超过${lim}字。
+4. 剩下的跟帖里可以有一条是回复上面某位网友（不是回复楼主）——互相抬杠、附和、纠正，回谁就把 quoteFloor 填成那一楼的楼层号。不引用就填 null。
+必须且只能返回纯 JSON 数组格式：
+[{"author": "网友ID", "content": "回复文本", "quoteFloor": null, "likes": 23}]
+${getFinalAnswerMarkerPromptNote()}`;
 
     try {
         let rawText = (await sendChatRequest(api, prompt)).choices?.[0]?.message?.content?.trim() || "[]";

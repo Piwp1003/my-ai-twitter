@@ -1,4 +1,4 @@
-// v226：📰 小手机黑白杂志风（主题、杂志小组件、贴纸库、抠图、杂志壁纸、TA 出封面 / 贴贴纸）+ 🏅 成就 / 📈 等级能自定义、能让 TA 来设
+// v226：🏷️ 小手机贴纸（贴纸库、抠图、TA 的封面、TA 贴贴纸）+ 🏅 成就 / 📈 等级能自定义、能让 TA 来设
 import { chromium } from 'playwright';
 import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
@@ -26,58 +26,30 @@ await page.evaluate(({ PLUG }) => {
 }, { PLUG });
 await page.waitForTimeout(3000);
 
-// ① 杂志风：主题、壁纸、一键摆、小组件
-const mg = await page.evaluate(async () => {
+// ① 🏷️ 贴纸：杂志风删了，贴纸库、抠图、TA 的封面、TA 自己来 留着
+const st = await page.evaluate(async () => {
   const sleep = ms => new Promise(r => setTimeout(r, ms)); const o = {};
   gyPmSet(true); await sleep(1200); try { gyPmUnlock(); } catch (e) {}
-  gyMagSet('on', true); await sleep(100);
-  o.theme = document.body.classList.contains('pm-th-mag') && document.body.classList.contains('pm-mag-grain');
-  gyPmBeauty(); await sleep(200); o.sheet = /黑白杂志风/.test(document.getElementById('gyPmSheet').innerText) && document.querySelectorAll('.pm-magwl span').length >= 9; gyPmCloseSheet();
-  gyMagWall(3); await sleep(100); o.wall = /repeating-linear-gradient/.test(gyPmPrefGet('wallColor') || '');
-  await gyMagLayout(); await sleep(500);
-  o.widgets = ['magCover', 'magDate', 'magStk', 'magQuote'].filter(k => !document.querySelector('#gyPmHome .wk-' + k));
-  o.wd = ['magCover', 'magDate', 'magQuote', 'magIndex', 'magStk'].every(k => window.__gyPmW.WD[k]);
-  o.mast = /GUYU|BAILU/.test((document.querySelector('#gyPmHome .wk-magCover') || {}).innerText || '');
+  o.noMag = typeof window.gyMagSet === 'undefined' && typeof window.gyMagLayout === 'undefined' && !document.body.classList.contains('pm-th-mag') && !window.__gyPmW.WD.magDate;
+  gyPmBeauty(); await sleep(200); const sh = document.getElementById('gyPmSheet').innerText; o.sheet = /🏷️ 贴纸/.test(sh) && !/杂志/.test(sh); gyPmCloseSheet();
   const lib = gyMagInfo().lib; o.lib = lib;
-  // 贴纸库：点一张就贴到桌面
-  const n0 = document.querySelectorAll('#gyPmHome .wk-magStk').length; await gyMagStickers(); await sleep(100); gyMagPick('o_heart'); await sleep(300);
-  o.pick = document.querySelectorAll('#gyPmHome .wk-magStk').length === n0 + 1;
-  return o;
-});
-check(`${tag} 杂志风：主题（米白纸、黑细线、衬线大字、颗粒）、美化里有开关和 9 种杂志壁纸、一键摆封面 / 大日期 / 贴纸 / 引言`, mg.theme && mg.sheet && mg.wall && !mg.widgets.length && mg.wd && mg.mast, JSON.stringify(mg));
-check(`${tag} 贴纸库：手绘小人（Open Doodles，CC0）16 张、抠好的黑白照片 3 张、小物件 14 个；点一张就贴到桌面`, mg.lib.find(x => x[0] === 'dd')[1] === 16 && mg.lib.find(x => x[0] === 'ph')[1] === 3 && mg.lib.find(x => x[0] === 'or')[1] >= 12 && mg.pick, JSON.stringify(mg.lib));
-
-// ② 抠图：纯色背景一键去掉（不联网）、转黑白、加白边，存进「我的贴纸」
-const cut = await page.evaluate(async () => {
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const n0 = document.querySelectorAll('#gyPmHome .wk-magStk').length; await gyMagStickers(); await sleep(100);
+  o.img = !!document.querySelector('#gyPmSheet .pm-magst img[src^="img/stk/"]');
+  gyMagPick('o_heart'); await sleep(300); o.pick = document.querySelectorAll('#gyPmHome .wk-magStk').length === n0 + 1;
+  gyMagAddCover(); await sleep(300); const cv = document.querySelector('#gyPmHome .wk-magCover'); o.cover = !!cv && !!cv.querySelector('.sk-cov') && !/GUYU|BAILU|VOL\./.test(cv.innerText);
+  // 抠图
   const c = document.createElement('canvas'); c.width = 200; c.height = 160; const g = c.getContext('2d'); g.fillStyle = '#7fd0ff'; g.fillRect(0, 0, 200, 160); g.fillStyle = '#c0392b'; g.beginPath(); g.arc(100, 80, 46, 0, 7); g.fill();
-  const n0 = gyMagData().mine.length;
-  gyMagCut(c.toDataURL()); await sleep(400);
-  const ov = document.getElementById('gyMagCutOv'); ov.querySelector('[data-t="flood"]').click(); await sleep(100);
-  ov.querySelector('.nm').value = '红色圆'; ov.querySelector('.ok').click(); await sleep(500);
-  const it = gyMagData().mine[0]; const im = new Image(); await new Promise(r => { im.onload = r; im.src = it.src; });
-  const k = document.createElement('canvas'); k.width = im.width; k.height = im.height; const kg = k.getContext('2d'); kg.drawImage(im, 0, 0);
-  const corner = kg.getImageData(0, 0, 1, 1).data[3], mid = kg.getImageData(im.width >> 1, im.height >> 1, 1, 1).data;
-  try { gyPmCloseSheet(); } catch (e) {}
-  return { added: gyMagData().mine.length === n0 + 1, n: it.n, corner, gray: mid[0] === mid[1] && mid[1] === mid[2], w: im.width };
-});
-check(`${tag} 抠图：传一张纯色背景的图，一键去背景（不联网），转黑白、加白边，存进「我的贴纸」`, cut.added && cut.n === '红色圆' && cut.corner === 0 && cut.gray && cut.w < 140, JSON.stringify(cut));
-
-// ③ TA 自己来：出一期封面、在桌面贴一张贴纸；今天面板、记忆总览、全部开关里都有
-const ta = await page.evaluate(async () => {
-  const sleep = ms => new Promise(r => setTimeout(r, ms)); const c = myCharacters.find(x => x.id === 9991), A = k => GY_AUTONOMY_ACTIONS.find(a => a.key === k);
-  window.sendProactiveChatMessage = async () => true; try { sendProactiveChatMessage = window.sendProactiveChatMessage; } catch (e) {}
-  const o = {};
-  o.coverNeed = A('pm_mag_cover').need(c); o.cover = !!(await A('pm_mag_cover').run(c)); o.coverNo = !A('pm_mag_cover').need(c);
-  const n0 = document.querySelectorAll('#gyPmHome .wk-magStk').length; o.stk = !!(await A('pm_mag_sticker').run(c)); await sleep(300);
-  o.stkOn = document.querySelectorAll('#gyPmHome .wk-magStk').length === n0 + 1 && /Leon 贴的/.test(document.querySelector('#gyPmHome').innerText);
-  o.mem = gyMemExList().includes('gyMagCover');
-  o.sw = AUTO_FEATURE_DEFS.some(f => f.key === 'pmMagTa');
-  gyMagSet('ta', false); o.off = !A('pm_mag_sticker').need(c); gyMagSet('ta', true);
-  o.ctx = /封面语/.test(window.__gyMagCtxFor('9991'));
+  const m0 = gyMagData().mine.length; gyMagCut(c.toDataURL()); await sleep(400);
+  const ov = document.getElementById('gyMagCutOv'); ov.querySelector('[data-t="flood"]').click(); await sleep(100); ov.querySelector('.nm').value = '红色圆'; ov.querySelector('.ok').click(); await sleep(500);
+  o.cut = gyMagData().mine.length === m0 + 1;
+  // TA 自己来
+  o.acts = ['pm_mag_cover', 'pm_mag_sticker'].every(k => GY_AUTONOMY_ACTIONS.some(a => a.key === k)) && AUTO_FEATURE_DEFS.some(f => f.key === 'pmStkTa');
+  const ch = myCharacters.find(x => x.id === 9991);
+  const a = GY_AUTONOMY_ACTIONS.find(x => x.key === 'pm_mag_sticker'); o.need = !!a.need(ch);
   return o;
 });
-check(`${tag} TA 自己来：出这一期的封面语、在你桌面上偷偷贴一张贴纸；记忆总览、全部开关里有；关掉就不做`, ta.coverNeed && ta.cover && ta.coverNo && ta.stk && ta.stkOn && ta.mem && ta.sw && ta.off && ta.ctx, JSON.stringify(ta));
+check(`${tag} 杂志风删干净了（没主题、没杂志壁纸、没大日期），美化里换成「🏷️ 贴纸」一节`, st.noMag && st.sheet, JSON.stringify(st));
+check(`${tag} 贴纸库（手绘小人 16 / 照片 3 / 小物件）从 img/stk 读，点一张贴到桌面；「TA 的封面」小组件是普通样式；抠图存进我的贴纸；TA 会写封面、贴贴纸`, st.lib.find(x => x[0] === 'dd')[1] === 16 && st.lib.find(x => x[0] === 'ph')[1] === 3 && st.img && st.pick && st.cover && st.cut && st.acts && st.need, JSON.stringify(st));
 
 // ④ 🏅 成就自定义 + 让 TA 来设
 const bg = await page.evaluate(async () => {

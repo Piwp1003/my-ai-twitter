@@ -126,7 +126,8 @@ const CORE_ASSETS = [
     './js/87-time-place.js?v=' + V,
     './js/88-prompt-lib.js?v=' + V,
     './js/89-chat-think.js?v=' + V,
-    './js/93-phone-mag.js?v=' + V
+    './js/93-phone-sticker.js?v=' + V,
+    './js/94-guide-help.js?v=' + V
 ];
 
 self.addEventListener('install', (event) => {

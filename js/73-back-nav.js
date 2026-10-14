@@ -22,7 +22,7 @@
     function closeTopOverlay() {
         // 小手机底部面板
         const sh = document.getElementById('gyPmSheet');
-        if (sh && sh.classList.contains('on')) { try { window.gyPmCloseSheet(); } catch (e) { sh.classList.remove('on'); } return true; }
+        if (sh && sh.classList.contains('on') && vis(sh.firstElementChild || sh)) { try { window.gyPmCloseSheet(); } catch (e) { sh.classList.remove('on'); } return true; }   // 看不见的（退出小手机时没收起来的）不算
         // 动态建的浮层（小玩法、字卡库、神秘学、立绘……）和 .modal-overlay 类弹窗：挑 z-index 最高、看得见的那个
         const cands = [...document.querySelectorAll('.modal-overlay, #gyMysOv, [data-gy-overlay], .gy-aspage')].filter(vis);
         if (!cands.length) return false;

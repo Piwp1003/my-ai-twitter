@@ -1,4 +1,4 @@
-// v220：🌏 时间与所在地（自定义时间 / 异地时区）+ 从预设里搬来的三样：🫂 相处模式 · 🧂 风格调料 · 🛡️ 别把她写弱
+// v220：🌏 时间与所在地（自定义时间 / 异地时区）+ 从预设里搬来的三样：🫂 相处模式 · 🧂 风格调料 · 🛡️ 平视
 import { chromium } from 'playwright';
 import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path';
@@ -93,7 +93,7 @@ const pl = await page.evaluate(async () => {
 });
 check(`${tag} 相处模式：给顾言选「欢喜冤家」→ 只有顾言收到这段（侧重 + 禁忌）；自己写的也能用`, pl.bondCtx && pl.bondOther && pl.bondCustom, JSON.stringify(pl));
 check(`${tag} 风格调料：全局勾的所有 TA 都有；单个 TA 用自己的一套 + 自己加的一句`, pl.spiceG && pl.spiceOwn, JSON.stringify(pl));
-check(`${tag} 别把她写弱：守则 + 她的真实情况进 prompt；关掉的那条不发`, pl.fair, JSON.stringify(pl));
+check(`${tag} 平视：守则 + 她的真实情况进 prompt；关掉的那条不发`, pl.fair, JSON.stringify(pl));
 check(`${tag} 三个插件都有：自主行动、小组件、小功能入口、今天、页面`, pl.acts && pl.widgets && pl.mini && pl.today && pl.bondPage && pl.spicePage && pl.fairPage, JSON.stringify(pl));
 check(`${tag} 整个过程没有页面报错`, errs.length === 0, errs.join(' | ').slice(0, 600));
 await browser.close();

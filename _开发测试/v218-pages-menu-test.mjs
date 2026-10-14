@@ -63,6 +63,7 @@ for (const mob of [false, true]) {
     out.plug = { page: ov.classList.contains('gy-aspage'), title: (ov.querySelector('.gyp-title') || {}).textContent, hdHidden: getComputedStyle(ov.querySelector('.gyx-hd')).display === 'none', l: r.left | 0, w: r.width | 0, ml: main.left | 0, mw: main.width | 0, iw: innerWidth, h: r.height | 0, ih: innerHeight };
     ov.querySelector('.gyp-back').click(); await sleep(150); out.plug.closed = !vis(document.getElementById('gyxRxOv'));
     // 核心的大弹窗
+    document.querySelectorAll('.gyx-ov').forEach(e => e.remove());   // 早安简报这类到点自己弹的，先收掉（测的是记忆管理）
     openMemoryModal(9991); await sleep(300);
     ov = document.getElementById('memoryModal'); out.mem = { page: ov.classList.contains('gy-aspage'), title: (ov.querySelector('.gyp-title') || {}).textContent };
     // 系统返回键 / 左滑：一样能退

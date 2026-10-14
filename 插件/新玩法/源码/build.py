@@ -6,21 +6,22 @@ common = open(os.path.join(src, '_common.js'), encoding='utf-8').read()
 # 🧩 合并：同一类的插件打成一个（「谷雨功能盘点」里选的）。每个原插件包在自己的函数里，互不影响；数据还是存在原来的地方。
 BUNDLES = [
     ('🖼️', '相册里的插件', ['22', '72', '52', '35']),
-    ('💞', '我们的关系', ['44', '73', '69']),
-    ('📚', '回顾', ['85', '58', '48', '71', '53', '46', '45']),
-    ('🎉', '纪念日和生日', ['20', '37']),
+    ('💞', '我们的关系', ['44', '99', '73', '69', '88']),
+    ('📚', '回顾', ['85', '98', '58', '48', '71', '53', '46', '45', '89']),
+    ('🎉', '纪念日和生日', ['20', '37', '104']),
     ('🤙', '我们的约定', ['12', '61', '65', '26', '27']),
     ('🌙', '早安晚安', ['30', '13', '21', '76', '02']),
     ('💬', '问答', ['66', '19', '60', '62']),
-    ('🎮', '游戏', ['25', '68', '67', '64']),
+    ('🎮', '游戏', ['25', '68', '67', '64', '87', '103']),
     ('💌', '信', ['11', '06', '09', '10', '54']),
     ('🏠', '我们的小屋', ['55', '75', '08', '31']),
-    ('🗣️', 'TA怎么说话', ['81', '82', '83', '57']),
+    ('🗣️', 'TA怎么说话', ['81', '82', '83', '57', '101']),
     ('🫂', '哄', ['32', '63', '34', '28']),
     ('🚶', '陪你', ['50', '23', '03', '74', '33']),
     ('💓', '贴贴', ['49', '51']),
     ('🎛️', '开关和后台', ['17', '77', '16']),
-    ('📱', '小手机', ['80', '24', '78', '01']),
+    ('📱', '小手机', ['80', '100', '24', '92', '78', '01']),
+    ('🎨', '美化', ['94', '95', '96', '97', '102']),
 ]
 # 不要了的（数据不删，插件从列表里拿掉）
 RETIRED = ['📺 追剧进度', '🔐 我们的暗号']
@@ -32,9 +33,9 @@ def load(f):
     m = re.match(r'/\*\s*(\S+)\s+(.*?)\s*\*/', body, re.S)
     desc = (m.group(2) if m else name).split('：', 1)[-1].strip()
     icon = m.group(1) if m else ''
-    return {'num': os.path.basename(f)[:2], 'name': name, 'full': f'{icon} {name}', 'icon': icon, 'desc': desc, 'body': body}
+    return {'num': re.match(r'^(\d+)', os.path.basename(f)).group(1), 'name': name, 'full': f'{icon} {name}', 'icon': icon, 'desc': desc, 'body': body}
 
-files = {load(f)['num']: load(f) for f in sorted(glob.glob(os.path.join(src, '[0-9]*.js')))}
+files = {load(f)['num']: load(f) for f in sorted(glob.glob(os.path.join(src, '[0-9]*.js')), key=lambda f: int(re.match(r'^(\d+)', os.path.basename(f)).group(1)))}
 inb = {n for _, _, L in BUNDLES for n in L}
 if os.path.basename(out) == 'out':
     for f in glob.glob(os.path.join(out, '*.json')): os.remove(f)
@@ -54,6 +55,12 @@ for icon, title, L in BUNDLES:
     code = '\n'.join(f'/* ==== {m["full"]} ==== */\ntry {{ new Function(\'X\', \'applyMacros\', {json.dumps(m["body"] + chr(10) + "//# sourceURL=gyx-plugin/" + m["name"] + ".js", ensure_ascii=False)})(X, typeof applyMacros !== \'undefined\' ? applyMacros : undefined); }} catch (e) {{ console.error(\'[插件] {m["full"]} 出错：\', e); }}' for m in ms)
     emit(full, desc, code, title)
     mapping[full] = [[m['full'], re.findall(r"X\.feat\('(\w+)'", m['body'])] for m in ms if m['num'] != '85']
+# 改过名的：旧名字也认，装了合并版就把旧名字的单个插件拿掉
+RENAMED = {'83': ['🛡️ 别把她写弱']}
+for icon, title, L in BUNDLES:
+    for n in L:
+        for old in RENAMED.get(n, []):
+            mapping[f'{icon} {title}'].append([old, re.findall(r"X\.feat\('(\w+)'", files[n]['body'])])
 json.dump(allp, open(os.path.join(out, '新玩法全家桶.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 json.dump({'bundles': mapping, 'retired': RETIRED}, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bundles.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 print(len(allp), 'plugins')

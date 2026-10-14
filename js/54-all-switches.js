@@ -197,7 +197,7 @@
                 const d = b.querySelector('.set-entry-desc'); if (d && d.innerText !== '自动功能和小功能的开关，能搜') d.innerText = '自动功能和小功能的开关，能搜';
                 const i = b.querySelector('.set-entry-ico'); if (i && i.innerText !== '🎛️') i.innerText = '🎛️';
                 // 放到最上面
-                const menu = b.parentElement; if (menu && menu.firstElementChild !== b) menu.insertBefore(b, menu.firstElementChild);
+                const menu = b.parentElement; if (menu) { let first = menu.firstElementChild; while (first && /^gy(Guide|Help)Entry$/.test(first.id || '')) first = first.nextElementSibling; if (first !== b) menu.insertBefore(b, first); }   // 📘 指南、🛟 客服（js/94）在它上面
             }
         });
     }

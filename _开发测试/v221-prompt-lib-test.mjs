@@ -55,7 +55,7 @@ const r = await page.evaluate(async () => {
   document.querySelectorAll('#gyPLOv').forEach(x => x.remove());
   return out;
 });
-check(`${tag} 内置提示词页：说话的规矩、时间、相处模式 / 风格调料 / 别把她写弱都列出来，显示的是默认原文`, r.listed && r.tas >= 20 && r.defShown, JSON.stringify(r));
+check(`${tag} 内置提示词页：说话的规矩、时间、相处模式 / 风格调料 / 平视都列出来，显示的是默认原文`, r.listed && r.tas >= 20 && r.defShown, JSON.stringify(r));
 check(`${tag} 改了「人味强化协议」→ 发给 TA 的就是改过的；空位 {{现在}} {{时段}} 会换成实际内容`, r.edited && r.vars, JSON.stringify(r));
 check(`${tag} 总开关关掉＝全用默认；单条「恢复默认」`, r.offDefault && r.reset, JSON.stringify(r));
 check(`${tag} 内置世界书（风格调料）改了也跟着变，恢复默认就回来`, r.plug && r.plugBack, JSON.stringify(r));

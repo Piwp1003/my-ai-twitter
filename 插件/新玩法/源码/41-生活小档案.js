@@ -58,7 +58,7 @@ window.gyxNotesOpen = function (who) {
         ${X.bailu() ? '<div class="gyx-tip">白露没接 API：只认你自己说的「我喜欢……」「我不吃……」「我怕……」这类句子，其它的手动记。</div>' : ''}`);
 };
 window.gyxNotesData = () => D;
-// 🛡️ 她的真实情况：所有 TA 共用的一份（原来在「别把她写弱」里，合并进来了）。存在 notes['*']
+// 🛡️ 她的真实情况：所有 TA 共用的一份（原来在「平视」里，合并进来了）。存在 notes['*']
 const ALL = '*';
 let READY; const ready = new Promise(r => { READY = r; });
 window.gyxNotesShared = {

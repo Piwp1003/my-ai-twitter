@@ -777,7 +777,11 @@ const count = Math.floor(Math.random() * npcReplyMaxCount) + 1;
         postCharContext = `当前被评论的推文博主是"${post.char.name}"，其人设为：${post.char.persona}。`;
     }
     
-    const context = triggerText ? `刚才"${triggerName}"评论说："${triggerText}"。` : `帖子内容："${post.text}"。`;
+    // 修复（v219）：有人评论时以前只给评论、不给原帖，路人不知道大家在聊什么，就容易跑去聊设定。现在两样都给，并要求接那条评论。
+    const postBody = String(post.text || '').slice(0, 600);
+    const context = triggerText
+        ? `${postBody ? `帖子内容："${postBody}"。\n` : ''}刚才"${triggerName}"评论说："${triggerText}"。\n这些路人评论要针对这条评论（以及帖子）里说的具体内容来回应，不要去聊世界观设定本身。`
+        : `帖子内容："${postBody}"。\n这些路人评论要针对帖子里说的具体内容来回应，不要去聊世界观设定本身。`;
     const toneHint = isShura ? '拱火、阴阳怪气、骂战' : '吃瓜、围观、玩梗';
     let forumHint = postType === 'anon' ? "注意：当前处于匿名、抽象且无底线的深渊论坛，请用非常暴躁、极端、抽象、不礼貌的网民语气。" : "";
     const actionStrictRule = allowActionTags ? "" : "评论内容里绝对不要有任何动作、神态或心理描写，不要用括号()或【】，只写路人会打出来的话。";

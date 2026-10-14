@@ -68,7 +68,7 @@ const pr = await page.evaluate(() => {
   plugins.length = 0; keep.forEach(p => plugins.push(p));
   return { n, names, fairOff: fs.gyxFair === false };
 });
-check(`${tag} 插件合并：装了「TA怎么说话」就拿掉旧的「别把她写弱」（关着的还关着）；追剧进度拿掉；没装合并版的「听心跳」留着`, pr.n === 2 && pr.names.join() === '🗣️ TA怎么说话,🌙 TA的梦,💓 听心跳' && pr.fairOff, JSON.stringify(pr));
+check(`${tag} 插件合并：装了「TA怎么说话」就拿掉旧的「别把她写弱」（现在叫平视）（关着的还关着）；追剧进度拿掉；没装合并版的「听心跳」留着`, pr.n === 2 && pr.names.join() === '🗣️ TA怎么说话,🌙 TA的梦,💓 听心跳' && pr.fairOff, JSON.stringify(pr));
 await page.evaluate(() => { const f = JSON.parse(localStorage.getItem('gyxFeat') || '{}'); delete f.gyxFair; localStorage.setItem('gyxFeat', JSON.stringify(f)); });
 
 // ③ 所在地并进行程与天气：你的城市 / 时区只存一份；老数据自动搬过去；TA 在哪在「🌏 两地」里改
@@ -93,7 +93,7 @@ const fa = await page.evaluate(async () => {
   const ctx = window.__gyxCtxFor('9991');
   return { sh, pg: /你的真实情况/.test(pg) && /超能吃辣/.test(pg), ctx: (ctx.match(/超能吃辣/g) || []).length };
 });
-check(`${tag} 她的真实情况：在「别把她写弱」里记的进了生活小档案的共用那份，TA 只看到一次`, fa.sh.includes('超能吃辣') && fa.pg && fa.ctx === 1, JSON.stringify(fa));
+check(`${tag} 她的真实情况：在原来「平视」（以前叫别把她写弱）里记的进了生活小档案的共用那份，TA 只看到一次`, fa.sh.includes('超能吃辣') && fa.pg && fa.ctx === 1, JSON.stringify(fa));
 
 // ⑤ 回顾节奏：多久总结一次自己定；写歌也能定
 const rc = await page.evaluate(async () => {
