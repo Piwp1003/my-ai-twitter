@@ -127,7 +127,8 @@ const CORE_ASSETS = [
     './js/88-prompt-lib.js?v=' + V,
     './js/89-chat-think.js?v=' + V,
     './js/93-phone-sticker.js?v=' + V,
-    './js/94-guide-help.js?v=' + V
+    './js/94-guide-help.js?v=' + V,
+    './js/95-plugin-update.js?v=' + V
 ];
 
 self.addEventListener('install', (event) => {
@@ -167,6 +168,7 @@ self.addEventListener('fetch', (event) => {
     if (req.method !== 'GET') return; // POST（比如发给AI的API请求）完全不拦截，原样走网络
     const url = new URL(req.url);
     if (url.origin !== self.location.origin) return; // 跨域请求（AI API中转、CDN脚本等）不拦截，避免影响这些动态/第三方请求
+    if (url.searchParams.has('fresh')) return;      // 🔄 检查插件更新（js/95）这类「一定要最新」的请求：不进缓存，直接走网络
 
     // 🆕 打开页面（index.html）改成「先问网络」：以前首页也是先用缓存，刷新一次拿到的永远是上一版的首页——
     //    上一版首页里写的是旧版本号，注册的也是旧的这个 Service Worker，于是上传了新版、刷新也看不到，要刷两次才换。

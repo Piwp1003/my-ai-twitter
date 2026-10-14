@@ -1,0 +1,10 @@
+# Cloudflare Pages / Netlify 会读这个文件（GitHub Pages 不读，也不碍事）
+# 首页和 service-worker 每次都问服务器要最新的，不然上传了新版本，浏览器 / CDN 还拿着旧的
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/service-worker.js
+  Cache-Control: no-cache
+/pwa-manifest.json
+  Cache-Control: no-cache

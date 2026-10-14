@@ -2519,6 +2519,7 @@ ${letChar ? '待多久、去干什么，你自己定。' : '待多久和干什�
           <div id="gymapInviteStatus" style="font-size:12px;color:#8b98a5;margin-top:6px;"></div>
         </div>
 
+        ${(window.GY_DATE_EXTRA || []).map(f => { try { return f() || ''; } catch (e) { return ''; } }).join('')}
         <div class="gymap-sec">
           <h4>📓 一起去过的地方（${dateLogs().length}）</h4>
           <div class="gymap-hint">这些也会出现在「记忆总览」里，可以在那儿改保留条数。</div>

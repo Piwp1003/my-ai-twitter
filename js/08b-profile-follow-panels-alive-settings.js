@@ -606,6 +606,8 @@ function setAutoFeature(key, on, quiet) {
     // 例外：本来就"默认关"的功能（比如小剧场），打开时必须显式存一个 true，
     // 否则删掉记录后 isAutoOn 又会退回 defaultOff，用户点了开关等于没点。
     const def = (typeof AUTO_FEATURE_DEFS !== 'undefined') ? AUTO_FEATURE_DEFS.find(f => f.key === key) : null;
+    // 🗓️ 日程自动更新：每次开/关都重新起算"从哪天开始"（见 js/04b checkAndRenewStaleSchedules）
+    if (key === 'scheduleAutoRenew') { delete autoFeatureSwitches.__schedRenewSince; if (on) autoFeatureSwitches.__schedRenewSince = Date.now(); }
     if (on) {
         if (def && def.defaultOff) autoFeatureSwitches[key] = true;
         else delete autoFeatureSwitches[key];

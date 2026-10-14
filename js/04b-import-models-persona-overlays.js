@@ -735,16 +735,18 @@ ${recentChat || '（暂无）'}
 // 一轮最多续 3 个角色：角色多的时候一次性全生成会瞬间打出十几个长请求，又慢又贵，分几轮慢慢来完全够用。
 // 排序按"上次生成时间"从早到晚，保证每个角色都轮得上（以前固定取前两个，后面的人永远排不到）。
 async function checkAndRenewStaleSchedules() {
-    if (typeof isAutoOn === 'function' && !isAutoOn('scheduleAutoRenew')) return;
+    // 🔌 v232：开关没开就什么都不做（以前这个开关默认是开的，没碰过它的人也会被自动更新）
+    const sw = (typeof autoFeatureSwitches !== 'undefined' && autoFeatureSwitches) ? autoFeatureSwitches : null;
+    if (typeof isAutoOn === 'function' && !isAutoOn('scheduleAutoRenew')) { if (sw && sw.__schedRenewSince) delete sw.__schedRenewSince; return; }
+    // 📅 只从打开开关之后开始：第一次发现它开着，记下"哪天开的"，当天不动任何人——
+    //    不然一打开就把所有角色（包括从没写过日程的）一口气全生成一遍。从第二天起每天正常续。
+    if (sw && !sw.__schedRenewSince) { sw.__schedRenewSince = Date.now(); if (typeof saveAllData === 'function') saveAllData(); return; }
+    const since = sw ? sw.__schedRenewSince : 0;
+    if (since && new Date(since).toDateString() === new Date().toDateString()) return;
     const api = getApiConfig(true); if (!api.key) return;
     if (typeof isScheduleStale !== 'function') return;
-    // 🐛 以前这里是 `c.schedule && c.schedule.text && isScheduleStale(c)`，两个毛病：
-    //   ① **从来没生成过日程的角色永远轮不上**——条件要求"已经有日程"才续期，
-    //      于是打开开关之后只有那个手动生成过的角色在更新，其他人一辈子没有日程。
-    //      这就是"多个角色只有一个会写"。
-    //   ② 每轮取前 2 个，而且顺序是 myCharacters 的原始顺序，永远是同样那两个先被取到；
-    //      前面的人一旦次次都排在前面，后面的人也轮不上。
-    // 现在：没日程的也算"该写"，并且按"上次生成时间"从早到晚排，谁最久没更新谁先来。
+    // 没日程的也算"该写"，按"上次生成时间"从早到晚排，谁最久没更新谁先来。
+    // ⚠️ 只写"今天"这一份：几天没上线回来，不会把错过的那几天挨个补——想补齐用下面的 gyScheduleFillNow 按钮。
     const cand = (myCharacters || []).filter(c => c && (!c.schedule || !c.schedule.text || isScheduleStale(c)));
     cand.sort((a, b) => ((a.schedule && a.schedule.generatedAt) || 0) - ((b.schedule && b.schedule.generatedAt) || 0));
     const due = cand.slice(0, 3);
@@ -753,6 +755,39 @@ async function checkAndRenewStaleSchedules() {
         catch (e) { console.warn('[日程自动更新] 出错，跳过这个角色：', char && char.name, e); }
     }
 }
+
+// 🗓️ 一键补齐：你自己点的，不看开关——把日程过期 / 还没有日程的角色，今天这份挨个写好。
+//    onlyStale=true 时跳过从来没写过日程的角色（只补"停在之前某天"的）。
+window.gyScheduleNeedFill = function (onlyStale) {
+    if (typeof isScheduleStale !== 'function') return [];
+    return (myCharacters || []).filter(c => c && (c.schedule && c.schedule.text ? isScheduleStale(c) : !onlyStale));
+};
+let __gySchedFilling = false;
+window.gyScheduleFillNow = async function (btn, onlyStale) {
+    if (__gySchedFilling) return;
+    const say = (t, b) => { if (typeof showToast === 'function') showToast('', t, b || '', null, null, false); };
+    const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : {};
+    if (!api || !api.key) return say('🗓️ 补不了', '还没配 API Key。');
+    const list = window.gyScheduleNeedFill(onlyStale);
+    if (!list.length) return say('🗓️ 都是新的', ['每个人今天的日程都写好啦。', '没有要补的，大家今天都安排上了。', '全员日程都是今天的，不用补～'][Math.floor(Math.random() * 3)]);
+    __gySchedFilling = true;
+    const lab = btn && btn.textContent;
+    let ok = 0;
+    try {
+        for (let i = 0; i < list.length; i++) {
+            if (btn) { btn.disabled = true; btn.textContent = `正在补 ${i + 1}/${list.length}：${list[i].name}…`; }
+            const before = list[i].schedule && list[i].schedule.generatedAt;
+            try { await runScheduleGeneration(list[i].id, true); } catch (e) { console.warn('[一键补齐日程] 跳过', list[i].name, e); }
+            if (list[i].schedule && list[i].schedule.generatedAt !== before) ok++;
+        }
+    } finally {
+        __gySchedFilling = false;
+        if (btn) { btn.disabled = false; btn.textContent = lab; }
+    }
+    say('🗓️ 补齐了', ok === list.length ? `${ok} 个角色今天的日程都写好了。` : `写好了 ${ok} 个，${list.length - ok} 个没成功（多半是接口出错，再点一次就行）。`);
+    try { if (typeof renderCharCalendarGrid === 'function' && document.getElementById('charCalendarGrid')) renderCharCalendarGrid(); } catch (e) {}
+    try { if (typeof window.gyTodayRender === 'function') window.gyTodayRender(); } catch (e) {}
+};
 
 function showSchedulePreview(charId) {
     const r = pendingScheduleResult; if (!r) return;

@@ -202,6 +202,15 @@
             h += `</div>`;
         }
 
+        // 🗓️ 角色日程停在之前某天（没开自动更新、或者刚开还没到第二天）：给个一键补齐
+        try {
+            const st = (typeof window.gyScheduleNeedFill === 'function') ? window.gyScheduleNeedFill(true) : [];
+            if (st.length) {
+                h += `<div class="gyt-sec"><h4>🗓️ TA 们的日程</h4><div class="gyt-row"><span class="gyt-x">${st.slice(0, 3).map(c => esc(c.name)).join('、')}${st.length > 3 ? ` 等 ${st.length} 人` : ''}的日程还停在之前<em>点了才补，每人一次调用</em></span>
+                    <button type="button" class="gyt-mini" style="flex:0 0 auto;border:none;border-radius:8px;padding:4px 10px;background:rgba(29,155,240,.12);color:#1d9bf0;cursor:pointer;font-size:12px;" onclick="event.stopPropagation();gyScheduleFillNow(this,true)">补齐</button></div></div>`;
+            }
+        } catch (e) {}
+
         if (an.length) {
             h += `<div class="gyt-sec"><h4>💗 快到的日子</h4>`;
             an.forEach(a => h += `<div class="gyt-row"><span class="gyt-t">${a.left === 0 ? '就是今天' : '还有 ' + a.left + ' 天'}</span>

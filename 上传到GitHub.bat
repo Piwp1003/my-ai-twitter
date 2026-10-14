@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
@@ -19,7 +20,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [1/5] Clearing stale lock file ...
+rem ---- version number from index.html (var GY_VERSION = 227;) ----
+set VER=?
+for /f "tokens=4 delims= ;" %%V in ('findstr /c:"var GY_VERSION = " index.html') do set VER=%%V
+echo   version in index.html: !VER!
+echo.
+
+echo [1/6] Clearing stale lock file ...
 if exist ".git\index.lock" (
   del /f /q ".git\index.lock"
   echo       removed .git\index.lock
@@ -28,13 +35,33 @@ if exist ".git\index.lock" (
 )
 echo.
 
-echo [2/5] Staging files ...
+echo [2/6] Checking hosting files ...
+rem .nojekyll: tells GitHub Pages NOT to run Jekyll. Without it, any {{random:}} / {{//...}} in a .md file
+rem breaks the Pages build, and the website silently stays on the old version forever.
+if not exist ".nojekyll" (
+  type nul > .nojekyll
+  echo       created .nojekyll
+) else (
+  echo       .nojekyll ok
+)
+echo.
+
+echo [3/6] Removing files that .gitignore says should not be uploaded ...
+set N=0
+for /f "usebackq delims=" %%F in (`git -c core.quotepath^=false ls-files -ci --exclude-standard`) do (
+  git rm --cached -q "%%F" >nul 2>nul
+  set /a N+=1
+)
+echo       untracked !N! file^(s^) ^(they stay on your PC^)
+echo.
+
+echo [4/6] Staging files ...
 git add -A
 if errorlevel 1 goto ADDFAIL
 echo       staged
 echo.
 
-echo [3/5] Checking for oversized files ^(limit 50 MB^) ...
+echo       Checking for oversized files ^(limit 50 MB^) ...
 set BIG=0
 for /f "usebackq delims=" %%F in (`git -c core.quotepath^=false diff --cached --name-only`) do (
   if exist "%%F" (
@@ -56,20 +83,32 @@ if "!BIG!"=="1" (
 echo       ok, nothing oversized
 echo.
 
-echo [4/5] Commit ...
-git commit -m "Guyu: modular js 01-17, tavern helper bridge, story studio, live feed NPCs, desktop build"
-if errorlevel 1 echo       nothing new to commit - continuing
+echo [5/6] Commit ...
+for /f "tokens=1-3 delims=/-. " %%a in ("%date%") do set TODAY=%%a-%%b-%%c
+git commit -q -m "Guyu v!VER! (!TODAY! %time:~0,5%)"
+if errorlevel 1 (
+  echo       nothing new to commit - continuing
+) else (
+  echo       committed: Guyu v!VER!
+)
 echo.
 
-echo [5/5] Push to origin/main ...
+echo [6/6] Push to origin/main ...
 echo       ^(a GitHub login window may pop up - that is normal^)
 git push -u origin main
 if errorlevel 1 goto PUSHFAIL
 
 echo.
 echo ==========================================
-echo   DONE. Check it here:
-echo   https://github.com/Piwp1003/my-ai-twitter
+echo   DONE. Uploaded version !VER!.
+echo   Code:    https://github.com/Piwp1003/my-ai-twitter
+echo   Website: https://piwp1003.github.io/my-ai-twitter/
+echo.
+echo   The website needs 1-3 minutes to rebuild.
+echo   Build status: https://github.com/Piwp1003/my-ai-twitter/actions
+echo     green = ok, red = failed ^(click it to see why^)
+echo   Then open the website and refresh once.
+echo   Settings page bottom shows the version - it should say !VER!.
 echo ==========================================
 echo.
 pause

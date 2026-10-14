@@ -69,6 +69,7 @@
             { id: 'hot', t: '🔥 真实热搜', d: 'TA 知道今天外面在聊什么（微博 / 知乎 / B站…），会挑一条跟你聊。拉不下来客服会提醒你，也能自己填接口或粘贴。', go: ['mini', 'gyxHot'], sw: ['x:gyxHot'], k: '热搜 新闻 微博 外面' },
             { id: 'care', t: '🍙 反向养成', d: '你的饱腹、心情、精力、清洁会慢慢掉；聊天里说「吃了饭」「洗完澡」会自动记，太低了 TA 来管你。', go: ['mini', 'gyxCare'], sw: ['x:gyxCare'], k: '养成 吃饭 睡觉 洗澡 照顾' },
             { id: 'callplus', t: '📞 来电增强', d: '拒接时挑个理由；太久没说话 TA 打来问；没接 TA 留语音留言；每通电话留一行小结。', go: ['mini', 'gyxCallPlus'], sw: ['x:gyxCallPlus'], k: '电话 拒接 留言 语音信箱 查岗' },
+            { id: 'sched', t: '🗓️ TA 的日程', d: '「日程每天自动更新」默认关着，不开就不会自动写。打开后从第二天起每天续一份；打开那一刻不会把所有人一口气补一遍，几天没上线回来也只写今天那份。想马上补齐：记忆总览里点「🗓️ 一键补齐今天的日程」，或者「今天」面板里提示谁的日程停在之前，旁边点「补齐」。', go: ['mem'], sw: ['c:scheduleAutoRenew'], k: '日程 补齐 自动更新 过期 一口气 没上线 状态' },
             { id: 'todayp', t: '📋 今天', d: '今天 TA 做了什么、写了什么，都在这里汇总，点一下直接跳过去。', go: ['today'] },
             { id: 'notif', t: '🔔 通知', d: '左边栏「通知」。TA 来消息、写了信、有新成就都在这儿，点了直接打开那一封信 / 那个页面。', go: ['view', 'notifications'], k: '通知 消息' },
             { id: 'push', t: '推送到手机', d: '设置 → 通知与云端。', go: ['settings', 'notify'], k: '推送 系统通知 云端' },
@@ -76,7 +77,7 @@
         ] },
         { id: 'map', icon: '🗺️', title: '小功能地图', intro: '小功能首页一共二十几个入口，大多是合集：点进去是一整页，顶上一排标签，一个标签一个功能。下面先是合集，再是几个单独的。', items: [
             { id: 'h_together', t: '🎧 一起听 · 看 · 读', d: '音乐盒、一起听一起看、一起看电影、一起阅读、📺 直播间（TA 开直播，你发弹幕送礼物）。', go: ['mini', 'hub_together'], sw: ['x:gyxWebInvite', 'c:filmScene', 'x:gyxLive'], k: '音乐 电影 视频 阅读 看书 直播 弹幕' },
-            { id: 'h_rel', t: '💞 我们的关系', d: '关系账本、两层好感、📊 关系四条线（信任 / 亲密 / 安心 / 尊重）、等级、成就、🎯 反向攻略（TA 来追你）。', go: ['mini', 'hub_rel'], sw: ['c:relLedger', 'x:gyxDual', 'x:gyxAxes', 'x:gyxLevel', 'x:gyxBadge', 'x:gyxWoo'], k: '好感 关系 账本 等级 成就 四条线 信任 亲密 安心 尊重 攻略 追' },
+            { id: 'h_rel', t: '💞 我们的关系', d: '关系账本、两层好感、📊 关系四条线（信任 / 亲密 / 安心 / 尊重）、等级、成就、🎯 反向攻略（TA 来追你）、🔁 我们的小习惯、🌱 TA 被你影响。', go: ['mini', 'hub_rel'], sw: ['c:relLedger', 'x:gyxDual', 'x:gyxAxes', 'x:gyxLevel', 'x:gyxBadge', 'x:gyxWoo', 'x:gyxRitual', 'x:gyxInfl'], k: '小习惯 仪式 晚安 被你影响 新爱好 好感 关系 账本 等级 成就 四条线 信任 亲密 安心 尊重 攻略 追' },
             { id: 'h_recap', t: '📚 回顾', d: '📒 手帐时间线（日 / 周 / 月手帐，能贴贴纸）、我们的书、星图、周报、回忆放映、TA 眼中的你、时光机、🕹️ 记忆潜行（像素小游戏）；多久总结一次你来定。', go: ['mini', 'hub_recap'], sw: ['x:gyxHandbook', 'x:gyxOurBook', 'x:gyxWeekly', 'x:gyxDive'], k: '回忆 周报 总结 星图 时光机 手帐 日历 记忆潜行 像素' },
             { id: 'h_promise', t: '🤙 我们的约定', d: '小约定、兑换券、恋爱审批、愿望清单、一百件小事。', go: ['mini', 'hub_promise'], sw: ['x:gyxPromise', 'x:gyxCoupon', 'x:gyxWish'], k: '约定 兑换券 愿望 审批' },
             { id: 'h_night', t: '🌙 早安晚安', d: '早安简报、叫醒和哄睡、熬夜管家、睡前三件好事、深夜电台。', go: ['mini', 'hub_night'], sw: ['x:gyxBrief', 'x:gyxWake', 'x:gyxNight', 'x:gyxRadio'], k: '早安 晚安 叫醒 哄睡 熬夜 电台' },
@@ -85,13 +86,20 @@
             { id: 'h_home', t: '🏠 我们的小屋', d: '小屋、随机掉落的收藏、一起养的小生命（能自己加种类）、存钱罐。', go: ['mini', 'hub_home'], sw: ['x:gyxHome', 'x:gyxDrop', 'x:gyxGrow', 'x:gyxJar'], k: '小屋 收藏 养 宠物 存钱 种类' },
             { id: 'h_voice', t: '🗣️ TA 怎么说话', d: '相处模式、风格调料、平视、口头禅、🎬 听取模式（像 galgame 一样一句句听 TA 说）。', go: ['mini', 'hub_voice'], sw: ['x:gyxBond', 'x:gyxSpice', 'x:gyxFair', 'x:gyxEcho', 'x:gyxListen'], k: '语气 口癖 口头禅 风格 人设 平视 听取 配音 立绘 galgame' },
             { id: 'h_comfort', t: '🫂 哄', d: '你不开心（抱抱）、TA 不开心（轮到你哄）、吵架了、秘密树洞。', go: ['mini', 'hub_comfort'], sw: ['x:gyxHug', 'x:gyxCoax', 'x:gyxMakeup', 'x:gyxSecret'], k: '哄 抱抱 吵架 不开心 树洞' },
-            { id: 'h_with', t: '🚶 陪你', d: '散步、做饭、自习、运动、旅行、🍙 反向养成（TA 养你：饱腹 / 心情 / 精力 / 清洁）。', go: ['mini', 'hub_with'], sw: ['x:gyxWalk', 'x:gyxCook', 'x:gyxStudy', 'x:gyxCoach', 'x:gyxTrip', 'x:gyxCare'], k: '散步 做饭 自习 运动 旅行 私教 养成 饱腹 吃饭' },
+            { id: 'h_with', t: '🚶 陪你', d: '散步、📮 现实小任务、🕯️ 一起安静待着、做饭、自习、运动、旅行、🍙 反向养成（TA 养你：饱腹 / 心情 / 精力 / 清洁）。', go: ['mini', 'hub_with'], sw: ['x:gyxWalk', 'x:gyxMis', 'x:gyxStill', 'x:gyxCook', 'x:gyxStudy', 'x:gyxCoach', 'x:gyxTrip', 'x:gyxCare'], k: '小任务 拍照 安静 环境音 白噪音 散步 做饭 自习 运动 旅行 私教 养成 饱腹 吃饭' },
+            { id: 'walk', t: '🚶 陪你散步（计步 / 约出去走走）', d: '🚶 陪你 → 陪你散步。手机上会数步数（iPhone 第一次会问权限，电脑上不数），没开定位就按步数估距离，每走 N 步 TA 说一句。TA 会在私聊发邀请卡约你出去走走，你也能点「约 TA 去散步」；「行程与天气 → 🤝 约出去」那一页也有入口。', go: ['mini', 'gyxWalk'], sw: ['x:gyxWalk', 'x:gyxWalk.auto'], k: '散步 计步 步数 走路 约出去 邀请 出门' },
+            { id: 'plan', t: '🎁 TA 的秘密计划', d: '🎁 TA 给你的 → TA的秘密计划。TA 偷偷为你学一样东西，两三周；你只看到 ❓ 和进度，聊天里 TA 会漏破绽（自动收进「你注意到的破绽」），你可以猜；到日子揭晓一封信和成果。', go: ['mini', 'gyxPlan'], sw: ['x:gyxPlan', 'x:gyxPlan.auto'], k: '秘密 惊喜 偷偷 学吉他 破绽 猜' },
+            { id: 'infl', t: '🌱 TA 被你影响', d: '💞 我们的关系 → TA被你影响。你常聊的东西，TA 会慢慢也喜欢上（有点好奇 → 开始喜欢 → 成了 TA 自己的爱好），会主动转给你、跟你聊；也能自己「种下」。', go: ['mini', 'gyxInfl'], sw: ['x:gyxInfl', 'x:gyxInfl.auto'], k: '影响 爱好 兴趣 种下 喜欢上' },
+            { id: 'mis', t: '📮 现实小任务', d: '🚶 陪你 → 现实小任务。TA 派一个真实世界的小任务，你拍照交差，TA 看图回应；照片攒成「我们一起看过的世界」。散步时会提醒路上的任务。', go: ['mini', 'gyxMis'], sw: ['x:gyxMis', 'x:gyxMis.auto'], k: '任务 拍照 交差 照片 现实' },
+            { id: 'still', t: '🕯️ 一起安静待着', d: '🚶 陪你 → 一起安静待着。屏幕常亮 + 环境音（雨 / 炉火 / 咖啡馆 / 海浪 / 夏夜），TA 隔一会儿轻轻说一句，也能设成一句都别说。', go: ['mini', 'gyxStill'], sw: ['x:gyxStill', 'x:gyxStill.auto'], k: '安静 陪伴 白噪音 环境音 雨声 屏幕常亮 失眠 工作' },
+            { id: 'ritual', t: '🔁 我们的小习惯', d: '💞 我们的关系 → 我们的小习惯。从聊天里自己认出你们固定的小仪式（每晚晚安、早安、下班报平安……），哪天到点了没出现，TA 会注意到。不调接口。', go: ['mini', 'gyxRitual'], sw: ['x:gyxRitual', 'x:gyxRitual.auto'], k: '习惯 仪式 晚安 早安 没说晚安' },
+            { id: 'ping', t: '📤 角标和分享', d: '📱 小手机 → 角标和分享。添加到主屏幕后，TA 的未读消息显示在桌面图标上；TA 的话、信、散步日记、小任务照片能一键做成卡片分享到微信（电脑上是下载图片）。聊天输入框左边 ⋮ 里也有。', go: ['mini', 'gyxPing'], sw: ['x:gyxPing'], k: '角标 红点 未读 分享 微信 卡片 存图' },
             { id: 'h_touch', t: '💓 贴贴', d: '听心跳、摇一摇贴贴。', go: ['mini', 'hub_touch'], sw: ['x:gyxBeat', 'x:gyxShake'], k: '心跳 摇一摇 贴贴' },
             { id: 'h_unsaid', t: '🤐 TA 没说出口的', d: '心声、思维链收纳盒、草稿箱、🌈 情绪皮肤（TA 的心情改变聊天界面）。', go: ['mini', 'hub_unsaid'], sw: ['x:gyxDraft', 'x:gyxMoodSkin'], k: '心声 思维链 草稿 情绪 皮肤 心情' },
-            { id: 'h_phone', t: '📱 小手机', d: 'TA 的手机、备忘录、🧩 AI 小程序、来电画面和铃声、📞 来电增强（拒接理由 / 查岗电话 / 语音留言 / 通话小结）、桌面小组件、桌面上的 TA。', go: ['mini', 'hub_phone'], sw: ['x:gyxMemo', 'x:gyxApps', 'x:gyxRing', 'x:gyxCallPlus', 'x:gyxPhoneW', 'x:gyxPet'], k: 'TA的手机 备忘录 来电 铃声 小程序 App 语音留言 拒接' },
+            { id: 'h_phone', t: '📱 小手机', d: 'TA 的手机、备忘录、🧩 AI 小程序、来电画面和铃声、📞 来电增强（拒接理由 / 查岗电话 / 语音留言 / 通话小结）、桌面小组件、桌面上的 TA、📤 角标和分享。', go: ['mini', 'hub_phone'], sw: ['x:gyxMemo', 'x:gyxApps', 'x:gyxRing', 'x:gyxCallPlus', 'x:gyxPhoneW', 'x:gyxPet', 'x:gyxPing'], k: '角标 分享 卡片 TA的手机 备忘录 来电 铃声 小程序 App 语音留言 拒接' },
             { id: 'h_life', t: '🧺 生活', d: '行程与天气（还有 🌏 两地）、随身物、商城、🛍️ 装扮商店（头像框 / 聊天背景 / 气泡套装）、经期记录、心情手账、生活小档案（她的真实情况）。', go: ['mini', 'hub_life'], sw: ['x:gyxShop', 'x:gyxNotes'], k: '行程 天气 两地 随身物 商城 装扮 头像框 经期 心情手账 档案' },
             { id: 'h_people', t: '👥 TA 身边的人', d: '日常、关系网、世界里的人。', go: ['mini', 'hub_people'], k: '日常 关系网 NPC 路人 身边的人' },
-            { id: 'h_gift', t: '🎁 TA 给你的', d: 'TA 的梦、写给你的歌、留声机、涂鸦互传、占卜。', go: ['mini', 'hub_gift'], sw: ['x:gyxDream', 'x:gyxSong', 'x:gyxTape', 'x:gyxDoodle', 'x:gyxMystic'], k: '梦 歌 磁带 留声机 涂鸦 占卜 塔罗' },
+            { id: 'h_gift', t: '🎁 TA 给你的', d: '🎁 TA 的秘密计划、TA 的梦、写给你的歌、留声机、涂鸦互传、占卜。', go: ['mini', 'hub_gift'], sw: ['x:gyxPlan', 'x:gyxDream', 'x:gyxSong', 'x:gyxTape', 'x:gyxDoodle', 'x:gyxMystic'], k: '秘密 惊喜 偷偷学 梦 歌 磁带 留声机 涂鸦 占卜 塔罗' },
             { id: 'h_alt', t: '🪐 换个世界玩', d: '平行世界、换个世界、互换身份一天、番外隔离。', go: ['mini', 'hub_alt'], sw: ['x:gyxWorld', 'x:gyxTheater', 'x:gyxSwap', 'x:gyxSide'], k: '平行世界 换个世界 互换身份 番外 如果' },
             { id: 'h_chat', t: '💭 聊天细节', d: '时间感知、内置提示词、总结滚雪球、外语和翻译、气泡表情回应。', go: ['mini', 'hub_chat'], sw: ['x:gyxRoll', 'x:gyxLang', 'x:gyxReact'], k: '时间感知 提示词 滚雪球 外语 翻译 表情回应' },
             { id: 'h_world', t: '🌐 外面的世界', d: '此刻（所有人现在在做什么）、联网探索、🔥 真实热搜。', go: ['mini', 'hub_world'], sw: ['c:webExplore', 'x:gyxHot'], k: '此刻 联网 探索 热搜 微博 新闻' },
@@ -99,7 +107,15 @@
             { id: 'h_set', t: '🎛️ 开关和后台（在设置里）', d: '全部开关、插件开关中心、省电模式、文案不重样。在 设置 → 🧰 功能设置。', go: ['mini', 'hub_set'] },
             { id: 'gallery', t: '🖼️ 相册', d: '表情包、角色照片、合照、情侣头像、TA 的相册（生活碎片和 🤳 自拍）。', go: ['mini', 'gallery'], sw: ['x:gyxAlbum', 'x:gyxMeme', 'x:gyxDuo', 'x:gyxAvatar'], k: '图库 表情包 照片 合照 头像 图片 自拍' },
             { id: 'days', t: '📅 我们的日子', d: '纪念日、生日、🏮 一起过节（农历节日自动算：春节、元宵、端午、七夕、中秋、重阳、腊八，当天有节日卡和小活动）。', go: ['mini', 'days'], sw: ['c:charOwnDays', 'x:gyxAnniv', 'x:gyxBday', 'x:gyxFest'], k: '纪念日 生日 日子 节日 过节 过中秋 过年 春节 中秋 七夕 端午 元宵 重阳 腊八 农历' },
-            { id: 'games', t: '🎮 聊天里的游戏', d: '聊天输入框上面的 🎮：一起玩、文字冒险、寻宝、帮我选、🎲 跑团、🎣 一起钓鱼。', go: ['view', 'chat'], sw: ['x:gyxGame', 'x:gyxTrpg', 'x:gyxFish'], k: '游戏 冒险 寻宝 跑团 骰子 钓鱼 图鉴' },
+            { id: 'games', t: '🎮 聊天里的游戏', d: '聊天输入框上面的 🎮：一起玩、文字冒险、寻宝、帮我选、🎲 跑团、🎣 一起钓鱼，还有下面这八个新的。狼人杀、谁是卧底、20 个问题、真心话在群聊的 🎮 里。', go: ['view', 'chat'], sw: ['x:gyxGame', 'x:gyxTrpg', 'x:gyxFish'], k: '游戏 冒险 寻宝 跑团 骰子 钓鱼 图鉴 狼人杀 卧底' },
+            { id: 'g_real', t: '🎭 谁是真的 TA', d: '🎮 → 谁是真的TA。你问一个问题，三个 TA 同时回答，两个是冒牌货；认出真的那个。认错了 TA 会吃醋。', go: ['mini', 'gyxReal'], sw: ['x:gyxReal'], k: '真假 冒牌 默契 认出' },
+            { id: 'g_seek', t: '📍 现实捉迷藏', d: '🎮 → 现实捉迷藏。TA 藏在你附近 150~350 米，拿着手机走，越近越"热"，找到了有 TA 留的一句话。要开定位、在手机上玩；电脑上可以玩屋里版。', go: ['mini', 'gyxSeek'], sw: ['x:gyxSeek'], k: '捉迷藏 定位 出门 冷热 找人' },
+            { id: 'g_loop', t: '🔁 时间循环', d: '🎮 → 时间循环。同一天不停重来，现实里每天只能过一轮；每轮四个选择、找线索，攒够了在对的时候做对的事才能打破循环。', go: ['mini', 'gyxLoop'], sw: ['x:gyxLoop'], k: '循环 重来 同一天 线索 结局' },
+            { id: 'g_room', t: '🗝️ 双人密室', d: '🎮 → 双人密室。你和 TA 关在两个房间，各看一半线索，隔着墙说话凑出四位密码。TA 不会说错数字，但可能漏说、说得含糊。', go: ['mini', 'gyxRoom'], sw: ['x:gyxRoom'], k: '密室 逃脱 密码 合作 解谜' },
+            { id: 'g_fate', t: '🃏 命运卡牌', d: '🎮 → 命运卡牌。左右滑卡片替你们的日子做决定，感情 / 钱包 / 理智 / 世界四条槽，见底或爆满就结束，结局收进图鉴（一共 8 个）。', go: ['mini', 'gyxFate'], sw: ['x:gyxFate'], k: '卡牌 左滑 右滑 选择 结局 图鉴' },
+            { id: 'g_soup', t: '🐢 海龟汤', d: '🎮 → 海龟汤。TA 出题你只能问"是不是"；你也能出题让 TA 猜（TA 会耍赖要提示）；还有「💞 关于我们」——汤底藏在你们自己的回忆里。', go: ['mini', 'gyxSoup'], sw: ['x:gyxSoup'], k: '海龟汤 推理 汤面 汤底 是不是' },
+            { id: 'g_show', t: '💘 我们的恋综', d: '🎮 → 我们的恋综。选 2~5 个角色当男嘉宾，你是唯一的女嘉宾：开场采访、约会、匿名心动短信、镜头外，六集后告白夜。', go: ['mini', 'gyxShow'], sw: ['x:gyxShow'], k: '恋综 综艺 心动短信 告白 修罗场 吃醋' },
+            { id: 'g_case', t: '🔍 剧本杀', d: '🎮 → 剧本杀。选 3~5 个角色演嫌疑人，每人都有秘密，凶手就在他们中间；你搜证（只能搜 4 处）、盘问（凶手会撒谎）、最后指认，结束有复盘。', go: ['mini', 'gyxCase'], sw: ['x:gyxCase'], k: '剧本杀 推理 凶手 侦探 搜证 盘问' },
             { id: 'help2', t: '🛟 客服 · 使用指南', d: '就是这里，设置最上面也有。', go: ['help'] },
             { id: 'book', t: '🧾 一起记账', d: '在钱包里：个人资料 → 钱包。', go: ['view', 'profile', 'me'], sw: ['x:gyxBook'], k: '记账 钱包 账本' },
             { id: 'intro', t: '🎬 开场动画', d: '设置 → 🧰 功能设置 → 开场动画。', go: ['mini', 'intro'], sw: ['x:gyxIntro'], k: '开场 动画 启动' },
@@ -139,7 +155,9 @@
             { id: 'inter', t: '💬 互动与描写', d: '动作描写、状态栏、打字指示、免打扰时段。', go: ['settings', 'interaction'], k: '描写 状态栏 免打扰' }
         ] },
         { id: 'plugin', icon: '🔌', title: '插件', items: [
-            { id: 'imp', t: '导入 / 更新插件', d: '「更多」→ 📖 设定库 → 🔌 插件。只导入「新玩法全家桶.json」这一个，里面已经包含了所有插件（原来 82 个合成了 32 个）。电脑里以前的单个 .json 可以自己删掉了。', go: ['view', 'plugins'], k: '插件 导入 更新 全家桶' },
+            { id: 'imp', t: '导入插件', d: '「更多」→ 📖 设定库 → 🔌 插件。只导入「新玩法全家桶.json」这一个，里面已经包含了所有插件。电脑里以前的单个 .json 可以自己删掉了。', go: ['view', 'plugins'], k: '插件 导入 全家桶' },
+            { id: 'plgupd', t: '🔄 插件自动检查更新', d: '网页托管（比如 GitHub Pages）更新了，已经导入的插件不会自己变——插件存在每台设备的浏览器里。现在打开网页几秒后会自动去网站上看一眼，有新版就问你要不要更新（你的开关和数据都不动），更新完刷新一次。插件页最上面也能手动点「🔄 检查插件更新」、关掉自动检查。双击 index.html 打开的不检查，导入一次就行。', go: ['view', 'plugins'], k: '插件更新 插件怎么更新 新版本 自动更新 插件没变 旧版 换设备' },
+            { id: 'pages', t: '🌐 传到 GitHub 后网页不更新', d: '先看仓库的 Actions 页：红叉＝网站没发布成功。最常见是说明文档里的 {{宏}} 让 GitHub Pages 编译失败——仓库根目录要有一个 .nojekyll 文件（「上传到GitHub.bat」会自动补上）。绿勾了还是旧的：刷新一次，看设置页最底下的版本号；插件要靠上面的「检查插件更新」。', k: '网页 不更新 网页更新了没变 没变 还是旧的 托管 github pages 部署 版本 旧版本 上传' },
             { id: 'refresh2', t: '导入后要刷新', d: '「更多」→ 🔄 刷新，不用大退。', go: ['refresh'] },
             { id: 'each', t: '合并版里的功能还能单独关', d: '去插件开关中心，每一个都有自己的开关。', go: ['gyx'] },
             { id: 'gone', t: '已经拿掉的', d: '📺 追剧进度、🔐 我们的暗号，这两个不要了（数据没删）。' }
@@ -515,7 +533,7 @@ ${diag()}`;
     function issueHtml(i) {
         return `<div class="gyh-iss${i.done ? ' done' : ''}"><div class="gyh-iss-hd"><b>${esc(i.title)}</b><em>${i.n > 1 ? i.n + ' 次 · ' : ''}${nowStr(i.last)}</em></div><div class="gyh-iss-tip">${esc(i.tip)}</div>${i.detail ? `<div class="gyh-iss-d">${esc(i.detail)}</div>` : ''}${D.notes[i.id] ? `<div class="gyh-iss-n">📝 ${esc(D.notes[i.id])}</div>` : ''}<div class="gyh-acts">${actBtns(i.acts)}<button type="button" onclick="gyHelpCopy('${i.id}')">📋 复制报错</button>${i.done ? `<button type="button" onclick="gyHelpDone('${i.id}',1)">↩ 没解决</button>` : `<button type="button" onclick="gyHelpDone('${i.id}')">✓ 解决了</button>`}<button type="button" onclick="gyHelpDel('${i.id}')">🗑️</button></div></div>`;
     }
-    const SUGG = ['怎么换皮肤', 'TA 怎么不主动找我', '回复太长了', '记账在哪', '热搜在哪', '钓鱼在哪', '怎么过中秋', '小程序写不完', '最近有报错吗', '插件导入了没反应'];
+    const SUGG = ['怎么换皮肤', 'TA 怎么不主动找我', '剧本杀在哪', '海龟汤怎么玩', '插件怎么更新', '步数在哪看', '日程怎么补齐', '最近有报错吗', '插件导入了没反应', '网页更新了插件没变'];
     window.gyHelpOpen = function (tab) {
         if (tab) TAB = tab;
         let ov = document.getElementById('gyHelpOv');

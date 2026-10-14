@@ -61,7 +61,7 @@ await page.evaluate(({ PLUG, BAILU }) => {
 await page.waitForTimeout(800);
 const tag = BAILU ? '[白露]' : '[谷雨]';
 const NEW = ['gyxQuiz', 'gyxAnniv', 'gyxNight', 'gyxAlbum', 'gyxCook', 'gyxRing', 'gyxWish', 'gyx100', 'gyxSecret', 'gyxBrief', 'gyxJar', 'gyxHug'];
-check(`${tag} 第二批插件都装上了、有入口；重复的天气/歌单不在了`, await page.evaluate(NEW => NEW.every(k => GY_MINI_FEATURES.some(f => f.id === k)) && window.__gyxFeats.length >= 30 && !window.__gyxFeats.some(f => /gyxWeather|gyxList/.test(f.id || f)), NEW));
+check(`${tag} 第二批插件都装上了、有入口；重复的天气/歌单不在了`, await page.evaluate(NEW => NEW.every(k => GY_MINI_FEATURES.some(f => f.id === k)) && window.__gyxFeats.length >= 30 && !window.__gyxFeats.some(f => /^(gyxWeather|gyxList)$/.test(f.id || f)), NEW));
 const close = id => page.evaluate(id => { const o = document.getElementById(id); if (o) o.remove(); }, id);
 
 // 💞 默契问答
