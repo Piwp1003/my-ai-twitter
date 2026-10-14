@@ -43,12 +43,32 @@ const r = await page.evaluate(async api => {
   GYX.set('gyxGen', false); document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); p = sendChatRequest(api, '你好'); await s(900); o.off = !document.getElementById('gyxGenBar'); await p; GYX.set('gyxGen', true);
   return o;
 }, api);
+// 📍 默认在顶上；按住能拖，记住位置；放回顶上
+const pos = await (async () => {
+  const o = {};
+  const p = page.evaluate(api => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); return sendChatRequest(api, '拖一下').then(() => 1); }, api);
+  await page.waitForTimeout(900);
+  let bb = await page.evaluate(() => { const r = document.getElementById('gyxGenBar').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top }; });
+  o.top = bb.top < 80;
+  await page.mouse.move(bb.x - 30, bb.y); await page.mouse.down(); await page.mouse.move(bb.x - 30 + 100, bb.y + 300, { steps: 8 }); await page.mouse.up();
+  o.moved = await page.evaluate(() => { const r = document.getElementById('gyxGenBar').getBoundingClientRect(); const c = JSON.parse(localStorage.getItem('gyxGenCfg') || '{}'); return r.top > 250 && c.pos && c.pos.y > 0.25 && !document.getElementById('gyxGenOv'); });
+  await p;
+  const p2 = page.evaluate(api => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); return sendChatRequest(api, '再来').then(() => 1); }, api);
+  await page.waitForTimeout(900);
+  o.kept = await page.evaluate(() => document.getElementById('gyxGenBar').getBoundingClientRect().top > 250);
+  await page.evaluate(() => gyxGenHome()); await page.waitForTimeout(100);
+  o.home = await page.evaluate(() => document.getElementById('gyxGenBar').getBoundingClientRect().top < 80 && !JSON.parse(localStorage.getItem('gyxGenCfg')).pos);
+  await page.evaluate(() => document.getElementById('gyxGenOv')?.remove()); await p2;
+  return o;
+})();
+Object.assign(r, pos);
 const J = JSON.stringify(r);
 check('⏳ 生成中提示有开关、小功能入口', r.base, J);
 check('你点出来的生成：浮出小条（能停止），写完自己收回', r.bar && r.ok && r.gone, J);
 check('点停止马上停下，不弹「API 报错」框', r.stop && r.stopGone && r.noAlert, J);
 check('后台自己跑的默认不弹；选「都提示」就弹', r.bgHidden && r.bgShown, J);
 check('小手机模式：显示在流体云上，岛上的停止也能停', r.island && r.islStop, J);
+check('📍 提示条默认在顶上，按住能拖、记住位置，能放回顶上', r.top && r.moved && r.kept && r.home, J);
 check('开关关掉就不弹', r.off, J);
 const bad = errs.filter(e => !/Failed to fetch/.test(e)); check('没有页面报错', !bad.length, bad.join(' | ').slice(0, 600));
 await browser.close();

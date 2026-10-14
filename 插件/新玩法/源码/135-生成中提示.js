@@ -1,8 +1,8 @@
-/* ⏳ 生成中提示：模型在写东西的时候，屏幕下面浮出一个小条「正在生成 · 聊天回复 · 8 秒」，写完自己收回去；等不及了点 ■ 就停。小手机模式里不另弹，就挂在顶上的流体云（灵动岛）里。只提示你点出来的那些，还是后台自己跑的也提示，你来选 */
+/* ⏳ 生成中提示：模型在写东西的时候，屏幕顶上浮出一个小条（按住能拖到别处）「正在生成 · 聊天回复 · 8 秒」，写完自己收回去；等不及了点 ■ 就停。小手机模式里不另弹，就挂在顶上的流体云（灵动岛）里。只提示你点出来的那些，还是后台自己跑的也提示，你来选 */
 if (window.__gyxGen) return; window.__gyxGen = 1;
 X.feat('gyxGen', { n: '⏳ 生成中提示', desc: '正在生成时弹个小条、能点停止；小手机模式显示在流体云里', auto: false });
 const K = 'gyxGenCfg';
-let C = { scope: 'mine', island: true, delay: 500 };
+let C = { scope: 'mine', island: true, delay: 500, pos: null };   // pos：拖过的位置 {x, y}（占屏幕宽高的比例）；没拖过就在顶上正中
 try { Object.assign(C, JSON.parse(localStorage.getItem(K) || '{}')); } catch (e) {}
 const saveC = () => { try { localStorage.setItem(K, JSON.stringify(C)); } catch (e) {} };
 const RUN = new Map(); let seq = 0, lastAct = 0, stopped = 0, LOG = { n: 0, stop: 0 };
@@ -68,6 +68,27 @@ let tmr = null, tick = null;
 function schedule() { clearTimeout(tmr); tmr = setTimeout(paint, shown().length ? C.delay : 0); if (shown().length && !tick) tick = setInterval(paint, 1000); if (!shown().length && tick) { clearInterval(tick); tick = null; } }
 const inPhone = () => document.body.classList.contains('gyphm') && C.island && window.gyPmIsland && window.gyPmIsland.gen;
 let islOn = false;
+// 📍 位置：默认在顶上正中；按住拖到哪儿就停在哪儿（记住，下次还在那）
+function place(b) {
+    if (!b) return; const p = C.pos;
+    if (!p) { b.style.left = '50%'; b.style.top = ''; b.classList.remove('moved'); return; }
+    const w = b.offsetWidth || 220, h = b.offsetHeight || 40;
+    b.style.left = Math.max(w / 2 + 6, Math.min(innerWidth - w / 2 - 6, p.x * innerWidth)) + 'px';
+    b.style.top = Math.max(6, Math.min(innerHeight - h - 6, p.y * innerHeight)) + 'px'; b.classList.add('moved');
+}
+function drag(b) {
+    let d = null;
+    b.addEventListener('pointerdown', e => { if (e.target.closest('b')) return; const r = b.getBoundingClientRect(); d = { x0: e.clientX, y0: e.clientY, cx: r.left + r.width / 2, top: r.top, moved: false, id: e.pointerId, on: e.target.closest('span') }; try { b.setPointerCapture(e.pointerId); } catch (er) {} });
+    b.addEventListener('pointermove', e => {
+        if (!d || e.pointerId !== d.id) return; const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+        if (!d.moved && Math.hypot(dx, dy) < 6) return; d.moved = true; b.classList.add('drag', 'moved');
+        b.style.left = (d.cx + dx) + 'px'; b.style.top = Math.max(0, d.top + dy) + 'px';
+    });
+    const up = e => { if (!d) return; const g = d; d = null; b.classList.remove('drag'); if (g.moved) { const r = b.getBoundingClientRect(); C.pos = { x: (r.left + r.width / 2) / innerWidth, y: r.top / innerHeight }; saveC(); place(b); } else if (g.on) window.gyxGenOpen(); };
+    b.addEventListener('pointerup', up); b.addEventListener('pointercancel', () => { d = null; b.classList.remove('drag'); });
+}
+addEventListener('resize', () => place(document.getElementById('gyxGenBar')));
+window.gyxGenHome = () => { C.pos = null; saveC(); place(document.getElementById('gyxGenBar')); X.toast(X.v('📍 放回顶上了', '📍 回到顶上正中'), ''); window.gyxGenOpen(); };
 function paint() {
     const L = shown().filter(r => Date.now() - r.start >= C.delay - 20), bar = document.getElementById('gyxGenBar');
     const txt = L.length > 1 ? `正在生成 ${L.length} 项` : L.length ? (L[0].label ? L[0].label + ' · 生成中' : X.v('正在生成', '正在写', 'TA 在想')) : '';
@@ -75,8 +96,8 @@ function paint() {
     if (!L.length || !X.on('gyxGen')) { if (bar) { bar.classList.remove('on'); setTimeout(() => { if (!bar.classList.contains('on')) bar.remove(); }, 260); } if (islOn) { try { window.gyPmIsland.gen(null); } catch (e) {} islOn = false; } return; }
     if (inPhone()) { if (bar) bar.remove(); try { window.gyPmIsland.gen({ text: txt, sub: sec, stop: window.gyxGenStop, tap: () => window.gyxGenOpen() }); islOn = true; } catch (e) {} return; }
     if (islOn) { try { window.gyPmIsland.gen(null); } catch (e) {} islOn = false; }
-    let b = bar; if (!b) { b = document.createElement('div'); b.id = 'gyxGenBar'; document.body.appendChild(b); requestAnimationFrame(() => b.classList.add('on')); } else b.classList.add('on');
-    b.innerHTML = `<i class="gg-sp"></i><span onclick="gyxGenOpen()">${X.esc(txt)}</span><em>${sec}</em><b onclick="gyxGenStop()" title="停止生成"><u></u>停止</b>`;
+    let b = bar; if (!b) { b = document.createElement('div'); b.id = 'gyxGenBar'; document.body.appendChild(b); drag(b); place(b); requestAnimationFrame(() => b.classList.add('on')); } else b.classList.add('on');
+    b.innerHTML = `<i class="gg-sp"></i><span>${X.esc(txt)}</span><em>${sec}</em><b onclick="gyxGenStop()" title="停止生成"><u></u>停止</b>`;
 }
 window.gyxGenCfg = (k, v) => { C[k] = v; saveC(); window.gyxGenOpen(); paint(); };
 window.gyxGenState = () => ({ run: [...RUN.values()].map(r => ({ label: r.label, mine: r.mine, stream: r.stream, ms: Date.now() - r.start })), cfg: C, log: LOG });
@@ -86,13 +107,14 @@ window.gyxGenOpen = function () {
       <h4 style="font-size:14px;margin:12px 0 4px">提示哪些</h4><div class="gyx-row">${chip('scope', 'mine', '只提示我点出来的')}${chip('scope', 'all', '后台自己跑的也提示')}</div>
       <div class="gyx-tip">「我点出来的」= 你刚点了发送、重新生成、写日记、让 TA 发推……这一类。后台的（NPC 评论、日程、TA 自己做的事）很多，全提示会有点吵。</div>
       <div class="gyx-row"><label class="gyx-tip" style="font-size:13.5px"><input type="checkbox" ${C.island ? 'checked' : ''} onchange="gyxGenCfg('island',this.checked)"> 小手机模式里显示在流体云（灵动岛）上，不另弹小条</label></div>
+      <div class="gyx-row gyx-tip">📍 提示条默认在屏幕顶上，按住能拖到别处，松手就停在那儿（下次还在那）。${C.pos ? `<button class="gyx-btn lite" onclick="gyxGenHome()">放回顶上</button>` : ''}</div>
       <div class="gyx-row gyx-tip">生成超过 <input class="gyx-who" type="number" min="0" max="5000" step="100" value="${C.delay}" style="width:70px" onchange="gyxGenCfg('delay',+this.value)"> 毫秒才弹（太快就写完的不闪一下）</div>
       <div class="gyx-tip">停止以后，那一段就不要了；聊天里会显示「${STOP_MSG}」，想要的话再点一次就行。打包的 App 里走的是手机自己的网络通道，没法从中间掐断——点停止会马上把界面停下、结果扔掉，但模型那边可能已经写完了（照样算钱）。</div>
       <div class="gyx-tip">这次打开以来：生成了 ${LOG.n} 次，你停了 ${LOG.stop} 次。这是纯提示，没有「TA 会自己做」、今天、小组件和记忆。</div>`);
 };
-X.css('gyxGenCss', `#gyxGenBar{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;z-index:99990;display:flex;align-items:center;gap:9px;padding:7px 7px 7px 14px;border-radius:999px;background:rgba(28,28,30,.92);color:#fff;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.22);backdrop-filter:blur(10px);transition:transform .22s,opacity .22s;max-width:calc(100vw - 32px)}
+X.css('gyxGenCss', `#gyxGenBar{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 10px);transform:translate(-50%,-16px);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;opacity:0;z-index:99990;display:flex;align-items:center;gap:9px;padding:7px 7px 7px 14px;border-radius:999px;background:rgba(28,28,30,.92);color:#fff;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.22);backdrop-filter:blur(10px);transition:transform .22s,opacity .22s;max-width:calc(100vw - 32px)}
 #gyxGenBar.on{transform:translate(-50%,0);opacity:1}#gyxGenBar span{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}#gyxGenBar em{font-style:normal;color:#9a9aa0;font-size:12px;white-space:nowrap}
 #gyxGenBar b{display:flex;align-items:center;gap:5px;background:#ff453a;border-radius:999px;padding:5px 11px;font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap}#gyxGenBar b u{width:8px;height:8px;border-radius:2px;background:#fff;display:block}
 .gg-sp{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;animation:ggSp .8s linear infinite;flex-shrink:0}@keyframes ggSp{to{transform:rotate(360deg)}}
-@media (min-width:900px){#gyxGenBar{bottom:28px}}`);
+#gyxGenBar.moved{transform:translate(-50%,0) scale(.96)}#gyxGenBar.moved.on{transform:translate(-50%,0)}#gyxGenBar.drag{transition:none;cursor:grabbing;box-shadow:0 14px 34px rgba(0,0,0,.3)}`);
 X.mini({ id: 'gyxGen', icon: '⏳', title: '生成中提示', desc: '正在生成时弹个小条、能停止；小手机里显示在流体云', cat: '生活', onOpen: () => window.gyxGenOpen() });
