@@ -410,7 +410,7 @@ function renderChatMessages() {
             // 💸 转账 / 红包（js/31）：不是居中的一张卡，而是**一条谁发出来的消息**——
             //    跟气泡一样左右分边、带头像，只是气泡里装的是转账单。所以放在这儿，
             //    要用到上面算好的 isMe / senderChar / timeStr。
-            let avatarHtml = !isMe && senderChar ? `<div style="cursor:pointer;" onclick="showCharLifeStatePopup('${senderChar.id}', event)" ondblclick="triggerNudge('${currentChatSessionId}', '${senderChar.id}')" title="左键查看状态·双击拍一拍">${getAvatarHTML(senderChar, 40)}</div>` : `<div style="cursor:pointer;" ondblclick="triggerNudge('${currentChatSessionId}', 'me')" title="双击拍一拍">${getAvatarHTML(currentUser, 40)}</div>`;
+            let avatarHtml = !isMe && senderChar ? `<div style="cursor:pointer;" onclick="showCharLifeStatePopup('${senderChar.id}', event)" ondblclick="triggerNudge('${currentChatSessionId}', '${senderChar.id}')" title="左键查看状态·双击拍一拍">${getAvatarHTML(senderChar, 40)}</div>` : `<div style="cursor:pointer;" onclick="gyMeAvatarClick(event)" ondblclick="gyMeAvatarDbl();triggerNudge('${currentChatSessionId}', 'me')" title="点一下看你自己的状态（反向养成）·双击拍一拍">${getAvatarHTML(currentUser, 40)}</div>`;
             
             // 🌟 核心渲染：侧滑抽卡控件 🌟
             let swipeHtml = '';
@@ -1710,4 +1710,18 @@ window.gyChatSepToggle = function (el) {
         const full = box.classList.toggle('full');
         if (ts) span.textContent = window.gyChatSepText(ts, full);
     } catch (e) {}
+};
+
+// 👤 聊天里点自己的头像：看你自己的状态（🍙 反向养成：饱腹 / 心情 / 精力 / 清洁）。
+//    双击还是拍一拍——所以单击要等一下，确认不是双击的第一下再打开。
+let __gyMeAvT = null;
+window.gyMeAvatarDbl = function () { if (__gyMeAvT) { clearTimeout(__gyMeAvT); __gyMeAvT = null; } };
+window.gyMeAvatarClick = function (ev) {
+    if (__gyMeAvT) clearTimeout(__gyMeAvT);
+    __gyMeAvT = setTimeout(() => {
+        __gyMeAvT = null;
+        const on = window.GYX && typeof window.GYX.on === 'function' ? window.GYX.on('gyxCare') : true;
+        if (typeof window.gyxCareOpen === 'function' && on) { try { window.gyxCareOpen(); } catch (e) { console.warn('[反向养成] 打开失败', e); } return; }
+        if (typeof showToast === 'function') showToast('', '🍙 反向养成还没开', typeof window.gyxCareOpen === 'function' ? '插件开关中心里把「反向养成」打开，点头像就能看你自己的饱腹、心情、精力、清洁。' : '导入「新玩法全家桶.json」之后，点头像就能看你自己的饱腹、心情、精力、清洁。', null, null, false);
+    }, 280);
 };

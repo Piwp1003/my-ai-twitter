@@ -66,6 +66,8 @@
     function notice(d) {
         try {
             if (!d || !d.error || d.aborted) return;
+            // 🛟 客服在盯着报错的话，由客服来提醒（带大白话解释），这里就不再弹一遍了
+            try { if (typeof window.gyHelpApiErr === 'function' && (typeof isAutoOn !== 'function' || isAutoOn('helpWatch'))) return; } catch (e) {}
             let scene = ''; try { scene = typeof window.gyInjectScene === 'function' ? window.gyInjectScene() : ''; } catch (e) {}
             if (scene === 'chat' || scene === 'group') return;   // 私聊 / 群聊自己会弹详细的
             const raw = String(d.error.message || d.error.type || d.error).slice(0, 160);

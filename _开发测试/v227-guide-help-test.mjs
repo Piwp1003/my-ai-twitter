@@ -42,7 +42,7 @@ const g = await page.evaluate(async () => {
   return o;
 });
 check('设置最上面是「📘 使用指南」「🛟 客服」', g.top[0] === '使用指南' && /^客服/.test(g.top[1]), JSON.stringify(g.top));
-check('指南：10 节（没有「旧名字」「白露版」），每条都有「去看看」，用到的开关显示开着 / 关着', g.secs.length === 10 && g.noOld && g.items >= 80 && g.goBtns >= g.items - 2 && g.chips >= 60 && g.onOff.on > 20 && g.badgeOff, JSON.stringify(g));
+check('指南：12 节（没有「旧名字」「白露版」），每条都有「去看看」，用到的开关显示开着 / 关着', g.secs.length === 12 && g.noOld && g.items >= 80 && g.goBtns >= g.items - 2 && g.chips >= 60 && g.onOff.on > 20 && g.badgeOff, JSON.stringify(g));
 
 // ② 跳转：去看看、点开关
 const j = await page.evaluate(async () => {
@@ -108,7 +108,7 @@ const w = await page.evaluate(async () => {
   // 接口报错
   window.callChatCompletionAPI = async () => ({ error: { message: 'You exceeded your current quota (insufficient_quota)' } }); await sleep(700);
   await window.callChatCompletionAPI({}, []); await sleep(100);
-  o.api = gyHelpData().issues.some(i => /余额或额度/.test(i.title));
+  o.api = gyHelpData().issues.some(i => /余额/.test(i.title));
   // 插件装了两份
   const fk = { name: '💞 我们的关系', type: 'script', enabled: true, onLoad: '' }; plugins.push(fk, Object.assign({}, fk));
   await gyHelpCheck(); await sleep(100);
