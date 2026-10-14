@@ -15,7 +15,7 @@
     const G = () => window.__gyPm || {};
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const on = () => document.body.classList.contains('gyphm');
-    const I = { mode: 'idle', exp: false, alert: null, alertT: null, flash: null, flashT: null, lastN: null, music: null };
+    const I = { mode: 'idle', exp: false, alert: null, alertT: null, flash: null, flashT: null, lastN: null, music: null, gen: null };   // gen：正在生成（⏳ 生成中提示插件用 gyPmIsland.gen 挂上来）
     const SV = {
         prev: '<svg viewBox="0 0 24 24"><path d="M7 6v12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M18 6.5v11L9 12z" fill="currentColor"/></svg>',
         next: '<svg viewBox="0 0 24 24"><path d="M17 6v12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M6 6.5v11L15 12z" fill="currentColor"/></svg>',
@@ -47,10 +47,12 @@
         const c = e.target.closest('[data-ic]');
         if (c) {
             e.stopPropagation();
+            if (c.dataset.ic === 'stop') { try { I.gen && I.gen.stop && I.gen.stop(); } catch (er) {} return; }
             try { ({ prev: window.gymPrev, next: window.gymNext, toggle: window.gymToggle }[c.dataset.ic] || (() => {}))(); } catch (er) {}
             setTimeout(paint, 250); setTimeout(paint, 900); return;
         }
         if (I.alert) { const a = I.alert; hideAlert(); try { if (a.go) a.go(); } catch (er) {} return; }
+        if (I.mode === 'gen') { try { I.gen && I.gen.tap && I.gen.tap(); } catch (er) {} return; }
         if (I.mode === 'music') { if (!I.exp) { I.exp = true; paint(); } else if (!e.target.closest('.ib-ctl,.ib-bar')) { try { window.gyPmOpen && window.gyPmOpen('music'); } catch (er) {} I.exp = false; paint(); } return; }
         // 空着的时候点一下：打开通知中心
         try { window.gyPmNC && window.gyPmNC(true); } catch (er) {}
@@ -59,13 +61,17 @@
     function paint() {
         if (!on()) return;
         const d = el(), m = music();
-        I.mode = I.alert ? 'alert' : I.flash ? 'flash' : (m && (m.playing || I.exp)) ? 'music' : 'idle';
+        I.mode = I.alert ? 'alert' : I.gen ? 'gen' : I.flash ? 'flash' : (m && (m.playing || I.exp)) ? 'music' : 'idle';
         const cls = ['gy-isl', 'm-' + I.mode];
         let h = '';
         if (I.mode === 'alert') {
             const a = I.alert;
             h = `<div class="ib-al"><span class="av">${a.av || `<i class="ic">${SV.bell}</i>`}</span><div class="tx"><b>${esc(a.title)}</b><span>${esc(a.text)}</span></div><em>${esc(a.tag || '现在')}</em></div>`;
             cls.push('big');
+        } else if (I.mode === 'gen') {
+            const g = I.gen;
+            h = `<div class="ib-gn"><i class="sp"></i><span>${esc(g.text || '生成中')}</span><em>${esc(g.sub || '')}</em>${g.stop ? '<b data-ic="stop" title="停止生成"><u></u></b>' : ''}</div>`;
+            cls.push('wide');
         } else if (I.mode === 'flash') {
             const f = I.flash;
             h = `<div class="ib-fl"><i class="${f.cls || ''}">${f.icon}</i><span>${esc(f.text)}</span></div>`;
@@ -98,7 +104,9 @@
         I.flashT = setTimeout(() => { I.flash = null; paint(); }, ms || 1300);
         paint();
     }
-    window.gyPmIsland = { alert: showAlert, flash, paint, hide: hideAlert };
+    // gen({ text, sub, stop, tap })：岛上一直挂着「正在生成」，直到 gen(null)
+    function gen(o) { I.gen = o || null; paint(); }
+    window.gyPmIsland = { alert: showAlert, flash, paint, hide: hideAlert, gen };
 
     /* ---------- 看着通知：来了新的就在岛上弹 ---------- */
     const plain = s => String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
@@ -181,6 +189,14 @@ body.gyphm-mob #gyPmIsl.big,body.gyphm-mob #gyPmIsl.exp{width:calc(100vw - 20px)
 .ib-al .tx{flex:1;min-width:0}.ib-al .tx b{display:block;font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ib-al .tx span{display:block;font-size:13px;color:#c7c7cc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 .ib-al em{font-style:normal;font-size:11px;color:#8e8e93;flex-shrink:0}
+/* 正在生成 */
+.ib-gn{height:100%;display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;box-sizing:border-box}
+.ib-gn .sp{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;animation:gyIslSp .8s linear infinite;flex-shrink:0}
+@keyframes gyIslSp{to{transform:rotate(360deg)}}
+.ib-gn span{flex:1;min-width:0;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib-gn em{font-style:normal;font-size:11px;color:#9a9aa0;font-family:var(--pm-num)}
+.ib-gn b{width:24px;height:24px;border-radius:50%;background:#ff453a;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+.ib-gn b u{width:8px;height:8px;border-radius:2px;background:#fff;display:block}
 /* 闪一下 */
 .ib-fl{height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 14px}
 .ib-fl i{display:flex}.ib-fl svg{width:17px;height:17px}.ib-fl i.sv{color:#ffd60a}.ib-fl span{font-size:12.5px;font-weight:600}

@@ -104,7 +104,7 @@ function watch() { if (!X.on('gyxDraft')) return;
 window.gyxDraftOpen = function (who) {
     const c = X.char(who) || X.cur(), cid = c ? String(c.id) : '';
     const L = D.list.filter(d => !cid || d.cid === cid);
-    X.panel('gyxDfOv', '✏️ TA 的草稿箱', `<div class="gyx-row">${X.whoSel(cid, 'gyxDraftOpen')}</div>
+    X.panel('gyxDfOv', '✏️ TA 的草稿箱', `${window.gyxEraseOpen ? `<div class="gyx-row"><span class="gyx-chip on">✏️ TA 没发出去的</span><span class="gyx-chip" onclick="document.getElementById('gyxDfOv')?.remove();gyxEraseOpen()">⌨️ 你没发出去的</span></div>` : ''}<div class="gyx-row">${X.whoSel(cid, 'gyxDraftOpen')}</div>
         <div class="gyx-tip">TA 打了又删掉、没发出去的话。${L.length ? '点一条，看 TA 当时为什么删掉。' : ''}</div>
         ${L.map(d => `<div class="df-it" onclick="this.classList.toggle('why')"><div class="df-t"><span>${X.esc(d.text)}</span><i></i></div><div class="df-m">${new Date(d.at).toLocaleString()}${d.recalled ? (d.self ? ' · TA 自己撤回的' : ' · 发出去又撤回了') + (d.peeked ? ' · 你偷看到了' : d.live ? ' · 你当时在看' : '') : ' · 没发'}</div>${d.why ? `<div class="df-w">💭 ${X.esc(d.why)}</div>` : ''}</div>`).join('') || '<div class="gyx-tip">还是空的。聊着聊着就会有了。</div>'}
         <div class="gyx-row gyx-tip">TA 每次回你时，有 <input class="gyx-who" type="number" min="0" max="100" value="${D.cfg.p}" style="width:60px" onchange="gyxDraftCfg('p',+this.value)">% 的可能打了一句又删掉；其中 <input class="gyx-who" type="number" min="0" max="100" value="${D.cfg.recall}" style="width:60px" onchange="gyxDraftCfg('recall',+this.value)">% 是发出来又撤回。</div>

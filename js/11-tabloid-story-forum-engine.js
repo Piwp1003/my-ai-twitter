@@ -36,12 +36,17 @@ async function generateTabloidPost() {
     let charPersonas = selectedChars.map(c => `${c.name}(人设：${c.persona})`).join('；');
     
     // 修复: 优化提示词，防止大模型胡言乱语
-    let prompt = buildStructuredMessages('你是一个唯恐天下不乱的娱乐营销号。', [],
-        `请根据以下角色生成一条爆料推文：${charPersonas}。
-${customTopic ? `要求一定要包含这个主题或情节：${customTopic}。` : ''}
-${isShura ? "强制开启修罗场模式：狠狠制造多角恋、矛盾与抓马冲突。" : "语气必须极其夸张、震惊体，充满吃瓜感。"}
-目标字数：${customWordCount}字左右。${typeof WORD_LIMIT_PRIORITY_NOTE !== 'undefined' ? WORD_LIMIT_PRIORITY_NOTE : ''}
-【重要要求】：请直接输出爆料的推文正文，千万不要加上前缀说明、不要使用任何引号包裹，不要输出任何与爆料无关的内容。`);
+    // 📜 文字在「内置提示词 → 📰 营销号」里能改（{{人物}} {{主题}} {{风格}} {{字数}} 是空位）
+    const tbSys = (typeof gyPL === 'function') ? gyPL('tabloid.sys', '你是一个唯恐天下不乱的娱乐营销号。') : '你是一个唯恐天下不乱的娱乐营销号。';
+    const tbDef = `请根据以下角色生成一条爆料推文：{{人物}}。
+{{主题}}
+{{风格}}
+目标字数：{{字数}}字左右。
+【重要要求】：请直接输出爆料的推文正文，千万不要加上前缀说明、不要使用任何引号包裹，不要输出任何与爆料无关的内容。`;
+    const tbVars = { 人物: charPersonas, 主题: customTopic ? `要求一定要包含这个主题或情节：${customTopic}。` : '', 风格: isShura ? (typeof gyPL === 'function' ? gyPL('tabloid.shura', '强制开启修罗场模式：狠狠制造多角恋、矛盾与抓马冲突。') : '强制开启修罗场模式：狠狠制造多角恋、矛盾与抓马冲突。') : '语气必须极其夸张、震惊体，充满吃瓜感。', 字数: customWordCount };
+    let tbBody = (typeof gyPL === 'function') ? gyPL('tabloid.manual', tbDef, tbVars) : Object.keys(tbVars).reduce((t, k) => t.split('{{' + k + '}}').join(tbVars[k]), tbDef);
+    if (typeof WORD_LIMIT_PRIORITY_NOTE !== 'undefined') tbBody = tbBody.replace(/(目标字数：[^\n]*)/, '$1' + WORD_LIMIT_PRIORITY_NOTE);
+    let prompt = buildStructuredMessages(tbSys, [], tbBody);
 
     try {
         let data = await callChatCompletionAPI(api, prompt);

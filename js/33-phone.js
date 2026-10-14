@@ -265,6 +265,8 @@
         if (S.seen[k].length > 30) S.seen[k].length = 30;
         await save();
     }
+    // 📕 TA 手机里的小红书笔记（只读）：小红书频道（插件 126）把它们当成 TA 发的笔记一起显示，不另存一份
+    window.gyPhoneNotes = id => { try { const b = S.card[String(id)]; return b && Array.isArray(b.notes) ? b.notes.slice() : []; } catch (e) { return []; } };
     window.gyPhoneSeen = id => (S.seen[String(id)] || []).slice();
     // 🗑️ 记忆总览里删一条（你翻过 TA 的 / TA 翻过你的）
     window.gyPhoneDelSeen = async function (id, which, i) {

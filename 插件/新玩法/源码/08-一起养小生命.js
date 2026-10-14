@@ -137,8 +137,10 @@ window.gyxGrowKindSave = async () => {
     await S.set('d', D); window.gyxGrowNew(k, window.GYX_GROW_WHO);
 };
 window.gyxGrowKindDel = async k => { if (D.list.some(p => p.kind === k)) return X.toast('还有一只在养着', '先在记忆总览里把它删掉'); delete D.custom[k]; await S.set('d', D); window.gyxGrowAdd(); };
-window.gyxGrowOpen = function () { window.GYX_GROW_WHO = String((X.cur() || {}).id || ''); X.panel('gyxGrOv', '🌱 一起养的小生命', '<div id="gyxGrBody"></div>'); paint(); };
+window.gyxGrowOpen = function (who) { window.GYX_GROW_WHO = String(who || (X.cur() || {}).id || ''); X.panel('gyxGrOv', '🌱 一起养的小生命', '<div id="gyxGrBody"></div>'); paint(); };
 window.gyxGrowData = () => D;
+// 🏠 小屋里要画出它现在的样子：给小屋一个「它长什么样、叫什么、状态如何」
+window.gyxGrowLook = p => { try { return { e: KK(p.kind).stages[stage(p)].split(' ')[0], name: p.name, t: `${KK(p.kind).n}「${p.name}」· ${KK(p.kind).stages[stage(p)]} · ${mood(p)}`, plant: KK(p.kind).type === 'plant' }; } catch (e) { return null; } };
 X.widget('gyxGrow', { n: '小生命', sizes: ['s', 'm'], tap: () => window.gyxGrowOpen(), r: w => { const p = D.list[0]; if (!p) return '<div class="gw-gr s"><b>🌱</b><em>一起养一个</em></div>'; return `<div class="gw-gr ${w.size}"><div class="a">${art(p)}</div>${w.size === 'm' ? `<div class="t"><b>${X.esc(p.name)}</b><em>${KK(p.kind).stages[stage(p)]}</em><em>${mood(p)}</em></div>` : ''}</div>`; } }, 'gyxGrow');
 X.ctx(id => { const L = D.list.filter(p => p.cid === String(id)); if (!L.length) return ''; return '【你们一起养的】' + L.map(p => `${KK(p.kind).n}「${p.name}」（${KK(p.kind).stages[stage(p)]}，${mood(p)}）`).join('；') + '。聊天时偶尔可以提到它。'; }, 'gyxGrow');
 X.css('gyxGrCss', `

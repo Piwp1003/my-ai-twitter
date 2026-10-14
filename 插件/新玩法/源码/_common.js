@@ -53,7 +53,12 @@ if (!window.GYX) (function () {
     window.__gyxNudgeFor = id => NUDGE[String(id)] ? `【这次主动找她的由头】${NUDGE[String(id)]}。就为这个来找她，自然地说。` : '';
     const CTX = [];
     window.__gyxCtxFor = id => [window.__gyxNudgeFor(id)].concat(CTX.map(f => { try { return f(id) || ''; } catch (e) { return ''; } })).filter(Boolean).join('\n');
-    X.ctx = (f, fid) => CTX.push(id => (!fid || X.on(fid)) ? f(id) : '');
+    // 记下每段【小标题】是哪个插件塞的，「注入内容管理 → 🎲 新玩法插件」那一页拿来标出处
+    const HEADS = window.__gyxHeads = window.__gyxHeads || {};
+    window.__gyxHeadOf = h => { const fid = HEADS[String(h || '').trim()]; const f = fid && X.FEATS.find(x => x.id === fid); return f ? String(f.n || fid).replace(/^\S+\s/, '') : ''; };
+    X.ctx = (f, fid) => CTX.push(id => { if (fid && !X.on(fid)) return ''; const t = f(id); try { if (t && fid) String(t).replace(/【([^】]{1,90})】/g, (m, h) => { HEADS[h.trim()] = fid; return m; }); } catch (e) {} return t; });
+    // 给自己那几段写上名字和说明：X.inj('gyxScoop', [['小标题开头', '列表里显示的名字', '说明']])
+    X.inj = (fid, rows) => { const q = window.__gyxInjQ = window.__gyxInjQ || []; rows.forEach((r, i) => q.push(['gyx', { k: 'gyx.' + fid + '.' + i, label: r[1], head: r[0], desc: r[2] || '' }])); };
     // TA 直接发一条消息进聊天
     X.say = function (c, text, extra) {
         if (!c || typeof globalChats === 'undefined') return null;
@@ -167,3 +172,11 @@ textarea.gyx-in{resize:vertical;line-height:1.7}
     window.GYX = X;
 })();
 const X = window.GYX;
+// 老版本插件先建好的 GYX 里可能没有后来加的这几个小工具：缺什么补什么，免得新插件一用就报错
+if (!X.inj) X.inj = (fid, rows) => { const q = window.__gyxInjQ = window.__gyxInjQ || []; rows.forEach((r, i) => q.push(['gyx', { k: 'gyx.' + fid + '.' + i, label: r[1], head: r[0], desc: r[2] || '' }])); };
+// 内置提示词：X.pl(id, 默认, 变量) 取（你改过就用你改的）；X.plGroup 把这一组登记到「设置 → 内置提示词」
+if (!X.pl) X.pl = (id, def, vars) => { try { if (typeof gyPL === 'function') return gyPL(id, def, vars); } catch (e) {} let t = def; Object.keys(vars || {}).forEach(k => { t = t.split('{{' + k + '}}').join(vars[k] == null ? '' : String(vars[k])); }); return t; };
+if (!X.plGroup) X.plGroup = (g, plug, items, defs) => { try { Object.keys(defs || {}).forEach(id => X.pl(id, defs[id])); } catch (e) {} const f = () => { if (typeof window.gyPLGroupAdd !== 'function') return false; window.gyPLGroupAdd({ g, plug, items }); return true; }; if (!f()) { let n = 0; const iv = setInterval(() => { if (f() || ++n > 40) clearInterval(iv); }, 500); } };
+// 包一层全局函数（聊天发送、侧滑重新生成……）：别人后来再包也不会丢；同一个 tag 只包一次
+if (!X.wrapFn) X.wrapFn = (name, tag, before, after) => { const W = window.__gyxWrapDone = window.__gyxWrapDone || {}; const go = () => { const f = window[name]; if (typeof f !== 'function') return false; if (W[name + '|' + tag] || f['__gyxW_' + tag]) return true; W[name + '|' + tag] = 1; const w = function () { let ctx; try { ctx = before ? before.apply(this, arguments) : null; } catch (e) {} const r = f.apply(this, arguments); if (after) { try { if (r && typeof r.then === 'function') r.then(v => { try { after(ctx, v); } catch (e) {} }, () => { try { after(ctx); } catch (e) {} }); else after(ctx, r); } catch (e) {} } return r; }; Object.keys(f).forEach(k => { try { w[k] = f[k]; } catch (e) {} }); w['__gyxW_' + tag] = true; window[name] = w; try { (0, eval)(name + ' = window.' + name); } catch (e) {} return true; }; if (!go()) { let n = 0; const iv = setInterval(() => { if (go() || ++n > 100) clearInterval(iv); }, 1000); } };
+

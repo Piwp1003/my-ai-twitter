@@ -37,6 +37,10 @@
             ['time.off', '不感知时间时的规矩', '「感知真实时间」关上时，代替 TPES']] },
         { g: '🕐 这一幕', items: [
             ['chat.scene', '让 TA 交「这一幕」的要求', '聊天回复时（「聊天里显示这一幕」开着）；JSON 那几个字段名别改']] },
+        { g: '📰 营销号（手动爆料）', items: [
+            ['tabloid.sys', '营销号的身份', '「营销号」页点 ✨ AI 智能爆料时'],
+            ['tabloid.manual', '营销号写爆料的要求', '「营销号」页点 ✨ AI 智能爆料时', '{{人物}}：选中的人和人设；{{主题}}：你填的主题；{{风格}}：修罗场或震惊体那句；{{字数}}：目标字数'],
+            ['tabloid.shura', '修罗场模式那一句', '勾了「修罗场」时代替默认风格']] },
         { g: '📖 内置世界书 · 相处模式', plug: 'gyxBond', items: [
             ['bond.healthy', '🌿 健康恋爱', '选了这种相处模式的 TA'], ['bond.longterm', '🍵 举案齐眉', '选了这种相处模式的 TA'],
             ['bond.childhood', '🎒 青梅竹马', '选了这种相处模式的 TA'], ['bond.rivals', '⚡ 欢喜冤家', '选了这种相处模式的 TA']] },
@@ -47,6 +51,9 @@
             ['fair.strong', '💪 不矮化她'], ['fair.facts', '🍳 不替她编设定'], ['fair.noControl', '🔓 不支配'], ['fair.noRage', '🧊 不暴走'],
             ['fair.noJargon', '🗣️ 说人话'], ['fair.noPronoun', '🏷️ 不叫她「某人」'], ['fair.equal', '⚖️ 平等']] }
     ];
+    // 🧩 插件 / 别的模块往这一页登记自己的提示词：gyPLGroupAdd({ g: '📰 营销号自动爆料', plug: 'gyxScoop', items: [[id, 标题, 在哪用, 空位说明], …] })
+    //    默认文字由各自调一次 gyPL(id, 默认) 登记进来；没登记分组的会落到「🧩 其它」里。
+    window.gyPLGroupAdd = function (grp) { try { if (!grp || !grp.g) return; const i = G.findIndex(x => x.g === grp.g); if (i >= 0) G[i] = grp; else G.push(grp); } catch (e) {} };
     // 打开页面前，把还没被用过的那几条默认文字也取到（有的要等第一次生成才会登记）
     function warm() {
         try {
@@ -60,6 +67,7 @@
             if (!d['core.promise'] && typeof window.gyPromiseRule === 'function') window.gyPromiseRule();
             if (!d['time.off'] && window.__gyTimeOffDef) d['time.off'] = window.__gyTimeOffDef;
             if (!d['chat.scene'] && window.__gySceneDef) d['chat.scene'] = window.__gySceneDef;
+            if (!d['tabloid.sys'] && typeof gyPL === 'function') { gyPL('tabloid.sys', '你是一个唯恐天下不乱的娱乐营销号。'); gyPL('tabloid.shura', '强制开启修罗场模式：狠狠制造多角恋、矛盾与抓马冲突。'); gyPL('tabloid.manual', `请根据以下角色生成一条爆料推文：{{人物}}。\n{{主题}}\n{{风格}}\n目标字数：{{字数}}字左右。\n【重要要求】：请直接输出爆料的推文正文，千万不要加上前缀说明、不要使用任何引号包裹，不要输出任何与爆料无关的内容。`); }
         } catch (e) {}
     }
     const cur = id => (O.on !== false && typeof O.ov[id] === 'string') ? O.ov[id] : (defs()[id] || '');

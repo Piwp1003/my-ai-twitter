@@ -320,6 +320,17 @@
             ]
         },
         {
+            // 🎲 新玩法插件：每个插件用 X.ctx 往 __gyxCtxFor 里塞一段【小标题】。
+            // 以前这个盒子没挂在任何一组下面，所以插件塞的东西在这一页上根本看不到。
+            // 插件可以用 gyInjectItemAdd('gyx', {...}) 给自己的那几段写上名字和说明；没写的也会列出来，标上来自哪个插件。
+            key: 'gyx', icon: '🎲', title: '新玩法插件', box: '__gyxCtxFor',
+            note: '插件开着、而且这会儿真有内容时才会塞进去。整个插件的开关在「插件开关中心」；这里可以只关其中一段，插件照样能用，只是聊天时 TA 不带着这件事。',
+            items: [
+                { k: 'gyx.nudge', label: '这次主动找她的由头', box: '__gyxCtxFor', head: '这次主动找她的由头',
+                  desc: 'TA 自己来找你时（自主模式）带的那个理由。关掉 TA 照样会来，只是不知道自己为什么来。' }
+            ]
+        },
+        {
             key: 'plugin', icon: '🧩', title: '插件',
             note: '你自己装的插件，内容取决于你装了什么。（导入的**预设**是上面单独那一组，不在这儿。）',
             items: [
@@ -595,6 +606,22 @@
         if (v !== undefined) return v;
         return !S.off[k];
     }
+
+    // 晚加载的模块（新玩法插件）往某一组里补条目：gyInjectItemAdd('gyx', {k, label, box, head|re, desc, defaultOff})
+    // 补进来之前已经被「自动认出来」的同一段，把用户点过的开关接过来，免得列两遍
+    window.gyInjectItemAdd = function (gkey, it) {
+        try {
+            const g = GROUPS.find(x => x.key === gkey); if (!g || !it || !it.k || byKey[it.k]) return false;
+            if (!it.box) it.box = g.box; it._g = g.key; g.items.push(it); byKey[it.k] = it;
+            Object.keys(S.found).forEach(k => {
+                const f = S.found[k]; if (f.box !== it.box || keyOfHead(f.box, f.head) !== it.k) return;
+                if (S.off[k] !== undefined && S.off[it.k] === undefined) S.off[it.k] = S.off[k];
+                delete S.found[k];
+            });
+            return true;
+        } catch (e) { return false; }
+    };
+    try { (window.__gyxInjQ || []).forEach(a => window.gyInjectItemAdd(a[0], a[1])); window.__gyxInjQ = { push: a => window.gyInjectItemAdd(a[0], a[1]) }; } catch (e) {}
 
     // 给别的模块用：window.gyInjectOn('mem.tweet')
     window.gyInjectOn = function (k) { try { return keyOn(k); } catch (e) { return true; } };
@@ -887,7 +914,11 @@
         if (g.box) boxes.add(g.box);
         return Object.keys(S.found)
             .filter(k => boxes.has(S.found[k].box))
-            .map(k => ({ k, label: S.found[k].head, desc: '（新功能自己带的，还没写说明）', box: S.found[k].box, auto: true }));
+            .map(k => {
+                let desc = '（新功能自己带的，还没写说明）';
+                try { const n = S.found[k].box === '__gyxCtxFor' && typeof window.__gyxHeadOf === 'function' && window.__gyxHeadOf(S.found[k].head); if (n) desc = '来自插件「' + n + '」。关掉只是聊天时不带这一段，插件照常用。'; } catch (e) {}
+                return { k, label: S.found[k].head, desc, box: S.found[k].box, auto: true };
+            });
     }
 
     function rowHtml(it, has, scOverride) {
@@ -1285,4 +1316,6 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(boot, 600));
     else setTimeout(boot, 600);
     setTimeout(() => { wrapAll(); wrapScenes(); mount(); }, 2500);
+    // 新玩法插件是后装的（导入 / 自动更新），它们的那个盒子可能晚于上面两次才出现：隔一会儿再套一遍（套过的不会重复套）
+    setInterval(() => { try { wrapAll(); } catch (e) {} }, 5000);
 })();

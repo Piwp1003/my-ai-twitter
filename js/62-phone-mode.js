@@ -12,6 +12,8 @@
    =========================================================================== */
 (function () {
     'use strict';
+    // 认出「安卓打包的 App」（HBuilderX 5+ 壳：有 window.plus，UA 里带 Html5Plus），下面有几条样式只在 App 里换个写法
+    try { const mk = () => document.documentElement.classList.add('gy-apk'); if (window.plus || /Html5Plus/i.test(navigator.userAgent)) mk(); document.addEventListener('plusready', mk); } catch (e) {}
     if (window.__gyPmLoaded) return;
     window.__gyPmLoaded = true;
 
@@ -264,6 +266,12 @@ body.gyphm-mob #gyPmNC .nc-sb{padding-top:env(safe-area-inset-top);height:calc(4
 /* 状态栏可以拉：浏览器别抢这个手势；整页也别触发下拉刷新 */
 body.gyphm #gyPmHome .pm-sb,body.gyphm #gyPmBar .pm-sb{touch-action:none;cursor:grab}
 html:has(body.gyphm),body.gyphm{overscroll-behavior-y:none}
+/* 安卓打包的 App（HBuilderX 壳）里，根上加 overscroll-behavior 会让 WebView 外面那层原生容器接不到滚动，整页和弹出来的页面都滑不动。
+   App 里本来就没有浏览器的下拉刷新，所以这一条在 App 里撤掉 */
+html.gy-apk:has(body.gyphm),html.gy-apk body.gyphm{overscroll-behavior-y:auto}
+/* 手机上那层「电脑版手机外壳」根本不显示，整个拿掉，免得它盖在页面上面挡住手指 */
+body.gyphm-mob #gyPm{display:none!important}
+html.gy-apk body.gyphm-mob .main-content,html.gy-apk body.gyphm .gyx-box,html.gy-apk body.gyphm .gyx-bd,html.gy-apk body.gyphm .modal-content,html.gy-apk body.gyphm #gyPmApp{touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}
 /* 手机上状态栏下面那颗小横条：不用拉，点它也能打开通知 */
 .pm-ncgrab{display:none}
 body.gyphm-mob .pm-ncgrab{display:flex;position:absolute;left:50%;transform:translateX(-50%);bottom:-2px;width:60px;height:14px;align-items:center;justify-content:center;cursor:pointer;touch-action:none;z-index:3}
