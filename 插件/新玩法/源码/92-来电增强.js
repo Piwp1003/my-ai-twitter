@@ -50,7 +50,7 @@ async function scanMissed() {
         const v = { id: 'vm' + Date.now().toString(36), cid: String(c.id), at: Date.now(), t, sec: Math.max(6, Math.round(t.length / 4)) };
         D.vm.unshift(v); D.vm = D.vm.slice(0, 80);
         X.say(c, `📼 语音留言（${v.sec}″）：${t}`, { gyxVm: v.id });
-        X.notify(c, `📼 ${X.esc(X.name(c))} ${X.v('给你留了一段语音', '在语音信箱里留了话', '留了言')}`, t.slice(0, 40), () => window.gyxCallPlusOpen('vm'));
+        X.notify(c, `📼 ${X.esc(X.name(c))} ${X.v('给你留了一段语音', '在语音信箱里留了话', '留了言')}`, t.slice(0, 40), X.go('gyxCallPlusOpen', 'vm'));
     }
     await saveD();
 }

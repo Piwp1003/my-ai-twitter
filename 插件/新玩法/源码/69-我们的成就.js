@@ -77,7 +77,7 @@ const findA = (cid, k) => all(cid).find(a => a[0] === k) || A.find(a => a[0] ===
 async function check(c, quiet) {
     const cid = String(c.id), G = (D.got[cid] = D.got[cid] || {}), s = stats(c), fresh = [];
     for (const [id, ico, n, d, f] of all(cid)) { if (G[id]) continue; let r = false; try { r = f(s); } catch (e) {} if (r) { G[id] = { at: Date.now(), why: String(r) }; fresh.push([ico, n]); } }
-    if (fresh.length) { await S.set('d', D); if (!quiet && X.on('gyxBadge')) X.notify(c, `🏅 ${X.v('解锁新成就', '获得徽章', '叮——成就达成')}：${fresh.map(x => x[0] + ' ' + x[1]).join('、')}`, '和 ' + X.name(c), () => window.gyxBadgeOpen(cid)); }
+    if (fresh.length) { await S.set('d', D); if (!quiet && X.on('gyxBadge')) X.notify(c, `🏅 ${X.v('解锁新成就', '获得徽章', '叮——成就达成')}：${fresh.map(x => x[0] + ' ' + x[1]).join('、')}`, '和 ' + X.name(c), X.go('gyxBadgeOpen', cid)); }
     return fresh;
 }
 async function tick() { if (!X.on('gyxBadge')) return; for (const c of X.chars()) await check(c, D.first !== true ? true : false); if (D.first !== true) { D.first = true; await S.set('d', D); } }

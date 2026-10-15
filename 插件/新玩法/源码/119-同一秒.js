@@ -22,7 +22,7 @@ async function fire(c) {
     let src = ''; try { if (window.gyPhotoGet) { const g = await window.gyPhotoGet(c.id, o.desc, false); src = (g && g.src) || ''; } } catch (e) {}
     const m = { id: 'mo' + Date.now().toString(36), cid: String(c.id), at: Date.now(), ta: { desc: X.plain(o.desc), line: X.plain(o.line || ''), src } };
     D.list.unshift(m); D.list = D.list.slice(0, 300); await save();
-    X.notify(c, `📸 此刻！<b>${X.esc(X.name(c))}</b> 拍下了 TA 的这一秒`, X.v('两分钟内拍下你的此刻', '快！拍下你现在眼前的', '同一秒，你那边是什么样？'), () => window.gyxMomentOpen(c.id));
+    X.notify(c, `📸 此刻！<b>${X.esc(X.name(c))}</b> 拍下了 TA 的这一秒`, X.v('两分钟内拍下你的此刻', '快！拍下你现在眼前的', '同一秒，你那边是什么样？'), X.go('gyxMomentOpen', c.id));
     X.toast('📸 此刻！', X.v('两分钟内拍下你现在看到的', `${X.name(c)} 已经拍好了，等你`, '同一秒，两个地方'));
     return m;
 }

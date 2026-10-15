@@ -15,7 +15,7 @@ async function fulfill(c, w) {
     if (X.bailu()) msg = X.cards(['礼物', '信', '聊天'], c, 2).join('\n') || '你说过想要这个，我记着呢。';
     else msg = X.plain(await X.ask(`${X.who(c)}\n她的愿望清单里写着「${w.t}」${w.note ? '（' + w.note + '）' : ''}。你偷偷帮她实现了（买了 / 安排好了 / 做到了），附一张小卡片。写卡片上的话（40~120 字）。只输出卡片内容。`) || '你说过想要的，我一直记着。');
     w.done = true; w.by = String(c.id); w.at = Date.now(); w.msg = msg; w.unopened = true; await S.set('d', D);
-    X.notify(c, `🎁 ${X.name(c)} 偷偷实现了你的一个愿望`, '去拆开', 'gyxWishOpen');
+    X.notify(c, `🎁 ${X.name(c)} 偷偷实现了你的一个愿望`, '去拆开', X.go('gyxWishOpen', 'mine', c.id));
     await X.reach(c, `你刚偷偷帮她实现了愿望清单里的「${w.t}」，礼物已经到她那儿了，神秘一点地告诉她去拆`);
     return w;
 }

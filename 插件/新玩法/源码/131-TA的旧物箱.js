@@ -49,7 +49,7 @@ X.action({ key: 'gyx_box_find', label: '收拾东西翻出一件旧物，拍给�
     let o = X.bailu() ? null : X.json(await X.ask(X.pl('box.find', DEF_FIND, { 角色: X.who(c), 以前: prev(c.id).slice(0, 20).join('、') || '没有' })));
     if (!o || !o.n) { const l = X.pick(LOCAL); o = { e: l[0], n: l[1], story: l[2] }; }
     const f = { id: 'fd' + Date.now().toString(36), cid: String(c.id), at: Date.now(), e: X.plain(o.e || '📦').slice(0, 4), n: X.plain(o.n).slice(0, 14), story: X.plain(o.story).slice(0, 160) };
-    D.finds.unshift(f); D.finds = D.finds.slice(0, 60); await save(); X.say(c, `${f.e} ${f.story}`); X.notify(c, `📦 <b>${X.esc(X.name(c))}</b> 翻出了${X.esc(f.n)}`, f.story, () => window.gyxBoxOpen(c.id)); return '翻出一件旧东西给你看';
+    D.finds.unshift(f); D.finds = D.finds.slice(0, 60); await save(); X.say(c, `${f.e} ${f.story}`); X.notify(c, `📦 <b>${X.esc(X.name(c))}</b> 翻出了${X.esc(f.n)}`, f.story, X.go('gyxBoxOpen', c.id)); return '翻出一件旧东西给你看';
 } }, 'gyxBox');
 X.today(() => ({ title: '📦 旧物箱', rows: D.boxes.filter(b => !b.done && X.char(b.cid)).map(b => ({ t: X.name(X.char(b.cid)), x: `还有 ${b.items.filter(i => !i.placed).length} 件没摆`, go: `gyxBoxOpen('${b.cid}')` })) }), 'gyxBox');
 X.widget('gyxBoxW', { n: 'TA的旧物箱', sizes: ['s', 'm'], tap: () => window.gyxBoxOpen(), r: w => { const b = D.boxes.find(x => !x.done); const n = D.boxes.reduce((a, x) => a + x.items.filter(i => i.placed).length, 0); return X.gw(w, '📦', '旧物箱', b ? [`还有 ${b.items.filter(i => !i.placed).length} 件没摆`] : [`摆好了 ${n} 件`]); } }, 'gyxBox');

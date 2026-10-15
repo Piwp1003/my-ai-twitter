@@ -27,7 +27,7 @@ async function replyTo(it) {
     const c = X.char(it.cid); if (!c) return;
     let r = X.bailu() ? null : await X.ask(`${X.who(c)}\n她录了一盘磁带给你（${mmss(it.dur)}，标签：「${it.title}」）。${it.text ? '你听到她说：「' + it.text.slice(0, 600) + '」' : '你听不太清她说了什么（可能是哼歌、环境声或者小声说话），但你听到了她的声音。'}\n你录 B 面回她：像对着录音机说话一样，自然、有停顿，60~150 字。只写你说的话。`);
     it.reply = X.plain(r || X.pick(X.cards(['情话', '晚安'], c, 2).concat(['我听了好几遍。你的声音从录音机里出来，有一点沙沙的，很好听。', '……按下录音键了吗？嗯。我是想说，你的磁带我收到了。我会好好收着的。', '你那边好安静啊。我把耳朵贴着听，好像你就在旁边。'])));
-    await S.set('d', D); X.notify(c, `📼 ${X.esc(X.name(c))} ${X.v('录好了 B 面', '回了你一盘磁带', '把 B 面放进你的架子了')}`, it.title, () => window.gyxTapePlay(it.id, 'b')); if (document.getElementById('gyxTpeOv')) window.gyxTapeOpen(it.cid);
+    await S.set('d', D); X.notify(c, `📼 ${X.esc(X.name(c))} ${X.v('录好了 B 面', '回了你一盘磁带', '把 B 面放进你的架子了')}`, it.title, X.go('gyxTapePlay', it.id, 'b')); if (document.getElementById('gyxTpeOv')) window.gyxTapeOpen(it.cid);
 }
 async function taTape(c, why) {
     let j = X.bailu() ? null : X.json(await X.ask(`${X.who(c)}\n你想录一盘磁带给她（${why || '想她的时候'}），现在 ${new Date().getHours()} 点。\n最近的聊天：\n${X.recent(c, 12)}\n只输出 JSON：{"title":"磁带标签（8 字内）","text":"你对着录音机说的话，80~200 字，可以讲个小故事、说早安晚安、哼两句（写成文字）"}`));
@@ -57,7 +57,7 @@ window.gyxTapeOpen = function (who) {
 };
 X.ctx(id => { const x = D.tapes.find(t => t.cid === String(id) && t.by === 'me'); return x && Date.now() - x.at < 2 * 864e5 ? `【她前不久录了一盘磁带给你】「${x.title}」${x.text ? '，里面说：' + x.text.slice(0, 120) : ''}` : ''; }, 'gyxTape');
 X.action({ key: 'gyx_tape', label: '录一盘磁带给她', hint: '留声机', need: c => !D.tapes.some(x => x.cid === String(c.id) && x.by === 'ta' && Date.now() - x.at < 3 * 864e5),
-    run: async c => { const h = new Date().getHours(), it = await taTape(c, h >= 21 || h < 2 ? '睡前' : h < 10 ? '早上' : '想她的时候'); X.notify(c, `📼 ${X.esc(X.name(c))} ${X.v('录了一盘磁带给你', '往你的架子上放了一盘磁带')}`, it.title, () => window.gyxTapePlay(it.id)); return '录了一盘磁带：' + it.title; } }, 'gyxTape');
+    run: async c => { const h = new Date().getHours(), it = await taTape(c, h >= 21 || h < 2 ? '睡前' : h < 10 ? '早上' : '想她的时候'); X.notify(c, `📼 ${X.esc(X.name(c))} ${X.v('录了一盘磁带给你', '往你的架子上放了一盘磁带')}`, it.title, X.go('gyxTapePlay', it.id)); return '录了一盘磁带：' + it.title; } }, 'gyxTape');
 X.today(() => ({ title: '📼 留声机', rows: D.tapes.filter(x => X.day(new Date(x.at)) === X.day()).map(x => ({ t: x.by === 'me' ? '你录的' : 'TA 录的', x: X.esc(x.title), go: `gyxTapePlay('${x.id}')` })) }), 'gyxTape');
 X.widget('gyxTapeW', { n: '留声机', sizes: ['s', 'm'], tap: () => { const x = D.tapes.find(t => t.by === 'ta'); x ? window.gyxTapePlay(x.id) : window.gyxTapeOpen(); }, r: w => { const x = D.tapes[0]; return X.gw(w, '📼', '留声机', x ? [X.esc(x.title), D.tapes.length + ' 盘磁带'] : ['录一盘？']); } }, 'gyxTape');
 X.memArr({ k: 'gyxTape', ico: '📼', n: '留声机', d: '磁带（标签、内容、TA 的 B 面）', arr: () => D.tapes, text: x => x.title + '：' + (x.text || '（录音）') + (x.reply ? ' ｜B面：' + x.reply : ''), edit: (x, v) => { const m = v.match(/^([^：]*)：([\s\S]*?)(?: ｜B面：([\s\S]*))?$/); if (m) { x.title = m[1]; x.text = m[2] === '（录音）' ? '' : m[2]; if (m[3] != null) x.reply = m[3]; } }, meta: x => (x.by === 'me' ? '你录的' : 'TA 录的') + ' · ' + new Date(x.at).toLocaleDateString(), save: () => S.set('d', D) }, 'gyxTape');

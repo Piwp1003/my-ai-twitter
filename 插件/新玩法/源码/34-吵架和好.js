@@ -11,7 +11,7 @@ async function coax(c, f) {
     else t = X.plain(await X.ask(`${X.who(c)}\n你们吵架了${f.why ? '（因为：' + f.why + '）' : ''}，已经冷战 ${dur(Date.now() - f.at)}。之前你已经来哄过 ${f.tries} 次${f.steps.length ? '，最近的来回：' + f.steps.slice(-4).map(s => (s.by === 'me' ? '她' : '你') + '：' + s.t).join(' / ') : ''}。\n最近聊天：\n${X.recent(c, 10)}\n\n${kind === 'letter' ? '写一封道歉信（100~250 字）：真诚说清楚你哪里做得不好、你怎么想的、以后会怎样，按你的性格写，别套话。' : '按你的性格来哄她一次（30~80 字）：可能是认错、撒娇、嘴硬但关心、递台阶……别说教。'}只输出内容。`) || '对不起，是我不好。');
     f.steps.push({ by: String(c.id), kind, t, at: Date.now() }); f.tries++; await S.set('d', D);
     X.say(c, kind === 'letter' ? '💌 ' + t : t);
-    if (kind === 'letter') X.notify(c, X.v(`${X.name(c)} 给你写了一封道歉信`, `${X.name(c)} 塞过来一封信`), '去看看', 'gyxMakeupOpen');
+    if (kind === 'letter') X.notify(c, X.v(`${X.name(c)} 给你写了一封道歉信`, `${X.name(c)} 塞过来一封信`), '去看看', X.go('gyxMakeupOpen', c.id));
     return { kind, t };
 }
 window.gyxMakeupStart = async function (why, cid, by) {
@@ -47,7 +47,7 @@ window.gyxMakeupEnd = async function (id, how) {
 };
 window.gyxMakeupOpen = function (who) {
     const c = X.char(who) || X.cur(); if (!c) return; const cid = String(c.id), f = D.on[cid];
-    X.panel('gyxMkOv', f ? '🌧️ 冷战中' : '🌤️ 吵架和好', `<div class="gyx-row">${X.whoSel(cid, 'gyxMakeupOpen')}</div>
+    X.panel('gyxMkOv', f ? '🌧️ 冷战中' : '🌤️ 吵架和好', `<div class="gyx-row">${X.whoSel(cid, X.go('gyxMakeupOpen', c.id))}</div>
         ${f ? `<div class="mk-cold"><b>${dur(Date.now() - f.at)}</b><span>和 ${X.esc(X.name(c))} 冷战中${f.why ? ' · ' + X.esc(f.why) : ''}</span></div>
         <div class="mk-steps">${f.steps.map(s => `<div class="mk-s ${s.by === 'me' ? 'me' : ''} ${s.kind}">${s.kind === 'letter' ? '<em>💌 道歉信</em>' : s.kind === 'card' ? '<em>🃏 和好卡</em>' : ''}<p class="${s.kind === 'letter' ? 'gyx-hand' : ''}">${X.esc(s.t).replace(/\n/g, '<br>')}</p></div>`).join('') || `<div class="gyx-tip">${X.esc(X.name(c))} 还没来哄你……</div>`}</div>
         <div class="gyx-row"><input id="gyxMkCard" class="gyx-in" style="flex:1" placeholder="递一张和好卡（可空，随机一句）"><button class="gyx-btn lite" onclick="gyxMakeupCard('${cid}')">递过去</button></div>

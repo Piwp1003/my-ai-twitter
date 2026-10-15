@@ -13,7 +13,7 @@ async function ask(c) {
     const x = { id: 'dl' + Date.now().toString(36), cid: String(c.id), at: Date.now(), q: X.plain(o.q), ctx: X.plain(o.ctx || ''), opts: o.opts.slice(0, 3).map(X.plain).filter(Boolean) };
     D.list.unshift(x); await save();
     X.say(c, `🗳️ ${x.q}${x.ctx ? '（' + x.ctx + '）' : ''}`);
-    X.notify(c, `🗳️ <b>${X.esc(X.name(c))}</b> 有件事想听你的意见`, x.q, () => window.gyxDilemmaOpen(c.id));
+    X.notify(c, `🗳️ <b>${X.esc(X.name(c))}</b> 有件事想听你的意见`, x.q, X.go('gyxDilemmaOpen', c.id));
     return x;
 }
 window.gyxDilemmaPick = async (id, i) => {
@@ -29,7 +29,7 @@ async function report(x) {
     x.outcome = X.plain(await X.ask(`${X.who(c)}\n几天前你问她「${x.q}」，${choice ? `她让你「${choice}」，你照做了` : `她一直没回你，你自己选了「${ch}」`}。现在过去几天了，结果怎么样？（可以顺利、可以有小波折、可以出乎意料，要真实）按你的性格告诉她，50字以内。`) || '') || (choice ? X.v(`那件事，我听了你的，结果还挺好的。`, `照你说的做了，一开始有点难，现在觉得是对的。`) : X.v('你没回我，我就自己决定了……其实还挺想听你说的。', '我自己选了，还行吧。'));
     if (x.self) x.pick = x.opts.indexOf(ch);
     x.outAt = Date.now(); await save();
-    X.say(c, '🗳️ ' + x.outcome); X.notify(c, `🗳️ <b>${X.esc(X.name(c))}</b> 告诉你那件事的结果`, x.q, () => window.gyxDilemmaOpen(c.id));
+    X.say(c, '🗳️ ' + x.outcome); X.notify(c, `🗳️ <b>${X.esc(X.name(c))}</b> 告诉你那件事的结果`, x.q, X.go('gyxDilemmaOpen', c.id));
     return x;
 }
 window.gyxDilemmaAsk = async cid => { const x = await ask(X.char(cid) || X.cur()); if (!x) X.toast('还有一件没说完', '先回 TA 上一个问题吧'); window.gyxDilemmaOpen(cid); };

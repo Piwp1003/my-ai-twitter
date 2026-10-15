@@ -25,7 +25,7 @@ async function tell(c, n) {
     b.ch.push(x); b.ch.sort((a, b2) => a.n - b2.n); delete b.ready[n]; await save(); return x;
 }
 // 有新章节可以讲了：记一下，TA 会找机会开口
-function scan() { try { X.chars().forEach(c => { const id = String(c.id), b = B(id), u = unlocked(id); for (let n = 0; n < u; n++) if (!b.ch.some(x => x.n === n) && !b.ready[n]) { b.ready[n] = Date.now(); save(); X.notify(c, `📜 <b>${X.esc(X.name(c))}</b> 好像有段往事想跟你说`, `第${NUM[n]}章解锁了`, () => window.gyxPastOpen(c.id)); } }); } catch (e) {} }
+function scan() { try { X.chars().forEach(c => { const id = String(c.id), b = B(id), u = unlocked(id); for (let n = 0; n < u; n++) if (!b.ch.some(x => x.n === n) && !b.ready[n]) { b.ready[n] = Date.now(); save(); X.notify(c, `📜 <b>${X.esc(X.name(c))}</b> 好像有段往事想跟你说`, `第${NUM[n]}章解锁了`, X.go('gyxPastOpen', c.id)); } }); } catch (e) {} }
 setInterval(() => { if (X.on('gyxPast')) scan(); }, 10 * 60000);
 window.gyxPastTell = async (cid, n, btn) => { const c = X.char(cid); if (!c) return; if (btn) { btn.disabled = true; btn.textContent = X.v('TA 在想从哪说起……', 'TA 沉默了一会儿……'); } await tell(c, n); window.gyxPastOpen(cid, n); };
 window.gyxPastAsk = async (cid, n) => {

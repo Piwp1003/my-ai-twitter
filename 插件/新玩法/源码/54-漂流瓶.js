@@ -9,7 +9,7 @@ async function answer(b) {
     let r = X.bailu() ? null : await X.ask(`你是${X.name(c)}。${X.persona(c)}\n你在海边捡到一个漂流瓶，里面是一个陌生人写的话（你不知道是谁）：\n「${b.text}」\n按你的性格写一封简短的回信，放回瓶子里扔回海里（50~120 字）。`);
     b.reply = X.plain(r || X.pick(X.cards(['漂流瓶', '心事', '情话'], c, 2).concat(['捡到你的瓶子了。不知道你是谁，但希望你今天过得好一点。', '你的字我读了三遍。海很大，别怕。', '我也有过这样的时候。会好的。'])));
     b.rat = Date.now(); await S.set('d', D);
-    X.notify(c, `🍾 ${X.v('你的瓶子漂回来了', '有人捡到了你的漂流瓶', '海浪把回信送回来了')}`, `${X.esc(X.name(c))} 写了回信`, () => window.gyxBottleOpen('out'));
+    X.notify(c, `🍾 ${X.v('你的瓶子漂回来了', '有人捡到了你的漂流瓶', '海浪把回信送回来了')}`, `${X.esc(X.name(c))} 写了回信`, X.go('gyxBottleOpen', 'out'));
 }
 async function pick() {
     const today = X.day(), n = D.got.filter(x => X.day(new Date(x.at)) === today).length; if (n >= (+D.cfg.per || 3)) return { msg: X.v('今天的海很安静，明天再来吧。', '浪退下去了，今天捡不到了。', '你今天已经捡了好几个了，留点给别人。') };
@@ -45,7 +45,7 @@ window.gyxBottleTick = () => tick();
 async function tick() { if (!X.on('gyxBottle')) return; for (const b of D.out) if (!b.reply && b.due <= Date.now()) await answer(b); }
 X.ctx(id => { const b = D.out.find(x => x.to === String(id) && x.reply && Date.now() - x.rat < 3 * 864e5); return b ? `【你前阵子在海边捡到一个漂流瓶】里面写着「${b.text}」，你回了信。你不知道是谁写的（其实是她，但你不知道）。可以随口提起这件事。` : ''; }, 'gyxBottle');
 X.action({ key: 'gyx_bottle', label: '匿名写个漂流瓶扔进海里', hint: '心里话', need: c => !D.got.some(x => x.from === String(c.id) && Date.now() - x.at < 864e5),
-    run: async c => { X.notify(c, '🍾 ' + X.v('海边漂来一个新瓶子', '浪打上来一个瓶子', '有人刚扔了一个漂流瓶'), '去海边看看？', () => window.gyxBottleOpen('sea')); return '扔了一个漂流瓶'; } }, 'gyxBottle');
+    run: async c => { X.notify(c, '🍾 ' + X.v('海边漂来一个新瓶子', '浪打上来一个瓶子', '有人刚扔了一个漂流瓶'), '去海边看看？', X.go('gyxBottleOpen', 'sea')); return '扔了一个漂流瓶'; } }, 'gyxBottle');
 X.today(() => ({ title: '🍾 漂流瓶', rows: D.out.filter(x => x.reply && X.day(new Date(x.rat)) === X.day()).map(x => ({ t: '回信', x: X.esc(x.reply.slice(0, 24)), go: "gyxBottleOpen('out')" })).concat(D.out.filter(x => !x.reply).length ? [{ t: '漂着', x: D.out.filter(x => !x.reply).length + ' 个瓶子还在海上', go: "gyxBottleOpen('out')" }] : []) }), 'gyxBottle');
 X.widget('gyxBottleW', { n: '漂流瓶', sizes: ['s', 'm'], tap: () => window.gyxBottleOpen(), r: w => { const r = D.out.find(x => x.reply); return X.gw(w, '🍾', '漂流瓶', r ? ['有回信', X.esc(r.reply.slice(0, 30))] : ['扔一个？']); } }, 'gyxBottle');
 X.mem({ k: 'gyxBottle', ico: '🍾', n: '漂流瓶', d: '你扔的瓶子被 TA 捡到、回的信（TA 不知道是你）', items: c => D.out.filter(x => x.to === String(c.id)), text: x => x.text + (x.reply ? ' → ' + x.reply : ''), edit: (x, v) => { const [a, b] = v.split(' → '); x.text = a; if (b != null) x.reply = b; }, del: (c, i) => { const it = D.out.filter(x => x.to === String(c.id))[i]; D.out = D.out.filter(x => x !== it); }, meta: x => new Date(x.at).toLocaleString(), save: () => S.set('d', D) }, 'gyxBottle');

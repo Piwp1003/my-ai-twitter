@@ -11,7 +11,7 @@ async function answer(x) {
     const who = x.from === 'me' ? '她（你喜欢的人）署名问你的' : x.from === 'anon' ? '一个匿名的人问的（你不知道是谁）' : x.from === 'npc' ? '一个路人问的' : `${label(x)} 问的`;
     let a = X.bailu() ? null : await X.ask(`${X.who(c)}\n你在自己公开的提问箱里回答问题（大家都看得到）。这个问题是${who}：\n「${x.q}」\n按你的性格回答（公开回答，30~120 字；${x.from === 'anon' ? '你不知道提问的是她，可以聊到她，也可以不聊' : ''}）。只输出回答。`);
     x.a = X.plain(a || X.pick(X.cards(['提问箱', '聊天'], c, 2).concat(['这个嘛……不告诉你。', '好问题，下次再答（跑）', '有，而且她可能正在看。', '嗯……认真想了想，还是想说：现在挺好的。']))); x.aat = Date.now(); await S.set('d', D);
-    if (x.from === 'me' || x.from === 'anon') X.notify(c, `📮 ${X.esc(X.name(c))} ${X.v('回答了你的提问', '在提问箱里回你了', '回了一个问题——是你问的那个')}`, x.q, () => window.gyxAskBoxOpen(x.cid));
+    if (x.from === 'me' || x.from === 'anon') X.notify(c, `📮 ${X.esc(X.name(c))} ${X.v('回答了你的提问', '在提问箱里回你了', '回了一个问题——是你问的那个')}`, x.q, X.go('gyxAskBoxOpen', x.cid));
 }
 function crowd(c) { const cid = String(c.id); if (!D.cfg.crowd || D.qs.filter(x => x.cid === cid && !x.a).length > 3) return; const others = X.chars().filter(o => String(o.id) !== cid); const from = others.length && Math.random() < .4 ? String(X.pick(others).id) : 'npc'; const used = new Set(D.qs.filter(x => x.cid === cid).map(x => x.q)); const q = X.pick(NPC_Q.filter(t => !used.has(t)).concat([X.pick(NPC_Q)])); D.qs.unshift({ id: 'aq' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4), cid, from, q, at: Date.now(), due: Date.now() + rnd(+D.cfg.min || 10, +D.cfg.max || 120) * 60000 }); }
 async function tick() { if (!X.on('gyxAskBox')) return; for (const x of D.qs) if (!x.a && x.due <= Date.now()) await answer(x); if (Math.random() < .08) { const c = X.pick(X.chars()); if (c) { crowd(c); await S.set('d', D); } } }

@@ -36,7 +36,7 @@ async function start(c) {
     if (!o || !o.title || !Array.isArray(o.msgs) || fixChoices(o.choices).length < 2) o = LOCAL;
     const run = { id: 'st' + Date.now().toString(36), cid: String(c.id), at: Date.now(), title: X.plain(o.title), setting: X.plain(o.setting), goal: X.plain(o.goal), risk: 0, n: 0, steps: [], choices: fixChoices(o.choices), pending: null, nextAt: 0, end: null };
     D.runs.unshift(run); D.runs = D.runs.slice(0, 40); deliver(run, o.msgs); await save();
-    X.notify(c, `🆘 <b>${X.esc(X.name(c))}</b> ${X.v('好像遇到麻烦了', '在向你求助', '出状况了')}`, run.setting, () => window.gyxStuckOpen(c.id));
+    X.notify(c, `🆘 <b>${X.esc(X.name(c))}</b> ${X.v('好像遇到麻烦了', '在向你求助', '出状况了')}`, run.setting, X.go('gyxStuckOpen', c.id));
     X.toast(X.v('🆘 TA 出状况了', '🆘 TA 在找你', '🆘 快看看 TA'), run.title);
     return run;
 }
@@ -58,8 +58,8 @@ async function pick(run, t, r) {
 async function flush(run) {
     const p = run.pending; if (!p) return; run.pending = null; deliver(run, p.msgs); run.choices = p.choices;
     const c = X.char(run.cid);
-    if (p.end) { run.end = p.end; run.endAt = Date.now(); X.notify(c, `🆘 <b>${X.esc(X.name(c))}</b> ${p.end === 'safe' ? X.v('平安了', '脱困了') : '脱困了，但吃了点苦头'}`, run.title, () => window.gyxStuckOpen(run.cid)); }
-    else X.notify(c, `🆘 <b>${X.esc(X.name(c))}</b> ${X.v('有消息了', '回来了', '又发来消息')}`, X.plain(p.msgs[0] || ''), () => window.gyxStuckOpen(run.cid));
+    if (p.end) { run.end = p.end; run.endAt = Date.now(); X.notify(c, `🆘 <b>${X.esc(X.name(c))}</b> ${p.end === 'safe' ? X.v('平安了', '脱困了') : '脱困了，但吃了点苦头'}`, run.title, X.go('gyxStuckOpen', run.cid)); }
+    else X.notify(c, `🆘 <b>${X.esc(X.name(c))}</b> ${X.v('有消息了', '回来了', '又发来消息')}`, X.plain(p.msgs[0] || ''), X.go('gyxStuckOpen', run.cid));
     await save(); if (document.getElementById('gyxStuckOv')) window.gyxStuckOpen(run.cid);
 }
 setInterval(() => { try { D.runs.filter(r => r.pending && Date.now() >= r.nextAt).forEach(flush); } catch (e) {} }, 20000);

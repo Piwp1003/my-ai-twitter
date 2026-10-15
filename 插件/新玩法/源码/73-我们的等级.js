@@ -41,7 +41,7 @@ async function check(c, quiet) {
     let giftName = '';
     if (gift) { giftName = X.pick(giftsOf(cid)); try { window.gyxCouponData().list.unshift({ id: 'cp' + Date.now().toString(36), cid, from: 'ta', name: giftName, desc: `Lv.${L.lv} 的升级礼物`, at: Date.now(), used: null }); } catch (e) { giftName = ''; } }
     D.log.unshift({ cid, lv: L.lv, from: was, at: Date.now(), title: titleNew ? title : '', gift: giftName }); await S.set('d', D);
-    X.notify(c, `📈 ${X.v('升级啦', '叮——等级提升', '你们又近了一点')}：Lv.${L.lv}${titleNew ? ' · 「' + title + '」' : ''}`, giftName ? `TA 送了你一张「${giftName}」` : '和 ' + X.name(c), () => window.gyxLevelOpen(cid));
+    X.notify(c, `📈 ${X.v('升级啦', '叮——等级提升', '你们又近了一点')}：Lv.${L.lv}${titleNew ? ' · 「' + title + '」' : ''}`, giftName ? `TA 送了你一张「${giftName}」` : '和 ' + X.name(c), X.go('gyxLevelOpen', cid));
     return D.log[0];
 }
 async function tick() { if (!X.on('gyxLevel')) return; for (const c of X.chars()) await check(c); }

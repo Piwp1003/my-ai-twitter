@@ -23,7 +23,7 @@ async function done(c, st) {
     let t = X.bailu() ? null : await X.ask(`${X.who(c)}\n你今天因为「${st.why}」很低落，她哄了你 ${st.steps.length} 句，你现在好了。真心谢谢她，说一两句（可以有点不好意思）。`);
     t = X.plain(t || X.pick(X.cards(['情话', '撒娇'], c, 2).concat(['……好了，被你哄好了。谢谢你，真的。', '有你在，好像什么都没那么糟了。', '哼，看在你这么努力的份上，原谅这个世界了。'])));
     D.log.unshift({ cid, why: st.why, at: st.at, end: Date.now(), n: st.steps.length, thanks: t }); await S.set('d', D);
-    X.say(c, t); X.notify(c, `🥺 ${X.esc(X.name(c))} ${X.v('被你哄好了', '心情回来了', '不难过了')}`, st.why, () => window.gyxCoaxOpen(cid));
+    X.say(c, t); X.notify(c, `🥺 ${X.esc(X.name(c))} ${X.v('被你哄好了', '心情回来了', '不难过了')}`, st.why, X.go('gyxCoaxOpen', cid));
 }
 let BUSY = null;
 function watch() { if (BUSY) return BUSY; BUSY = watch0().finally(() => { BUSY = null; }); return BUSY; }

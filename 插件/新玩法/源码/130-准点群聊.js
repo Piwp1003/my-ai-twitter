@@ -36,7 +36,7 @@ async function open_(hm, day, force) {
     const span = end - start - 60000; lines.forEach((l, i) => { l.at = start + Math.round(span * (i / lines.length) * (0.85 + Math.random() * .15)); });
     const e = { id: 'ot' + Date.now().toString(36), gid: String(g.id), gname: g.name, day, time: hm, start, end, topic: X.plain((o && o.topic) || '准点打卡').slice(0, 20), lines, joined: false, missSaid: false };
     D.ev.unshift(e); D.ev = D.ev.slice(0, 120); await save();
-    if (Date.now() <= end) { X.notify(mem[0], `⏰ <b>${X.esc(g.name)}</b> ${X.v('准点开聊了', '大家上线了', '到点了，群里热闹起来了')}`, e.topic, () => window.gyxOnTimeGo(e.gid)); X.toast(X.v('⏰ 准点群聊开始了', '⏰ 群里开聊了'), `${g.name} · ${e.topic}`); }
+    if (Date.now() <= end) { X.notify(mem[0], `⏰ <b>${X.esc(g.name)}</b> ${X.v('准点开聊了', '大家上线了', '到点了，群里热闹起来了')}`, e.topic, X.go('gyxOnTimeGo', e.gid)); X.toast(X.v('⏰ 准点群聊开始了', '⏰ 群里开聊了'), `${g.name} · ${e.topic}`); }
     tick(); return e;
 }
 function tick() {

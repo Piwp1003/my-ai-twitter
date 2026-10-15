@@ -29,7 +29,7 @@ async function reveal(c) {
     p.letter = String((o && o.letter) || X.v('其实这几周我一直在偷偷准备这个。手笨，练了好多次。想让你知道，我也会为你变得更好一点。', '之前那些奇怪的问题、手上的创可贴，都是因为这个。现在可以告诉你了。'));
     p.done = true; p.doneAt = Date.now(); await save();
     X.say(c, `🎁 ${X.v('其实……我准备了一个东西。', '憋了好久，终于可以告诉你了。', '你之前猜的那些，现在揭晓答案。')}`);
-    X.notify(c, `<b>${X.esc(X.name(c))}</b> 揭晓了一个秘密 🎁`, p.what, () => window.gyxPlanOpen(c.id));
+    X.notify(c, `<b>${X.esc(X.name(c))}</b> 揭晓了一个秘密 🎁`, p.what, X.go('gyxPlanOpen', c.id));
     return p;
 }
 window.gyxPlanGuess = async (cid) => {

@@ -15,7 +15,7 @@ async function found() {
     const line = X.plain(await X.ask(`${X.who(c)}\n你们在玩捉迷藏，你「藏」在${g.mode === 'geo' ? '她附近的某个地方' : '家里的' + ROOMS[g.room.t]}，她找了 ${Math.max(1, Math.round((Date.now() - g.start) / 60000))} 分钟终于找到你了。你提前在藏身的地方给她留了一句话，现在她看到了。只输出那句话，30 字以内。`) || '') || X.v('被你找到了。奖励：抱一下。', '我就知道你会找到我的。', '下次换我找你，你可别藏太远。');
     const e = { id: 'sk' + Date.now().toString(36), cid: g.cid, at: g.start, end: Date.now(), found: true, mode: g.mode, dist: Math.round(g.d0 || 0), walked: Math.round(g.walked || 0), line };
     D.log.unshift(e); D.log = D.log.slice(0, 100); await S.set('d', D);
-    X.say(c, '📍 ' + line); X.notify(c, `<b>${X.esc(X.name(c))}</b> 被你找到了 📍`, line, () => window.gyxSeekOpen(c.id));
+    X.say(c, '📍 ' + line); X.notify(c, `<b>${X.esc(X.name(c))}</b> 被你找到了 📍`, line, X.go('gyxSeekOpen', c.id));
     window.gyxSeekOpen(e.cid, e);
 }
 function onPos(p) {

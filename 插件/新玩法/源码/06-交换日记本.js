@@ -20,7 +20,7 @@ async function taTurn(cid) {
     const b = book(cid); b.pending = null;
     b.pages.push({ by: 'ta', text: t, at: Date.now(), tape: X.pick(TAPES), stickers: [X.pick(STK)].concat(Math.random() < .5 ? [X.pick(STK)] : []) });
     await S.set('d', D);
-    X.notify(c, `📓 ${X.name(c)} 在交换日记本上写了新的一页`, '', 'gyxJournalOpen');
+    X.notify(c, `📓 ${X.name(c)} 在交换日记本上写了新的一页`, '', X.go('gyxJournalOpen', c.id));
     X.say(c, '📓 交换日记我写好了，轮到你了。');
     if (document.getElementById('gyxJnOv') && CID === cid) { PG = book(cid).pages.length - 1; paint(); }
 }

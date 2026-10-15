@@ -47,7 +47,7 @@ async function tick() {
         for (const a of up) {
             const k = cid + ':' + a.date + ':' + a.name;
             if (a.left > 0 && a.left <= 3 && !D.hinted[k]) { D.hinted[k] = 'hint'; await S.set('d', D); if (X.on('gyxAnniv.auto') || !X.auto(c)) await X.reach(c, `再过 ${a.left} 天就是你们的「${a.name}」，你在偷偷准备惊喜，可以不经意地透露一点点（别说破）`); }
-            if (a.left === 0 && D.hinted[k] !== 'done') { D.hinted[k] = 'done'; await S.set('d', D); const g = await prepare(c, a); X.notify(c, `🎉 今天是你们的「${a.name}」，${X.name(c)} 给你准备了礼物`, '去拆开', 'gyxAnnivOpen'); await X.reach(c, `今天是你们的「${a.name}」！你准备了礼物（${g.gift}）和一封信，让她去「纪念日惊喜」里拆开`); }
+            if (a.left === 0 && D.hinted[k] !== 'done') { D.hinted[k] = 'done'; await S.set('d', D); const g = await prepare(c, a); X.notify(c, `🎉 今天是你们的「${a.name}」，${X.name(c)} 给你准备了礼物`, '去拆开', X.go('gyxAnnivOpen', c.id)); await X.reach(c, `今天是你们的「${a.name}」！你准备了礼物（${g.gift}）和一封信，让她去「纪念日惊喜」里拆开`); }
         }
     }
 }
@@ -63,7 +63,7 @@ window.gyxAnnivUnbox = function (id) {
 window.gyxAnnivOpen = function (who) {
     const c = X.char(who) || X.cur(); if (!c) return; const cid = String(c.id), p = startOf(cid) || {}, n = p.start ? daysSince(p.start) : 0, up = upcoming(cid, 400).slice(0, 12);
     const gs = D.gifts.filter(g => g.cid === cid).reverse();
-    X.panel('gyxAnOv', '🎉 纪念日惊喜', `<div class="gyx-row">${X.whoSel(cid, 'gyxAnnivOpen')}</div>
+    X.panel('gyxAnOv', '🎉 纪念日惊喜', `<div class="gyx-row">${X.whoSel(cid, X.go('gyxAnnivOpen', c.id))}</div>
         <div class="an-days">${p.start ? `<span>和 ${X.esc(X.name(c))} 在一起</span><b>${n}</b><span>天</span>` : '<span>还没记你们在一起的日子</span>'}</div>
         <div class="gyx-row gyx-tip">日子都跟着原来的「纪念日 / 日历」走：${p.start ? `从 ${p.start}（${X.esc(p.label)}）算起` : '还没找到你们开始的日子'}，在日历里改就行。<button class="gyx-btn lite" onclick="typeof openCharCalendarModal==='function'&&openCharCalendarModal('${cid}')">打开日历</button><label><input type="checkbox" ${D.cfg.monthly ? 'checked' : ''} onchange="gyxAnnivCfg(this.checked)"> 每个月的纪念日也准备</label></div>
         ${gs.filter(g => !g.opened).map(g => `<div class="an-gift" onclick="gyxAnnivUnbox('${g.id}')">🎁 <b>${X.esc(g.name)}</b> 的礼物还没拆 <span>点这里拆开</span></div>`).join('')}

@@ -21,7 +21,7 @@ async function tell(c, force) {
     D.list.unshift(it); D.done[String(c.id) + ':' + X.day()] = 1; await S.set('d', D);
     X.say(c, it.tell || '我昨晚梦到你了。');
     X.say(c, `🌙 【梦】${it.title}\n${it.text}`, { type: undefined, gyxDream: it.id });
-    X.notify(c, `🌙 ${X.name(c)} 跟你讲了昨晚的梦：${it.title}`, '', 'gyxDreamOpen');
+    X.notify(c, `🌙 ${X.name(c)} 跟你讲了昨晚的梦：${it.title}`, '', X.go('gyxDreamOpen', c.id));
     return it;
 }
 window.gyxDreamTell = tell;
@@ -40,7 +40,7 @@ X.action({ key: 'gyx_dream', label: '跟对方讲昨晚做的梦', hint: '早上
 window.gyxDreamOpen = function (who) {
     const c = X.char(who) || X.cur(); const cid = c ? String(c.id) : '';
     const L = D.list.filter(d => !cid || d.cid === cid);
-    X.panel('gyxDrOv', '🌙 梦的本子', `<div class="gyx-row">${X.whoSel(cid, 'gyxDreamOpen')}<button class="gyx-btn" onclick="this.disabled=true;this.textContent='TA 在回想……';gyxDreamTell(GYX.char('${cid}')).then(()=>gyxDreamOpen('${cid}'))">让 TA 讲一个梦</button></div>
+    X.panel('gyxDrOv', '🌙 梦的本子', `<div class="gyx-row">${X.whoSel(cid, X.go('gyxDreamOpen', c.id))}<button class="gyx-btn" onclick="this.disabled=true;this.textContent='TA 在回想……';gyxDreamTell(GYX.char('${cid}')).then(()=>gyxDreamOpen('${cid}'))">让 TA 讲一个梦</button></div>
         <div class="gyx-row"><label><input type="checkbox" ${D.cfg.auto ? 'checked' : ''} onchange="gyxDreamCfg('auto',this.checked)"> 早上 TA 会主动讲（默认模式的角色按概率</label><input class="gyx-who" type="number" min="0" max="100" value="${D.cfg.p}" style="width:70px" onchange="gyxDreamCfg('p',+this.value)">%；自主模式的 TA 自己决定）</div>
         <div class="dr-list">${L.length ? L.map(d => `<div class="dr-it"><div class="dr-h"><b>${X.esc(d.title)}</b><em>${X.esc(d.mood)}</em><span>${new Date(d.at).toLocaleDateString()}</span></div><p class="gyx-hand">${X.esc(d.text).replace(/\n/g, '<br>')}</p></div>`).join('') : '<div class="gyx-tip">还没有梦。</div>'}</div>`, 'dark');
 };

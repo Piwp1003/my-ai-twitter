@@ -15,7 +15,7 @@ async function review(c, o) {
     let t = X.bailu() ? null : await X.ask(`${X.who(c)}\n你们刚结束「互换身份一天」：你演了她，她演了你。\n那段时间的聊天：\n${L.slice(-40).map(m => (m.sender === 'me' ? '她（演你）：' : '你（演她）：') + X.plain(m.text).slice(0, 120)).join('\n')}\n\n换回来了。用你自己的口吻写一段感想：当了一天的她，你发现了什么、心疼什么、学到什么；她演的你像不像。120~200 字。`);
     if (!t) t = X.v('当了一天你才知道，原来你每天都在等我回消息。以后我回快一点。', '你演的我……也太像了吧，我平时真的这么黏人吗。', '换回来了。还是当我自己好，可以光明正大地喜欢你。') + (X.cards(['情话'], c, 1)[0] ? '\n' + X.cards(['情话'], c, 1)[0] : '');
     D.log.unshift({ id: 'sw' + Date.now().toString(36), cid, from: o.from, to: Date.now(), text: t, at: Date.now() }); await S.set('d', D);
-    X.say(c, t); X.notify(c, `<b>${X.esc(X.name(c))}</b> ${X.v('换回来了，写了感想', '当完一天的你，有话想说')}`, '🔄 互换身份', () => window.gyxSwapOpen(cid));
+    X.say(c, t); X.notify(c, `<b>${X.esc(X.name(c))}</b> ${X.v('换回来了，写了感想', '当完一天的你，有话想说')}`, '🔄 互换身份', X.go('gyxSwapOpen', cid));
 }
 window.gyxSwapOpen = function (who) {
     const c = X.char(who) || X.cur(); if (!c) return; const cid = String(c.id), o = D.on[cid], sp = sample(cid);

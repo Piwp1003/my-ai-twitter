@@ -97,6 +97,9 @@
     window.gyJump = function (j) {
         if (!j) return;
         try {
+            // 插件这一轮里塞进来的「点了就做这件事」（函数存在内存里，按 ref 找）；刷新后找不到就按下面的名字走
+            if (j.ref && window.__gyJumpRef && typeof window.__gyJumpRef[j.ref] === 'function') { window.__gyJumpRef[j.ref](); return; }
+            if (typeof j.fn === 'function') { j.fn(); return; }
             if (j.fn && typeof window[j.fn] === 'function') { window[j.fn].apply(null, j.args || []); return; }
             if (j.chat != null) { openChat(j.chat); return; }
             if (j.postId != null) { openPost(j.postId, j.anon); return; }

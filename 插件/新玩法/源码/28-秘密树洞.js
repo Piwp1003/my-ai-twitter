@@ -14,7 +14,7 @@ async function taSecret(c) {
     if (X.bailu()) t = X.cards(['秘密', '日记', '聊天'], c, 2).join('') || '其实我第一次见你的时候，就偷偷记住了你的样子。';
     else t = X.plain(await X.ask(`${X.who(c)}\n最近的聊天：\n${X.recent(c, 16)}\n你之前告诉过她的秘密：${T.list.map(x => x.t).join('；') || '（还没有）'}\n\n你们已经很亲近了，你决定告诉她一个你从没说过的秘密（关于你自己、你的过去、或者关于她——比如你偷偷做过的事、一个小小的心结、一个没说出口的心意）。要符合你的人设，别和之前说过的重复。用你的口吻说出来，80~200 字。只输出你说的话。`) || '其实……我一直想跟你说，你来之前，我很少这么期待一个人。');
     T.list.push({ t, at: Date.now() }); T.next = chatDays(cid) + Math.max(1, +D.cfg.every || 5); await S.set('d', D);
-    X.notify(c, `🌳 ${X.name(c)} 想告诉你一个秘密`, '去树洞里看', 'gyxSecretOpen');
+    X.notify(c, `🌳 ${X.name(c)} 想告诉你一个秘密`, '去树洞里看', X.go('gyxSecretOpen', c.id));
     await X.reach(c, `你刚在树洞里告诉了她一个秘密：「${t.slice(0, 200)}」。现在在聊天里轻轻提一句（比如「我在树洞里给你留了点东西」），别把秘密原样再说一遍`);
     return t;
 }
@@ -22,7 +22,7 @@ window.gyxSecretTa = id => taSecret(X.char(id) || X.cur());
 window.gyxSecretOpen = function (who) {
     const c = X.char(who) || X.cur(); if (!c) return; const cid = String(c.id), T = D.ta[cid] || { list: [] };
     const days = chatDays(cid), next = T.next || Math.max(1, +D.cfg.every || 5), left = Math.max(0, next - days);
-    X.panel('gyxScOv', '🌳 秘密树洞', `<div class="gyx-row">${X.whoSel(cid, 'gyxSecretOpen')}</div>
+    X.panel('gyxScOv', '🌳 秘密树洞', `<div class="gyx-row">${X.whoSel(cid, X.go('gyxSecretOpen', c.id))}</div>
         <div class="sc-hole"><textarea id="gyxScT" class="gyx-in" rows="3" placeholder="说给 ${X.esc(X.name(c))} 听……这里只有你们两个"></textarea><div class="gyx-row"><label><input id="gyxScR" type="checkbox" checked> 让 TA 以后记得这件事</label><button class="gyx-btn" style="margin-left:auto" onclick="gyxSecretTell('${cid}')">放进树洞</button></div></div>
         <div class="gyx-tip">🔒 ${X.esc(X.name(c))} 的秘密：${T.list.length ? `已经告诉你 ${T.list.length} 个` : '还没有告诉过你'}${left ? `，再聊 ${left} 天，TA 可能会再告诉你一个` : '，TA 随时可能告诉你下一个'}</div>
         ${T.list.map((s, i) => `<div class="sc-it ta"><b>🔓 秘密 ${i + 1}</b><p class="gyx-hand">${X.esc(s.t)}</p><em>${new Date(s.at).toLocaleDateString()}</em></div>`).join('')}

@@ -39,7 +39,7 @@ window.gyxEyeOpen = function (who) {
         <div class="gyx-tip"><label><input type="checkbox" ${X.recap('eye').auto ? 'checked' : ''} onchange="gyxEyeCfg(this.checked)"> 一段日子过完（${X.UNITS[EU()] || '一个月'}一页），TA 自己把那一页写好</label></div>`);
 };
 window.gyxEyeCfg = v => { D.cfg.auto = v; X.recapSet('eye', 'auto', !!v); S.set('d', D); };
-async function tick() { if (!X.on('gyxEye') || !X.recap('eye').auto) return; const last = X.unitPrev(Date.now(), EU()); for (const c of X.chars()) { const it = await write(c, last); if (it && X.on('gyxEye.auto')) X.notify(c, `<b>${X.esc(X.name(c))}</b> ${X.v('写完了上个月的观察笔记', '在本子上写了关于你的一页', '偷偷写了你一整个月')}`, '👀 TA眼中的你', () => window.gyxEyeOpen(c.id)); } }
+async function tick() { if (!X.on('gyxEye') || !X.recap('eye').auto) return; const last = X.unitPrev(Date.now(), EU()); for (const c of X.chars()) { const it = await write(c, last); if (it && X.on('gyxEye.auto')) X.notify(c, `<b>${X.esc(X.name(c))}</b> ${X.v('写完了上个月的观察笔记', '在本子上写了关于你的一页', '偷偷写了你一整个月')}`, '👀 TA眼中的你', X.go('gyxEyeOpen', c.id)); } }
 X.ctx(id => { const x = D.notes.find(n => n.cid === String(id)); return x ? `【你上次写的关于她的观察笔记（${x.month}）】${x.text.slice(0, 220)}` : ''; }, 'gyxEye');
 X.action({ key: 'gyx_eye', label: '告诉她你最近观察到她的一个小细节', hint: '你一直在看她', need: c => !!stat(String(c.id), ym()),
     run: async c => { const st = stat(String(c.id), ym()); return (await X.reach(c, `你注意到她${EUN()}总在${when(st.hour)}出现${st.top.length ? '、老说「' + st.top[0] + '」' : ''}。挑一个小细节跟她说，让她知道你一直在看着她`)) ? '说了一个观察到的小细节' : null; } }, 'gyxEye');

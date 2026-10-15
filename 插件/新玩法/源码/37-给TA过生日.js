@@ -49,9 +49,9 @@ window.gyxBdayBlow = async function (cid) {
 window.gyxBdayClose = () => { stopMic(); X.stopSpeak(); const o = document.getElementById('gyxBdOv'); if (o) o.remove(); };
 window.gyxBdayOpen = function (who) {
     const c = X.char(who) || X.cur(); if (!c) return; const cid = String(c.id), b = bdOf(c);
-    if (!b) { X.panel('gyxBdPl', '🎂 给 TA 过生日', `<div class="gyx-row">${X.whoSel(cid, 'gyxBdayOpen')}</div><div class="gyx-tip">${X.esc(X.name(c))} 的资料里还没写生日。</div><div class="gyx-row">TA 的生日：<input type="date" class="gyx-who" onchange="gyxBdayDate('${cid}',this.value)"></div>`); return; }
+    if (!b) { X.panel('gyxBdPl', '🎂 给 TA 过生日', `<div class="gyx-row">${X.whoSel(cid, X.go('gyxBdayOpen', c.id))}</div><div class="gyx-tip">${X.esc(X.name(c))} 的资料里还没写生日。</div><div class="gyx-row">TA 的生日：<input type="date" class="gyx-who" onchange="gyxBdayDate('${cid}',this.value)"></div>`); return; }
     const p = planOf(cid, b.year), H = D.hints[cid + ':' + b.year] || [], ok = ITEMS.filter(([k]) => p[k]).length;
-    X.panel('gyxBdPl', '🎂 给 TA 过生日', `<div class="gyx-row">${X.whoSel(cid, 'gyxBdayOpen')}</div>
+    X.panel('gyxBdPl', '🎂 给 TA 过生日', `<div class="gyx-row">${X.whoSel(cid, X.go('gyxBdayOpen', c.id))}</div>
         <div class="bd-cnt"><span>${X.esc(X.name(c))} 的生日 · ${b.md}</span><b>${b.left === 0 ? '就是今天' : b.left}</b><span>${b.left === 0 ? '🎉' : '天后'} · 准备了 ${ok}/${ITEMS.length}</span></div>
         ${b.left === 0 ? `<div class="gyx-row"><button class="gyx-btn" onclick="document.getElementById('gyxBdPl').remove();gyxBdayParty('${cid}')">🕯️ 开派对</button></div>` : ''}
         ${H.length ? `<div class="gyx-card"><div class="gyx-tip">TA 最近不经意说过的</div>${H.map(t => `<div class="bd-h">「${X.esc(t)}」</div>`).join('')}</div>` : ''}
@@ -61,7 +61,7 @@ window.gyxBdayOpen = function (who) {
 };
 window.gyxBdayData = () => D;
 X.action({ key: 'gyx_bday_hint', label: '快过生日了，不经意透露一点想要的', hint: '你的生日快到了', need: c => { const b = bdOf(c); return !!(b && b.left > 0 && b.left <= 14 && (D.hints[c.id + ':' + b.year] || []).length < 3); }, run: async c => (await hint(c)) ? '透露了一点生日心愿' : null }, 'gyxBday');
-async function tick() { if (!X.on('gyxBday')) return; const k = X.day(); if (D.last === k) return; D.last = k; await S.set('d', D); for (const c of X.chars()) { if (X.auto(c)) continue; const b = bdOf(c); if (!b) continue; if (b.left > 0 && b.left <= 14 && (D.hints[c.id + ':' + b.year] || []).length < 3 && Math.random() < 0.3) await hint(c); if (b.left === 0) X.notify(c, X.v(`今天是 ${X.name(c)} 的生日`, `${X.name(c)} 今天生日`), '去开派对', 'gyxBdayOpen'); } }
+async function tick() { if (!X.on('gyxBday')) return; const k = X.day(); if (D.last === k) return; D.last = k; await S.set('d', D); for (const c of X.chars()) { if (X.auto(c)) continue; const b = bdOf(c); if (!b) continue; if (b.left > 0 && b.left <= 14 && (D.hints[c.id + ':' + b.year] || []).length < 3 && Math.random() < 0.3) await hint(c); if (b.left === 0) X.notify(c, X.v(`今天是 ${X.name(c)} 的生日`, `${X.name(c)} 今天生日`), '去开派对', X.go('gyxBdayOpen', c.id)); } }
 X.ctx(id => { const c = X.char(id), b = bdOf(c); if (!b || b.left > 14) return ''; const p = D.plans[String(id)]; return b.left === 0 ? (p && p.party && X.day(new Date(p.party)) === X.day() ? '【今天是你的生日】她刚给你办了生日派对，你很开心。' : '【今天是你的生日】') : `【你的生日】${b.left} 天后是你的生日。`; }, 'gyxBday');
 X.today(() => ({ title: '🎂 TA 的生日', rows: X.chars().map(c => ({ c, b: bdOf(c) })).filter(x => x.b && x.b.left <= 30).map(({ c, b }) => ({ t: b.left === 0 ? '今天' : b.left + ' 天后', x: `${X.esc(X.name(c))} 的生日 · 准备了 ${ITEMS.filter(([k]) => planOf(String(c.id), b.year)[k]).length}/${ITEMS.length}`, go: `gyxBdayOpen('${c.id}')` })) }), 'gyxBday');
 X.widget('gyxBdayW', { n: 'TA 的生日', sizes: ['s', 'm'], tap: () => { const x = X.chars().map(c => ({ c, b: bdOf(c) })).filter(x => x.b).sort((a, b) => a.b.left - b.b.left)[0]; window.gyxBdayOpen(x && x.c.id); }, r: w => { const x = X.chars().map(c => ({ c, b: bdOf(c) })).filter(x => x.b).sort((a, b) => a.b.left - b.b.left)[0]; if (!x) return X.gw(w, '🎂', 'TA 的生日', ['记下 TA 的生日']); return X.gw(w, '🎂', 'TA 的生日', [x.b.left === 0 ? '<b>就是今天</b>' : x.b.left + ' 天后', X.esc(X.name(x.c)) + ' · ' + x.b.md]); } }, 'gyxBday');

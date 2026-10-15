@@ -37,7 +37,7 @@ async function tick0() {
         else { T.phase = 'focus'; T.round++; T.end = Date.now() + D.focus * 60000; T.doing = X.pick(DOING); ring(); msg(T.c, await line(T.c, 'back')); }
     }
     // 专注时切走：超过 90 秒被念（每轮最多两次）
-    if (T && T.phase === 'focus' && document.hidden) { if (!T.awayAt) T.awayAt = Date.now(); else if (Date.now() - T.awayAt > 90000 && T.nagged < 2) { T.nagged++; T.awayAt = Date.now(); const t = await line(T.c, 'away'); msg(T.c, t); X.notify(T.c, `📚 ${X.name(T.c)}：${t || '人呢？'}`, '回去自习'); } }
+    if (T && T.phase === 'focus' && document.hidden) { if (!T.awayAt) T.awayAt = Date.now(); else if (Date.now() - T.awayAt > 90000 && T.nagged < 2) { T.nagged++; T.awayAt = Date.now(); const t = await line(T.c, 'away'); msg(T.c, t); X.notify(T.c, `📚 ${X.name(T.c)}：${t || '人呢？'}`, '回去自习', 'gyxStudyOpen'); } }
     else if (T) T.awayAt = 0;
     paintTimer();
 }

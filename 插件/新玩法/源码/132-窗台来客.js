@@ -26,7 +26,7 @@ async function visit(force, v) {
     if (!o || !o.gift) o = v.kind === 'animal' ? { gift: X.pick(['🪶 一根羽毛', '🌰 一颗橡果', '🪨 一颗光滑的石子', '🍂 一片叶子', '🐾 几个小脚印']), note: X.pick(['东西吃得干干净净，窗台上留着几个小脚印。', '它好像在这儿睡了一会儿，留下一点温度。', '碗被推到了一边，旁边整整齐齐放着一样东西。']) } : { gift: X.pick(['🍬 一颗糖', '🌼 一朵小花', '📝 一张折好的纸条']), note: X.pick(['路过，看你窗台上有东西就拿了，谢啦。', '下次放点别的吧，这个我吃腻了。', '今天也辛苦了。']) };
     const rec = { id: 'sv' + Date.now().toString(36), at: Date.now(), who: v.who, ico: v.ico, kind: v.kind, cid: v.cid || '', item: it ? it[0] + ' ' + it[1] : '', gift: X.plain(o.gift).slice(0, 20), note: X.plain(o.note).slice(0, 100), read: false, room: v.cid || String((X.cur() || {}).id || '') };   // room：礼物摆进哪个小屋（角色来的就进 TA 那间，别的进你当时在看的那间）
     D.visits.unshift(rec); D.visits = D.visits.slice(0, 200); D.seen[v.who] = (D.seen[v.who] || 0) + 1; D.sill = null; await save();
-    X.notify(c || X.cur(), `🪟 ${X.v('窗台上有人来过', '有客人来过你的窗台', '窗台那边有动静')}`, `留下了${rec.gift}`, () => window.gyxSillOpen());
+    X.notify(c || X.cur(), `🪟 ${X.v('窗台上有人来过', '有客人来过你的窗台', '窗台那边有动静')}`, `留下了${rec.gift}`, X.go('gyxSillOpen'));
     return rec;
 }
 setInterval(() => { try { if (X.on('gyxSill') && D.sill && Date.now() >= D.sill.due) visit(); } catch (e) {} }, 5 * 60000);

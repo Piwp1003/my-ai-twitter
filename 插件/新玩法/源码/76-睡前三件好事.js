@@ -30,7 +30,7 @@ window.gyxGoodOpen = function (who, day) {
 };
 async function tick() {
     if (!X.on('gyxGood') || !D.cfg.remind) return; const h = new Date().getHours(), d = X.day(); if (h !== +D.cfg.hour) return;
-    for (const c of X.chars().slice(0, 1).concat(X.cur() ? [X.cur()] : []).filter((v, i, a) => a.indexOf(v) === i)) { const k = String(c.id) + d; if (D.told[k] || (rec(c.id, d).me)) continue; D.told[k] = 1; await S.set('d', D); X.notify(c, `🕯️ ${X.esc(X.name(c))}：${X.v('睡前三件好事，写了吗？', '今天的好事是什么呀？', '来交换今天的三件好事')}`, '写完一起看', () => window.gyxGoodOpen(c.id)); }
+    for (const c of X.chars().slice(0, 1).concat(X.cur() ? [X.cur()] : []).filter((v, i, a) => a.indexOf(v) === i)) { const k = String(c.id) + d; if (D.told[k] || (rec(c.id, d).me)) continue; D.told[k] = 1; await S.set('d', D); X.notify(c, `🕯️ ${X.esc(X.name(c))}：${X.v('睡前三件好事，写了吗？', '今天的好事是什么呀？', '来交换今天的三件好事')}`, '写完一起看', X.go('gyxGoodOpen', c.id)); }
 }
 X.ctx(id => { const r = (D.days[String(id)] || {})[X.day()]; if (r && r.me) return `【今晚你们交换了三件好事】她：${r.me.join('；')}${r.meT ? '；明天期待：' + r.meT : ''}。你：${(r.ta || []).join('；')}。`; const y = new Date(); y.setDate(y.getDate() - 1); const p = (D.days[String(id)] || {})[X.day(y)]; return p && p.meT ? `【她昨晚说今天期待】${p.meT}——可以问问她怎么样了。` : ''; }, 'gyxGood');
 X.action({ key: 'gyx_good', label: '睡前叫她一起写今天的三件好事', hint: '睡前小仪式', need: c => new Date().getHours() >= 20 && !(rec(c.id, X.day()).me),

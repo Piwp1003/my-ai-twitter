@@ -26,7 +26,7 @@ function drop(h) {
     const s = h.steps[h.i], c = X.char(h.cid); if (!s || !c) return; s.shown = Date.now();
     const txt = `🗺️ 第 ${h.i + 1} 条线索：${s.q}`;
     if (s.place === 'chat') X.say(c, txt, { gyxHunt: 1 });
-    if (s.place === 'notify') X.notify(c, txt, '寻宝线索', () => window.gyxHuntOpen());
+    if (s.place === 'notify') X.notify(c, txt, '寻宝线索', X.go('gyxHuntOpen'));
     X.repaint(); try { X.todayPaint(); } catch (e) {}
 }
 window.gyxHuntStart = async cid => { const c = X.char(cid) || X.cur(); if (!c) return null; if (D.on) { window.gyxHuntOpen(); return D.on; } D.on = await plan(c); await S.set('d', D); drop(D.on); window.gyxHuntOpen(); return D.on; };
@@ -60,7 +60,7 @@ window.gyxHuntOpen = function (who) {
 };
 X.ctx(id => { const h = D.on; if (h && h.cid === String(id)) return `【你给她布置的寻宝正在进行】她到了第 ${h.i + 1}/${h.steps.length} 关，这关线索是「${h.steps[h.i].q}」（答案：${h.steps[h.i].a[0]}，别直接告诉她，可以逗她、给一点点提示）。`; return ''; }, 'gyxHunt');
 X.action({ key: 'gyx_hunt', label: '偷偷给她布置一场寻宝', hint: '线索藏在各处', need: c => !D.on && !D.log.some(x => x.cid === String(c.id) && Date.now() - x.end < 7 * 864e5),
-    run: async c => { D.on = await plan(c); await S.set('d', D); drop(D.on); X.notify(c, `🗺️ ${X.esc(X.name(c))} ${X.v('给你布置了一场寻宝', '偷偷藏了些线索', '在各处藏了线索')}`, '去「寻宝」看看第一条线索在哪', () => window.gyxHuntOpen()); return '布置了一场寻宝'; } }, 'gyxHunt');
+    run: async c => { D.on = await plan(c); await S.set('d', D); drop(D.on); X.notify(c, `🗺️ ${X.esc(X.name(c))} ${X.v('给你布置了一场寻宝', '偷偷藏了些线索', '在各处藏了线索')}`, '去「寻宝」看看第一条线索在哪', X.go('gyxHuntOpen')); return '布置了一场寻宝'; } }, 'gyxHunt');
 X.today(() => { const h = D.on; if (!h) return null; const s = h.steps[h.i]; return { title: '🗺️ 寻宝', rows: [s.place === 'today' ? { t: `线索 ${h.i + 1}`, x: X.esc(s.q), go: 'gyxHuntOpen()' } : { t: `第 ${h.i + 1} 关`, x: '线索在' + placeOf(s.place), go: 'gyxHuntOpen()' }] }; }, 'gyxHunt');
 X.widget('gyxHuntW', { n: '寻宝', sizes: ['s', 'm'], tap: () => window.gyxHuntOpen(), r: w => { const h = D.on; if (!h) return X.gw(w, '🗺️', '寻宝', ['找到 ' + D.log.length + ' 次宝藏']); const s = h.steps[h.i]; return X.gw(w, '🗺️', `寻宝 ${h.i + 1}/${h.steps.length}`, s.place === 'widget' ? ['线索：', X.esc(s.q)] : ['线索不在这儿', '在' + placeOf(s.place)]); } }, 'gyxHunt');
 X.memArr({ k: 'gyxHunt', ico: '🗺️', n: '寻宝', d: '找到过的宝藏和 TA 的信', arr: () => D.log, field: 'letter', text: x => x.prize + '：' + x.letter, edit: (x, v) => { const i = v.indexOf('：'); if (i > 0) { x.prize = v.slice(0, i); x.letter = v.slice(i + 1); } else x.letter = v; }, meta: x => new Date(x.end).toLocaleDateString() + ' · ' + x.n + ' 关', save: () => S.set('d', D) }, 'gyxHunt');

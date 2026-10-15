@@ -16,7 +16,7 @@ async function give(c) {
     const m = { id: 'ms' + Date.now().toString(36), cid: String(c.id), text: t, at: Date.now(), done: false };
     D.list.unshift(m); await save();
     X.say(c, `📮 ${X.v('今天的小任务：', '给你派个任务：', '交给你一件事：')}${t}${X.v('，拍给我看～', '。做完了拍照交差。', '，我等你的照片。')}`);
-    X.notify(c, `<b>${X.esc(X.name(c))}</b> 给你派了个小任务 📮`, t, () => window.gyxMisOpen(c.id));
+    X.notify(c, `<b>${X.esc(X.name(c))}</b> 给你派了个小任务 📮`, t, X.go('gyxMisOpen', c.id));
     return m;
 }
 const shrink = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => { const im = new Image(); im.onload = () => { const k = Math.min(1, 640 / Math.max(im.width, im.height)), cv = document.createElement('canvas'); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k); cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); res(cv.toDataURL('image/jpeg', .8)); }; im.onerror = rej; im.src = r.result; }; r.onerror = rej; r.readAsDataURL(f); });
