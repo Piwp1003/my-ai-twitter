@@ -129,7 +129,8 @@ const CORE_ASSETS = [
     './js/93-phone-sticker.js?v=' + V,
     './js/94-guide-help.js?v=' + V,
     './js/95-plugin-update.js?v=' + V,
-    './js/96-game-hall.js?v=' + V
+    './js/96-game-hall.js?v=' + V,
+    './js/97-api-test.js?v=' + V
 ];
 
 self.addEventListener('install', (event) => {

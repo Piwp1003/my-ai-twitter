@@ -467,13 +467,13 @@
         let per = '';
         if (ch) {
             per = `<div class="gyvo-modes">${[['def', '跟默认一样'], ['voice', '默认接口，换个音色'], ['own', '自己一整套']].map(([k, n]) => `<span class="${mode === k ? 'on' : ''}" onclick="gyVoiceMode('${k}')">${n}</span>`).join('')}</div>`;
-            if (mode === 'voice') per += `<div class="gyvo-tip">用默认的「${esc(PROV[CFG.def.prov].n)}」，下面填了的就换成 TA 自己的：</div>` + fieldHtml(Object.assign({}, CFG.def, o, { prov: CFG.def.prov }), VOICE_KEYS, 'char');
-            if (mode === 'own') { const own = Object.assign(defsOf((o.own && o.own.prov) || 'openai'), o.own || {}); per += provSel(own.prov, 'own') + fieldHtml(own, null, 'own'); }
+            if (mode === 'voice') per += `<div class="gyvo-tip">用默认的「${esc(PROV[CFG.def.prov].n)}」，下面填了的就换成 TA 自己的：</div>` + fieldHtml(Object.assign({}, CFG.def, o, { prov: CFG.def.prov }), VOICE_KEYS, 'char') + '<button type="button" class="gy-apitest-btn" onclick="gyApiTest(\'tts\', \'char\', this)">🔌 测试 TA 的声音</button>';
+            if (mode === 'own') { const own = Object.assign(defsOf((o.own && o.own.prov) || 'openai'), o.own || {}); per += provSel(own.prov, 'own') + fieldHtml(own, null, 'own') + '<button type="button" class="gy-apitest-btn" onclick="gyApiTest(\'tts\', \'char\', this)">🔌 测试 TA 这套声音</button>'; }
             per += `<div class="gyvo-tip">🎤 发语音条：${isAuto(ch) ? 'TA 是自主模式，发文字还是语音 TA 自己定（选「从不」就不发）' : 'TA 是默认模式，按这个频率把短一点的回复发成语音条'}</div><div class="gyvo-modes">${FREQ_N.map(([k, n]) => `<span class="${freqOf(ch) === k ? 'on' : ''}" onclick="gyVoiceSetF('char','freq','${k}');gyVoiceWho('${esc(ch.id)}')">${n}${k === 'some' ? ' 10%' : k === 'often' ? ' 30%' : ''}</span>`).join('')}</div>`;
             if (!canSound(ch, '')) per += `<div class="gyvo-tip">TA 现在没接语音模型：语音条点开只能转文字。</div>`;
         }
         box.innerHTML = `
-            <div class="gyvo-sec"><div class="gyvo-h">默认声音 <em>所有角色都先用这个</em></div>${provSel(CFG.def.prov, 'def')}${fieldHtml(CFG.def, null, 'def')}
+            <div class="gyvo-sec"><div class="gyvo-h">默认声音 <em>所有角色都先用这个</em></div>${provSel(CFG.def.prov, 'def')}${fieldHtml(CFG.def, null, 'def')}<button type="button" class="gy-apitest-btn" onclick="gyApiTest('tts', 'def', this)">🔌 测试连接</button>
                 <div class="gyvo-tip">网页版连不上多半是浏览器跨域拦了（豆包 / 火山最常见），桌面版 exe 没这个问题；GPT-SoVITS 要先在电脑上开着 api_v2。</div></div>
             <div class="gyvo-sec"><div class="gyvo-h">每个角色自己的声音</div>
                 <select class="gyvo-p" onchange="gyVoiceWho(this.value)">${cs.map(c => `<option value="${esc(c.id)}"${String(c.id) === WHO ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>${per}
@@ -487,7 +487,7 @@
                 <div class="gyvo-tip">录下来的声音会留着（点你的语音条能放）。转文字默认用浏览器自带的识别；桌面版 / 部分手机上浏览器识别用不了的话，填一个 Whisper 格式（/v1/audio/transcriptions）的接口，硅基流动、OpenAI 都行。都没有就让你打一下刚才说了什么。</div>
                 <label class="gyvo-f"><span>转文字接口地址（可空）</span><input value="${esc(CFG.stt.url)}" placeholder="https://api.siliconflow.cn/v1/audio/transcriptions" onchange="gyVoiceSetF('stt','url',this.value)"></label>
                 <label class="gyvo-f"><span>Key</span><input type="password" value="${esc(CFG.stt.key)}" onchange="gyVoiceSetF('stt','key',this.value)"></label>
-                <label class="gyvo-f"><span>模型 <a class="gyvo-pull" onclick="event.preventDefault();gyVoicePull('stt','model',this)">⟳ 拉取模型</a></span><input list="gyvoDL_stt_model" value="${esc(CFG.stt.model)}" placeholder="whisper-1 / FunAudioLLM/SenseVoiceSmall" onchange="gyVoiceSetF('stt','model',this.value)"><datalist id="gyvoDL_stt_model">${(PULLED['stt:model'] || []).map(x => `<option value="${esc(x.id)}">`).join('')}</datalist></label></div>
+                <label class="gyvo-f"><span>模型 <a class="gyvo-pull" onclick="event.preventDefault();gyVoicePull('stt','model',this)">⟳ 拉取模型</a></span><input list="gyvoDL_stt_model" value="${esc(CFG.stt.model)}" placeholder="whisper-1 / FunAudioLLM/SenseVoiceSmall" onchange="gyVoiceSetF('stt','model',this.value)"><datalist id="gyvoDL_stt_model">${(PULLED['stt:model'] || []).map(x => `<option value="${esc(x.id)}">`).join('')}</datalist></label><button type="button" class="gy-apitest-btn" onclick="gyApiTest('stt', '', this)">🔌 测试转文字接口</button></div>
             <div class="gyvo-sec"><div class="gyvo-h">🎙️ 语音库 <em>TA 本人的录音</em></div>
                 <div class="gyvo-tip">上传 TA 的录音（笑声、晚安、叫你名字……）。TA 说的话里带着关键词就直接放这段，不走模型。关键词默认就是文件名。</div>
                 <div class="gyvo-row"><select id="gyVoClipWho"><option value="">谁都能用</option>${cs.map(c => `<option${ch && c.id === ch.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
@@ -531,6 +531,18 @@
         if (k === 'noBubble' || k === 'bubbles' || k === 'freq' || path === 'stt') return;
         const tip = document.querySelector('#gyVoBody .gyvo-sec:nth-child(2) .gyvo-tip:last-child'); if (tip) { const e = cfgFor(charOf(WHO)); tip.textContent = '现在用的：' + PROV[e.prov].n + (e.voice ? ' · ' + e.voice : ''); }
     };
+    // 🔌 测试连接（js/97 用）：path＝'def' 默认声音 / 'own' 这个角色自己一整套 / 'char' 这个角色现在实际用的
+    window.gyVoiceTestRaw = async function (path, text) {
+        await ready;
+        const ch = charOf(WHO);
+        const c = path === 'def' || !ch ? Object.assign({}, CFG.def) : cfgFor(ch);
+        const name = (PROV[c.prov] || PROV.browser).n;
+        if (c.prov === 'browser') return { prov: c.prov, name, c, blob: null };
+        const blob = await SYN[c.prov](c, clean(text || '你好，我是来测试声音的。'));
+        if (!blob || !blob.size) throw new Error('接口回了个空的，没拿到声音');
+        return { prov: c.prov, name, c, blob };
+    };
+    window.gyVoiceSttCfg = () => Object.assign({}, CFG.stt);
     window.gyVoiceTry = async function () {
         const t = (document.getElementById('gyVoTry') || {}).value || '你好';
         const r = await window.gyVoiceSpeak(WHO, t);

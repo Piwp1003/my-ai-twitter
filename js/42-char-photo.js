@@ -641,6 +641,21 @@ ${hist ? '你们刚才在聊：\n' + hist + '\n' : ''}只回一句话，说清�
         await save(); render();
         toast('💾', '存好了：' + (S.chan === 'openai' ? (S.model || '（没填模型名）') : (CHANS.find(x => x.k === S.chan) || {}).name));
     };
+    // 🔌 测试连接（js/97 用）：先把框里填的收进来（不用先点保存），再真的画一张小图
+    window.gyPhotoTestGen = async function () {
+        const g = id => (document.getElementById(id) || {}).value;
+        if (g('gypicUrl') !== undefined) S.url = String(g('gypicUrl') || '').trim();
+        if (g('gypicKey') !== undefined) S.key = String(g('gypicKey') || '').trim();
+        if (g('gypicModel') !== undefined) S.model = String(g('gypicModel') || '').trim();
+        if (g('gypicSize') !== undefined) S.size = String(g('gypicSize') || '').trim() || '1024x1024';
+        if (g('gypicTpl') !== undefined) S.tpl = String(g('gypicTpl') || '').trim();
+        await save();
+        const info = { chan: S.chan, name: (CHANS.find(x => x.k === S.chan) || {}).name || S.chan, url: S.chan === 'openai' ? S.url : S.chan === 'tpl' ? S.tpl : 'image.pollinations.ai', model: S.chan === 'openai' ? (S.model || 'dall-e-3') : '' };
+        if (S.chan === 'openai' && (!S.url || !S.key)) return Object.assign(info, { err: '接口地址和 key 都要先填上' });
+        if (S.chan === 'tpl' && !String(S.tpl || '').includes('{prompt}')) return Object.assign(info, { err: '地址模板里要有 {prompt}' });
+        const r = await fromGen('a red apple on a white table, simple still life', null, false);
+        return Object.assign(info, r || { err: '没出图' });
+    };
 
     /* ---------- 从人设里抽一份形象词 ----------
        人设动辄几千字，里面关于长相的可能就散在三四句里。
@@ -797,6 +812,7 @@ ${persona}`;
               <div class="gypic-row">${CHANS.map(x =>
                 `<span class="gypic-pick ${S.chan === x.k ? 'on' : ''}" onclick="gyPhotoSet('chan','${x.k}')">${x.name}</span>`).join('')}</div>
               <div class="gypic-note">${esc((CHANS.find(x => x.k === S.chan) || {}).note || '')}</div>
+              <button type="button" class="gy-apitest-btn" onclick="gyApiTest('img', '', this)">🔌 测试连接（会真的画一张小图）</button>
               ${S.chan === 'openai' ? `
                 <input class="gypic-in" id="gypicUrl" placeholder="接口地址，如 https://中转站/v1/images/generations" value="${esc(S.url)}"
                        onchange="gyPhotoSet('url', this.value.trim())">

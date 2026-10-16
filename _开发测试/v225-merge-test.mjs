@@ -35,10 +35,14 @@ const hub = await page.evaluate(async () => {
   const sleep = ms => new Promise(r => setTimeout(r, ms)); const bad = [], seen = [];
   for (const F of gyHubFolders()) {
     if (!F.live) continue; seen.push(F.id);
+    // v245：点进合集先是竖着的一列，每个成员一行
+    gyHubOpen(F.id); await sleep(60);
+    if (document.querySelectorAll('#gyHubBody .gyhb-row').length !== F.members.length) bad.push(F.id + ':列表行数不对');
     for (const m of F.members) {
-      gyHubOpen(F.id, m); await sleep(m[0] === '@' || !/^gyx/.test(m) ? 120 : 600);
+      if (m[0] === '@' || !/^gyx/.test(m)) continue;   // 谷雨自带的整页功能：点了直接跳过去（不画进合集），这里不挨个跳
+      gyHubOpen(F.id, m); await sleep(600);
       const b = document.getElementById('gyHubBody');
-      const ok = b && (b.querySelector('.gyx-inhub') || b.querySelector('.gyhb-card') || document.getElementById('gyxHugOv'));   // 抱抱是全屏的，自己一层
+      const ok = b && (b.querySelector('.gyx-inhub') || document.getElementById('gyxHugOv'));   // 抱抱是全屏的，自己一层
       if (!ok) bad.push(F.id + ':' + m);
       document.querySelectorAll('body > .gyx-ov, #gyxHugOv').forEach(e => e.remove());
     }

@@ -120,7 +120,7 @@
         b = document.createElement('div'); b.id = 'gyHubBar';
         b.innerHTML = (on() ? `<div class="gyhub-tabs">${CATS.map(([k, n]) => `<span class="${TAB === k ? 'on' : ''}" onclick="gyHubTab('${k}')">${n}</span>`).join('')}</div>` : '')
             + `<label class="gyhub-sw"><input type="checkbox" ${on() ? 'checked' : ''} onchange="gyHubSet(this.checked)"> 整理过的样子（同类的合成一个入口、设置类挪去设置）；关掉＝原来平铺</label>`
-            + (on() ? `<div class="gyhub-tip">同一类的合成了一个入口，点进去上面一排标签。照片类在 🖼️ 相册顶上；纪念日 / 生日在 📅 我们的日子；记账在钱包；🎮 文字冒险、寻宝、帮我选在聊天的游戏里；声音、皮肤、开场、🎛️ 开关和后台在 设置 →「功能设置」</div>` : '');
+            + (on() ? `<div class="gyhub-tip">同一类的合成了一个入口，点进去是一列，点哪个就直接打开哪个。照片类在 🖼️ 相册顶上；纪念日 / 生日在 📅 我们的日子；记账在钱包；🎮 文字冒险、寻宝、帮我选在聊天的游戏里；声音、皮肤、开场、🎛️ 开关和后台在 设置 →「功能设置」</div>` : '');
         box.insertBefore(b, box.firstChild);
     }
     window.gyHubTab = k => { TAB = k; try { localStorage.setItem('gyHubTab', k); } catch (e) {} if (typeof renderMiniFeaturePanel === 'function') renderMiniFeaturePanel(); };
@@ -129,37 +129,53 @@
     /* ---------- 合集页 ---------- */
     let HUB = null;                // { F, tab, body, claim: Set, cap: 时间戳 }
     const lastTab = id => { try { return localStorage.getItem('gyHubLast_' + id) || ''; } catch (e) { return ''; } };
+    // v245：点进合集先是一列（竖着排，图标 + 名字 + 一句话）；点哪一行就直接打开那个功能——
+    //       插件的面板画在合集里（顶上有「‹ 返回」回到这一列），谷雨自带的整页功能直接跳过去，不再多一张「打开 ›」卡片。
+    //       gyHubOpen(合集id) ＝ 打开那一列；gyHubOpen(合集id, 成员id) ＝ 直接打开那一个（指南「去看看」、通知用）。
     window.gyHubOpen = function (fid, tab) {
         const F = FOLDERS.find(x => x.id === fid); if (!F) return;
         const M = membersOf(F); if (!M.length) return;
-        if (!tab || !M.some(m => m.id === tab)) tab = M.some(m => m.id === lastTab(fid)) ? lastTab(fid) : M[0].id;
+        const m = tab ? M.find(x => x.id === tab) : null;
+        // 谷雨自带的整页功能：直接打开，不经过合集
+        if (m && !m.plugin) { window.gyHubLaunch(m.id); return; }
         let ov = document.getElementById('gyHubOv');
         if (!ov || !HUB || HUB.F !== F || getComputedStyle(ov).display === 'none') {
             if (ov) ov.remove();
-            ov = document.createElement('div'); ov.id = 'gyHubOv'; ov.className = 'gyhb-ov'; ov.setAttribute('data-gy-overlay', '1'); ov.setAttribute('data-gy-page', '1');   // 合集一律当一整页（一开始里面是空的，不然会被当成小弹窗）
-            ov.innerHTML = `<div class="gyhb-box"><div class="gyhb-hd"><b>${F.icon} ${esc(F.title)}</b><span class="gyhb-x" onclick="gyHubClose()">✕</span></div><div class="gyhb-tabs" role="tablist"></div><div class="gyhb-body" id="gyHubBody"></div></div>`;
+            ov = document.createElement('div'); ov.id = 'gyHubOv'; ov.className = 'gyhb-ov'; ov.setAttribute('data-gy-overlay', '1'); ov.setAttribute('data-gy-page', '1');   // 合集一律当一整页
+            ov.innerHTML = `<div class="gyhb-box"><div class="gyhb-hd"><span class="gyhb-back" onclick="gyHubBack()" style="display:none">‹</span><b class="gyhb-ttl"></b><span class="gyhb-x" onclick="gyHubClose()">✕</span></div><div class="gyhb-body" id="gyHubBody"></div></div>`;
             ov.addEventListener('click', e => { if (e.target === ov) window.gyHubClose(); });
             document.body.appendChild(ov);
             HUB = { F, tab: null, body: ov.querySelector('#gyHubBody'), claim: new Map(), quiet: 0 };
             // 插件自己把面板关了（比如点了「去聊天」）＝整个合集一起关，跟原来单独打开时一样
             new MutationObserver(ms => {
                 if (!HUB || HUB.quiet) return;
-                ms.forEach(m => m.removedNodes.forEach(n => { if (n.nodeType === 1 && !n.__gyHubGone && HUB && HUB.claim.has(n.id) && !n.isConnected) window.gyHubClose(); }));
+                ms.forEach(mm => mm.removedNodes.forEach(n => { if (n.nodeType === 1 && !n.__gyHubGone && HUB && HUB.claim.has(n.id) && !n.isConnected) window.gyHubClose(); }));
             }).observe(HUB.body, { childList: true });
         }
-        HUB.tab = tab; try { localStorage.setItem('gyHubLast_' + fid, tab); } catch (e) {}
-        ov.querySelector('.gyhb-tabs').innerHTML = M.map(m => `<button type="button" role="tab" class="${m.id === tab ? 'on' : ''}" aria-selected="${m.id === tab}" onclick="gyHubOpen('${F.id}','${m.id}')">${m.icon || '🧩'} ${esc(m.title)}</button>`).join('');
-        try { const t = ov.querySelector('.gyhb-tabs .on'); if (t && t.scrollIntoView) t.scrollIntoView({ inline: 'nearest', block: 'nearest' }); } catch (e) {}
+        const ttl = ov.querySelector('.gyhb-ttl'), back = ov.querySelector('.gyhb-back');
         clearBody();
-        const m = M.find(x => x.id === tab);
-        if (!m.plugin) {
-            HUB.body.innerHTML = `<div class="gyhb-card"><div class="gyhb-ci">${m.icon || '🧩'}</div><b>${esc(m.title)}</b><p>${esc(m.desc || '')}</p><button type="button" class="gyhb-go" onclick="gyHubLaunch('${m.id}')">打开 ›</button></div>`;
+        if (!m) {
+            // 一列
+            HUB.tab = null;
+            ttl.textContent = `${F.icon} ${F.title}`; back.style.display = 'none';
+            HUB.body.innerHTML = `<div class="gyhb-list">${M.map(x => `<button type="button" class="gyhb-row" onclick="gyHubOpen('${F.id}','${x.id}')">
+                <span class="gyhb-ri">${x.icon || '🧩'}</span><span class="gyhb-rm"><b>${esc(x.title)}</b>${x.desc ? `<em>${esc(x.desc)}</em>` : ''}</span><span class="gyhb-ra">›</span></button>`).join('')}</div>`;
+            try { const b = ov.querySelector('.gyhb-box'); if (b) b.scrollTop = 0; } catch (e) {}
             return;
         }
+        // 打开插件那一项：面板画进合集
+        HUB.tab = m.id; try { localStorage.setItem('gyHubLast_' + fid, m.id); } catch (e) {}
+        ttl.textContent = `${m.icon || '🧩'} ${m.title}`; back.style.display = '';
         HUB.cap = Date.now();
         try { const r = m.open(); if (r && r.then) r.then(() => { if (HUB) HUB.cap = 0; }, () => { if (HUB) HUB.cap = 0; }); } catch (e) { console.warn('[合集] 打开出错：', e); }
-        setTimeout(() => { if (!HUB) return; if (HUB.cap && Date.now() - HUB.cap >= 1400) HUB.cap = 0; if (!HUB.body.children.length && HUB.tab === tab) HUB.body.innerHTML = `<div class="gyhb-card"><div class="gyhb-ci">${m.icon || '🧩'}</div><b>${esc(m.title)}</b><p>它在单独的页面里打开了。关掉那一页就回到这儿。</p><button type="button" class="gyhb-go" onclick="gyHubOpen('${F.id}','${m.id}')">再打开一次 ›</button></div>`; }, 1500);
+        setTimeout(() => {
+            if (!HUB) return;
+            if (HUB.cap && Date.now() - HUB.cap >= 1400) HUB.cap = 0;
+            // 这个插件没往合集里画（自己开了整页 / 弹窗）：合集退回一列，别留一块空白
+            if (!HUB.body.children.length && HUB.tab === m.id) window.gyHubOpen(F.id);
+        }, 1500);
     };
+    window.gyHubBack = function () { if (HUB) window.gyHubOpen(HUB.F.id); };
     // 我们自己清掉的（换标签、重画）先做个记号，观察者看到就不当成「插件把自己关了」
     function clearBody() { if (!HUB) return; [...HUB.body.children].forEach(c => { c.__gyHubGone = 1; }); HUB.body.innerHTML = ''; }
     window.gyHubLaunch = function (mid) {
@@ -271,7 +287,9 @@
 .gyhub-in button{border:1px solid rgba(128,128,128,.25);background:rgba(255,255,255,.7);color:inherit;border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer;font-family:inherit}.gyhub-in button:hover{border-color:#1d9bf0;color:#1d9bf0}
 .gyhb-ov{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center;padding:14px;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif}
 .gyhb-box{background:#fff;color:#1d1d1f;border-radius:22px;width:min(600px,100%);max-height:92vh;overflow:auto;box-sizing:border-box;box-shadow:0 24px 60px rgba(0,0,0,.2)}
-.gyhb-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 6px;font-size:17px}.gyhb-x{cursor:pointer;color:#999;padding:2px 6px}
+.gyhb-hd{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:8px;padding:14px 18px 10px;font-size:17px;background:rgba(255,255,255,.94);backdrop-filter:blur(12px)}.gyhb-ttl{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gyhb-x{cursor:pointer;color:#999;padding:2px 6px}.gyhb-back{cursor:pointer;font-size:24px;line-height:1;color:#1d9bf0;padding:0 8px 2px 0}
+.gyhb-list{display:flex;flex-direction:column;padding:2px 12px 16px}.gyhb-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;background:transparent;color:inherit;font-family:inherit;padding:12px 8px;border-radius:14px;cursor:pointer;border-bottom:1px solid rgba(128,128,128,.12)}.gyhb-row:last-child{border-bottom:none}.gyhb-row:hover,.gyhb-row:active{background:rgba(128,128,128,.08)}.gyhb-ri{flex:0 0 40px;height:40px;border-radius:12px;background:#f2f2f4;display:flex;align-items:center;justify-content:center;font-size:21px}.gyhb-rm{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}.gyhb-rm b{font-size:15px;font-weight:600}.gyhb-rm em{font-style:normal;font-size:12.5px;color:#8e8e93;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.gyhb-ra{flex:0 0 auto;color:#c7c7cc;font-size:20px}
+body.dark-theme .gyhb-box{background:#16181c;color:#e7e9ea}body.dark-theme .gyhb-hd{background:rgba(22,24,28,.94)}body.dark-theme .gyhb-ri{background:#2f3336}
 .gyhb-tabs{position:sticky;top:0;z-index:3;display:flex;gap:6px;overflow-x:auto;padding:6px 18px 10px;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);scrollbar-width:none}.gyhb-tabs::-webkit-scrollbar{display:none}
 .gyhb-tabs button{flex:none;border:none;background:#f2f2f4;color:#1d1d1f;border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}.gyhb-tabs button.on{background:#1d1d1f;color:#fff}
 .gyhb-tabs button:focus-visible,.gyhb-go:focus-visible{outline:2px solid #1d9bf0;outline-offset:2px}

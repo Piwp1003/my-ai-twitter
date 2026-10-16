@@ -383,6 +383,7 @@ ${last ? '\n【电话里已经说过的】\n' + last + '\n' : ''}`;
   <input type="password" placeholder="密钥" value="${esc(S.key)}" onchange="gyCallSet('key', this.value)">
   <input type="text" placeholder="模型，比如 tts-1" value="${esc(S.model)}" onchange="gyCallSet('model', this.value)">
   <input type="text" placeholder="音色，比如 alloy" value="${esc(S.voice)}" onchange="gyCallSet('voice', this.value)">
+  <button type="button" class="gy-apitest-btn" onclick="gyApiTest('call', '', this)">🔌 测试连接</button>
 </div>
 <label class="gycall-l">语速 <span id="gyCallRateV">${S.rate}</span></label>
 <input type="range" min="0.6" max="1.6" step="0.1" value="${S.rate}"

@@ -52,7 +52,7 @@ const j = await page.evaluate(async () => {
   gyGuideOpen(); await sleep(50); gyGuideGo('h_rel'); await sleep(400);
   o.hub = !!document.getElementById('gyHubOv') && /我们的关系/.test(document.getElementById('gyHubOv').innerText); try { gyHubClose(); } catch (e) {}
   gyGuideOpen(); await sleep(50); gyGuideGo('badge'); await sleep(400);
-  o.hubTab = !!document.querySelector('#gyHubOv .gyhb-tabs .on') && /成就/.test(document.querySelector('#gyHubOv .gyhb-tabs .on').innerText); try { gyHubClose(); } catch (e) {}
+  o.hubTab = !!document.querySelector('#gyHubOv .gyhb-ttl') && /成就/.test(document.querySelector('#gyHubOv .gyhb-ttl').innerText); try { gyHubClose(); } catch (e) {}
   gyGuideOpen(); await sleep(50); gyGuideSw('c:charAutonomy'); await sleep(500);
   o.coreSw = (document.getElementById('gyswQ') || {}).value === '角色自己决定要做什么' && [...document.querySelectorAll('#setPanel-auto .auto-feat-row')].filter(r => r.style.display !== 'none').length >= 1;
   gyGuideOpen(); await sleep(50); gyGuideSw('x:gyxRing.auto'); await sleep(500);
