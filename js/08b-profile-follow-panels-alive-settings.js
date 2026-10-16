@@ -621,79 +621,405 @@ function setAutoFeature(key, on, quiet) {
 }
 
 // ===== 📊 Token 用量面板 =====
-// 数据来自 js/01 的 recordTokenUsage（服务商真实返回的 usage）。这里只负责把它摊开给人看。
+// 数据来自 js/01b 的 recordTokenUsage：gyTokenStats（累计，按项目 / 细项 / 天）+ gyTokenLog（每一次的流水，最近 3000 次）。
+// 同一个面板用在两处：设置里的「📊 Token 用量」，和「🌐 此刻 → 💰 花了多少」。gyTokRender(容器, 'm' 或 'now')。
 function gyFmtTok(n) {
     n = n || 0;
     if (n >= 100000000) return (n / 100000000).toFixed(2) + ' 亿';
     if (n >= 10000) return (n / 10000).toFixed(1) + ' 万';
     return String(n);
 }
+// 所有会调模型的项目：谷雨自带的（GY_CALL_MAP 里列的）+ 装着的新玩法插件里真的会问模型的那些
+function gyTokCatalog() {
+    const out = new Map();   // 项目 → Set(细项)
+    try {
+        Object.values(typeof GY_CALL_MAP !== 'undefined' ? GY_CALL_MAP : {}).forEach(([f, d]) => { if (!out.has(f)) out.set(f, new Set()); out.get(f).add(d); });
+    } catch (e) {}
+    try {
+        (typeof plugins !== 'undefined' ? plugins : []).filter(p => p && p.enabled !== false && p.onLoad).forEach(p => {
+            const code = String(p.onLoad), re = /^\/\/# sourceURL=gyx-plugin\/(.+?)\.js\s*$/gm;
+            let m, last = 0;
+            while ((m = re.exec(code))) {
+                const chunk = code.slice(last, m.index); last = m.index + m[0].length;
+                if (/X\.ask\(/.test(chunk)) { const k = '插件 · ' + m[1]; if (!out.has(k)) out.set(k, new Set()); }
+            }
+        });
+    } catch (e) {}
+    return out;
+}
+const GY_TOK_OLD = '其它';   // 升级前认不出来的都记在这个名字下，显示时换成说得清的话
+const gyTokName = f => f === GY_TOK_OLD ? '升级前的旧记录（那时还没分项）' : f;
+const gyTokEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const gyTokPad = n => String(n).padStart(2, '0');
+const gyTokTime = t => { const d = new Date(t); return `${gyTokPad(d.getMonth() + 1)}-${gyTokPad(d.getDate())} ${gyTokPad(d.getHours())}:${gyTokPad(d.getMinutes())}:${gyTokPad(d.getSeconds())}`; };
+const gyTokDay = t => new Date(t).toLocaleDateString('sv');
+window.__gyTokUI = window.__gyTokUI || {};
+function gyTokState(id) { return window.__gyTokUI[id] || (window.__gyTokUI[id] = { tab: 'items', range: 'all', f: '', day: '', q: '', n: 100, open: {} }); }
+
+function gyTokCss() {
+    if (document.getElementById('gyTokCss')) return;
+    const st = document.createElement('style'); st.id = 'gyTokCss';
+    st.textContent = `
+.gytk{font-size:13px;color:inherit}
+.gytk-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid rgba(128,128,128,.22);margin-bottom:12px}
+.gytk-tab{border:none;background:none;padding:8px 12px;font:inherit;font-size:13.5px;cursor:pointer;color:#8b98a5;border-bottom:2px solid transparent}
+.gytk-tab.on{color:#1d9bf0;border-bottom-color:#1d9bf0;font-weight:700}
+.gytk-kpis{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.gytk-kpi{flex:1 1 110px;min-width:100px;background:rgba(29,155,240,.07);border-radius:10px;padding:9px 12px}
+.gytk-kpi b{display:block;font-size:19px;line-height:1.25;color:#1d9bf0;font-variant-numeric:tabular-nums}
+.gytk-kpi span{font-size:11.5px;color:#8b98a5}
+.gytk-bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.gytk-chip{border:1px solid rgba(128,128,128,.35);background:transparent;color:inherit;border-radius:999px;padding:4px 11px;font:inherit;font-size:12.5px;cursor:pointer}
+.gytk-chip.on{background:#1d9bf0;border-color:#1d9bf0;color:#fff}
+.gytk-in{flex:1 1 140px;min-width:0;border:1px solid rgba(128,128,128,.35);border-radius:8px;padding:6px 10px;font:inherit;font-size:12.5px;background:transparent;color:inherit}
+.gytk-sel{max-width:100%;border:1px solid rgba(128,128,128,.35);border-radius:8px;padding:6px 8px;font:inherit;font-size:12.5px;background:transparent;color:inherit}
+.gytk-it{border-bottom:1px dashed rgba(128,128,128,.22);padding:8px 0}
+.gytk-hd{display:flex;align-items:baseline;gap:8px;cursor:pointer}
+.gytk-hd b{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gytk-hd span{color:#8b98a5;flex:0 0 auto;font-size:12px;font-variant-numeric:tabular-nums}
+.gytk-hd em{font-style:normal;color:#1d9bf0;font-weight:700;width:40px;text-align:right;flex:0 0 auto}
+.gytk-meter{height:5px;background:rgba(29,155,240,.12);border-radius:3px;margin-top:4px;overflow:hidden}
+.gytk-meter i{display:block;height:100%;background:#1d9bf0}
+.gytk-sub{margin:6px 0 2px 12px;padding-left:10px;border-left:2px solid rgba(29,155,240,.25)}
+.gytk-sub div{display:flex;gap:8px;font-size:12.5px;padding:2px 0}
+.gytk-sub div b{flex:1 1 auto;font-weight:400;min-width:0}
+.gytk-sub div span{color:#8b98a5;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.gytk-go{border:none;background:none;color:#1d9bf0;font:inherit;font-size:12px;cursor:pointer;padding:4px 0 0}
+.gytk-zero{color:#8b98a5;font-size:12.5px;line-height:1.9}
+.gytk-row{border-bottom:1px solid rgba(128,128,128,.15);padding:7px 0}
+.gytk-r1{display:flex;gap:8px;align-items:baseline}
+.gytk-r1 b{flex:1 1 auto;min-width:0}
+.gytk-r1 em{font-style:normal;font-weight:700;color:#1d9bf0;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.gytk-r2{font-size:11.5px;color:#8b98a5;margin-top:2px;line-height:1.6}
+.gytk-tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:6px;background:rgba(128,128,128,.15);margin-right:4px}
+.gytk-tag.sub{background:rgba(249,24,128,.12);color:#f91880}.gytk-tag.vec{background:rgba(23,191,99,.14);color:#17bf63}.gytk-tag.est{background:rgba(224,36,94,.12);color:#e0245e}
+.gytk-day{display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed rgba(128,128,128,.2);cursor:pointer;font-variant-numeric:tabular-nums}
+.gytk-day:hover{background:rgba(29,155,240,.06)}
+.gytk-empty{color:#8b98a5;text-align:center;padding:24px 0}
+.gytk-more{width:100%;margin-top:10px;border:1px solid #1d9bf0;color:#1d9bf0;background:transparent;border-radius:8px;padding:7px;font:inherit;cursor:pointer}`;
+    document.head.appendChild(st);
+}
+
+// 按范围从流水里汇总（今天 / 最近 7 天）；「全部」用累计数
+function gyTokAgg(range) {
+    const blank = () => ({ calls: 0, in: 0, out: 0, cached: 0, estimated: 0 });
+    const st = (typeof gyTokenStats !== 'undefined' && gyTokenStats) || {};
+    if (range === 'all') {
+        const byDetail = {};
+        Object.entries(st.byDetail || {}).forEach(([f, o]) => { byDetail[f] = o; });
+        return { total: st.total || blank(), byFeature: st.byFeature || {}, byDetail, note: st.since ? '从 ' + new Date(st.since).toLocaleString('zh-CN') + ' 开始' : '' };
+    }
+    const from = range === 'today' ? new Date(new Date().toDateString()).getTime() : Date.now() - 7 * 864e5;
+    const L = (typeof gyTokenLog !== 'undefined' ? gyTokenLog : []).filter(x => x.t >= from);
+    const total = blank(), byFeature = {}, byDetail = {};
+    const add = (o, x) => { o.calls++; o.in += x.i || 0; o.out += x.o || 0; o.cached += x.c || 0; o.estimated += x.e || 0; };
+    L.forEach(x => { add(total, x); add(byFeature[x.f] || (byFeature[x.f] = blank()), x); const d = byDetail[x.f] || (byDetail[x.f] = {}); add(d[x.d] || (d[x.d] = blank()), x); });
+    return { total, byFeature, byDetail, note: range === 'today' ? '今天' : '最近 7 天' };
+}
+
+function gyTokItems(id, S) {
+    const A = gyTokAgg(S.range), t = A.total;
+    const cat = gyTokCatalog();
+    Object.keys(A.byFeature).forEach(f => { if (!cat.has(f)) cat.set(f, new Set()); });
+    const rows = [...cat.keys()].map(f => { const v = A.byFeature[f]; return { f, v, sum: v ? (v.in || 0) + (v.out || 0) : 0 }; });
+    const used = rows.filter(r => r.v && r.v.calls).sort((a, b) => b.sum - a.sum || b.v.calls - a.v.calls);
+    const zero = rows.filter(r => !(r.v && r.v.calls)).map(r => r.f).sort((a, b) => a.localeCompare(b, 'zh'));
+    const max = used.length ? Math.max(1, used[0].sum) : 1, grand = used.reduce((s, r) => s + r.sum, 0) || 1;
+    const cachePct = t.in > 0 ? Math.round((t.cached || 0) / t.in * 100) : 0;
+    const usedHtml = used.map(r => {
+        const v = r.v, open = !!S.open[r.f];
+        const det = Object.entries((A.byDetail[r.f]) || {}).map(([d, x]) => ({ d, x, s: (x.in || 0) + (x.out || 0) })).sort((a, b) => b.s - a.s);
+        return `<div class="gytk-it">
+            <div class="gytk-hd" onclick="gyTokToggle('${id}', ${gyTokEsc(JSON.stringify(r.f))})"><b>${open ? '▾' : '▸'} ${gyTokEsc(gyTokName(r.f))}</b>
+              <span>${v.calls} 次 · 入 ${gyFmtTok(v.in)} / 出 ${gyFmtTok(v.out)}${v.cached ? ' · 缓存 ' + gyFmtTok(v.cached) : ''}${v.estimated ? ' · 估' + v.estimated : ''}</span><em>${Math.round(r.sum / grand * 100)}%</em></div>
+            <div class="gytk-meter"><i style="width:${Math.max(2, Math.round(r.sum / max * 100))}%"></i></div>
+            ${open ? `<div class="gytk-sub">${det.length ? det.map(o => `<div><b>${gyTokEsc(o.d)}</b><span>${o.x.calls} 次 · 入 ${gyFmtTok(o.x.in)} / 出 ${gyFmtTok(o.x.out)}</span></div>`).join('') : '<div><b style="color:#8b98a5">升级前记的，没有细项</b></div>'}
+              <button class="gytk-go" onclick="gyTokSee('${id}', ${gyTokEsc(JSON.stringify(r.f))})">看这一项的每一次调用 ›</button></div>` : ''}
+          </div>`;
+    }).join('');
+    return `
+      <div class="gytk-bar">${[['all', '全部'], ['today', '今天'], ['7d', '最近 7 天']].map(([k, n]) => `<button class="gytk-chip${S.range === k ? ' on' : ''}" onclick="gyTokSet('${id}','range','${k}')">${n}</button>`).join('')}
+        <span style="color:#8b98a5;font-size:12px;">${gyTokEsc(A.note)}</span></div>
+      <div class="gytk-kpis">
+        <div class="gytk-kpi"><b>${t.calls || 0}</b><span>调用次数</span></div>
+        <div class="gytk-kpi"><b>${gyFmtTok(t.in)}</b><span>输入 token</span></div>
+        <div class="gytk-kpi"><b>${gyFmtTok(t.out)}</b><span>输出 token</span></div>
+        <div class="gytk-kpi"><b>${cachePct}%</b><span>缓存命中</span></div>
+      </div>
+      ${used.length ? usedHtml : '<div class="gytk-empty">这段时间没有调用。</div>'}
+      ${zero.length ? `<details style="margin-top:12px;"><summary style="cursor:pointer;color:#8b98a5;">这段时间没调用过的项目（${zero.length}）</summary><div class="gytk-zero">${zero.map(f => gyTokEsc(gyTokName(f))).join('　·　')}</div></details>` : ''}`;
+}
+
+function gyTokLogView(id, S) {
+    const L = (typeof gyTokenLog !== 'undefined' ? gyTokenLog : []);
+    const q = String(S.q || '').trim().toLowerCase();
+    const feats = [...new Set(L.map(x => x.f))].sort((a, b) => a.localeCompare(b, 'zh'));
+    const F = L.filter(x => (!S.f || x.f === S.f) && (!S.day || gyTokDay(x.t) === S.day)
+        && (!q || (x.f + ' ' + x.d + ' ' + (x.by || '') + ' ' + (x.m || '')).toLowerCase().includes(q)));
+    const sumI = F.reduce((s, x) => s + (x.i || 0), 0), sumO = F.reduce((s, x) => s + (x.o || 0), 0);
+    const show = F.slice(-S.n).reverse();
+    const rows = show.map(x => `<div class="gytk-row">
+        <div class="gytk-r1"><b>${gyTokEsc(gyTokName(x.f))} · ${gyTokEsc(x.d)}</b><em>${gyFmtTok((x.i || 0) + (x.o || 0))}</em></div>
+        <div class="gytk-r2">${gyTokTime(x.t)}　入 ${gyFmtTok(x.i)} / 出 ${gyFmtTok(x.o)}${x.c ? ' / 缓存 ' + gyFmtTok(x.c) : ''}${x.ms ? '　' + (x.ms >= 1000 ? (x.ms / 1000).toFixed(1) + ' 秒' : x.ms + ' 毫秒') : ''}<br>
+          <span class="gytk-tag${x.k === '副' ? ' sub' : x.k === '向量' ? ' vec' : ''}">${gyTokEsc(x.k === '向量' ? '向量' : x.k + ' API')}</span>${x.m ? `<span class="gytk-tag">${gyTokEsc(x.m)}</span>` : ''}${x.s ? '<span class="gytk-tag">流式</span>' : ''}${x.e ? '<span class="gytk-tag est" title="服务商没返回用量，按字数估的">估算</span>' : ''}${x.by ? `<span class="gytk-tag">由「${gyTokEsc(x.by)}」带出来的</span>` : ''}</div>
+      </div>`).join('');
+    return `
+      <div class="gytk-bar">
+        <select class="gytk-sel" onchange="gyTokSet('${id}','f',this.value)"><option value="">全部项目</option>${feats.map(f => `<option value="${gyTokEsc(f)}"${S.f === f ? ' selected' : ''}>${gyTokEsc(gyTokName(f))}</option>`).join('')}</select>
+        <input class="gytk-in" placeholder="搜：项目、细项、模型名" value="${gyTokEsc(S.q)}" onchange="gyTokSet('${id}','q',this.value)">
+        ${S.day ? `<button class="gytk-chip on" onclick="gyTokSet('${id}','day','')">${gyTokEsc(S.day)} ✕</button>` : ''}
+      </div>
+      <div style="color:#8b98a5;font-size:12px;margin-bottom:6px;">${F.length} 次 · 入 ${gyFmtTok(sumI)} / 出 ${gyFmtTok(sumO)} · 合计 ${gyFmtTok(sumI + sumO)}${(() => { const c = window.gyTokCfgGet ? window.gyTokCfgGet() : {}; return '（' + (+c.max ? '最多存 ' + c.max + ' 次' : '次数不限') + '、' + (+c.days ? c.days + ' 天' : '天数不限') + '，在「💾 保存与导出」里改）'; })()}</div>
+      ${rows || '<div class="gytk-empty">' + (L.length ? '没有符合的调用。' : '还没有记录。升级以后的每一次调用都会记在这里。') + '</div>'}
+      ${F.length > S.n ? `<button class="gytk-more" onclick="gyTokSet('${id}','n',${S.n + 100})">再显示 100 次（还有 ${F.length - S.n} 次）</button>` : ''}`;
+}
+
+function gyTokDays(id) {
+    const st = (typeof gyTokenStats !== 'undefined' && gyTokenStats) || {};
+    const days = Object.keys(st.byDay || {}).sort().reverse().slice(0, 30);
+    const max = Math.max(1, ...days.map(d => (st.byDay[d].in || 0) + (st.byDay[d].out || 0)));
+    return days.length ? days.map(d => { const v = st.byDay[d], s = (v.in || 0) + (v.out || 0); return `<div class="gytk-day" onclick="gyTokSeeDay('${id}','${d}')">
+        <span style="flex:0 0 90px;color:#8b98a5;">${d}</span><span style="flex:0 0 64px;">${v.calls} 次</span>
+        <span style="flex:1 1 auto;min-width:0;">入 ${gyFmtTok(v.in)} · 出 ${gyFmtTok(v.out)}<div class="gytk-meter"><i style="width:${Math.max(2, Math.round(s / max * 100))}%"></i></div></span></div>`; }).join('')
+        + '<div style="color:#8b98a5;font-size:12px;margin-top:6px;">点某一天，看那天的每一次调用。</div>'
+        : '<div class="gytk-empty">还没有按天的记录。</div>';
+}
+
+// ---------- 💾 保存与导出 ----------
+// 导出三种：Excel（真的 .xlsx，三张表：每次调用 / 按项目 / 按天）、TXT、PDF（每页画成图片再装进 PDF，中文不会乱码）。
+// 都不用联网、不靠外部库。
+function gyTokRows(range) {
+    const L = (typeof gyTokenLog !== 'undefined' ? gyTokenLog : []);
+    const from = range === 'today' ? new Date(new Date().toDateString()).getTime() : range === '7d' ? Date.now() - 7 * 864e5 : range === '30d' ? Date.now() - 30 * 864e5 : 0;
+    return L.filter(x => x.t >= from);
+}
+function gyTokSummary(rows) {
+    const by = {}, days = {};
+    rows.forEach(x => {
+        const k = x.f + '\u0001' + x.d;
+        const o = by[k] || (by[k] = { f: x.f, d: x.d, n: 0, i: 0, o: 0, c: 0 });
+        o.n++; o.i += x.i || 0; o.o += x.o || 0; o.c += x.c || 0;
+        const dk = gyTokDay(x.t), dd = days[dk] || (days[dk] = { d: dk, n: 0, i: 0, o: 0, c: 0 });
+        dd.n++; dd.i += x.i || 0; dd.o += x.o || 0; dd.c += x.c || 0;
+    });
+    const items = Object.values(by).sort((a, b) => a.f.localeCompare(b.f, 'zh') || (b.i + b.o) - (a.i + a.o));
+    return { items, days: Object.values(days).sort((a, b) => b.d.localeCompare(a.d)) };
+}
+const GY_TOK_RANGES = [['all', '全部'], ['today', '今天'], ['7d', '最近 7 天'], ['30d', '最近 30 天']];
+const gyTokRangeName = r => (GY_TOK_RANGES.find(x => x[0] === r) || GY_TOK_RANGES[0])[1];
+const gyTokApiName = x => x.k === '向量' ? '向量' : x.k + ' API';
+const gyTokFull = t => gyTokDay(t) + ' ' + gyTokTime(t).slice(6);
+const gyTokStamp = () => { const d = new Date(); return `${d.getFullYear()}${gyTokPad(d.getMonth() + 1)}${gyTokPad(d.getDate())}-${gyTokPad(d.getHours())}${gyTokPad(d.getMinutes())}`; };
+
+// 二进制文件存下来：打包的 App 里用 plus.io 写 base64；网页 / 桌面版直接下载
+function gySaveBinaryForApp(filename, bytes, mime) {
+    if (window.plus && plus.io) {
+        let b64 = ''; const CH = 0x8000;
+        for (let i = 0; i < bytes.length; i += CH) b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+        b64 = btoa(b64);
+        const tryWrite = (dir, onFail) => {
+            try {
+                plus.io.resolveLocalFileSystemURL(dir, entry => entry.getFile(filename, { create: true }, fe => fe.createWriter(w => {
+                    if (typeof w.writeAsBinary !== 'function') { onFail(new Error('这个版本的 App 写不了二进制文件')); return; }
+                    w.onwrite = () => { let real = dir + filename; try { real = plus.io.convertLocalFileSystemURL(dir + filename) || real; } catch (e) {} if (typeof appAlert === 'function') appAlert(`✅ 已保存：${filename}\n真实路径：${real}`); try { plus.runtime.openFile(dir + filename); } catch (e) {} };
+                    w.onerror = onFail; w.writeAsBinary(b64);
+                }, onFail), onFail), onFail);
+            } catch (e) { onFail(e); }
+        };
+        tryWrite('_documents/', () => tryWrite('_doc/', e => { if (typeof appAlert === 'function') appAlert('❌ 导出失败：' + ((e && e.message) || e) + '\n可以换成导出 TXT。'); }));
+        return;
+    }
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// --- ZIP（只存不压，给 xlsx 用） ---
+const GY_CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function gyCrc32(b) { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = GY_CRC_T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function gyZip(files) {   // files: [[名字, Uint8Array]]
+    const enc = new TextEncoder(), parts = [], cen = []; let off = 0;
+    const u16 = (a, v) => a.push(v & 255, (v >>> 8) & 255), u32 = (a, v) => a.push(v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255);
+    files.forEach(([name, data]) => {
+        const nb = enc.encode(name), crc = gyCrc32(data), h = [];
+        u32(h, 0x04034b50); u16(h, 20); u16(h, 0x0800); u16(h, 0); u16(h, 0); u16(h, 0x21); u32(h, crc); u32(h, data.length); u32(h, data.length); u16(h, nb.length); u16(h, 0);
+        const hb = new Uint8Array(h); parts.push(hb, nb, data);
+        const c = []; u32(c, 0x02014b50); u16(c, 20); u16(c, 20); u16(c, 0x0800); u16(c, 0); u16(c, 0); u16(c, 0x21); u32(c, crc); u32(c, data.length); u32(c, data.length);
+        u16(c, nb.length); u16(c, 0); u16(c, 0); u16(c, 0); u16(c, 0); u32(c, 0); u32(c, off);
+        cen.push(new Uint8Array(c), nb); off += hb.length + nb.length + data.length;
+    });
+    const cs = cen.reduce((s, b) => s + b.length, 0), e = [];
+    u32(e, 0x06054b50); u16(e, 0); u16(e, 0); u16(e, files.length); u16(e, files.length); u32(e, cs); u32(e, off); u16(e, 0);
+    const all = parts.concat(cen, [new Uint8Array(e)]), out = new Uint8Array(all.reduce((s, b) => s + b.length, 0));
+    let p = 0; all.forEach(b => { out.set(b, p); p += b.length; }); return out;
+}
+// --- xlsx ---
+function gyXlsx(sheets) {   // sheets: [{ name, cols:[宽], rows:[[值…]] }]，第一行是表头
+    const enc = new TextEncoder(), x = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+    const col = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+    const sheetXml = sh => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${sh.cols.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${sh.rows.map((r, ri) => `<row r="${ri + 1}">${r.map((v, ci) => {
+        const ref = col(ci) + (ri + 1), st = ri === 0 ? ' s="1"' : '';
+        return typeof v === 'number' && isFinite(v) ? `<c r="${ref}"${st}><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"${st}><is><t xml:space="preserve">${x(v)}</t></is></c>`;
+    }).join('')}</row>`).join('')}</sheetData></worksheet>`;
+    const files = [
+        ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
+        ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+        ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((s, i) => `<sheet name="${x(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`],
+        ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+        ['xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`]
+    ].concat(sheets.map((s, i) => [`xl/worksheets/sheet${i + 1}.xml`, sheetXml(s)]));
+    return gyZip(files.map(([n, t]) => [n, enc.encode(t)]));
+}
+// --- PDF：每页一张图（canvas 画字 → JPEG） ---
+function gyPdfFromLines(lines, title) {   // lines: [{ t, b(粗), c(颜色), sz }]
+    const W = 1190, H = 1684, M = 80, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const g = cv.getContext('2d'), font = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC","Noto Sans SC",sans-serif';
+    const pages = []; let y = 0, pageNo = 0;
+    const newPage = () => {
+        if (pageNo) pages.push(cv.toDataURL('image/jpeg', 0.88));
+        pageNo++; g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+        g.fillStyle = '#8b98a5'; g.font = `20px ${font}`; g.textBaseline = 'top';
+        g.fillText(title + '　·　第 ' + pageNo + ' 页', M, H - 56); y = M;
+    };
+    newPage();
+    lines.forEach(L => {
+        const sz = L.sz || 24, lh = Math.round(sz * 1.55);
+        g.font = `${L.b ? 'bold ' : ''}${sz}px ${font}`;
+        // 按宽度折行
+        const chars = Array.from(String(L.t == null ? '' : L.t)); let cur = '', wrapped = [];
+        chars.forEach(ch => { if (g.measureText(cur + ch).width > W - M * 2) { wrapped.push(cur); cur = ch; } else cur += ch; });
+        wrapped.push(cur);
+        wrapped.forEach(t => { if (y + lh > H - 90) newPage(); g.font = `${L.b ? 'bold ' : ''}${sz}px ${font}`; g.fillStyle = L.c || '#0f1419'; g.fillText(t, M, y); y += lh; });
+        if (L.gap) y += L.gap;
+    });
+    pages.push(cv.toDataURL('image/jpeg', 0.88));
+    // 拼 PDF
+    const enc = new TextEncoder(), chunks = [], offs = []; let size = 0;
+    const put = b => { const u = typeof b === 'string' ? enc.encode(b) : b; chunks.push(u); size += u.length; };
+    const obj = (n, body) => { offs[n] = size; put(`${n} 0 obj\n`); body.forEach(put); put('\nendobj\n'); };
+    put('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+    const n = pages.length, pageIds = pages.map((_, i) => 3 + i * 3);
+    obj(1, ['<< /Type /Catalog /Pages 2 0 R >>']);
+    obj(2, [`<< /Type /Pages /Count ${n} /Kids [${pageIds.map(id => id + ' 0 R').join(' ')}] >>`]);
+    pages.forEach((url, i) => {
+        const bin = atob(url.split(',')[1]), img = new Uint8Array(bin.length);
+        for (let k = 0; k < bin.length; k++) img[k] = bin.charCodeAt(k);
+        const pid = pageIds[i], cid = pid + 1, iid = pid + 2, content = 'q 595 0 0 842 0 0 cm /Im0 Do Q';
+        obj(pid, [`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im0 ${iid} 0 R >> >> /Contents ${cid} 0 R >>`]);
+        obj(cid, [`<< /Length ${content.length} >>\nstream\n${content}\nendstream`]);
+        obj(iid, [`<< /Type /XObject /Subtype /Image /Width ${W} /Height ${H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.length} >>\nstream\n`, img, '\nendstream']);
+    });
+    const total = 3 + n * 3, xref = size;
+    let x = `xref\n0 ${total}\n0000000000 65535 f \n`;
+    for (let k = 1; k < total; k++) x += String(offs[k]).padStart(10, '0') + ' 00000 n \n';
+    put(x + `trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+    const out = new Uint8Array(size); let p = 0; chunks.forEach(b => { out.set(b, p); p += b.length; }); return out;
+}
+
+window.gyTokExport = function (id, fmt) {
+    const S = gyTokState(id), range = S.exRange || 'all', rows = gyTokRows(range), sum = gyTokSummary(rows);
+    if (!rows.length) { if (typeof showToast === 'function') showToast('', '没有可以导出的记录', gyTokRangeName(range) + '里一次调用都没有', null, null, false); return; }
+    const tot = rows.reduce((o, x) => { o.i += x.i || 0; o.o += x.o || 0; o.c += x.c || 0; return o; }, { i: 0, o: 0, c: 0 });
+    const head = `谷雨 Token 用量（${gyTokRangeName(range)}）　导出于 ${new Date().toLocaleString('zh-CN')}`;
+    const span = `${gyTokFull(rows[0].t)} ~ ${gyTokFull(rows[rows.length - 1].t)}　共 ${rows.length} 次　输入 ${tot.i}　输出 ${tot.o}　缓存 ${tot.c}　合计 ${tot.i + tot.o}`;
+    const fname = `谷雨Token用量-${gyTokRangeName(range).replace(/\s/g, '')}-${gyTokStamp()}`;
+    const callRow = x => [gyTokFull(x.t), gyTokName(x.f), x.d, x.by || '', x.m || '', gyTokApiName(x), x.s ? '是' : '', x.i || 0, x.o || 0, x.c || 0, (x.i || 0) + (x.o || 0), x.ms ? +(x.ms / 1000).toFixed(1) : '', x.e ? '是' : ''];
+    try {
+        if (fmt === 'xlsx') {
+            const bytes = gyXlsx([
+                { name: '每次调用', cols: [17, 16, 22, 14, 20, 8, 6, 9, 9, 9, 9, 8, 6], rows: [['时间', '项目', '细项', '由哪个插件带出来', '模型', '走哪个', '流式', '输入', '输出', '缓存', '合计', '耗时(秒)', '估算']].concat(rows.map(callRow)) },
+                { name: '按项目', cols: [18, 24, 8, 10, 10, 10, 10], rows: [['项目', '细项', '次数', '输入', '输出', '缓存', '合计']].concat(sum.items.map(o => [gyTokName(o.f), o.d, o.n, o.i, o.o, o.c, o.i + o.o])) },
+                { name: '按天', cols: [12, 8, 10, 10, 10, 10], rows: [['日期', '次数', '输入', '输出', '缓存', '合计']].concat(sum.days.map(o => [o.d, o.n, o.i, o.o, o.c, o.i + o.o])) }
+            ]);
+            gySaveBinaryForApp(fname + '.xlsx', bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        } else if (fmt === 'txt') {
+            const L = [head, span, '', '【按项目】'];
+            let lastF = '';
+            sum.items.forEach(o => { if (o.f !== lastF) { L.push('', '■ ' + gyTokName(o.f)); lastF = o.f; } L.push(`  · ${o.d}：${o.n} 次，输入 ${o.i}，输出 ${o.o}，缓存 ${o.c}，合计 ${o.i + o.o}`); });
+            L.push('', '【按天】'); sum.days.forEach(o => L.push(`${o.d}：${o.n} 次，输入 ${o.i}，输出 ${o.o}，缓存 ${o.c}，合计 ${o.i + o.o}`));
+            L.push('', '【每次调用】（时间｜项目 · 细项｜模型｜走哪个｜输入 / 输出 / 缓存｜耗时）');
+            rows.forEach(x => L.push(`${gyTokFull(x.t)}｜${gyTokName(x.f)} · ${x.d}${x.by ? '（由「' + x.by + '」带出来）' : ''}｜${x.m || '-'}｜${gyTokApiName(x)}${x.s ? '·流式' : ''}｜${x.i || 0} / ${x.o || 0} / ${x.c || 0}${x.e ? '（估算）' : ''}｜${x.ms ? (x.ms / 1000).toFixed(1) + ' 秒' : '-'}`));
+            const txt = '﻿' + L.join('\r\n');
+            if (typeof saveTextFileForApp === 'function') saveTextFileForApp(fname + '.txt', txt, 'text/plain;charset=utf-8');
+            else gySaveBinaryForApp(fname + '.txt', new TextEncoder().encode(txt), 'text/plain');
+        } else if (fmt === 'pdf') {
+            const L = [{ t: head, b: 1, sz: 30, c: '#1d9bf0' }, { t: span, sz: 20, c: '#536471', gap: 16 }, { t: '按项目', b: 1, sz: 26, gap: 4 }];
+            let lastF = '';
+            sum.items.forEach(o => { if (o.f !== lastF) { L.push({ t: '■ ' + gyTokName(o.f), b: 1, sz: 22 }); lastF = o.f; } L.push({ t: `　　${o.d}：${o.n} 次　输入 ${o.i}　输出 ${o.o}　缓存 ${o.c}　合计 ${o.i + o.o}`, sz: 20 }); });
+            L.push({ t: '', gap: 6 }, { t: '按天', b: 1, sz: 26, gap: 4 });
+            sum.days.forEach(o => L.push({ t: `${o.d}　${o.n} 次　输入 ${o.i}　输出 ${o.o}　缓存 ${o.c}　合计 ${o.i + o.o}`, sz: 20 }));
+            L.push({ t: '', gap: 6 }, { t: '每次调用', b: 1, sz: 26, gap: 4 });
+            rows.slice().reverse().forEach(x => L.push({ t: `${gyTokFull(x.t)}　${gyTokName(x.f)} · ${x.d}${x.by ? '（由「' + x.by + '」带出来）' : ''}`, sz: 19 }, { t: `　　${x.m || '-'}　${gyTokApiName(x)}${x.s ? '·流式' : ''}　输入 ${x.i || 0}　输出 ${x.o || 0}　缓存 ${x.c || 0}${x.e ? '　估算' : ''}${x.ms ? '　' + (x.ms / 1000).toFixed(1) + ' 秒' : ''}`, sz: 17, c: '#536471' }));
+            gySaveBinaryForApp(fname + '.pdf', gyPdfFromLines(L, '谷雨 Token 用量'), 'application/pdf');
+        }
+    } catch (e) { console.warn('[Token 导出]', e); if (typeof appAlert === 'function') appAlert('导出失败：' + (e.message || e)); }
+};
+window.gyTokSetCfg = (id, k, v) => {
+    const c = window.gyTokCfgGet ? window.gyTokCfgGet() : {};
+    const nv = Math.max(0, parseInt(v, 10) || 0);
+    const willCut = (k === 'max' && nv > 0 && gyTokenLog.length > nv) || (k === 'days' && nv > 0 && gyTokenLog.some(x => x.t < Date.now() - nv * 864e5));
+    const go = () => { const n = window.gyTokCfgSet(k, nv); if (n && typeof showToast === 'function') showToast('', '已经按新设置剪掉了旧记录', `删了 ${n} 次`, null, null, false); gyTokRepaint(id); };
+    if (willCut && typeof appConfirm === 'function') appConfirm('改小之后，超出的旧记录会马上删掉，删了就找不回来。要改吗？（想留着可以先导出）').then(ok => { if (ok) go(); else gyTokRepaint(id); });
+    else go();
+};
+function gyTokSave(id, S) {
+    const c = window.gyTokCfgGet ? window.gyTokCfgGet() : { max: 3000, days: 60 };
+    const L = (typeof gyTokenLog !== 'undefined' ? gyTokenLog : []);
+    let kb = 0; try { kb = Math.round(JSON.stringify(L).length / 1024); } catch (e) {}
+    const opt = (list, cur) => list.map(([v, n]) => `<option value="${v}"${+cur === v ? ' selected' : ''}>${n}</option>`).join('');
+    const maxL = [[500, '500 次'], [1000, '1000 次'], [3000, '3000 次'], [5000, '5000 次'], [10000, '1 万次'], [30000, '3 万次'], [100000, '10 万次'], [0, '不限']];
+    const dayL = [[7, '7 天'], [30, '30 天'], [60, '60 天'], [90, '90 天'], [180, '半年'], [365, '一年'], [0, '不限']];
+    if (!maxL.some(x => x[0] === +c.max)) maxL.unshift([+c.max, c.max + ' 次']);
+    if (!dayL.some(x => x[0] === +c.days)) dayL.unshift([+c.days, c.days + ' 天']);
+    const ex = S.exRange || 'all';
+    return `
+      <div style="font-weight:700;margin:2px 0 8px;">🗄️ 存多少</div>
+      <div class="gytk-bar"><span style="flex:0 0 110px;">每次调用最多存</span><select class="gytk-sel" onchange="gyTokSetCfg('${id}','max',this.value)">${opt(maxL, c.max)}</select></div>
+      <div class="gytk-bar"><span style="flex:0 0 110px;">最多存几天</span><select class="gytk-sel" onchange="gyTokSetCfg('${id}','days',this.value)">${opt(dayL, c.days)}</select></div>
+      <div style="color:#8b98a5;font-size:12px;line-height:1.7;margin-bottom:16px;">现在存着 ${L.length} 次${L.length ? '，最早一次是 ' + gyTokTime(L[0].t) : ''}，大约 ${kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB'}。两个哪个先到就按哪个删；「最多存几天」也管「按天」那一页。「按项目 → 全部」的累计数不受影响。</div>
+      <div style="font-weight:700;margin:2px 0 8px;">📤 导出</div>
+      <div class="gytk-bar">${GY_TOK_RANGES.map(([k, n]) => `<button class="gytk-chip${ex === k ? ' on' : ''}" onclick="gyTokSet('${id}','exRange','${k}')">${n}</button>`).join('')}</div>
+      <div style="color:#8b98a5;font-size:12px;margin-bottom:8px;">${gyTokRows(ex).length} 次调用会被导出，带「按项目」「按天」的汇总。</div>
+      <div class="gytk-bar">
+        <button class="gytk-chip" style="padding:7px 14px;" onclick="gyTokExport('${id}','xlsx')">📊 Excel</button>
+        <button class="gytk-chip" style="padding:7px 14px;" onclick="gyTokExport('${id}','txt')">📄 TXT</button>
+        <button class="gytk-chip" style="padding:7px 14px;" onclick="gyTokExport('${id}','pdf')">📕 PDF</button>
+      </div>`;
+}
+
+function gyTokRender(el, id) {
+    if (!el) return;
+    gyTokCss();
+    const S = gyTokState(id);
+    const tabs = [['items', '📋 按项目'], ['log', '🧾 每次调用'], ['days', '📅 按天'], ['save', '💾 保存与导出']];
+    el.innerHTML = `<div class="gytk" data-gytk="${id}">
+        <div class="gytk-tabs">${tabs.map(([k, n]) => `<button class="gytk-tab${S.tab === k ? ' on' : ''}" onclick="gyTokSet('${id}','tab','${k}')">${n}</button>`).join('')}</div>
+        ${S.tab === 'log' ? gyTokLogView(id, S) : S.tab === 'days' ? gyTokDays(id) : S.tab === 'save' ? gyTokSave(id, S) : gyTokItems(id, S)}</div>`;
+}
+window.gyTokRender = gyTokRender;
+const gyTokRepaint = id => { const el = document.querySelector(`[data-gytk="${id}"]`); if (el && el.parentNode) gyTokRender(el.parentNode, id); };
+window.gyTokSet = (id, k, v) => { const S = gyTokState(id); S[k] = v; if (k === 'f' || k === 'q' || k === 'day') S.n = 100; gyTokRepaint(id); };
+window.gyTokToggle = (id, f) => { const S = gyTokState(id); S.open[f] = !S.open[f]; gyTokRepaint(id); };
+window.gyTokSee = (id, f) => { const S = gyTokState(id); Object.assign(S, { tab: 'log', f, day: '', q: '', n: 100 }); gyTokRepaint(id); };
+window.gyTokSeeDay = (id, d) => { const S = gyTokState(id); Object.assign(S, { tab: 'log', day: d, f: '', q: '', n: 100 }); gyTokRepaint(id); };
+// 开着的时候，新来一次调用就刷新（攒 1.5 秒刷一次）
+let gyTokLiveT = null;
+window.addEventListener('gy-token', () => {
+    if (gyTokLiveT) return;
+    gyTokLiveT = setTimeout(() => { gyTokLiveT = null; document.querySelectorAll('[data-gytk]').forEach(el => { if (el.offsetParent !== null && gyTokState(el.getAttribute('data-gytk')).tab !== 'save') gyTokRender(el.parentNode, el.getAttribute('data-gytk')); }); }, 1500);
+});
+
 function showTokenStats() {
     const box = document.getElementById('tokenStatsBody');
     if (!box) return;
-    const st = (typeof gyTokenStats !== 'undefined' && gyTokenStats && gyTokenStats.total) ? gyTokenStats : null;
-    if (!st || !st.total.calls) {
-        box.innerHTML = `<div class="empty-state">还没有记录。开始用起来之后，这里会按功能列出每一项花了多少 token。</div>`;
-        openModal('tokenStatsModal');
-        return;
-    }
-    const t = st.total;
-    const sinceStr = st.since ? new Date(st.since).toLocaleString('zh-CN') : '—';
-    const cachePct = t.in > 0 ? Math.round(t.cached / t.in * 100) : 0;
-
-    const rows = Object.entries(st.byFeature)
-        .map(([name, v]) => ({ name, v, sum: (v.in || 0) + (v.out || 0) }))
-        .sort((a, b) => b.sum - a.sum);
-    const maxSum = rows.length ? rows[0].sum : 1;
-    const grand = rows.reduce((s, r) => s + r.sum, 0) || 1;
-
-    const featureHtml = rows.map(r => {
-        const pct = Math.round(r.sum / grand * 100);
-        const bar = Math.max(2, Math.round(r.sum / maxSum * 100));
-        const est = r.v.estimated ? `<span title="这部分是按字数估算的（服务商没返回用量）" style="color:#e0245e;">·估${r.v.estimated}</span>` : '';
-        return `<div style="margin-bottom:10px;">
-            <div style="display:flex; align-items:baseline; gap:8px; font-size:13px;">
-                <span style="font-weight:bold; color:#0f1419; flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.name)}</span>
-                <span style="color:#536471; flex:0 0 auto;">${r.v.calls} 次 · 入 ${gyFmtTok(r.v.in)} / 出 ${gyFmtTok(r.v.out)}${est}</span>
-                <span style="color:#1d9bf0; font-weight:bold; flex:0 0 auto; width:38px; text-align:right;">${pct}%</span>
-            </div>
-            <div style="height:6px; background:rgba(29,155,240,0.12); border-radius:3px; margin-top:3px; overflow:hidden;">
-                <div style="height:100%; width:${bar}%; background:#1d9bf0;"></div>
-            </div>
-            <div style="font-size:11px; color:#8b98a5; margin-top:2px;">平均每次 ${gyFmtTok(Math.round(r.sum / Math.max(1, r.v.calls)))} token</div>
-        </div>`;
-    }).join('');
-
-    const days = Object.keys(st.byDay).sort().slice(-7).reverse();
-    const dayHtml = days.map(d => {
-        const v = st.byDay[d];
-        return `<div style="display:flex; gap:10px; font-size:13px; padding:4px 0; border-bottom:1px dashed rgba(29,155,240,0.15);">
-            <span style="flex:0 0 92px; color:#536471;">${d}</span>
-            <span style="flex:0 0 70px; color:#536471;">${v.calls} 次</span>
-            <span style="flex:1 1 auto; color:#0f1419;">入 ${gyFmtTok(v.in)} · 出 ${gyFmtTok(v.out)}</span>
-        </div>`;
-    }).join('') || '<div class="empty-state">暂无</div>';
-
-    box.innerHTML = `
-        <div style="background:rgba(29,155,240,0.06); border:1px solid #1d9bf0; border-radius:10px; padding:12px; margin-bottom:16px;">
-            <div style="display:flex; flex-wrap:wrap; gap:14px 24px;">
-                <div><div style="font-size:11px; color:#536471;">总调用</div><div style="font-size:20px; font-weight:bold; color:#1d9bf0;">${t.calls} 次</div></div>
-                <div><div style="font-size:11px; color:#536471;">输入</div><div style="font-size:20px; font-weight:bold; color:#1d9bf0;">${gyFmtTok(t.in)}</div></div>
-                <div><div style="font-size:11px; color:#536471;">输出</div><div style="font-size:20px; font-weight:bold; color:#1d9bf0;">${gyFmtTok(t.out)}</div></div>
-                <div><div style="font-size:11px; color:#536471;">缓存命中</div><div style="font-size:20px; font-weight:bold; color:${cachePct > 0 ? '#00ba7c' : '#536471'};">${cachePct}%</div></div>
-            </div>
-            <div style="font-size:11px; color:#536471; margin-top:8px;">统计起点：${sinceStr}</div>
-            ${cachePct === 0 ? `<div style="font-size:12px; color:#536471; margin-top:6px;">💡 缓存命中还是 0：可能是这家服务商不返回缓存字段，也可能是每次请求间隔太久（缓存一般只保留几分钟）。输入里能被缓存的那部分越大越省钱。</div>` : ''}
-        </div>
-        <div style="font-size:15px; font-weight:bold; color:#1d9bf0; margin-bottom:10px;">按功能</div>
-        ${featureHtml}
-        <div style="font-size:15px; font-weight:bold; color:#1d9bf0; margin:18px 0 6px;">最近 7 天</div>
-        ${dayHtml}`;
+    gyTokRender(box, 'm');
     openModal('tokenStatsModal');
 }
 async function resetTokenStats() {
-    if (typeof appConfirm === 'function' && !(await appConfirm('把 Token 统计清零重新开始记？已经花掉的钱不会因此退回来，只是这份记录归零。'))) return;
-    gyTokenStats = { total: { calls: 0, in: 0, out: 0, cached: 0, estimated: 0 }, byFeature: {}, byDay: {}, since: Date.now() };
+    if (typeof appConfirm === 'function' && !(await appConfirm('把 Token 统计和每次调用的记录都清零重新开始记？已经花掉的钱不会因此退回来，只是这份记录归零。'))) return;
+    gyTokenStats = { total: { calls: 0, in: 0, out: 0, cached: 0, estimated: 0 }, byFeature: {}, byDetail: {}, byDay: {}, since: Date.now() };
+    if (typeof window.gyTokenLogClear === 'function') window.gyTokenLogClear();
     if (typeof saveAllData === 'function') saveAllData();
     showTokenStats();
 }

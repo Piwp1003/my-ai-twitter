@@ -1012,6 +1012,8 @@ window.gyVecLastErr = '';
 async function getEmbedding(text) {
     if (!text || !text.trim()) return null;
     const api = getVectorApiConfig();
+    // 📊 算向量也花 token：在 await 之前认好是谁要算的（见 js/01b recordTokenUsage）
+    const __gyCall = (typeof gyDetectCall === 'function') ? gyDetectCall() : null, __gyT0 = Date.now();
     if (!api.key) { window.gyVecLastErr = '还没配 Embedding 用的 API Key（设置 → API 与模型 → 向量记忆专用API，留空就用主 API）'; return null; }
     try {
         const res = await smartFetch(`${api.url}/embeddings`, {
@@ -1031,6 +1033,7 @@ async function getEmbedding(text) {
         const vec = data?.data?.[0]?.embedding || null;
         if (!vec) { window.gyVecLastErr = '接口回了个没有 embedding 的东西——多半是模型名不是 embedding 模型'; return null; }
         window.gyVecLastErr = '';
+        try { if (typeof recordTokenUsage === 'function') recordTokenUsage(data, { inChars: Math.min(String(text).length, 3000), outChars: 0 }, __gyCall, { api: { model: embeddingModel || 'text-embedding-3-small' }, t0: __gyT0, kind: 'embed' }); } catch (e) {}
         return vec;
     } catch (e) {
         window.gyVecLastErr = String(e.message || e).slice(0, 160);

@@ -42,7 +42,7 @@ const g = await page.evaluate(async () => {
   return o;
 });
 check('设置最上面是「📘 使用指南」「🛟 客服」', g.top[0] === '使用指南' && /^客服/.test(g.top[1]), JSON.stringify(g.top));
-check('指南：12 节（没有「旧名字」「白露版」），每条都有「去看看」，用到的开关显示开着 / 关着', g.secs.length === 12 && g.noOld && g.items >= 80 && g.goBtns >= g.items - 2 && g.chips >= 60 && g.onOff.on > 20 && g.badgeOff, JSON.stringify(g));
+check('指南：13 节（没有「旧名字」「白露版」），每条都有「去看看」，用到的开关显示开着 / 关着', g.secs.length === 13 && g.noOld && g.items >= 80 && g.goBtns >= g.items - 2 && g.chips >= 60 && g.onOff.on > 20 && g.badgeOff, JSON.stringify(g));
 
 // ② 跳转：去看看、点开关
 const j = await page.evaluate(async () => {

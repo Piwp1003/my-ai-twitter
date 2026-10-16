@@ -2,40 +2,141 @@
 // 跟 01-core-state-infra.js 以及同一组的其它段共用一个全局作用域，index.html 里的加载顺序不能换。
 const GY_APP_VERSION = 'v' + (typeof GY_VERSION !== 'undefined' ? GY_VERSION : '?');   // 跟 index.html 里的 GY_VERSION 走，这里不用改
 
-const GY_FEATURE_MAP = {
-    // 聊天
-    triggerAIBatchReply: '聊天', retriggerLastReply: '聊天', contextActionEditCharMsg: '聊天',
-    triggerNudge: '聊天', sendProactiveChatMessage: '主动找你聊天', aliveGlanceRun: '聊天（忙时看一眼）',
-    refreshLifeStateOnChatEnter: '角色状态/日程', checkAndFlowSchedules: '角色状态/日程',
-    runScheduleGeneration: '角色状态/日程', generateCharAnniversaryNote: '纪念日',
-    checkAndAutoSummarizeChat: '聊天自动总结', checkAndAutoSummarizeGroupChat: '聊天自动总结',
-    // 推文 / 评论
-    userPost: '发推文', executeGenerationInner: '发推文', postCharacterTweet: '发推文',
-    triggerRelatedCharacterReactions: '推文连锁反应', updateCharMemoryAsync: '推文记忆总结',
-    runCharRepliesToComment: '评论区', submitInlineReply: '评论区', retriggerCharComments: '评论区',
-    maybeCharsReactToNpcComments: '评论区', pickInterestedChars: '评论区',
-    spawnNpcComments: 'NPC路人跟帖', npcArgueWithEachOther: 'NPC路人跟帖',
+// 📊 Token 用量：每一次调用模型，都要说得出「是哪个项目、哪一件事」花的。
+//    认法：发请求那一刻（同步地）看调用栈——
+//      ① 栈里有 GY_CALL_MAP 认识的函数 → 用表里的「项目 · 细项」；
+//      ② 栈里有新玩法插件（靠插件末尾的 //# sourceURL=gyx-plugin/名字.js）→ 「插件 · 名字」；
+//      ③ 都没有 → 按是哪个 js 文件发的，用 GY_FILE_AREA 里的项目名，细项写函数名。
+//    不再有「其它」这一栏。
+//    ⚠️ 新加了会调模型的函数：在 GY_CALL_MAP 里补一行（键是「文件名|函数名」，或者全局唯一的函数名），
+//       不然它会落到 ③，细项只能显示英文函数名。
+const GY_CALL_MAP = {
+    // 💬 聊天
+    triggerAIBatchReply: ['聊天', '私聊 / 群聊回复'], retriggerLastReply: ['聊天', '重新回复'],
+    contextActionRegenerateChat: ['聊天', '重新生成 / 侧滑抽卡'], contextActionEditCharMsg: ['聊天', '改了 TA 的话后接着回'],
+    triggerNudge: ['聊天', '戳一戳'], submitCustomCharReply: ['聊天', '自定义回复'],
+    triggerGroupWelcomeSequence: ['聊天', '进群打招呼'], aliveGlanceRun: ['聊天', '忙时看一眼手机'],
+    gyRepairChatJson: ['聊天', '回复格式坏了自动修'],
+    '49-chat-plus|groupTalk': ['聊天', '群里接着聊'], '49-chat-plus|askArt': ['聊天', 'TA 画给你'],
+    sendProactiveChatMessage: ['主动找你聊天', 'TA 主动发消息'],
+    // 🗓️ 状态 / 日程 / 记忆
+    refreshLifeStateOnChatEnter: ['角色状态/日程', '进聊天刷新此刻状态'], checkAndFlowSchedules: ['角色状态/日程', '此刻在做什么（随日程流动）'],
+    runScheduleGeneration: ['角色状态/日程', '生成日程'], updateScheduleMemoryAsync: ['角色状态/日程', '日程记忆总结'],
+    checkAndAutoSummarizeChat: ['聊天自动总结', '私聊总结'], checkAndAutoSummarizeGroupChat: ['聊天自动总结', '群聊总结'],
+    aliveExtractVoice: ['活人感', '提取打字习惯'],
+    generateCharAnniversaryNote: ['纪念日', 'TA 写纪念日的话'],
+    // 📰 推文 / 评论
+    userPostInner: ['发推文', '你发推后角色来互动'], userPost: ['发推文', '你发推后角色来互动'],
+    executeGenerationInner: ['发推文', '角色发推'], postCharacterTweet: ['发推文', '角色发推'],
+    gyPostRegen: ['发推文', '让 TA 重新写这条推'],
+    triggerRelatedCharacterReactions: ['推文连锁反应', '关系网里的人跟着反应'], updateCharMemoryAsync: ['推文记忆总结', '推文记忆总结'],
+    runCharRepliesToComment: ['评论区', '角色回你的评论'], submitInlineReply: ['评论区', '你在评论区回复'], retriggerCharComments: ['评论区', '重新生成评论'],
+    maybeCharsReactToNpcComments: ['评论区', '角色回应路人'], pickInterestedChars: ['评论区', '挑谁来评论'],
+    spawnNpcComments: ['NPC路人跟帖', '路人评论'], npcArgueWithEachOther: ['NPC路人跟帖', '路人互掐'],
     // 论坛 / 营销号
-    runCharRepliesToAnonPost: '匿名论坛', autoGenerateAnonPostForChar: '匿名论坛',
-    userAnonPost: '匿名论坛',
-    triggerForumCharReply: '小说论坛', generateNpcForumReplies: '小说论坛',
-    autoGenerateForumThreadForChar: '小说论坛',
-    generateTabloidPost: '营销号', rollTabloidAIParticipation: '营销号', triggerTabloidReactToQuote: '营销号',
-    // 长文本
-    generateNovelChapter: '小说', generateNovelFromSources: '小说',
-    sendSsTurn: '续写', regenSsTurn: '续写',
-    generateDiaryContent: '日记', generateTitledLetterContent: '信件', resolveDiaryReaction: '日记',
-    // 杂项
-    generateRandomGreeting: '随机开场白', aiCompleteCharProfile: '角色资料自动填写',
-    askCharGameInvite: '小游戏', askCharGameEndComment: '小游戏',
-    getSemanticContext: '向量记忆检索', embedMessageInBackground: '向量记忆检索',
-    // 待办 / 自主模式
-    generateCharTodosAI: '待办清单', generateCharTodosForChar: '待办清单',
-    runAutonomyTurn: 'TA自己决定', autonomyWriteDiary: 'TA自己决定',
-    autonomyCommentOnSomePost: 'TA自己决定', autonomyFeedTabloid: 'TA自己决定',
-    runTheaterScene: '角色小剧场', updateTheaterMemoryAsync: '小剧场记忆总结'
+    runCharRepliesToAnonPost: ['匿名论坛', '角色回帖'], autoGenerateAnonPostForChar: ['匿名论坛', '角色自己发帖'],
+    userAnonPost: ['匿名论坛', '你发帖后的回复'], submitAnonReplyBtn: ['匿名论坛', '你回帖后的回复'],
+    triggerForumCharReply: ['小说论坛', '角色回帖'], generateNpcForumReplies: ['小说论坛', '路人跟帖'],
+    autoGenerateForumThreadForChar: ['小说论坛', '角色自己发帖'],
+    generateTabloidPost: ['营销号', '营销号发料'], rollTabloidAIParticipation: ['营销号', '营销号自动参与'], triggerTabloidReactToQuote: ['营销号', '营销号接话'],
+    // 📖 长文本
+    generateNovelChapter: ['小说', '写一章'], generateNovelFromSources: ['小说', '从素材生成一章'], runNovelReviews: ['小说', '角色读完说几句'],
+    sendSsTurn: ['续写', '续写一段'], regenSsTurn: ['续写', '重写这一段'],
+    generateDiaryContent: ['日记', 'TA 写日记'], resolveDiaryReaction: ['日记', 'TA 看你的日记'],
+    generateTitledLetterContent: ['信件', '写信 / 回信'],
+    // 👤 角色
+    generateRandomGreeting: ['随机开场白', '开场白'], aiCompleteCharProfile: ['角色资料自动填写', '补全资料'],
+    gyCardSplitAi: ['导入角色卡', '识图拆分角色卡'], fillCharFormFromCardData: ['导入角色卡', '整理角色卡'], gyMaybeDetectMultiChar: ['导入角色卡', '看卡里有几个角色'],
+    '17-tavern-bridge|generate': ['角色卡脚本', '卡里的页面让模型写（流式）'], '17-tavern-bridge|generateRaw': ['角色卡脚本', '卡里的页面让模型写'],
+    // 🧠 向量 / 资料库（算的是 embedding，不是聊天）
+    getSemanticContext: ['向量记忆', '按话题翻旧记忆'], embedMessageInBackground: ['向量记忆', '给新消息算向量'],
+    gyVecBackfill: ['向量记忆', '补算旧内容'], gyVecTrickle: ['向量记忆', '后台慢慢补算'], backfillCharVectorEmbeddings: ['向量记忆', '补算旧内容'],
+    handleDataBankFileUpload: ['资料库', '上传文件算向量'],
+    // 🎲 待办 / 自主 / 小剧场
+    generateCharTodosAI: ['待办清单', 'TA 写待办'], generateCharTodosForChar: ['待办清单', 'TA 写待办'],
+    runAutonomyTurn: ['TA自己决定', '决定做什么'], autonomyWriteDiary: ['TA自己决定', '自己写日记'],
+    autonomyCommentOnSomePost: ['TA自己决定', '自己去评论'], autonomyFeedTabloid: ['TA自己决定', '给营销号递料'],
+    '58-more-acts|say': ['TA自己决定', '做小功能里的事'], '25-box-life|run': ['TA自己决定', '随身物 / 日子里的事'],
+    runTheaterSceneInner: ['角色小剧场', '演一段'], runTheaterScene: ['角色小剧场', '演一段'], updateTheaterMemoryAsync: ['小剧场记忆总结', '小剧场记忆总结'],
+    '56-peer-life|run': ['角色之间来往', '角色之间发消息'], '57-life-dice|roll': ['生活里的意外', '日程里碰上点事'],
+    // 🎮 小游戏
+    askCharGameInviteInner: ['小游戏', '邀请 TA 玩'], askCharGameEndCommentInner: ['小游戏', '玩完说一句'],
+    askCharGameInvite: ['小游戏', '邀请 TA 玩'], askCharGameEndComment: ['小游戏', '玩完说一句'],
+    '18-minigames-board-cards|askMove': ['小游戏', '棋类：TA 走一步'], '18-minigames-board-cards|runCharTurnBJ': ['小游戏', '21 点：TA 出牌'],
+    '18-minigames-board-cards|runCharTurnUno': ['小游戏', 'UNO：TA 出牌'], '18-minigames-board-cards|runCharUnoTurnOnce': ['小游戏', 'UNO：TA 出牌'],
+    '18-minigames-board-cards|runBidding': ['小游戏', '斗地主：叫地主'], '18-minigames-board-cards|runCharDdzTurn': ['小游戏', '斗地主：TA 出牌'],
+    '18-minigames-board-cards|runCharGwentTurnOnce': ['小游戏', '昆特牌：TA 出牌'],
+    '19-minigames-party|runAiWerewolfVote': ['小游戏', '狼人杀：狼人投票'], '19-minigames-party|runAiSeerCheck': ['小游戏', '狼人杀：预言家验人'],
+    '19-minigames-party|advanceDiscussion': ['小游戏', '狼人杀：发言'], '19-minigames-party|runAiDayVote': ['小游戏', '狼人杀：白天投票'],
+    '19-minigames-party|startUndercover': ['小游戏', '谁是卧底：出词'], '19-minigames-party|advanceClue': ['小游戏', '谁是卧底：描述'],
+    '19-minigames-party|startVotingRound': ['小游戏', '谁是卧底：投票'], '19-minigames-party|askJson': ['小游戏', '派对游戏：TA 做选择'],
+    '19-minigames-party|askText': ['小游戏', '派对游戏：TA 说话'], '19-minigames-party|runCharChoosePhase': ['小游戏', '派对游戏：TA 做选择'],
+    // 🎧 一起读 / 看 / 听
+    '20-reading-together|rtGenerateComments': ['一起阅读', '翻页时 TA 写评论'], '20-reading-together|rtSendDiscuss': ['一起阅读', '跟 TA 讨论'],
+    '20-reading-together|rtOpenReflectionGen': ['一起阅读', '读完写感想'],
+    '21-watch-together|askCharInner': ['一起看电影', 'TA 看到这里说一句'],
+    '22-box-music|askCharInner': ['音乐盒', 'TA 听歌说一句'], '22-box-music|gymAskPick': ['音乐盒', 'TA 挑歌'],
+    '22-box-music|summarizeListenInner': ['音乐盒', '一起听的记忆总结'], '22-box-music|gymGenTaste': ['音乐盒', 'TA 的口味'],
+    // 🗺️ 行程 / 关系
+    '23-box-map|gymapGenFicWeather': ['行程与天气', '剧情世界的天气'], '23-box-map|gymapReadBg': ['行程与天气', '读世界书找地点'],
+    '23-box-map|gymapGenMap': ['行程与天气', '生成地图'], '23-box-map|gymapAskSay': ['行程与天气', 'TA 播报'],
+    '23-box-map|gymapSendDate': ['行程与天气', '约出去'], '23-box-map|gymapCharInvite': ['行程与天气', 'TA 约你出去'],
+    '24-box-relations|gygsTell': ['关系账本 / 八卦网', 'TA 传八卦'], '24-box-relations|gygsAsk': ['关系账本 / 八卦网', '问 TA 八卦'],
+    // 🧺 生活
+    '25-box-life|gykitGive': ['随身物', '送 TA 东西'], '25-box-life|gykitGen': ['随身物', '生成随身物'],
+    '25-box-life|gydaySay': ['我们的日子', 'TA 提起日子'],
+    '26-box-mall|genTimeline': ['商城', '物流文案'], '26-box-mall|reactToDeliveryInner': ['商城', '快递到了 TA 说一句'],
+    '26-box-mall|charListProductInner': ['商城', 'TA 上架东西'], '26-box-mall|randomPurchase': ['商城', 'TA 自己网购'], '26-box-mall|gymallComplain': ['商城', '售后 / 吐槽'],
+    '28-invite-in-chat|gyInviteAnswer': ['邀请卡片', 'TA 回你的邀请'], '28-invite-in-chat|afterInner': ['邀请卡片', '答应之后说一句'], '28-invite-in-chat|gyInviteAsk': ['邀请卡片', 'TA 邀请你'],
+    '29-web-explore|gywebRunInner': ['联网探索', '挑题目 / 写感想'],
+    '30-parcel-cards|askAcceptInner': ['快递包裹', 'TA 收不收'],
+    '31-wallet|decideSelfInner': ['钱包', 'TA 自己花钱'], '31-wallet|askSpendInner': ['钱包', 'TA 花钱前问你'], '31-wallet|gyWalletTaDecide': ['钱包', 'TA 决定转账 / 红包'],
+    '32-takeout|gytoAiShop': ['外卖', 'TA 点外卖'], '32-takeout|reactInner': ['外卖', '外卖到了说一句'],
+    '33-phone|gyPhoneMakePeople': ['TA 的手机', '生成通讯录'], '33-phone|gyPhoneAiNotif': ['TA 的手机', '生成通知'],
+    '33-phone|charLookLineInner': ['TA 的手机', '被你翻手机说一句'], '33-phone|charRefusedLineInner': ['TA 的手机', '不让你看说一句'],
+    '33-phone|gyPhoneCardGen': ['TA 的手机', '生成 App 内容'], '33-phone|gyPhoneIconAi': ['TA 的手机', '生成图标'],
+    '35-dressup|sayNoticeInner': ['换装', 'TA 注意到你换了'], '35-dressup|gyDressAsk': ['换装', '问 TA 好不好看'],
+    '35-dressup|sayBackInner': ['换装', 'TA 回一句'], '35-dressup|askKindInner': ['换装', 'TA 挑衣服'],
+    '36-silence|reactInner': ['你很久没回', 'TA 的反应'],
+    '39-npcs|gyNpcMake': ['世界里的人', '从世界书抽 NPC'],
+    '42-char-photo|askWhatInner': ['角色发图片', 'TA 想发什么图'], '42-char-photo|drawLookInner': ['角色发图片', '从人设抽形象'],
+    '47-call|ask': ['打电话', '通话里 TA 说话'], '47-call|decideAnswer': ['打电话', 'TA 接不接'], '47-call|run': ['打电话', 'TA 主动打给你'],
+    '50-skin-box|giftLine': ['皮肤', 'TA 送皮肤说一句'],
+    '53-ta-decide|askGap': ['TA 定数字', 'TA 定间隔'], '53-ta-decide|askHabits': ['TA 定数字', 'TA 定习惯'],
+    '66-phone-widgets|gyPmTarotRead': ['小手机', '塔罗解读'], '71-phone-mystic|gyMysticRead': ['小手机', '神秘学解读'],
+    '93-phone-sticker|askTa': ['小手机', 'TA 写封面 / 贴贴纸'],
+    '77-mood-stat|taLine': ['心情手账', 'TA 看你心情说一句'], '77-mood-stat|taWrite': ['心情手账', 'TA 写自己的手账'],
+    '94-guide-help|askApi': ['客服', '客服答疑']
 };
-let gyTokenStats = { total: { calls: 0, in: 0, out: 0, cached: 0, estimated: 0 }, byFeature: {}, byDay: {}, since: 0 };
+// 栈里没有认识的函数时，按文件归到哪个项目（细项写函数名）
+const GY_FILE_AREA = {
+    '01c-prompt-status-memory-databank': '向量记忆', '02-databank-plugins-minigames': '小游戏', '04-mobile-bootstrap-notifications': '角色状态/日程',
+    '04b-import-models-persona-overlays': '角色状态/日程', '05-anniversary-memory': '纪念日', '05b-greeting-chat-reply-emoticons': '聊天',
+    '06-emoticons-time-humanfeel-relationships-worldbook': '推文连锁反应', '06b-worldbook-ui-memhub-alive-inject': '聊天自动总结', '07-proactive-cloudsync': '主动找你聊天',
+    '08-diary-novel': '日记', '08b-profile-follow-panels-alive-settings': '小说', '09-memories-search-postfixes': '发推文',
+    '10-comments-npc-forum-reply': '评论区', '10b-generation-char-center-profile': '发推文', '11-tabloid-story-forum-engine': '营销号',
+    '13-charreply-groupchat-faction-cardimport': '聊天', '13b-cardsplit-multicard-export': '导入角色卡', '14-settings-archive': 'TA自己决定',
+    '16-story-studio': '续写', '17-tavern-bridge': '角色卡脚本', '18-minigames-board-cards': '小游戏', '19-minigames-party': '小游戏',
+    '20-reading-together': '一起阅读', '21-watch-together': '一起看电影', '22-box-music': '音乐盒', '23-box-map': '行程与天气',
+    '24-box-relations': '关系账本 / 八卦网', '25-box-life': '随身物', '26-box-mall': '商城', '28-invite-in-chat': '邀请卡片',
+    '29-web-explore': '联网探索', '30-parcel-cards': '快递包裹', '31-wallet': '钱包', '32-takeout': '外卖', '33-phone': 'TA 的手机',
+    '35-dressup': '换装', '36-silence': '你很久没回', '39-npcs': '世界里的人', '42-char-photo': '角色发图片', '47-call': '打电话',
+    '49-chat-plus': '聊天', '50-skin-box': '皮肤', '53-ta-decide': 'TA 定数字', '56-peer-life': '角色之间来往', '57-life-dice': '生活里的意外',
+    '58-more-acts': 'TA自己决定', '64-post-regen': '发推文', '66-phone-widgets': '小手机', '71-phone-mystic': '小手机', '77-mood-stat': '心情手账',
+    '83-api-care': '聊天', '93-phone-sticker': '小手机', '94-guide-help': '客服'
+};
+// 只是转手的那几层（包装、发请求本身），认的时候跳过
+const GY_CALL_SKIP = new Set(['sendChatRequestRaw', 'sendChatRequest', 'callChatCompletionAPI', 'streamCompletionText', 'gyDetectFeature', 'gyDetectCall',
+    'recordTokenUsage', 'gyRecordEmbedUsage', 'getEmbedding', 'w', 'ask', 'smartFetch', 'Error', 'eval', 'next', 'Promise', 'Array', 'forEach', 'map', 'then',
+    'track', 'gyTimed', 'fetch', 'Object', 'anonymous', '<anonymous>', 'gyStackFrames']);
+// 新玩法插件公用小工具（_common.js）里的函数：它们写在「先加载的那个插件」的文件里，栈里看着像那个插件，其实不是——跳过
+const GY_GYX_COMMON = new Set(['action', 'ask', 'bailu', 'cards', 'chars', 'css', 'ctx', 'cur', 'day', 'feat', 'gw', 'inj', 'mem', 'memArr', 'mini', 'notify', 'panel', 'pl', 'plGroup',
+    'reach', 'recapDef', 'recapSet', 'recent', 'repaint', 'rnd', 'say', 'set', 'speak', 'stopSpeak', 'toast', 'today', 'todayHook', 'todayHtml', 'todayPaint', 'unitKey', 'unitPrev',
+    'unitStart', 'v', 'whoSel', 'widget', 'wrapFn', 'on', 'go', 'json', 'store', 'plain', 'persona', 'who', 'name', 'me', 'char', 'pick', 'esc']);
+const GY_FEATURE_MAP = GY_CALL_MAP;   // 旧名字，留着兼容
+let gyTokenStats = { total: { calls: 0, in: 0, out: 0, cached: 0, estimated: 0 }, byFeature: {}, byDetail: {}, byDay: {}, since: 0 };
+// 每一次调用的流水（最近 3000 次），单独存在 localforage 的 gyTokenLog 里，不进主存档（太大）
+let gyTokenLog = [];
 
 // ===================== 🔌 自动功能开关 =====================
 // 这个 app 里有一批功能是**不用你点任何按钮、自己就会去调 API** 的：定时器到点了、
@@ -128,37 +229,120 @@ function isAutoOn(key) {
     catch (e) { return true; }   // 读取出错宁可让功能照常运行，也不要莫名其妙全哑掉
 }
 
-function gyDetectFeature() {
+// 把一行调用栈拆成 { fn, file }。file：js 文件名去掉 .js（'22-box-music'），插件是 'gyx:名字'，认不出是 ''。
+function gyStackFrames() {
+    const out = [];
     try {
-        const stack = (new Error()).stack || '';
-        const lines = stack.split('\n');
-        for (let i = 0; i < lines.length; i++) {
-            const m = lines[i].match(/at\s+(?:async\s+)?([A-Za-z_$][\w$]*)/);
-            if (!m) continue;
-            const label = GY_FEATURE_MAP[m[1]];
-            if (label) return label;
+        const lines = String((new Error()).stack || '').split('\n');
+        for (let i = 1; i < lines.length; i++) {
+            const L = lines[i];
+            // Chrome："    at async Object.foo (url:1:2)"；Safari/Firefox："foo@url:1:2"
+            let fn = '', loc = '';
+            let m = L.match(/^\s*at\s+(?:async\s+)?(.*?)\s+\((.*)\)\s*$/);
+            if (m) { fn = m[1]; loc = m[2]; }
+            else if ((m = L.match(/^\s*at\s+(?:async\s+)?(.*)$/))) { loc = m[1]; }
+            else if ((m = L.match(/^(.*?)@(.*)$/))) { fn = m[1]; loc = m[2]; }
+            else continue;
+            fn = String(fn || '').replace(/^new\s+/, '').replace(/\s*\[as [^\]]+\]$/, '');
+            fn = fn.split('.').pop().replace(/[<>]/g, '').trim();
+            let file = '';
+            const g = loc.match(/gyx-plugin\/([^:)\s]+?)\.js/);
+            if (g) { try { file = 'gyx:' + decodeURIComponent(g[1]); } catch (e) { file = 'gyx:' + g[1]; } }
+            else { const j = loc.match(/\/js\/([^/?#:]+?)\.js/); if (j) file = j[1]; }
+            out.push({ fn, file });
         }
-    } catch (e) { /* 拿不到调用栈就归到其它，不影响统计总量 */ }
-    return '其它';
+    } catch (e) {}
+    return out;
 }
+// 这次调用是谁发的：{ f: 项目, d: 细项, by: 由哪个插件带出来的（可空） }
+function gyDetectCall() {
+    const fr = gyStackFrames();
+    let hit = null, hitAt = -1;
+    for (let i = 0; i < fr.length && !hit; i++) {
+        const { fn, file } = fr[i];
+        if (!fn && !file) continue;
+        const byFile = file && !file.startsWith('gyx:') ? GY_CALL_MAP[file + '|' + fn] : null;
+        if (byFile) { hit = { f: byFile[0], d: byFile[1] }; hitAt = i; break; }
+        if (GY_CALL_SKIP.has(fn)) continue;
+        if (fn && GY_CALL_MAP[fn] && !String(file).startsWith('gyx:')) { hit = { f: GY_CALL_MAP[fn][0], d: GY_CALL_MAP[fn][1] }; hitAt = i; break; }
+        if (file.startsWith('gyx:') && !GY_GYX_COMMON.has(fn)) { hit = { f: '插件 · ' + file.slice(4), d: fn ? '函数 ' + fn : '插件里调用' }; hitAt = i; break; }
+    }
+    if (!hit) {
+        // 都不认识：按文件归项目，细项写函数名
+        for (let i = 0; i < fr.length; i++) {
+            const { fn, file } = fr[i];
+            if (!file || file.startsWith('01b-') || file.startsWith('gyx:') || GY_CALL_SKIP.has(fn)) continue;
+            hit = { f: GY_FILE_AREA[file] || ('js/' + file), d: fn ? '函数 ' + fn : '（匿名函数）' }; hitAt = i; break;
+        }
+    }
+    if (!hit) {
+        // 连文件都认不出：多半是你自己导入的老插件 / 控制台里跑的脚本
+        const f0 = fr.find(x => x.fn && !GY_CALL_SKIP.has(x.fn));
+        hit = { f: '导入的插件 / 脚本', d: f0 ? '函数 ' + f0.fn : '（没有名字）' };
+    }
+    // 核心功能是被某个插件带起来的（比如插件让 TA 主动来找你）：记下是哪个插件
+    if (!hit.f.startsWith('插件 · ')) {
+        for (let i = hitAt + 1; i < fr.length; i++) if (fr[i].file && fr[i].file.startsWith('gyx:') && fr[i].fn && !GY_CALL_SKIP.has(fr[i].fn) && !GY_GYX_COMMON.has(fr[i].fn)) { hit.by = fr[i].file.slice(4); break; }
+    }
+    return hit;
+}
+function gyDetectFeature() { try { return gyDetectCall().f; } catch (e) { return '导入的插件 / 脚本'; } }
+
+// 流水：单独一个库，攒几条写一次
+const gyTokLF = (typeof localforage !== 'undefined' && localforage.createInstance) ? localforage.createInstance({ name: 'gyTokenLog', storeName: 'log' }) : null;
+let gyTokLogDirty = 0, gyTokLogTimer = null;
+// 存多少由她自己定（Token 用量 → 💾 保存与导出）：max＝每次调用最多留几次，days＝最多留几天；0＝不限
+const GY_TOK_CFG_DEF = { max: 3000, days: 60 };
+function gyTokCfg() { try { return Object.assign({}, GY_TOK_CFG_DEF, JSON.parse(localStorage.getItem('gyTokCfg') || '{}')); } catch (e) { return Object.assign({}, GY_TOK_CFG_DEF); } }
+// 按设置把流水和按天的记录剪一剪；返回剪掉了几次
+function gyTokTrim() {
+    const c = gyTokCfg(); let cut = 0;
+    if (+c.days > 0) {
+        const from = Date.now() - c.days * 864e5, n0 = gyTokenLog.length;
+        const i = gyTokenLog.findIndex(x => x.t >= from);
+        if (i === -1) gyTokenLog.length = 0; else if (i > 0) gyTokenLog.splice(0, i);
+        cut += n0 - gyTokenLog.length;
+        const fromDay = new Date(from).toLocaleDateString('sv');
+        try { Object.keys(gyTokenStats.byDay || {}).forEach(d => { if (d < fromDay) delete gyTokenStats.byDay[d]; }); } catch (e) {}
+    }
+    if (+c.max > 0 && gyTokenLog.length > c.max) { cut += gyTokenLog.length - c.max; gyTokenLog.splice(0, gyTokenLog.length - c.max); }
+    return cut;
+}
+window.gyTokCfgGet = gyTokCfg;
+window.gyTokCfgSet = (k, v) => { const c = gyTokCfg(); c[k] = Math.max(0, parseInt(v, 10) || 0); try { localStorage.setItem('gyTokCfg', JSON.stringify(c)); } catch (e) {} const n = gyTokTrim(); gyTokLogSave(true); if (typeof saveAllData === 'function') saveAllData(); return n; };
+function gyTokLogSave(now) {
+    if (!gyTokLF) return;
+    const go = () => { gyTokLogTimer = null; gyTokLogDirty = 0; try { gyTokLF.setItem('log', gyTokenLog.slice()); } catch (e) {} };
+    if (now) { if (gyTokLogTimer) clearTimeout(gyTokLogTimer); go(); return; }
+    if (!gyTokLogTimer) gyTokLogTimer = setTimeout(go, 4000);
+}
+(async () => { try { if (!gyTokLF) return; const L = await gyTokLF.getItem('log'); if (Array.isArray(L)) { gyTokenLog = L.concat(gyTokenLog); gyTokTrim(); } } catch (e) {} })();
+try { window.addEventListener('pagehide', () => { if (gyTokLogDirty) gyTokLogSave(true); }); document.addEventListener('visibilitychange', () => { if (document.hidden && gyTokLogDirty) gyTokLogSave(true); }); } catch (e) {}
+window.gyTokenLogGet = () => gyTokenLog;
+window.gyTokenLogClear = () => { gyTokenLog = []; gyTokLogSave(true); };
 
 // data：服务商返回的原始响应；fallbackChars：拿不到 usage 时用来估算的 {inChars,outChars}
-// feature：功能名。**必须在发请求之前（同步地）用 gyDetectFeature() 取好再传进来**——
-// 等 await 回来之后再抓调用栈，栈已经被异步边界截断了，只会看到一堆 async 内部帧，全都归到「其它」。
-function recordTokenUsage(data, fallbackChars, feature) {
+// call：gyDetectCall() 的结果（或者旧写法的功能名字符串）。**必须在发请求之前（同步地）取好再传进来**——
+// 等 await 回来之后再抓调用栈，栈已经被异步边界截断了，认不出是谁。
+// meta：{ api, t0, kind:'chat'|'stream'|'embed' }，用来记每一次的模型、主副、耗时
+function recordTokenUsage(data, fallbackChars, call, meta) {
     try {
-        if (!gyTokenStats || !gyTokenStats.total) gyTokenStats = { total: { calls: 0, in: 0, out: 0, cached: 0, estimated: 0 }, byFeature: {}, byDay: {}, since: 0 };
+        if (!gyTokenStats || !gyTokenStats.total) gyTokenStats = { total: { calls: 0, in: 0, out: 0, cached: 0, estimated: 0 }, byFeature: {}, byDetail: {}, byDay: {}, since: 0 };
         if (!gyTokenStats.since) gyTokenStats.since = Date.now();
+        if (!gyTokenStats.byDetail) gyTokenStats.byDetail = {};
         const u = (data && data.usage) || {};
         // OpenAI 兼容：prompt_tokens / completion_tokens，缓存命中在 prompt_tokens_details.cached_tokens
         // Anthropic：input_tokens / output_tokens，缓存命中在 cache_read_input_tokens
         let inTok = u.prompt_tokens != null ? u.prompt_tokens : (u.input_tokens != null ? u.input_tokens : null);
         let outTok = u.completion_tokens != null ? u.completion_tokens : (u.output_tokens != null ? u.output_tokens : null);
-        let cached = (u.prompt_tokens_details && u.prompt_tokens_details.cached_tokens) || u.cache_read_input_tokens || 0;
+        let cached = (u.prompt_tokens_details && u.prompt_tokens_details.cached_tokens) || u.cache_read_input_tokens || u.prompt_cache_hit_tokens || 0;
         // Anthropic 的 input_tokens 不含缓存命中的部分，要加回去才是"这次一共读了多少输入"
         if (u.input_tokens != null && (u.cache_read_input_tokens || u.cache_creation_input_tokens)) {
             inTok = u.input_tokens + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
         }
+        // 向量（embedding）只有输入
+        if (meta && meta.kind === 'embed' && inTok == null && u.total_tokens != null) inTok = u.total_tokens;
+        if (meta && meta.kind === 'embed' && outTok == null && inTok != null) outTok = 0;
         let estimated = 0;
         if (inTok == null && outTok == null) {
             if (!fallbackChars) return;   // 报错的请求既没 usage 也没内容，不记
@@ -166,18 +350,36 @@ function recordTokenUsage(data, fallbackChars, feature) {
             outTok = Math.ceil((fallbackChars.outChars || 0) / 1.8);
             estimated = 1;
         }
-        if (!feature) feature = gyDetectFeature();
-        const day = new Date().toISOString().slice(0, 10);
+        if (!call) call = gyDetectCall();
+        if (typeof call === 'string') call = { f: call, d: '' };
+        const feature = call.f, detail = call.d || '（没细分）';
+        const day = new Date().toLocaleDateString('sv');   // 本地日期 YYYY-MM-DD
         const bump = (o) => { o.calls++; o.in += (inTok || 0); o.out += (outTok || 0); o.cached += cached; o.estimated += estimated; };
         const blank = () => ({ calls: 0, in: 0, out: 0, cached: 0, estimated: 0 });
         bump(gyTokenStats.total);
         if (!gyTokenStats.byFeature[feature]) gyTokenStats.byFeature[feature] = blank();
         bump(gyTokenStats.byFeature[feature]);
+        const bd = gyTokenStats.byDetail[feature] || (gyTokenStats.byDetail[feature] = {});
+        if (!bd[detail]) bd[detail] = blank();
+        bump(bd[detail]);
         if (!gyTokenStats.byDay[day]) gyTokenStats.byDay[day] = blank();
         bump(gyTokenStats.byDay[day]);
-        // 只留最近 60 天，不然存档会一直涨
-        const days = Object.keys(gyTokenStats.byDay).sort();
-        while (days.length > 60) delete gyTokenStats.byDay[days.shift()];
+        // 📜 每一次的流水
+        try {
+            const api = (meta && meta.api) || {};
+            const kind = (meta && meta.kind) || 'chat';
+            gyTokenLog.push({
+                t: Date.now(), f: feature, d: detail, by: call.by || '',
+                m: api.model || (kind === 'embed' ? (typeof embeddingModel !== 'undefined' ? embeddingModel : '') : ''),
+                k: kind === 'embed' ? '向量' : (api.isSub ? '副' : '主'),
+                s: kind === 'stream' ? 1 : 0,
+                i: inTok || 0, o: outTok || 0, c: cached || 0, e: estimated,
+                ms: meta && meta.t0 ? Date.now() - meta.t0 : 0
+            });
+            gyTokTrim();   // 按「存多少次 / 存几天」剪（按天的记录也一起剪）
+            gyTokLogDirty++; gyTokLogSave(gyTokLogDirty >= 20);
+            try { window.dispatchEvent(new CustomEvent('gy-token', { detail: gyTokenLog[gyTokenLog.length - 1] })); } catch (e) {}
+        } catch (e) {}
         // 统计本身不值得为它单独写一次存档（saveAllData 是全量结构化克隆，很重），
         // 攒够一批再落盘；真正的存档时机由各功能自己的 saveAllData 顺带带走。
         gyTokenStats.__dirty = (gyTokenStats.__dirty || 0) + 1;
@@ -208,7 +410,7 @@ async function sendChatRequestRaw(api, content, extraBody) {
     if (typeof window.gyTaRewrite === 'function') content = window.gyTaRewrite(content);
     extraBody = extraBody || {};
     // 📊 功能归类必须在这里同步取——下面一 await，调用栈就断了（见 recordTokenUsage 的说明）
-    const __gyFeature = gyDetectFeature();
+    const __gyCall = gyDetectCall(), __gyFeature = __gyCall.f, __gyT0 = Date.now();
     const messages = isStructuredMessages(content) ? content : [{ role: "user", content: content }];
     if (isAnthropicApiUrl(api.url)) {
         try {
@@ -241,7 +443,7 @@ async function sendChatRequestRaw(api, content, extraBody) {
             const thinkingText = blocks.filter(b => b && b.type === 'thinking' && b.thinking).map(b => b.thinking).join('\n\n');
             let text = textBlock.text || '';
             if (thinkingText) text = `<think>${thinkingText}</think>${text}`;
-            recordTokenUsage(data, { inChars: gyContentChars(content), outChars: text.length }, __gyFeature);
+            recordTokenUsage(data, { inChars: gyContentChars(content), outChars: text.length }, __gyCall, { api, t0: __gyT0, kind: 'chat' });
             return { choices: [{ message: { content: text } }] };
         } catch (e) {
             return { error: { message: enhanceNetworkErrorMessage(e.message) } };
@@ -269,7 +471,7 @@ async function sendChatRequestRaw(api, content, extraBody) {
         } catch (e) { /* 拼接失败就算了，不影响正文本身的返回 */ }
         try {
             const outText = (raw && raw.choices && raw.choices[0] && raw.choices[0].message && raw.choices[0].message.content) || '';
-            if (!raw || !raw.error) recordTokenUsage(raw, { inChars: gyContentChars(content), outChars: String(outText).length }, __gyFeature);
+            if (!raw || !raw.error) recordTokenUsage(raw, { inChars: gyContentChars(content), outChars: String(outText).length }, __gyCall, { api, t0: __gyT0, kind: 'chat' });
         } catch (e) { /* 统计失败不影响返回 */ }
         return raw;
     } catch (e) {
@@ -419,7 +621,7 @@ async function callChatCompletionAPI(api, promptContent, maxRetries = 2, images 
 // (plus.net.XMLHttpRequest) 不支持真正中断，取消功能在那种环境下不生效，只在普通浏览器/webview里有效。
 async function streamCompletionText(api, promptContent, onDelta, images = null, signal = null) {
     if (typeof window.gyTaRewrite === 'function') promptContent = window.gyTaRewrite(promptContent);
-    const __gyFeature = gyDetectFeature();   // 同上：必须在任何 await 之前取
+    const __gyCall = gyDetectCall(), __gyFeature = __gyCall.f, __gyT0 = Date.now();   // 同上：必须在任何 await 之前取
     const isNativeApp = typeof window !== 'undefined' && window.plus && window.plus.net && window.plus.net.XMLHttpRequest;
     // 用户在设置里关掉了流式：走跟原生App壳子完全一样的那条路——发普通请求，
     // 拿到完整文字后一次性回调一次。所有调用方（续写工作台、同类软件桥接的 generate）
@@ -559,7 +761,7 @@ async function streamCompletionText(api, promptContent, onDelta, images = null, 
         fullText = gyNormThought(fullText);
         const finalText = fullReasoning ? `<think>${fullReasoning}</think>${fullText}` : fullText;
         if (gyReasonCaptureOn()) { const __p = gyCollectReasoning(finalText); gyVaultDiag(__gyFeature, finalText, __p, api, fullReasoning ? '流式·推理通道' : '流式'); gyVaultCapture(__p, __gyFeature, api.__gyReqKey, api.model, 'stream'); }
-        recordTokenUsage(streamUsage ? { usage: streamUsage } : null, { inChars: gyContentChars(messages), outChars: finalText.length }, __gyFeature);
+        recordTokenUsage(streamUsage ? { usage: streamUsage } : null, { inChars: gyContentChars(messages), outChars: finalText.length }, __gyCall, { api, t0: __gyT0, kind: 'stream' });
         onDelta(finalText, true);
         return { choices: [{ message: { content: finalText } }] };
     } catch (e) {

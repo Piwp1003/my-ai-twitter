@@ -1566,7 +1566,7 @@ body.dark-theme .gynow-av{background:#2f3336;color:#e7e9ea;}
         timer = setInterval(async () => {
             const box = document.getElementById('gynowModal');
             if (!box || !box.classList.contains('on')) return;
-            await loadExt(); render();
+            await loadExt(); render(true);
         }, s * 1000);
     }
     window.gynowSetSec = async function (v) {
@@ -1587,14 +1587,24 @@ body.dark-theme .gynow-av{background:#2f3336;color:#e7e9ea;}
     window.gynowTab = function (t) { tab = t; render(); };
     window.gynowRefresh = async function () { await loadExt(); render(); };
 
-    function render() {
+    function render(byTimer) {
         const box = document.getElementById('gynowModal');
         if (!box || !box.classList.contains('on')) return;
         ['now', 'cost'].forEach(t => {
             const el = document.getElementById('gynowTab-' + t);
             if (el) el.className = 'gynow-tab' + (t === tab ? ' on' : '');
         });
-        document.getElementById('gynowBody').innerHTML = tab === 'now' ? tabNow() : tabCost();
+        // 💰 花了多少：跟设置里「📊 Token 用量」是同一个面板（js/08b gyTokRender）——按项目、每次调用、按天
+        if (tab === 'cost') {
+            const el = document.getElementById('gynowBody');
+            // 开着「每次调用」在翻的时候别被定时刷新打断（新调用由面板自己刷新）
+            if (byTimer && el.querySelector('[data-gytk="now"]')) return;
+            el.innerHTML = '<div id="gynowTok"></div><div id="gynowAuto" style="margin-top:8px;border-top:1px solid rgba(128,128,128,.2);">' + autoLists() + '</div>';
+            if (typeof window.gyTokRender === 'function') window.gyTokRender(document.getElementById('gynowTok'), 'now');
+            else el.innerHTML = tabCost();
+            return;
+        }
+        document.getElementById('gynowBody').innerHTML = tabNow();
     }
 
     function avatar(c) {
@@ -1700,6 +1710,13 @@ body.dark-theme .gynow-av{background:#2f3336;color:#e7e9ea;}
               <span>${f.v.calls || 0} 次</span></div>`).join('') : '<div class="gynow-hint">还没有按功能的记录。</div>'}
           </div>
 
+          ${autoLists()}`;
+    }
+    // 🔌 开着 / 关着的自动功能（「花了多少」里接在用量面板下面）
+    function autoLists() {
+        const autoOn = (typeof AUTO_FEATURE_DEFS !== 'undefined') ? AUTO_FEATURE_DEFS.filter(f => on(f.key)) : [];
+        const autoOff = (typeof AUTO_FEATURE_DEFS !== 'undefined') ? AUTO_FEATURE_DEFS.filter(f => !on(f.key)) : [];
+        return `
           <div style="margin-top:16px;"><b style="font-size:13.5px;">🔌 现在开着的自动功能（${autoOn.length}）</b>
             <div class="gynow-hint">这些是<b>不用你点、自己会去调 API</b> 的。</div>
             <div class="gynow-hint" style="margin-top:2px;">每一条都能点，点了直接跳到那个开关。</div>

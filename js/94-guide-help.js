@@ -18,7 +18,7 @@
     if (window.__gyGuideHelp) return;
     window.__gyGuideHelp = true;
 
-    const GUIDE_DATE = '2026-10-14';
+    const GUIDE_DATE = '2026-10-16';   // v244
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const pick = a => a[Math.floor(Math.random() * a.length)];
     const pad = n => String(n).padStart(2, '0');
@@ -93,7 +93,7 @@
           how: ['角色发图的设置里检查画图接口的地址和 key', '或者改成「图库」「搜图」，不花钱', '免费的 pollinations 偶尔也会抽风，过会儿再试'], go: ['settings', 'api'] },
         { id: 'e_vec', k: '向量 embedding 记忆', ico: '🧠', n: '向量记忆接口出错', re: /^__VEC__$/,
           what: '向量记忆要先把文字变成「向量」，这一步的接口报错了，所以 TA 这次没翻到旧记忆。',
-          how: ['设置 → API 与模型 → 向量 API：检查地址、key、向量模型名（默认 text-embedding-3-small）', '没填向量 API 的话，它用的是主 API 的地址——有的服务商不卖向量，那就去记忆总览把向量记忆关掉'], go: ['mem'] },
+          how: ['左边栏「更多」→ 记忆总览 → 🧠 向量记忆那一块：检查「向量记忆专用 API」的地址、key 和 Embedding 模型名（默认 text-embedding-3-small）', '没填专用 API 的话，它用的是主 API 的地址——DeepSeek 这类不卖向量，要另填一个（指南「🔧 接口配置教程 → ③ 记忆」有手把手），不想弄就把向量记忆关掉'], go: ['mem'] },
         { id: 'e_models', k: '拉取模型 模型列表', ico: '📋', n: '拉取模型列表失败', re: /^__MODELS__$/,
           what: '点「拉取模型」的时候，对方没把模型列表给过来（地址或 key 多半有一个不对，也有的中转站不提供列表）。',
           how: ['检查地址和 key 有没有填错、有没有多余空格', '实在拉不到，就去服务商网站抄一个模型名，手动填进去'], go: ['settings', 'api'] },
@@ -125,11 +125,37 @@
             { id: 'refresh', t: '🔄 刷新', d: '左边栏「更多」→ 🔄 刷新。导入插件或者更新之后点它，不用大退 App。', go: ['refresh'], k: '重启 重新加载' }
         ] },
         { id: 'first', icon: '🚪', title: '第一次用', intro: '按顺序做一遍就能开始。', items: [
-            { id: 'api', t: '① 接上 API', d: '设置 → API 与模型：填地址和 key，点「拉取模型」选一个。副 API 填了的话，后台的小事（总结、客服答疑这些）会先用副 API。', go: ['settings', 'api'], k: '接口 key 密钥 模型 中转' },
+            { id: 'api', t: '① 接上 API', d: '设置 → API 与模型：填地址和 key，点「拉取模型」选一个。副 API 填了的话，后台的小事（总结、客服答疑这些）会先用副 API。不会填就看下面「🔧 接口配置教程」，一步一步写好了。', go: ['settings', 'api'], k: '接口 key 密钥 模型 中转' },
             { id: 'card', t: '② 导入角色卡', d: '左边栏「角色中心」，顶上有「🖼️ 导入角色卡(图片)」和「📄 导入角色卡(JSON)」；也可以点「+ 创建新角色」自己写。', go: ['chars'], k: '角色卡 导入角色 新建角色 创建角色' },
             { id: 'plugin', t: '③ 装插件', d: '「更多」→ 设定库 → 🔌 插件。只导入「新玩法全家桶.json」这一个就够了：以前的单个插件会自动拿掉，你关掉过的功能也会保持关着，数据都在。', go: ['view', 'plugins'], k: '插件 全家桶 json 导入插件' },
             { id: 'backup', t: '④ 记得备份', d: '设置 → 数据备份与恢复。换手机、清缓存之前一定先导出一份，回来用「📤 导入恢复」。', go: ['settings', 'data'], k: '备份 导出 恢复 换手机 存档 丢' },
             { id: 'move', t: '从别的软件搬过来', d: '数据备份与恢复那一页能导入外部聊天记录（TXT / .jsonl）；预设去「更多」→ 设定库 → 🧩 预设。', go: ['settings', 'data'], k: '酒馆 聊天记录 预设 搬家 jsonl' }
+        ] },
+        { id: 'setup', icon: '🔧', title: '接口配置教程（手把手）', intro: '一步一步照着点就行，不用懂技术。最少只要配好「① 聊天」就能用；记忆、语音、生图都是选填，想要哪个配哪个。每一条右上角「去看看 ›」直接跳到要填的地方。', items: [
+            { id: 'cfg_abc', t: '🌱 先认识三样东西', d: '不管配哪个接口，都是这三样：\n· 地址（Base URL）：去哪里要回答，像门牌号。比如 https://api.deepseek.com\n· Key（密钥）：你的钥匙，一长串，一般 sk- 开头。等于你的钱包，别发给别人。\n· 模型：要哪个 AI 来回答，比如 deepseek-v4-flash。\n地址的写法：一般写到 /v1 为止（https://某某.com/v1），后面的 /chat/completions 不要写，谷雨会自己加；DeepSeek 官方带不带 /v1 都行。\nKey 粘贴的时候前后别带空格。', go: ['settings', 'api'], k: '教程 配置 怎么填 地址 key 密钥 base url 什么意思 不会 小白' },
+            { id: 'cfg_main', t: '① 💬 聊天：配主 API（必做）', d: '用 DeepSeek 举例，国内直接能用，便宜：\n① 打开 platform.deepseek.com，手机号注册登录\n② 左边「充值」，先充 10 块钱，够聊很久\n③ 左边「API keys」→「创建 API key」→ 名字随便写 → 复制那串 sk- 开头的（只显示这一次，先存到备忘录里）\n④ 回谷雨：设置 → API 与模型 → 🌟 主 API\n　接口地址填 https://api.deepseek.com\n　API Key 粘贴刚才那串\n⑤ 点「🔄 拉取模型 (主API)」，弹出成功后在下拉里选 deepseek-v4-flash\n⑥ 去聊天随便发一句，TA 回你了就成功啦\n用中转站的：地址填卖家给的那个（一般 https://xxx.com/v1），Key 填卖家给的令牌，然后同样拉取模型、从列表里点一个，别自己手打。', go: ['settings', 'api'], k: '主api 聊天 配置 deepseek 深度求索 注册 充值 中转 怎么接 第一次 教程' },
+            { id: 'cfg_sub', t: '② 💰 省钱：配副 API（选填）', d: '副 API 帮你干评论区、小游戏、插件、总结这些量大的杂活，主 API 就只管聊天，省钱。\n最简单的配法：地址、Key 跟主 API 填一模一样，只把模型选成便宜的那个。\n① 设置 → API 与模型 → 💬 副 API\n② 填副 API 接口地址、副 API Key\n③ 点「🔄 拉取模型 (副API)」→ 选一个便宜的\n⚠️ 地址、Key、模型三样要填全才算数，少一样就全部还是走主 API（不会坏，只是没省到钱）。', go: ['settings', 'api'], k: '副api 省钱 便宜 配置 教程 杂活' },
+            { id: 'cfg_vec', t: '③ 🧠 记忆：配向量记忆（选填）', d: '向量记忆让 TA 能按「意思」翻出很久以前的聊天（你提到猫，TA 能想起三个月前你说过的那只猫）。\n⚠️ DeepSeek 没有向量模型！主 API 用 DeepSeek 的，一定要另外填一个「向量记忆专用 API」。推荐硅基流动，向量模型免费：\n① 打开 cloud.siliconflow.cn 注册登录\n② 左边「API 密钥」→「新建 API 密钥」→ 复制\n③ 回谷雨：左边栏「更多」→ 记忆总览 → 往下找「🧠 向量记忆总开关 / 模型 / 字数上限」\n④ 🧬 向量记忆专用 API：地址填 https://api.siliconflow.cn/v1 ，Key 粘贴\n⑤ 点「🔄 拉取模型」→ 选 BAAI/bge-m3\n⑥ 勾上「启用向量记忆与资料库语义检索」\n用的是 OpenAI 或者中转站、而且它卖 embedding 模型的，也可以不填专用 API，直接在下拉里选 text-embedding-3-small。\n模型定下来就别老换：换了以后旧记忆算出来的向量对不上，要重新算。', go: ['mem'], k: '向量 记忆 embedding 嵌入 硅基流动 siliconflow bge 配置 教程 翻旧账 想不起来' },
+            { id: 'cfg_tts', t: '④ 🎙️ 语音：让 TA 有声音（选填）', d: '在哪：小功能 → 🎙️ TA 的声音 → 最上面「默认声音」那个下拉框选服务。\n不想花钱：选「浏览器自带」，什么都不用填，就是有点机器味。\n想好听又便宜，推荐硅基流动（跟向量记忆可以用同一把 Key）：\n① 下拉选「OpenAI 格式（/v1/audio/speech，硅基流动这类中转也是）」\n② 接口地址填 https://api.siliconflow.cn/v1/audio/speech\n③ Key 粘贴硅基流动的密钥\n④ 模型旁边点「⟳ 拉取模型」，选带 CosyVoice 的（比如 FunAudioLLM/CosyVoice2-0.5B）\n⑤ 音色填「模型名:音色」，比如 FunAudioLLM/CosyVoice2-0.5B:alex。男声 alex / benjamin / charles / david，女声 anna / bella / claire / diana\n⑥ 点「试听」，听到声音就好啦\n下面几条是别家的配法，挑一家就行。', go: ['mini', 'voice'], k: '语音 声音 tts 朗读 配置 教程 硅基流动 cosyvoice 音色 试听 没声音' },
+            { id: 'cfg_mm', t: '　🎙️ 语音 · MiniMax（声音最像真人）', d: '① 打开 platform.minimaxi.com 注册登录，先充一点钱\n② 右上角头像 →「账户管理」→「接口密钥」→「创建新的密钥」→ 复制\n③ TA 的声音 → 下拉选「MiniMax」\n④ 接口地址不用改；API Key 粘贴；GroupId 新账号空着就行（老账号报错再去账户信息里抄过来）\n⑤ 模型默认 speech-02-hd 就行\n⑥ 音色旁边点「⟳ 拉取音色」，从下拉里挑一个喜欢的；情绪可以空着\n⑦ 点「试听」', go: ['mini', 'voice'], k: 'minimax 海螺 语音 配置 教程 音色 groupid' },
+            { id: 'cfg_volc', t: '　🎙️ 语音 · 豆包 / 火山引擎', d: '① 打开 console.volcengine.com 注册登录（要实名）\n② 搜「豆包语音」进去 →「创建应用」，勾上「语音合成」\n③ 应用详情里能看到 AppID 和 Access Token，两个都复制\n④ 在控制台的音色列表里挑一个音色（有的要先开通），复制它的 voice_type\n⑤ TA 的声音 → 下拉选「豆包 / 火山引擎」：AppID、Access Token 粘贴；Cluster 不用改（volcano_tts）；音色 voice_type 粘贴\n⑥ 点「试听」\n⚠️ 网页版大概率被浏览器拦（跨域），用桌面版 exe 或者打包的 App 就没事。', go: ['mini', 'voice'], k: '豆包 火山 字节 volcengine 语音 appid token voice_type 配置 教程' },
+            { id: 'cfg_fish', t: '　🎙️ 语音 · Fish Audio（好多现成的角色声音）', d: '① 打开 fish.audio 登录\n② 进「API」页面 → 创建一个 API Key → 复制\n③ 在网站上找到喜欢的声音，打开它的页面，网址最后那一长串字母数字就是「声音模型 ID」\n④ TA 的声音 → 下拉选「Fish Audio」：API Key 粘贴；声音模型 ID 粘贴（或者点「⟳ 拉取音色」挑）；模型默认 s1\n⑤ 点「试听」', go: ['mini', 'voice'], k: 'fish audio 语音 声音 reference_id 配置 教程 克隆' },
+            { id: 'cfg_sovits', t: '　🎙️ 语音 · GPT-SoVITS（用 TA 本人的声音，本地跑）', d: '要你自己电脑上装好 GPT-SoVITS，不花钱，但只能在这台电脑（或同一个局域网）上用。\n① 在 GPT-SoVITS 文件夹里启动 api_v2（命令行 python api_v2.py），窗口别关\n② 准备一段 3~10 秒、干净的 TA 的录音（wav），记住它在电脑上的完整路径\n③ TA 的声音 → 下拉选「GPT-SoVITS」\n　api_v2 地址：http://127.0.0.1:9880/tts（默认就是）\n　参考音频路径：比如 D:\\声音\\ta.wav\n　参考音频里说的那句话：一字不差地打出来\n④ 点「试听」', go: ['mini', 'voice'], k: 'sovits gpt-sovits 克隆 本地 语音 声音 参考音频 api_v2 配置 教程' },
+            { id: 'cfg_voice_each', t: '　🎙️ 每个角色不一样的声音', d: 'TA 的声音 →「每个角色自己的声音」：先选角色，然后\n· 跟默认一样：什么都不用动\n· 默认接口，换个音色：只改音色，Key 不用再填（最常用）\n· 自己一整套：这个角色用另一家服务，单独填\n填完点「试听」。', go: ['mini', 'voice'], k: '每个角色 不同声音 音色 男声 女声 单独 配置' },
+            { id: 'cfg_stt', t: '　🗣️ 你发语音，转成文字', d: '聊天栏的 🎙️。默认用浏览器自带的识别，不用填。\n桌面版或者有的手机上识别不了，就填一个转文字接口（硅基流动的免费）：\nTA 的声音 → 往下「🗣️ 你发语音条」\n　转文字接口地址：https://api.siliconflow.cn/v1/audio/transcriptions\n　Key：硅基流动的密钥\n　模型：点「⟳ 拉取模型」选 FunAudioLLM/SenseVoiceSmall', go: ['mini', 'voice'], k: '语音转文字 识别 stt whisper 听不懂 发语音 转写 配置 教程' },
+            { id: 'cfg_img', t: '⑤ 🖼️ 生图：让 TA 发照片（选填）', d: '在哪：小功能 → 📷 角色发图片 →「① 默认走哪条路」点「🎨 调接口生图」，下面就会出来「🎨 画图接口」。\n不花钱：点「Pollinations（免费 · 不用 key）」，什么都不用填。慢的时候要等十几秒。\n用付费接口（中转站基本都有）：\n① 点「OpenAI 兼容的画图接口（要 key）」\n② 接口地址要填完整，带上 /v1/images/generations，比如 https://中转站/v1/images/generations\n③ Key 粘贴\n④ 点「🔄 拉取模型」挑一个画图模型（或者手填，比如 dall-e-3、gpt-image-1）；尺寸 1024x1024\n⑤ 点「💾 保存」\n想让 TA 每次长得一样：同一页下面给 TA 写「形象」（或点「🧍 从人设里抽一份」），勾「用这份形象」，再点「🖼️ 试画一张自拍」看看。\n不想画：选「🗂️ 从图库里挑」或者「🌐 网上搜一张」，都不花钱。', go: ['mini', 'charPhoto'], k: '生图 画图 发图 自拍 照片 pollinations dall-e gpt-image 画图接口 配置 教程 形象' },
+            { id: 'cfg_vision', t: '　👀 让 TA 看得懂你发的图', d: '你发图给 TA、现实小任务交差、拍照，要模型会「看图」。这个不用另外配，用的就是主 API / 副 API 的模型——只要换一个会看图的模型。\n名字里带 vision、vl、4o、gemini、claude、gpt-5 的一般都能看图。拿不准就问卖你 API 的人：「这个模型支持识图吗？」\n模型不会看图也不会坏，TA 只是看不见图。', go: ['settings', 'api'], k: '识图 看图 多模态 vision 发图 看不懂图 配置' },
+            { id: 'cfg_push', t: '⑥ ☁️ 关了网页也能收到 TA 的消息（进阶，选填）', d: '手机锁屏、网页关掉以后，靠云端替你叫醒 TA。要自己部署，免费但步骤多，不想折腾可以跳过。\n① 手机装 ntfy（应用商店搜 ntfy），点 + 订阅一个 topic，名字用一长串乱码，比如 lin-ta-9f8x2q\n② 打开 dash.cloudflare.com 注册 → Workers 和 Pages → 创建 Worker，名字随便\n③ 编辑代码：把谷雨文件夹里 worker.js 的内容全部粘贴进去，部署\n④ 存储（KV）里新建一个命名空间；回 Worker →「设置 → 绑定」→ 添加 KV，变量名必须是 PROACTIVE_KV\n⑤「设置 → 变量和机密」→ 添加 AUTH_TOKEN，值自己编一串复杂的字母数字\n⑥「设置 → 触发事件」→ 添加 Cron 触发器：*/10 * * * *（每 10 分钟看一次）\n⑦ 回谷雨：设置 → 通知与云端 → 勾「☁️ 云端主动消息唤醒」，填 Worker 地址（https://名字.xxx.workers.dev）、共享密钥（跟 AUTH_TOKEN 一模一样）、ntfy topic（跟第①步一样）', go: ['settings', 'notify'], k: '云端 推送 通知 锁屏 后台 cloudflare worker ntfy 关了网页 收不到 配置 教程' },
+            { id: 'cfg_relay', t: '🛒 中转站是什么、怎么挑', d: '中转站＝帮你代买各家模型的小店：一个地址、一把 Key，就能用 GPT、Claude、Gemini 这些国外模型，国内网络也能连。\n买之前问卖家三件事：\n① Base URL 是什么（填进「接口地址」）\n② 令牌 / Key 在哪拿（一般在它网站的「令牌」页自己建一个）\n③ 网页里能不能直接用（支不支持跨域 CORS）——不支持的话网页版会一直转圈，只能用桌面版或 App\n小建议：先充一点点试试；建令牌时可以设个额度上限，花超了也不心疼；模型名永远以「拉取模型」拉到的为准，别抄网上的。', go: ['settings', 'api'], k: '中转 中转站 代理 买api 哪里买 令牌 gpt claude gemini 国外模型 怎么选' },
+            { id: 'cfg_ver', t: '🖥️ 网页版、桌面版、App：接口为什么有的能用有的不能', d: '浏览器有个安全规矩叫「跨域（CORS）」：别人家的服务器没说「允许网页来连」，浏览器就不让连。\n· 网页版（浏览器打开）：受这个规矩管。豆包 / 火山语音、部分中转站、联网探索读正文最容易被拦\n· 桌面版 exe、打包的安卓 App：不受这个规矩管，同样的地址和 Key 基本都能连\n所以：网页版一直转圈、报 Failed to fetch 或 CORS，先别怀疑自己填错了，换桌面版 / App 试一下，或者换一家支持跨域的服务。', go: ['settings', 'api'], k: '跨域 cors failed to fetch 网页版 桌面版 exe app apk 转圈 连不上 为什么' },
+            { id: 'cfg_param', t: '🎚️ 生成参数：要不要动', d: '在：设置 → 生成参数。不懂的话全部留空 / 不动，用服务商默认的就很好。只有两种情况要动：\n· TA 的话老是写到一半就断：把「单次输出上限 max_tokens」填大一点，比如 8192（只是上限，调大不会变贵）。用会「思考」的模型更要调大\n· 觉得 TA 说话太死板 / 太发散：调「温度」，0.7 左右稳一点，1.0 左右活泼一点，别超过 1.3\nTop K 有的服务商不认，报「参数不认」就把它清空。下面那几栏是「聊天回复写多少字、发几条」，按喜好调。', go: ['settings', 'gen'], k: '生成参数 温度 temperature max_tokens 截断 写一半 断了 top p top k 采样 字数' },
+            { id: 'cfg_call', t: '📞 打电话要配什么', d: '聊天顶上的 📞 打给 TA；通话界面右上角 ⚙️（或者 设置 → 互动与描写）里选「怎么打」：\n① 纯文字：什么都不用配\n② 加朗读：TA 说的话念出来\n③ 我也说话：用麦克风，浏览器自带识别转成文字（要允许麦克风；有的浏览器 / 桌面版不支持，就用 ①②）\n「用什么念」：在「🎙️ TA 的声音」里给这个角色配过声音的，通话自动用那个声音，这里不用再填；没配过的才用这里的「浏览器自带」或「自己的接口」（填法跟 TA 的声音里的 OpenAI 格式一样）。', go: ['settings', 'interaction'], k: '打电话 通话 电话 来电 麦克风 朗读 声音 配置' },
+            { id: 'cfg_web', t: '🌐 联网探索：让 TA 自己上网', d: '在：小功能 → 联网探索 →「🔌 从哪儿取内容」。\n· DuckDuckGo（默认）：免费、不用 Key，点上就行\n· Jina：读出来的内容最干净，要 Key：去 jina.ai 免费注册，复制 API Key 粘到下面的框里\n· 自定义接口：自己搭的 SearXNG 之类，地址里用 {q} 代替关键词\n· 不联网：一个请求都不发，TA 只用模型自己知道的\n「读正文走哪条路」：桌面版 / App 选「直连」；网页版选一个免 key 的代理。拿不准就点「🩺 体检」，它会挨个试，告诉你哪条能用。', go: ['mini', 'web_explore'], k: '联网探索 上网 搜索 jina duckduckgo searxng 代理 读正文 体检 配置' },
+            { id: 'cfg_hot', t: '🔥 真实热搜拉不下来', d: '真实热搜用的是三个免费的公开接口，不要 Key，平时点开就有。偶尔它们挂了：\n① 过一会儿再点刷新\n② 小功能 → 🔥 真实热搜，下面能填你自己的接口（地址里用 {s} 代替微博 / 知乎这些）\n③ 或者直接把热搜一条一行粘贴进去，TA 照样能聊', go: ['mini', 'gyxHot'], sw: ['x:gyxHot'], k: '热搜 拉不下来 接口 失败 粘贴 微博 知乎' },
+            { id: 'cfg_widget', t: '📲 小组件放到真手机桌面', d: '在：小功能 → 📲 手机桌面小组件。里面每个标签都写了步骤：\n· 🤖 安卓：装「谷雨小组件」App（源码在项目的「手机桌面小组件/安卓App」文件夹）；在谷雨安卓 App 里用就不用填中转站\n· 🍎 苹果：先搭一个免费的 Cloudflare 中转站（跟云端推送是同一个网站），再用 Scriptable 加小组件；「复制中转站代码」「复制 Scriptable 脚本」两个按钮直接给你代码\n· 网页 / 苹果要把「中转站地址」和「口令」填在「同步」那一页', go: ['mini', 'gyxPhoneW'], sw: ['x:gyxPhoneW'], k: '小组件 真手机 桌面 安卓 苹果 iphone scriptable 中转站 widget 配置' },
+            { id: 'cfg_git', t: '🔗 从 GitHub 链接导入角色卡 / 世界书 / 预设', d: '在：设置 → 数据备份与恢复 → 🔗 从Git链接导入。\n把文件的链接粘进去，点「📥 拉取并导入」，它会自己认出是角色卡、世界书还是预设。\nGitHub 网页上的链接也行，会自动转成直链（raw.githubusercontent.com）；Gitee、jsdelivr 的直链也都可以。', go: ['settings', 'data'], k: 'github git 链接 导入 角色卡 世界书 预设 raw 直链' },
+            { id: 'cfg_safe', t: '🔒 Key 的安全和换手机', d: '· 导出的备份文件里带着你所有的 Key（聊天、副、向量、语音、画图……）。所以换手机导入备份，Key 都会跟着回来，不用重填\n· 也正因为这样：备份文件别发给别人、别传到网上；截图 API 设置页之前把 Key 遮住\n· 万一 Key 泄露了：去那家网站把这把 Key 删掉，重新建一把，回谷雨换上就行\n· 给朋友分享角色卡、世界书没关系，那里面没有 Key', go: ['settings', 'data'], k: 'key 安全 泄露 备份 分享 换手机 重填 密钥 被盗' },
+            { id: 'cfg_check', t: '✅ 配完了没反应？挨个对一遍', d: '① Key 前后有没有多粘了空格\n② 主 API、副 API、向量 API 三个格子有没有填串\n③ 地址是不是多写了 /chat/completions，或者填成了官网首页\n④ 账户里有没有钱（新号要先充值）\n⑤ 模型是不是从「拉取」的列表里点的，不是自己手打的\n⑥ 网页版一直转圈、报 Failed to fetch / CORS：是那家不让浏览器直接连，换桌面版 exe、打包的 App，或者换个中转站\n还不行就打开 🛟 客服 →「发现的问题」，里面会用大白话写清楚是哪一步错了。', go: ['help', 'issues'], k: '没反应 不回 配置失败 填了没用 检查 排查 转圈 连不上 教程' }
         ] },
         { id: 'chat', icon: '💬', title: '聊天里能做的', items: [
             { id: 'game', t: '🎮 小游戏', d: '小功能 →「🎮 游戏厅」，或者聊天输入框上方的 🎮——两边是同一批游戏：棋牌、派对、推理、冒险、剧本杀、海龟汤、恋综……', go: ['mini', 'gameHall'], sw: ['x:gyxGame', 'x:gyxTrpg', 'x:gyxFish'], k: '游戏 冒险 寻宝 帮我选 跑团 钓鱼' },
@@ -245,7 +271,7 @@
         { id: 'switch', icon: '🎛️', title: '开关和设置', intro: '开关有两处：谷雨自带的在「全部开关」，插件带来的在「插件开关中心」。', items: [
             { id: 'allsw', t: '🎛️ 全部开关', d: '设置 → 全部开关。谷雨自带的所有自动功能一页看完，能搜、能一键预设。', go: ['settings', 'auto'], k: '开关 全部开关 搜开关' },
             { id: 'injgyx', t: '🧾 插件往聊天里塞了什么', d: '设置 → 注入内容管理 → 🎲 新玩法插件。每个插件往 TA 脑子里塞的那一段都列在这儿（写了来自哪个插件），可以只关某一段：插件照样能用，只是聊天时 TA 不带着这件事。', go: ['settings', 'inject'], k: '注入 prompt 插件塞了什么 提示词太长 关掉一段' },
-            { id: 'gen', t: '⏳ 生成中提示 / 停止生成', d: '模型在写东西时，屏幕下面浮出一个小条「正在生成 · 几秒」，写完自己收回；点 ■ 停止就马上停下（那一段不要了，不会再弹报错框）。小手机模式里显示在顶上的流体云（灵动岛）里，岛上也能点停止。默认只提示你点出来的，后台自己跑的也想看就改成「都提示」。开关在 设置 → 🧰 功能设置 → 🎛️ 开关和后台 → 生成中提示。打包的 App 里没法从中间掐断请求，点停止只是把界面停下、结果扔掉。', go: ['mini', 'gyxGen'], sw: ['x:gyxGen'], k: '生成中 正在生成 停止 停止生成 卡住 等很久 转圈 灵动岛 流体云' },
+            { id: 'gen', t: '⏳ 生成中提示 / 停止生成', d: '模型在写东西时，屏幕顶上正中浮出一个小条（按住能拖到别处）「正在生成 · 几秒」，写完自己收回；点 ■ 停止就马上停下（那一段不要了，不会再弹报错框）。小手机模式里显示在顶上的流体云（灵动岛）里，岛上也能点停止。默认只提示你点出来的，后台自己跑的也想看就改成「都提示」。开关在 设置 → 🧰 功能设置 → 🎛️ 开关和后台 → 生成中提示。打包的 App 里没法从中间掐断请求，点停止只是把界面停下、结果扔掉。', go: ['mini', 'gyxGen'], sw: ['x:gyxGen'], k: '生成中 正在生成 停止 停止生成 卡住 等很久 转圈 灵动岛 流体云' },
             { id: 'gyxsw', t: '🧩 插件开关中心', d: '设置 → 🧰 功能设置 → 🎛️ 开关和后台 → 插件开关中心。插件带来的新玩法都在这儿。', go: ['gyx'], k: '插件开关 开关中心' },
             { id: 'two', t: '「用」和「TA 会自己做」', d: '「用」关掉 → 这个功能整个消失，入口、小组件、今天里那一块都不见了。「TA 会自己做」关掉 → 你点进去还能用，只是 TA 不会自己想起来去做。比如「来电动画和铃声」的「TA 会自己做」关了，你还是能自己换铃声，但 TA 不会偷偷给你换一个当惊喜。', go: ['gyx'], sw: ['x:gyxRing.auto'], k: '用 TA会自己做 区别 什么意思' },
             { id: 'look2', t: '🎨 美化合集', d: '设置 → 🧰 功能设置 → 🎨 美化：气泡工坊、导入酒馆主题、日夜主题和动态壁纸、跟手返回。', go: ['mini', 'hub_look'], sw: ['x:gyxBubble', 'x:gyxStTheme', 'x:gyxDayNight', 'x:gyxSwipe'], k: '美化 气泡 主题' },
@@ -274,7 +300,10 @@
             { id: 'api_tts', t: '语音', d: 'TA 的声音（朗读、语音条、通话、听取模式、陪你散步念出来）：按「TA 的声音」里选的服务——OpenAI 兼容 / MiniMax / Fish Audio / 火山引擎；浏览器自带朗读不花钱。你发语音转文字：SiliconFlow 等转写接口，或者浏览器自带识别。', go: ['mini', 'voice'], k: '语音 tts 朗读 声音 转文字 收费' },
             { id: 'api_net', t: '不用模型、但要联网的', d: '天气（Open-Meteo，免费）；联网探索（jina 阅读、DuckDuckGo、维基，经公共 CORS 代理）；在线找书 / 歌（Gutendex、维基文库、Internet Archive、iTunes 搜索）；🔥 真实热搜（三个公开热榜接口，可以自己换）；插件自动检查更新（读你自己的网站）；云端推送（你部署的 Cloudflare Worker）；从 GitHub 导入世界书。', go: ['mini', 'web_explore'], k: '联网 天气 热搜 免费 网络 代理 外部' },
             { id: 'api_zero', t: '完全不调 API 的', d: '🔁 我们的小习惯（本地认）、计步、📍 捉迷藏的冷热、🃏 命运卡牌的数值和结局、🗝️ 密室的密码和线索、🕯️ 环境音、📤 角标和卡片、身上的状态累积、日程「一键补齐」以外的日程判断、使用指南和客服在指南里查得到的回答、所有开关和记忆总览。', go: ['settings', 'auto'], k: '不花钱 免费 不调用 本地' },
-            { id: 'api_save', t: '想省钱', d: '填一个便宜的副 API，杂活和插件就不占主 API；全部开关里每一项都写了「费用」，用不上的关掉；插件开关中心可以只关「TA 会自己做」；🔋 省电模式；设置页最上面「📊 Token 用量」能看每个功能各花了多少。', go: ['settings', 'auto'], k: '省钱 太贵 token 用量 花了多少 费用' }
+            { id: 'api_save', t: '想省钱', d: '填一个便宜的副 API，杂活和插件就不占主 API；全部开关里每一项都写了「费用」，用不上的关掉；插件开关中心可以只关「TA 会自己做」；🔋 省电模式；设置页最上面「📊 Token 用量」能看每个功能各花了多少。', go: ['settings', 'auto'], k: '省钱 太贵 token 用量 花了多少 费用' },
+            { id: 'api_tok', t: '📊 Token 用量：每一项花了多少', d: '在：设置页最上面「📊 Token 用量」；🌐 此刻 →「💰 花了多少」里是同一个面板（下面还接着「开着 / 关着的自动功能」）。\n· 📋 按项目：每一个会调模型的项目都列出来（聊天、打电话、小游戏、向量记忆、每个插件……），点一下展开看细项（比如 聊天 → 戳一戳 / 重新生成）。能看全部、今天、最近 7 天。这段时间没调用过的项目也列在最下面\n· 🧾 每次调用：一次一条\n· 📅 按天：点某一天，看那天的每一次\n· 💾 保存与导出：存多少、导出文件\n升级以前记下的、当时分不清是谁的，显示成「升级前的旧记录」；想要干净的，点「清零重记」。', go: ['tok'], k: 'token 用量 花了多少 花费 费用 统计 哪个最费 账单 消耗 此刻' },
+            { id: 'api_tok_log', t: '🧾 看每一次调用花了多少', d: 'Token 用量 →「🧾 每次调用」。每一条有：时间、项目 · 细项、用的哪个模型、走的主 API / 副 API / 向量、输入 / 输出 / 缓存各多少 token、用了几秒。\n· 标「估算」：那家服务商没告诉我们用了多少，按字数估的\n· 标「由 XX 带出来的」：是那个插件让 TA 去做的\n· 顶上能按项目筛、能搜；在「按项目」里点开一项 →「看这一项的每一次调用」也能直接跳过来\n· 开着这一页的时候，新的调用会自己冒出来', go: ['tok', 'log'], k: '每次调用 每一次 明细 流水 记录 单次 token 模型 耗时 估算' },
+            { id: 'api_tok_save', t: '💾 Token 记录存多少、导出 Excel / TXT / PDF', d: 'Token 用量 →「💾 保存与导出」。\n· 每次调用最多存：500 次到 10 万次，或者不限\n· 最多存几天：7 天到一年，或者不限（也管「按天」那一页）\n· 两个哪个先到就按哪个删；改小的时候会先问你，超出的旧记录会马上删掉，想留着就先导出\n· 导出：先选范围（全部 / 今天 / 最近 7 天 / 最近 30 天），再点 📊 Excel、📄 TXT 或 📕 PDF。Excel 里有三张表：每次调用、按项目、按天\n· 手机 App 里导出的文件存在「文档」文件夹，会弹出来让你选用什么打开', go: ['tok', 'save'], k: '导出 excel xlsx 表格 txt pdf 保存 存多少 几天 清理 删除 记录 太多 占空间' },
         ] },
         { id: 'errs', icon: '🧯', title: '报错是什么意思', intro: '客服弹出来的每一种报错，在这里都有大白话解释和一步步怎么做。客服窗口「发现的问题 → 📖 报错词典」也是这一份。', items: ERRS.map(e => ({ id: e.id, t: e.ico + ' ' + e.n, d: e.what + ' 怎么办：' + e.how.map((h, i) => '①②③④⑤'[i] + h).join(' '), go: e.go, k: '报错 错误 怎么办 ' + e.n + ' ' + (e.k || '') + ' ' + e.re.source.replace(/[\\^$()?|.*+\[\]{}]/g, ' ').replace(/\b[a-z]\b/g, '').slice(0, 160) })) },
         { id: 'help', icon: '🔍', title: '找不到的时候', items: [
@@ -313,7 +342,8 @@
         phone: () => { if (typeof window.gyPmSet === 'function') window.gyPmSet(true); else GO.settings(); },
         beauty: () => { if (typeof window.gyPmSet === 'function') window.gyPmSet(true); later(() => { if (typeof window.gyPmBeauty === 'function') window.gyPmBeauty(); }, 260); },
         stickers: () => { if (typeof window.gyPmSet === 'function') window.gyPmSet(true); later(() => { if (typeof window.gyMagStickers === 'function') window.gyMagStickers(); }, 260); },
-        help: tab => window.gyHelpOpen(tab)
+        help: tab => window.gyHelpOpen(tab),
+        tok: tab => { if (typeof showTokenStats === 'function') { if (tab && typeof window.gyTokSet === 'function') { try { window.__gyTokUI = window.__gyTokUI || {}; (window.__gyTokUI.m = window.__gyTokUI.m || { tab: 'items', range: 'all', f: '', day: '', q: '', n: 100, open: {} }).tab = tab; } catch (e) {} } showTokenStats(); } else GO.settings(); }
     };
     function runGo(go) {
         if (!go || !GO[go[0]]) return;
@@ -848,7 +878,7 @@ body.dark-theme .gyg-box{background:#15181c;color:#e7e9ea}
 .gyg-it.sm{padding:8px 10px;margin:6px 0;background:rgba(128,128,128,.05)}
 .gyg-it-hd{display:flex;align-items:center;gap:8px}.gyg-it-hd b{flex:1;font-size:14.5px;font-weight:600;min-width:0}
 .gyg-it-hd button{flex-shrink:0;border:none;background:#1d9bf0;color:#fff;border-radius:999px;padding:4px 11px;font-size:12.5px;cursor:pointer}
-.gyg-it-d{font-size:13px;line-height:1.65;color:inherit;opacity:.85;margin-top:4px}
+.gyg-it-d{font-size:13px;line-height:1.65;color:inherit;opacity:.85;margin-top:4px;white-space:pre-line}
 .gyg-sws{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}.gyg-swl{font-size:11.5px;color:#8b98a5}
 .gyg-sw{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 9px;border-radius:999px;cursor:pointer;border:1px solid rgba(128,128,128,.25);max-width:100%}
 .gyg-sw i{width:7px;height:7px;border-radius:50%;background:#aaa;flex-shrink:0}.gyg-sw em{font-style:normal;font-size:11px;opacity:.7}
