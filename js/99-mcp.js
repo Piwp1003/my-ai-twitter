@@ -122,11 +122,82 @@
         try { await window.gyDesk.mcp('rpc', { key, msg: { jsonrpc: '2.0', method: 'notifications/initialized' }, noWait: true }); } catch (e) {}
         return { rpc, close() { try { window.gyDesk.mcp('stop', { key }); } catch (e) {} } };
     }
+    // 📱 内置：不连任何服务器、不靠别的软件，直接用 App 自带的 Native.js（plus.android）调手机。
+    // 底下复用「📲 真手机」那套 N（装了谷雨守护插件走插件，没装走 Native.js），只有安卓 App 里能用。
+    const isApp = () => !!(window.plus && plus.android);
+    const PN = () => { const n = window.gysPh && window.gysPh.__N; if (!n || !n.ok()) throw new Error('只有安卓 App 里能用（网页 / 电脑上调不了手机）'); return n; };
+    const okOr = (r, bad) => { if (!r) throw new Error(bad); return r; };
+    const today0 = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+    const mins = ms => { const m = Math.round((ms || 0) / 60e3); return m >= 60 ? Math.floor(m / 60) + ' 小时 ' + (m % 60) + ' 分' : m + ' 分钟'; };
+    const appLabel = pkg => { try { const a = PN().apps().find(x => x.pkg === pkg); return a ? a.label : pkg; } catch (e) { return pkg; } };
+    const notify = (title, body) => { if (typeof sendBrowserNotification === 'function') sendBrowserNotification(title, body); else if (window.plus && plus.push) plus.push.createMessage(body, {}, { title }); };
+    const O = (props, req) => ({ type: 'object', properties: props || {}, required: req || [] });
+    const BUILTIN = {
+        now: ['手机上现在几点、星期几', O(), () => { const n = new Date(); return n.toLocaleString() + ' 星期' + '日一二三四五六'[n.getDay()]; }],
+        phone_status: ['看手机现在的状态：电量、在不在充电、音量、有没有戴耳机、亮度、正在用哪个软件', O(), () => {
+            const s = PN().status(); const o = {};
+            if (s.battery != null) o['电量'] = s.battery + '%' + (s.charging ? '（在充电）' : '');
+            if (s.vol != null) o['媒体音量'] = s.vol + ' / ' + s.volMax;
+            if (s.headset != null) o['耳机'] = s.headset ? '戴着' : '没戴';
+            if (s.bright != null && s.bright >= 0) o['亮度'] = s.bright + ' / 255';
+            if (s.fg) o['正在用'] = appLabel(s.fg);
+            return JSON.stringify(o);
+        }],
+        screen_time: ['看她今天的屏幕使用时间、解锁次数、哪些软件用得最多（要先在系统里给谷雨开「使用情况访问权限」）', O(), () => {
+            const u = PN().usage(today0(), Date.now());
+            if (!u || u.err) throw new Error('读不到：去系统设置 →「使用情况访问权限」里给谷雨打开');
+            return `今天一共 ${mins(u.total)}，解锁 ${u.unlocks || 0} 次。` + (u.apps || []).slice(0, 8).map(a => `${a.label} ${mins(a.ms)}`).join('、');
+        }],
+        notify: ['在她手机上弹一条通知', O({ title: { type: 'string' }, content: { type: 'string' } }, ['content']), a => { notify(a.title || '谷雨', String(a.content || '')); return '通知发出去了'; }],
+        remind_later: ['过几分钟在她手机上弹提醒（叫她喝水、睡觉、起床）。谷雨被系统杀掉的话就弹不出来了，要准点的用 set_alarm', O({ minutes: { type: 'number' }, content: { type: 'string' } }, ['minutes', 'content']), a => {
+            const m = Math.max(0.1, Math.min(24 * 60, Number(a.minutes) || 1)), at = new Date(Date.now() + m * 60e3);
+            setTimeout(() => notify('⏰ 提醒', String(a.content || '')), m * 60e3);
+            return '定好了，' + at.toTimeString().slice(0, 5) + ' 左右提醒';
+        }],
+        set_alarm: ['给她手机设一个真闹钟（系统时钟里的）', O({ hour: { type: 'integer' }, minute: { type: 'integer' }, label: { type: 'string' } }, ['hour', 'minute']), a => { okOr(PN().alarm(+a.hour || 0, +a.minute || 0, a.label || '谷雨'), '设不了：这个手机的时钟不让别的软件设闹钟'); return `闹钟设好了：${a.hour}:${String(a.minute).padStart(2, '0')}`; }],
+        vibrate: ['让她手机震一下（心跳那种）', O({ pattern: { type: 'string', description: '震 / 停的毫秒数，逗号隔开，比如 0,300,150,300' } }), a => { okOr(PN().buzz(a.pattern || '0,300,150,300'), '震不了'); return '震了'; }],
+        torch: ['开 / 关手电筒', O({ on: { type: 'boolean' } }, ['on']), a => { okOr(PN().torch(!!a.on), '手电筒调不动'); return '手电筒' + (a.on ? '开了' : '关了'); }],
+        volume: ['调媒体音量（0-100）', O({ percent: { type: 'integer' } }, ['percent']), a => { okOr(PN().vol(Math.max(0, Math.min(100, +a.percent || 0))), '调不了音量'); return '音量调到 ' + a.percent + '%'; }],
+        brightness: ['调屏幕亮度（1-255，要先给谷雨开「修改系统设置」）', O({ level: { type: 'integer' } }, ['level']), a => { okOr(PN().bright(+a.level || 128), '调不了：去系统设置给谷雨开「修改系统设置」'); return '亮度调好了'; }],
+        clipboard_set: ['往她剪贴板里放一段字（偷偷留话）', O({ text: { type: 'string' } }, ['text']), a => { okOr(PN().clip(String(a.text || '')), '放不进去'); return '放进剪贴板了'; }],
+        clipboard_get: ['看她剪贴板里复制了什么', O(), () => {
+            PN(); const c = plus.android.runtimeMainActivity(), inv = plus.android.invoke;
+            const clip = inv(inv(c, 'getSystemService', 'clipboard'), 'getPrimaryClip');
+            const t = clip && inv(inv(clip, 'getItemAt', 0), 'getText');
+            return t ? String(t) : '剪贴板是空的';
+        }],
+        open_app: ['在她手机上打开一个软件（按名字找，比如 微信、网易云音乐）', O({ name: { type: 'string' } }, ['name']), a => {
+            const n = PN(), q = String(a.name || '').trim().toLowerCase();
+            const hit = n.apps().find(x => x.label.toLowerCase() === q) || n.apps().find(x => x.label.toLowerCase().includes(q) || x.pkg.toLowerCase().includes(q));
+            if (!hit) throw new Error('手机上没找到「' + a.name + '」');
+            okOr(n.openApp(hit.pkg), '打不开'); return '打开了 ' + hit.label;
+        }],
+        location: ['看她手机现在大概在哪（要给谷雨定位权限）', O(), () => new Promise((res, rej) => {
+            if (!(window.plus && plus.geolocation)) return rej(new Error('只有 App 里能定位'));
+            plus.geolocation.getCurrentPosition(p => { const c = p.coords, ad = p.address || {}; res([ad.province, ad.city, ad.district, ad.street].filter(Boolean).join('') || p.addresses || `纬度 ${c.latitude.toFixed(4)}，经度 ${c.longitude.toFixed(4)}`); }, e => rej(new Error('定位失败：' + (e && e.message || '没权限或没信号'))), { timeout: 15000, maximumAge: 120000, geocode: true });
+        })]
+    };
+    async function builtinConn() {
+        if (!isApp()) throw new Error('只有安卓 App 里能用（网页 / 电脑上调不了手机）');
+        return {
+            async rpc(method, p) {
+                if (method === 'tools/list') return { tools: Object.keys(BUILTIN).map(k => ({ name: k, description: BUILTIN[k][0], inputSchema: BUILTIN[k][1] })) };
+                if (method === 'tools/call') {
+                    const t = BUILTIN[p && p.name]; if (!t) throw new Error('没有这个工具：' + (p && p.name));
+                    try { return { content: [{ type: 'text', text: String(await t[2]((p && p.arguments) || {})) }] }; }
+                    catch (e) { return { content: [{ type: 'text', text: String(e && e.message || e) }], isError: true }; }
+                }
+                return {};
+            },
+            close() {}
+        };
+    }
     async function connect(s, fresh) {
         if (!fresh && CONN[s.id]) return CONN[s.id];
         if (CONN[s.id]) { try { CONN[s.id].close(); } catch (e) {} delete CONN[s.id]; }
         let c;
-        if (s.kind === 'local') c = await localConn(s);
+        if (s.kind === 'builtin') c = await builtinConn();
+        else if (s.kind === 'local') c = await localConn(s);
         else {
             try { c = await httpConn(s); }
             catch (e) { if (e && (e.status === 404 || e.status === 405 || e.status === 400)) c = await sseConn(s); else throw e; }
@@ -158,7 +229,7 @@
         const s = C.servers.find(x => x.id === id) || C.servers[0];
         const rows = [];
         if (!s) return { ok: false, rows, hint: '还没加 MCP 服务器。' };
-        rows.push(['服务器', s.name || s.url || s.command], ['类型', s.kind === 'local' ? '本地（桌面版起进程）' : '网址']);
+        rows.push(['服务器', s.name || s.url || s.command], ['类型', s.kind === 'builtin' ? '内置（App 自己调手机）' : s.kind === 'local' ? '本地（桌面版起进程）' : '网址']);
         const t0 = Date.now();
         try {
             const c = await connect(s, true);
@@ -295,8 +366,8 @@
     window.gyMcpSave = function (id, quiet) {
         const s = get(id); if (!s) return;
         readForm(s);
-        if (s.kind === 'local' ? !s.command : !s.url) { toast('🧰 还没填完', s.kind === 'local' ? '要填命令' : '要填网址'); return false; }
-        if (!s.name) s.name = s.kind === 'local' ? s.command.split(/[\\/]/).pop() : (s.url.replace(/^https?:\/\//, '').split('/')[0]);
+        if (s.kind !== 'builtin' && (s.kind === 'local' ? !s.command : !s.url)) { toast('🧰 还没填完', s.kind === 'local' ? '要填命令' : '要填网址'); return false; }
+        if (!s.name) s.name = s.kind === 'builtin' ? '📱 这台手机（内置）' : s.kind === 'local' ? s.command.split(/[\\/]/).pop() : (s.url.replace(/^https?:\/\//, '').split('/')[0]);
         if (s.__new) { delete s.__new; C.servers.push(s); V.draft = null; }
         save(); if (!quiet) { toast('🧰 存好了', pick(['点「🔌 测试连接」看看连不连得上', '存了，记得测一下'])); go('edit', id); }
         return true;
@@ -326,6 +397,31 @@
         try { if (typeof saveTextFileForApp === 'function' && window.plus) return saveTextFileForApp(name, t); } catch (e) {}
         const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain;charset=utf-8' })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     };
+    // 📱 接上这台手机：连 Termux 里跑的 phone-mcp/guyu_phone_mcp.py，不用原生插件、不用重新打包
+    const PHONE_URL = 'http://127.0.0.1:8765/mcp';
+    const PHONE_INSTALL = 'curl -fsSL https://cdn.jsdelivr.net/gh/Piwp1003/my-ai-twitter@main/phone-mcp/install.sh | bash';
+    window.gyMcpPhoneCopy = function () {
+        try { navigator.clipboard.writeText(PHONE_INSTALL).then(() => toast('📋 复制好了', '去 Termux 里粘贴回车')); } catch (e) { prompt('复制这行到 Termux', PHONE_INSTALL); }
+    };
+    window.gyMcpBuiltin = async function () {
+        let s = C.servers.find(x => x.kind === 'builtin');
+        if (!s) { s = { id: uid(), name: '📱 这台手机（内置）', kind: 'builtin', on: true, tools: [] }; C.servers.push(s); save(); }
+        go('edit', s.id);
+        if (isApp()) await window.gyMcpTestBtn(s.id, document.querySelector('#gyMcpBody .gy-apitest-main'));
+        else toast('📱 加好了', '要在安卓 App 里才能用；网页 / 电脑上调不了手机');
+    };
+    window.gyMcpPhone = async function () {
+        let s = C.servers.find(x => x.kind !== 'local' && /\/\/(127\.0\.0\.1|localhost):8765\//.test(x.url || ''));
+        const tip = '先在手机的 Termux 里敲 guyu-phone 把它开起来，再把它显示的「口令」粘进来。\n还没装的话：去「🧰 我的 MCP」点「📋 复制安装命令」，在 Termux 里粘贴回车。';
+        const old = s ? ((/Bearer\s+(\S+)/.exec(s.headers || '') || [])[1] || '') : '';
+        const tok = typeof appPrompt === 'function' ? await appPrompt(tip, old) : prompt(tip, old);
+        if (tok == null) return;
+        const headers = String(tok).trim() ? 'Authorization: Bearer ' + String(tok).trim().replace(/^Bearer\s+/i, '') : '';
+        if (!s) { s = { id: uid(), name: '📱 这台手机', kind: 'http', url: PHONE_URL, headers, on: true, tools: [] }; C.servers.push(s); }
+        else s.headers = headers;
+        save(); go('edit', s.id);
+        await window.gyMcpTestBtn(s.id, document.querySelector('#gyMcpBody .gy-apitest-main'));
+    };
     // 粘贴 Claude 桌面版 / Cursor 那种 JSON 配置：{"mcpServers": {...}}
     window.gyMcpImport = async function () {
         const raw = typeof appPrompt === 'function' ? await appPrompt('把 MCP 配置粘进来（{"mcpServers": {…}} 那种，Claude 桌面版、Cursor 的都行）', '') : prompt('粘贴 MCP 配置');
@@ -353,10 +449,14 @@
           <div class="gymcp-note">MCP 是给 AI 用的「工具箱」：查天气、搜网页、读写你的笔记、记忆库……接上以后，你给 TA 发消息，TA 回你之前会先想想要不要用工具，用了就把结果带进回复里。<br>
           <b>网址形式</b>的网页、App、桌面版都能用（网页版要对面允许跨域）；<b>本地形式</b>（command + args）只有桌面版能用。${isDesk() ? '<br>✅ 你现在用的是桌面版，两种都能用。' : ''}<br><span style="opacity:.75">每次判断要不要用工具会多调一次模型；只在私聊里用。</span></div>
           <div class="gymcp-acts"><button class="gymcp-btn" onclick="gyMcpNew('http')">＋ 网址形式</button><button class="gymcp-btn ghost" onclick="gyMcpNew('local')">＋ 本地形式${isDesk() ? '' : '（桌面版）'}</button><button class="gymcp-btn ghost" onclick="gyMcpImport()">📋 粘贴 JSON 配置</button><button class="gymcp-btn ghost" onclick="gyMcpGo('log')">📜 调用记录（${L.length}）</button></div>
+          <div class="gymcp-note"><b>📱 让 TA 用你的手机</b>（电量、屏幕时间、正在用什么、弹通知 / 提醒、设闹钟、震动、手电筒、音量亮度、剪贴板、打开软件、位置）：<b>不用装别的软件、不用插件、不用重新打包</b>，安卓 App 里点一下就有。
+            <div class="gymcp-acts" style="margin:6px 0 0;"><button class="gymcp-btn" onclick="gyMcpBuiltin()">📱 用这台手机（内置）</button></div>
+            <details style="margin-top:4px;"><summary style="cursor:pointer;">还想读通知、读短信、念出来？（要装 Termux，备用）</summary>手机装 Termux + Termux:API（F-Droid），在 Termux 里跑一行安装命令，再敲 <code>guyu-phone</code> 开起来。
+            <div class="gymcp-acts" style="margin:6px 0 0;"><button class="gymcp-btn ghost" onclick="gyMcpPhone()">📱 接上 Termux 版</button><button class="gymcp-btn ghost" onclick="gyMcpPhoneCopy()">📋 复制安装命令</button></div></details></div>
           ${C.servers.length ? C.servers.map(s => `<div class="gymcp-row${s.on === false ? ' off' : ''}" onclick="gyMcpGo('edit','${s.id}')">
-              <span class="gymcp-ico">${s.kind === 'local' ? '💻' : '🌐'}</span>
-              <div class="gymcp-b"><b>${esc(s.name || '（没名字）')}</b><em>${esc(s.kind === 'local' ? s.command + ' ' + String(s.args || '').split('\n').join(' ') : s.url)}</em>
-              <div class="gymcp-d">${s.err ? '❌ ' + esc(s.err.slice(0, 60)) : s.ok ? '✅ ' + (s.tools || []).filter(t => t.on !== false).length + ' / ' + (s.tools || []).length + ' 个工具开着' : '还没测过'}${s.kind === 'local' && !isDesk() ? '　·　要在桌面版里用' : ''}</div></div>
+              <span class="gymcp-ico">${s.kind === 'builtin' ? '📱' : s.kind === 'local' ? '💻' : '🌐'}</span>
+              <div class="gymcp-b"><b>${esc(s.name || '（没名字）')}</b><em>${esc(s.kind === 'builtin' ? '内置：App 自己调手机，不用装别的' : s.kind === 'local' ? s.command + ' ' + String(s.args || '').split('\n').join(' ') : s.url)}</em>
+              <div class="gymcp-d">${s.err ? '❌ ' + esc(s.err.slice(0, 60)) : s.ok ? '✅ ' + (s.tools || []).filter(t => t.on !== false).length + ' / ' + (s.tools || []).length + ' 个工具开着' : '还没测过'}${s.kind === 'local' && !isDesk() ? '　·　要在桌面版里用' : ''}${s.kind === 'builtin' && !isApp() ? '　·　要在安卓 App 里用' : ''}</div></div>
               <label class="gymcp-sw" onclick="event.stopPropagation()"><input type="checkbox" ${s.on === false ? '' : 'checked'} onchange="gyMcpToggle('${s.id}', this.checked)"></label><span class="gymcp-more">›</span></div>`).join('') : '<div class="gymcp-hint" style="text-align:center;padding:20px 0;">还没有。点上面加一个。</div>'}
           <h4 class="gymcp-h">谁能用</h4>
           <label class="gymcp-ck"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="gyMcpSet('charsAll', this.checked)"> 所有角色</label>
@@ -372,7 +472,8 @@
         const f = (k, label, ph, v, rows) => `<label class="gymcp-f"><span>${label}</span>${rows ? `<textarea id="gymcpE_${k}" rows="${rows}" placeholder="${esc(ph)}">${esc(v || '')}</textarea>` : `<input id="gymcpE_${k}" placeholder="${esc(ph)}" value="${esc(v || '')}">`}</label>`;
         b.innerHTML = `
           ${f('name', '名字', '比如：天气、我的笔记', s.name)}
-          ${s.kind === 'local' ? `${isDesk() ? '' : '<div class="gymcp-note warn">本地 MCP 只有桌面版（exe）能起，这里能先填好，到桌面版里用。</div>'}
+          ${s.kind === 'builtin' ? `<div class="gymcp-note">不连服务器、不靠别的软件：谷雨 App 自己用 Native.js 调手机（装了「谷雨守护」插件的话走插件）。${isApp() ? '' : '<br><b>现在不是在安卓 App 里，测不了；装好的 App 里再点测试。</b>'}<br>有些工具要先在系统设置里给谷雨开权限：屏幕时间 →「使用情况访问权限」，亮度 →「修改系统设置」，位置 → 定位权限。</div>`
+          : s.kind === 'local' ? `${isDesk() ? '' : '<div class="gymcp-note warn">本地 MCP 只有桌面版（exe）能起，这里能先填好，到桌面版里用。</div>'}
             ${f('command', '命令', '比如：npx 或 uvx 或 node', s.command)}
             ${f('args', '参数（一行一个）', '-y\n@modelcontextprotocol/server-memory', s.args, 3)}
             ${f('env', '环境变量（一行一个 KEY=值，可不填）', 'API_KEY=xxx', s.env, 2)}`
@@ -397,7 +498,7 @@
     function paint() {
         const p = document.getElementById('gyMcpPage'); if (!p || !p.classList.contains('on')) return;
         const s = V.view === 'edit' ? get(V.id) : null;
-        document.getElementById('gyMcpTitle').textContent = V.view === 'log' ? '📜 工具调用记录' : s ? (s.name || (s.kind === 'local' ? '新的本地 MCP' : '新的网址 MCP')) : '🧰 我的 MCP';
+        document.getElementById('gyMcpTitle').textContent = V.view === 'log' ? '📜 工具调用记录' : s ? (s.name || (s.kind === 'builtin' ? '📱 这台手机（内置）' : s.kind === 'local' ? '新的本地 MCP' : '新的网址 MCP')) : '🧰 我的 MCP';
         if (V.view === 'edit') paintEdit(); else if (V.view === 'log') paintLog(); else paintList();
     }
     window.gyMcpPaint = paint;
