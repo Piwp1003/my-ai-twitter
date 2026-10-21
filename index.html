@@ -88,6 +88,16 @@
     if (bootDone()) { console.error('[未处理的 promise 错误]', r); return; }
     panel('启动时有未处理的错误：', esc((r && r.stack) || r));
   });
+  // APK 的启动图（转圈那个）：HBuilderX 启动界面要是设成「手动关闭」，没人关它就一直转下去，
+  // 底下页面其实早就好了或者早就报错了也看不见。这里自己关：页面加载完关，最晚 8 秒也关（好让上面的报错面板露出来）
+  (function () {
+    function closeSplash() { try { plus.navigator.closeSplashscreen(); } catch (e) {} }
+    function arm() {
+      if (document.readyState === 'complete') closeSplash(); else window.addEventListener('load', closeSplash);
+      setTimeout(closeSplash, 8000);
+    }
+    if (window.plus) arm(); else document.addEventListener('plusready', arm, false);
+  })();
   // 超时兜底：正常情况下 window.onload 跑完会把 __guyuBooted 置为 true
   setTimeout(function () {
     if (window.__guyuBooted) return;
