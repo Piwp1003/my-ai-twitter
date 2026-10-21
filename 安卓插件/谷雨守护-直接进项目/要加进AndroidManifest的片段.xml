@@ -1,0 +1,35 @@
+<!--
+  谷雨守护 · 要并进 app 模块 AndroidManifest.xml 的内容
+  （这是「片段」，不是完整 manifest，别整个替换，照下面注释并进去）
+-->
+
+<!-- ① <manifest> 根标签上确认有这个（没有就加）： -->
+<!--    xmlns:tools="http://schemas.android.com/tools"                     -->
+
+<!-- ② 下面这些 <uses-permission> 放到 <manifest> 里（和 SDK 原有权限并列，重复的留一份）： -->
+<uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+<uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+<uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+<uses-permission android:name="android.permission.SET_WALLPAPER" />
+<uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+<uses-permission android:name="android.permission.VIBRATE" />
+<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+<!-- ③ 下面这两个 <service> 放到 <application> …… </application> 里面： -->
+
+<!-- 无障碍：挡被锁的软件、读屏、截屏 -->
+<service android:name="com.guyu.guard.GuardAccess"
+    android:label="谷雨守护" android:exported="true"
+    android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+    <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+    <meta-data android:name="android.accessibilityservice" android:resource="@xml/guyu_guard_access" />
+</service>
+
+<!-- 通知监听：读别的软件的通知 -->
+<service android:name="com.guyu.guard.GuardNotify"
+    android:label="谷雨" android:exported="true"
+    android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+    <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+</service>
