@@ -376,7 +376,7 @@ if (typeof window.gyxLiveOpen !== 'function') window.gyxLiveOpen = id => { const
 window.gyxLiveStart = async cid => { const c = X.char(cid) || X.cur(); if (!c) return; const l = await taLive(c); if (l) window.gysDouyinOpenLive(l.id); return l; };
 
 /* ---------------- 谷雨这边 ---------------- */
-X.mini({ id: 'gysDouyin', icon: '🎶', title: '抖音', desc: '上下滑刷视频、评论、发作品、直播、私信', cat: '软件', onOpen: () => G.open(APP) }, 'gysDouyin');
+X.mini({ id: 'gysDouyin', icon: '🎶', title: '抖音', desc: '上下滑刷视频、评论、发作品、直播连麦、日常、热榜、私信', cat: '软件', onOpen: () => G.open(APP) }, 'gysDouyin');
 const rare = (c, k, h) => Date.now() - ((D.last[k + c.id]) || 0) > h * 3600e3;
 const mark = (c, k) => { D.last[k + c.id] = Date.now(); saveD(); };
 X.action({ key: 'gys_dy_post', label: '发一条抖音', hint: '随手拍的日常 / 才艺 / vlog', need: c => rare(c, 'p', 24), run: async c => { mark(c, 'p'); const v = await taVid(c); if (!v) return null; G.notify(APP, c, `🎶 <b>${X.esc(c.name)}</b> 发布了新作品`, v.cap || v.scene, X.go('gysDouyinOpenVid', v.id)); return { text: '发了一条抖音：' + (v.cap || v.scene), selfNotified: true, jump: X.go('gysDouyinOpenVid', v.id) }; } }, 'gysDouyin');

@@ -97,6 +97,7 @@ const CORE_ASSETS = [
     './js/58-more-acts.js?v=' + V,
     './js/59-online-res.js?v=' + V,
     './js/60-act-notify.js?v=' + V,
+    './js/61-real-phone.js?v=' + V,
     './js/62-phone-mode.js?v=' + V,
     './js/63-phone-home.js?v=' + V,
     './js/64-post-regen.js?v=' + V,

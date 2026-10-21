@@ -424,7 +424,7 @@ G.badge.wechat = unreadAll;
 try { localStorage.setItem('gyWxMode', '0'); } catch (e) {}   // 老「微信模式」关掉（换成这个软件了）
 
 /* ---------------- 谷雨这边 ---------------- */
-X.mini({ id: 'gysWechat', icon: '💚', title: '微信', desc: '单独的微信聊天、朋友圈、通讯录、公众号、红包转账、通话、群聊', cat: '软件', onOpen: () => G.open(APP) }, 'gysWechat');
+X.mini({ id: 'gysWechat', icon: '💚', title: '微信', desc: '单独的微信聊天、朋友圈、通讯录、公众号、红包转账、通话、群聊、微信运动', cat: '软件', onOpen: () => G.open(APP) }, 'gysWechat');
 const rare = (c, k, h) => Date.now() - ((D.last[k + c.id]) || 0) > h * 3600e3;
 const mark = (c, k) => { D.last[k + c.id] = Date.now(); saveD(); };
 X.action({ key: 'gys_wx_text', label: '在微信上给她发几条', hint: '随手的：看到什么想到她、一张照片、一个表情包、一条语音', need: c => rare(c, 't', 6), run: async c => {

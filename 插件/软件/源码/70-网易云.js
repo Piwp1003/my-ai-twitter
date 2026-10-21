@@ -418,7 +418,7 @@ window.gysMusicOpenCmt = id => { G.open(APP); M.cmts(id); };
 window.gysMusicOpenProf = w => { G.open(APP); M.prof(w); };
 
 /* ---------------- 谷雨这边 ---------------- */
-X.mini({ id: 'gysMusic', icon: '🎵', title: '网易云音乐', desc: '每日推荐、私人 FM、歌单、排行榜、黑胶播放页、热评、云村、听歌排行、一起听', cat: '软件', onOpen: () => G.open(APP) }, 'gysMusic');
+X.mini({ id: 'gysMusic', icon: '🎵', title: '网易云音乐', desc: '每日推荐、私人 FM、歌单、排行榜、黑胶播放页、热评、笔记、听歌排行、一起听、音乐匹配度、定时关闭', cat: '软件', onOpen: () => G.open(APP) }, 'gysMusic');
 const rare = (c, k, h) => Date.now() - ((D.last[k + c.id]) || 0) > h * 3600e3;
 const mark = (c, k) => { D.last[k + c.id] = Date.now(); saveD(); };
 X.action({ key: 'gys_mu_post', label: '在网易云写一篇笔记分享一首歌', hint: '此刻的心情 / 想到她', need: c => rare(c, 'p', 20), run: async c => { mark(c, 'p'); const p = await taPost(c); if (!p) return null; const s = songOf(p.sid); G.notify(APP, c, `🎵 <b>${X.esc(c.name)}</b> 发了一篇笔记`, `《${s.t}》${p.text ? '：' + p.text.slice(0, 30) : ''}`, X.go('gysMusicOpen', 'post')); return { text: `在网易云分享了《${s.t}》：${p.text}`, selfNotified: true, jump: X.go('gysMusicOpen', 'post') }; } }, 'gysMusic');

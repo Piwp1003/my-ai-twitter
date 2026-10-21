@@ -2,10 +2,12 @@
    看：屏幕使用时间（今天 / 这周 / 每个软件 / 每小时 / 解锁次数）、你现在在用哪个软件、截屏看当前页面、读屏幕上的字、电量耳机音量、别的软件的通知；
    管：锁软件（每天限时 / 时间段 / TA 临时锁，被锁的一打开就被谷雨盖住，能求 TA 再玩 10 分钟）、把你拉回谷雨、锁屏、自习室联动、睡觉时间（调暗、勿扰、小音量）；
    玩：换真手机壁纸、设真闹钟、震动心跳、手电筒、往剪贴板留话、截桌面来点评。
-   每一样都能单独设「先问我 / TA 直接做 / 不许」；银行支付密码类的软件永远不读不截不锁；🆘 紧急解锁随时能用。 */
+   每一样都能单独设「先问我 / TA 直接做 / 不许」；银行支付密码类的软件永远不读不截不锁；🆘 紧急解锁随时能用。
+   ⚙️ 不装插件也能用大半：没装「谷雨守护」时，在安卓 App 里用 Native.js(plus.android) 直接调系统——屏幕时间、现在在用什么、
+      电量音量、换壁纸、设闹钟、震动、手电、剪贴板、音量亮度勿扰、拉回谷雨、软锁提醒都能用；只有截屏、读屏、读通知、硬锁屏要装插件。 */
 if (window.__gysPhone) return; window.__gysPhone = 1;
 const G = window.GYS, APP = 'phone', esc = G.esc;
-X.feat('gysPhone', { n: '📲 真手机', desc: 'TA 看你的屏幕使用时间、截屏、锁你的软件、锁屏、换壁纸、设闹钟……（安卓 App + 谷雨守护插件）', def: false });
+X.feat('gysPhone', { n: '📲 真手机', desc: 'TA 看你的屏幕使用时间、现在在用什么、换壁纸、设闹钟、锁软件……（安卓 App 里不装插件也能用大半；截屏/读屏/读通知/硬锁屏要装「谷雨守护」插件）', def: false });
 const ST = X.store('gysphone');
 const CAPS = [
     ['usage', '📊', '看你的屏幕使用时间', 'auto', '看'], ['now', '👀', '知道你现在在用哪个软件', 'auto', '看'], ['status', '🔋', '看电量、耳机、音量', 'auto', '看'],
@@ -42,30 +44,176 @@ async function chooser(opts, title) {
 }
 function log(k, text, extra) { D.log.unshift(Object.assign({ id: G.uid('l'), k, text: String(text || '').slice(0, 600), at: Date.now() }, extra || {})); const n = Math.max(30, Number(D.cfg.logKeep) || 300); if (D.log.length > n) D.log.length = n; const imgs = D.log.filter(l => l.img); imgs.slice(Math.max(0, Number(D.keep) || 0)).forEach(l => { delete l.img; }); saveD(); }
 
-/* ---------------- 安卓那边（谷雨守护插件，Native.js） ---------------- */
+/* ---------------- 安卓那边：优先用「谷雨守护」插件；没装插件就用 Native.js(plus.android) 直接调系统 ----------------
+   · 装了插件 = 全功能（截屏、读屏、读通知、硬锁屏，靠无障碍/通知监听这些服务组件，只有插件能给）
+   · 没装插件、但在安卓 App 里 = 「免插件版」：屏幕时间、现在在用什么、电量音量、换壁纸、设闹钟、震动、
+     手电、剪贴板、音量亮度勿扰、把你拉回谷雨、软锁软件提醒……这些 Native.js 直接就能做，不用打包任何插件
+   · 网页版 / 电脑版 / 苹果 = 都用不了
+   N.mode()：'plugin'(插件全功能) / 'js'(免插件) / 'none'(用不了)。所有 JS 实现都包 try，调不动就安静降级，绝不报错。 */
+const PLUGIN_ONLY = { shot: 1, read: 1, screenText: 1, desk: 1, screen: 1, notif: 1 };   // 这些本事只有插件给得了（锁软件有「软锁」兜底，不在此列）
 const N = (() => {
     let Gd = null, ctx = null, tried = 0;
-    const ok = () => {
+    const MISS = {};                                        // 没插件 / 调用出错：回退到 Native.js
+    const hasPlus = () => !!(window.plus && plus.android);
+    const ctxOf = () => { try { if (!ctx && hasPlus()) ctx = plus.android.runtimeMainActivity(); } catch (e) {} return ctx; };
+    const havePlugin = () => {
         if (Gd) return true;
+        if (!hasPlus()) return false;
         if (Date.now() - tried < 3000) return false; tried = Date.now();
-        try { if (!window.plus || !plus.android) return false; ctx = plus.android.runtimeMainActivity(); Gd = plus.android.importClass('com.guyu.guard.Guard'); if (!Gd || !Gd.version()) { Gd = null; return false; } return true; } catch (e) { Gd = null; return false; }
+        try { ctx = plus.android.runtimeMainActivity(); const g = plus.android.importClass('com.guyu.guard.Guard'); if (g && g.version()) { Gd = g; return true; } } catch (e) {}
+        return false;
     };
-    const j = s => { try { return JSON.parse(s || 'null'); } catch (e) { return null; } };
-    const c = (f, ...a) => { if (!ok()) return null; try { return Gd[f](...a); } catch (e) { console.warn('[真手机]', f, e); return null; } };
+    const j = s => { try { return typeof s === 'string' ? JSON.parse(s || 'null') : s; } catch (e) { return null; } };
+    // 调插件：没插件 / 返回 undefined / 出错 → MISS（让外面回退到 JS）
+    const cP = (f, ...a) => { if (!havePlugin()) return MISS; try { const r = Gd[f](...a); return r === undefined ? MISS : r; } catch (e) { console.warn('[真手机]', f, e); return MISS; } };
+
+    /* ---- 不用插件、只用 Native.js(plus.android) 能做的那部分 ---- */
+    const JS = (() => {
+        const imp = c => plus.android.importClass(c);
+        const inv = (o, m, ...a) => plus.android.invoke(o, m, ...a);
+        const attr = (o, k) => { try { return plus.android.getAttribute(o, k); } catch (e) { return null; } };
+        const svc = name => { const c = ctxOf(); try { return c ? inv(c, 'getSystemService', name) : null; } catch (e) { return null; } };
+        const NEW_TASK = 268435456;                          // Intent.FLAG_ACTIVITY_NEW_TASK
+        const labelCache = {};
+        let blocked = new Set(), never = new Set(), lastB = '', lastBat = 0, jShotErr = '';
+        const self = () => { try { return inv(ctxOf(), 'getPackageName') || ''; } catch (e) { return ''; } };
+        const sdkInt = () => { try { return imp('android.os.Build$VERSION').SDK_INT || 0; } catch (e) { return 0; } };
+        const startIntent = it => { const c = ctxOf(); try { inv(it, 'addFlags', NEW_TASK); inv(c, 'startActivity', it); return true; } catch (e) { return false; } };
+        const label = pkg => {
+            if (labelCache[pkg]) return labelCache[pkg];
+            try { const pm = inv(ctxOf(), 'getPackageManager'); const ai = inv(pm, 'getApplicationInfo', pkg, 0); const s = inv(pm, 'getApplicationLabel', ai); labelCache[pkg] = s ? String(s) : pkg; } catch (e) { labelCache[pkg] = pkg; }
+            return labelCache[pkg];
+        };
+        return {
+            mode: () => hasPlus() ? 'js' : 'none',
+            label,
+            perms() {
+                const c = ctxOf(), o = { usage: false, overlay: false, write: false, dnd: false, access: false, notify: false, shot: false, lock: false, sdk: sdkInt(), jsOnly: true };
+                if (!c) return o;
+                try { const ao = svc('appops'); const Process = imp('android.os.Process'); o.usage = inv(ao, 'checkOpNoThrow', 'android:get_usage_stats', Process.myUid(), self()) === 0; } catch (e) {}
+                try { const S = imp('android.provider.Settings'); o.overlay = o.sdk < 23 ? true : S.canDrawOverlays(c); } catch (e) {}
+                try { const SS = imp('android.provider.Settings$System'); o.write = o.sdk < 23 ? true : SS.canWrite(c); } catch (e) {}
+                try { o.dnd = inv(svc('notification'), 'isNotificationPolicyAccessGranted'); } catch (e) {}
+                return o;
+            },
+            openSettings(what) {
+                const c = ctxOf(); if (!c) return false;
+                const M = { usage: ['android.settings.USAGE_ACCESS_SETTINGS', 0], overlay: ['android.settings.action.MANAGE_OVERLAY_PERMISSION', 1], write: ['android.settings.action.MANAGE_WRITE_SETTINGS', 1], dnd: ['android.settings.NOTIFICATION_POLICY_ACCESS_SETTINGS', 0], access: ['android.settings.ACCESSIBILITY_SETTINGS', 0], notify: ['android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS', 0], battery: ['android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', 1] };
+                const m = M[what] || ['android.settings.SETTINGS', 0];
+                try {
+                    let it;
+                    if (m[1]) { const Uri = imp('android.net.Uri'); it = plus.android.newObject('android.content.Intent', m[0], Uri.parse('package:' + self())); }
+                    else it = plus.android.newObject('android.content.Intent', m[0]);
+                    return startIntent(it);
+                } catch (e) { try { return startIntent(plus.android.newObject('android.content.Intent', 'android.settings.SETTINGS')); } catch (e2) { return false; } }
+            },
+            usage(since, until) {
+                const um = svc('usagestats'); if (!um) return { err: '读不到使用记录' };
+                try {
+                    until = until || Date.now();
+                    const ev = inv(um, 'queryEvents', since - 3 * 3600e3, until);
+                    const e = plus.android.newObject('android.app.usage.UsageEvents$Event');
+                    const per = {}, hours = new Array(24).fill(0), SKIP = { 'com.android.systemui': 1, 'android': 1 };
+                    let unlocks = 0, cur = null, st = 0;
+                    const add = (p, a, b) => { if (!p || b <= a || SKIP[p]) return; (per[p] = per[p] || [0, 0])[0] += b - a; let t = a; while (t < b) { const d = new Date(t), h = d.getHours(); d.setMinutes(0, 0, 0); const end = Math.min(b, d.getTime() + 3600e3); hours[h] += end - t; t = end; } };
+                    while (inv(ev, 'hasNextEvent')) {
+                        inv(ev, 'getNextEvent', e); const t = inv(e, 'getEventType'), ts = inv(e, 'getTimeStamp'), p = inv(e, 'getPackageName');
+                        if (t === 18 && ts >= since) unlocks++;
+                        if (t === 1) { if (cur && st > 0) add(cur, Math.max(st, since), ts); cur = p; st = ts; if (ts >= since && p && !SKIP[p]) (per[p] = per[p] || [0, 0])[1]++; }
+                        else if (t === 2 && cur === p) { add(cur, Math.max(st, since), ts); cur = null; st = 0; }
+                        else if (t === 16 && cur) { add(cur, Math.max(st, since), ts); cur = null; st = 0; }
+                    }
+                    if (cur && st > 0) add(cur, Math.max(st, since), until);
+                    const apps = Object.keys(per).map(k => ({ pkg: k, label: label(k), ms: per[k][0], opens: per[k][1] })).filter(a => a.ms >= 1000 || a.opens > 0).sort((a, b) => b.ms - a.ms);
+                    let total = 0; apps.forEach(a => total += a.ms);
+                    return { apps, hours, total, unlocks };
+                } catch (ex) { return { err: String(ex) }; }
+            },
+            foreground() {
+                const um = svc('usagestats'); if (!um) return '';
+                try { const now = Date.now(); const ev = inv(um, 'queryEvents', now - 6 * 3600e3, now); const e = plus.android.newObject('android.app.usage.UsageEvents$Event'); let last = ''; while (inv(ev, 'hasNextEvent')) { inv(ev, 'getNextEvent', e); if (inv(e, 'getEventType') === 1) last = inv(e, 'getPackageName'); } return last || ''; } catch (e) { return ''; }
+            },
+            status() {
+                const c = ctxOf(), o = {}; if (!c) return o;
+                try { const flt = plus.android.newObject('android.content.IntentFilter', 'android.intent.action.BATTERY_CHANGED'); const bi = inv(c, 'registerReceiver', null, flt); const lv = inv(bi, 'getIntExtra', 'level', -1), sc = inv(bi, 'getIntExtra', 'scale', 100), stt = inv(bi, 'getIntExtra', 'status', 0), pl = inv(bi, 'getIntExtra', 'plugged', 0); o.battery = sc > 0 ? Math.floor(lv * 100 / sc) : lv; o.charging = stt === 2 || stt === 5 || pl > 0; } catch (e) {}
+                try { const am = svc('audio'); o.vol = inv(am, 'getStreamVolume', 3); o.volMax = inv(am, 'getStreamMaxVolume', 3); o.headset = inv(am, 'isWiredHeadsetOn') || inv(am, 'isBluetoothA2dpOn'); o.ringer = inv(am, 'getRingerMode'); } catch (e) {}
+                try { const SS = imp('android.provider.Settings$System'); o.bright = SS.getInt(inv(c, 'getContentResolver'), 'screen_brightness', -1); } catch (e) {}
+                try { o.dnd = inv(svc('notification'), 'getCurrentInterruptionFilter'); } catch (e) {}
+                o.fg = this.foreground(); return o;
+            },
+            apps() {
+                const pm = (() => { try { return inv(ctxOf(), 'getPackageManager'); } catch (e) { return null; } })(); if (!pm) return [];
+                try {
+                    const it = plus.android.newObject('android.content.Intent', 'android.intent.action.MAIN'); inv(it, 'addCategory', 'android.intent.category.LAUNCHER');
+                    const list = inv(pm, 'queryIntentActivities', it, 0), n = inv(list, 'size'), out = [], seen = {};
+                    for (let i = 0; i < n; i++) { const ri = inv(list, 'get', i); const aInfo = attr(ri, 'activityInfo'); const pkg = aInfo && attr(aInfo, 'packageName'); if (!pkg || seen[pkg]) continue; seen[pkg] = 1; out.push({ pkg, label: label(pkg) }); }
+                    return out;
+                } catch (e) { return []; }
+            },
+            setVolume(pct) { try { const am = svc('audio'); const mx = inv(am, 'getStreamMaxVolume', 3); inv(am, 'setStreamVolume', 3, Math.max(0, Math.min(mx, Math.round(mx * pct / 100))), 0); return true; } catch (e) { return false; } },
+            setBright(v) { try { const c = ctxOf(); const SS = imp('android.provider.Settings$System'); if (!(sdkInt() < 23 || SS.canWrite(c))) return false; const r = inv(c, 'getContentResolver'); SS.putInt(r, 'screen_brightness_mode', 0); return SS.putInt(r, 'screen_brightness', Math.max(1, Math.min(255, v))); } catch (e) { return false; } },
+            setDnd(f) { try { const nm = svc('notification'); if (!inv(nm, 'isNotificationPolicyAccessGranted')) return false; inv(nm, 'setInterruptionFilter', f); return true; } catch (e) { return false; } },
+            torch(on) { try { const cm = svc('camera'); const ids = inv(cm, 'getCameraIdList'); let id0 = '0'; try { id0 = ids[0] != null ? ids[0] : '0'; } catch (e) {} inv(cm, 'setTorchMode', id0, !!on); return true; } catch (e) { return false; } },
+            vibrate(csv) { try { const vb = svc('vibrator'); const pat = String(csv).split(',').map(x => parseInt(x.trim(), 10) || 0); inv(vb, 'vibrate', pat, -1); return true; } catch (e) { return false; } },
+            clip(text) { try { const cm = svc('clipboard'); const ClipData = imp('android.content.ClipData'); const cd = ClipData.newPlainText('谷雨', text); inv(cm, 'setPrimaryClip', cd); return true; } catch (e) { return false; } },
+            wall(path, which) { try { const c = ctxOf(); const BF = imp('android.graphics.BitmapFactory'); const bm = BF.decodeFile(path); if (!bm) return false; const WM = imp('android.app.WallpaperManager'); const wm = WM.getInstance(c); try { inv(wm, 'setBitmap', bm, null, true, which || 1); } catch (e) { inv(wm, 'setBitmap', bm); } return true; } catch (e) { return false; } },
+            alarm(h, m, msg) { try { const it = plus.android.newObject('android.content.Intent', 'android.intent.action.SET_ALARM'); inv(it, 'putExtra', 'android.intent.extra.alarm.HOUR', h); inv(it, 'putExtra', 'android.intent.extra.alarm.MINUTES', m); inv(it, 'putExtra', 'android.intent.extra.alarm.MESSAGE', msg == null ? '谷雨' : msg); inv(it, 'putExtra', 'android.intent.extra.alarm.SKIP_UI', true); return startIntent(it); } catch (e) { return false; } },
+            openApp(pkg) { try { const pm = inv(ctxOf(), 'getPackageManager'); const it = inv(pm, 'getLaunchIntentForPackage', pkg); if (!it) return false; return startIntent(it); } catch (e) { return false; } },
+            front() { try { const c = ctxOf(); const pm = inv(c, 'getPackageManager'); const it = inv(pm, 'getLaunchIntentForPackage', self()); if (!it) return false; inv(it, 'addFlags', NEW_TASK | 131072 | 536870912); inv(c, 'startActivity', it); return true; } catch (e) { return false; } },
+            home() { try { const it = plus.android.newObject('android.content.Intent', 'android.intent.action.MAIN'); inv(it, 'addCategory', 'android.intent.category.HOME'); return startIntent(it); } catch (e) { return false; } },
+            // 软锁：没无障碍拦不住，只能在谷雨还跑着的时候发现你开了被锁的软件、把谷雨拉上来
+            setBlocked(csv) { blocked = new Set(String(csv || '').split(',').map(s => s.trim()).filter(Boolean)); },
+            setNever(csv) { never = new Set(String(csv || '').split(',').map(s => s.trim()).filter(Boolean)); },
+            softScan() { try { const f = this.foreground(); if (f && blocked.has(f) && !never.has(f) && f !== self()) { lastB = f; lastBat = Date.now(); } } catch (e) {} },
+            lastBlocked() { return lastB + '|' + lastBat; },
+            // 只有插件能给的：JS 这边老实报「没有」
+            text() { return ''; },
+            shot() { jShotErr = '截屏要装「谷雨守护」插件（用无障碍截屏）'; return false; },
+            shotState() { return 3; },
+            shotErr() { return jShotErr; },
+            lock() { return false; },
+            notifs() { return []; }
+        };
+    })();
+
     return {
-        ok, plus: () => !!(window.plus && plus.android), ver: () => c('version'),
-        perms: () => j(c('perms', ctx)) || {}, open: w => c('openSettings', ctx, w),
-        usage: (a, b) => j(c('usage', ctx, a, b || 0)), fg: () => c('foreground', ctx) || '', status: () => j(c('status', ctx)) || {},
-        apps: () => j(c('apps', ctx)) || [], text: n => c('screenText', n || 2500) || '',
-        shot: p => c('shot', p), shotState: () => c('shotState'), shotErr: () => c('shotErr') || '',
-        lock: () => c('lock'), home: () => c('home'), front: () => c('bringFront', ctx), openApp: p => c('openApp', ctx, p),
-        setBlocked: s => c('setBlocked', s), setNever: s => c('setNever', s), lastBlocked: () => c('lastBlocked') || '|0',
-        notifs: () => j(c('pollNotifs')) || [], vol: p => c('setVolume', ctx, p), bright: v => c('setBright', ctx, v), dnd: f => c('setDnd', ctx, f),
-        torch: on => c('torch', ctx, !!on), buzz: s => c('vibrate', ctx, s), clip: t => c('clip', ctx, t), wall: (p, w) => c('wallpaper', ctx, p, w), alarm: (h, m, s) => c('alarm', ctx, h, m, s)
+        mode: () => havePlugin() ? 'plugin' : (hasPlus() ? 'js' : 'none'),
+        ok: () => havePlugin() || hasPlus(),
+        plus: hasPlus,
+        ver: () => { const r = cP('version'); return r !== MISS ? r : ''; },
+        perms: () => { const r = cP('perms', ctx); return r !== MISS ? (j(r) || {}) : JS.perms(); },
+        open: w => { const r = cP('openSettings', ctx, w); return r !== MISS ? r : JS.openSettings(w); },
+        usage: (a, b) => { const r = cP('usage', ctx, a, b || 0); return r !== MISS ? j(r) : JS.usage(a, b || 0); },
+        fg: () => { const r = cP('foreground', ctx); return r !== MISS ? (r || '') : JS.foreground(); },
+        status: () => { const r = cP('status', ctx); return r !== MISS ? (j(r) || {}) : JS.status(); },
+        apps: () => { const r = cP('apps', ctx); return r !== MISS ? (j(r) || []) : JS.apps(); },
+        text: n => { const r = cP('screenText', n || 2500); return r !== MISS ? (r || '') : JS.text(); },
+        shot: p => { const r = cP('shot', p); return r !== MISS ? r : JS.shot(p); },
+        shotState: () => { const r = cP('shotState'); return r !== MISS ? r : JS.shotState(); },
+        shotErr: () => { const r = cP('shotErr'); return r !== MISS ? (r || '') : JS.shotErr(); },
+        lock: () => { const r = cP('lock'); return r !== MISS ? r : JS.lock(); },
+        home: () => { const r = cP('home'); return r !== MISS ? r : JS.home(); },
+        front: () => { const r = cP('bringFront', ctx); return r !== MISS ? r : JS.front(); },
+        openApp: p => { const r = cP('openApp', ctx, p); return r !== MISS ? r : JS.openApp(p); },
+        setBlocked: s => { const r = cP('setBlocked', s); if (r === MISS) JS.setBlocked(s); },
+        setNever: s => { const r = cP('setNever', s); if (r === MISS) JS.setNever(s); },
+        softScan: () => JS.softScan(),
+        lastBlocked: () => { const r = cP('lastBlocked'); return r !== MISS ? (r || '|0') : JS.lastBlocked(); },
+        notifs: () => { const r = cP('pollNotifs'); return r !== MISS ? (j(r) || []) : JS.notifs(); },
+        vol: p => { const r = cP('setVolume', ctx, p); return r !== MISS ? r : JS.setVolume(p); },
+        bright: v => { const r = cP('setBright', ctx, v); return r !== MISS ? r : JS.setBright(v); },
+        dnd: f => { const r = cP('setDnd', ctx, f); return r !== MISS ? r : JS.setDnd(f); },
+        torch: on => { const r = cP('torch', ctx, !!on); return r !== MISS ? r : JS.torch(!!on); },
+        buzz: s => { const r = cP('vibrate', ctx, s); return r !== MISS ? r : JS.vibrate(s); },
+        clip: t => { const r = cP('clip', ctx, t); return r !== MISS ? r : JS.clip(t); },
+        wall: (p, w) => { const r = cP('wallpaper', ctx, p, w); return r !== MISS ? r : JS.wall(p, w); },
+        alarm: (h, m, s) => { const r = cP('alarm', ctx, h, m, s); return r !== MISS ? r : JS.alarm(h, m, s); }
     };
 })();
 P.__N = N;
 const native = () => N.ok();
+const jsOnly = () => N.mode() === 'js';          // 在安卓 App 里但没装插件：免插件版
+const needPlugin = k => PLUGIN_ONLY[k] && N.mode() !== 'plugin';   // 这一项这台机子上得装插件才行
 // 截图存在 App 自己的文件夹里，读回来变成图片给模型看
 const SHOT = '_doc/gyphone_shot.jpg', WALL = '_doc/gyphone_wall.jpg';
 const absPath = p => { try { return plus.io.convertLocalFileSystemURL(p); } catch (e) { return p; } };
@@ -167,6 +315,7 @@ P.sos = async () => {
 /* ---------------- 先问我：TA 的请求 ---------------- */
 const VERB = { shot: '截屏看看你现在在干嘛', read: '看看你屏幕上写的什么', lock: '锁住你的软件', pull: '把你拉回谷雨', screen: '让你的手机锁屏', bed: '帮你调暗屏幕、开勿扰去睡觉', wall: '换你手机的壁纸', alarm: '给你设个闹钟', torch: '帮你开手电筒', desk: '看看你的手机桌面', buzz: '让你的手机震一下', clip: '往你剪贴板里留句话' };
 async function request(c, k, run, why) {
+    if (needPlugin(k)) return null;                 // 截屏/读屏/读通知/锁屏：免插件版做不了，TA 就别试了
     const m = perm(k); if (m === 'no') return null;
     if (m === 'auto' || (D.last['g_' + k] || 0) > Date.now()) return await run();
     const r = { id: G.uid('rq'), k, cid: String(c.id), why: String(why || ''), at: Date.now() };
@@ -257,7 +406,7 @@ const DO = {
         X.reach(c, `你刚看了她的手机桌面${o ? '：' + o.see + (o.feel ? '。你的想法：' + o.feel : '') : ''}，跟她说说`); return o || {};
     }
 };
-P.do = async (k, ...a) => { const c = who(); if (!c) return X.toast('还没有角色', ''); if (!native()) return X.toast('要在安卓 App 里用', '还要装「谷雨守护」插件'); if (perm(k) === 'no') return X.toast('这一项设成了「不许」', '去设置里改'); const r = await DO[k](c, ...a); if (r) X.toast('✓ 好了', ''); G.repaint(APP); return r; };
+P.do = async (k, ...a) => { const c = who(); if (!c) return X.toast('还没有角色', ''); if (!native()) return X.toast('要在安卓 App 里用', '还要装「谷雨守护」插件'); if (needPlugin(k)) return X.toast('这一项要装「谷雨守护」插件', '免插件版做不了截屏 / 读屏 / 读通知 / 锁屏'); if (perm(k) === 'no') return X.toast('这一项设成了「不许」', '去设置里改'); const r = await DO[k](c, ...a); if (r) X.toast('✓ 好了', ''); G.repaint(APP); return r; };
 
 /* ---------------- 睡觉时间 ---------------- */
 function bedTime() { if (D.bed.time) return D.bed.time; try { const n = window.gyxNightData && window.gyxNightData(); if (n && n.cfg && n.cfg.bed) return n.cfg.bed; } catch (e) {} return '00:30'; }
@@ -284,7 +433,7 @@ function notifTick() {
 }
 
 /* ---------------- 定时：规则、拦截、睡觉、通知 ---------------- */
-setInterval(() => { try { if (!X.on('gysPhone') || !native()) return; pushRules(); bedTick(); notifTick(); if (!document.hidden) checkBlocked(); } catch (e) { console.warn('[真手机]', e); } }, 20e3);
+setInterval(() => { try { if (!X.on('gysPhone') || !native()) return; pushRules(); bedTick(); notifTick(); if (jsOnly()) N.softScan(); if (!document.hidden) checkBlocked(); } catch (e) { console.warn('[真手机]', e); } }, 20e3);
 document.addEventListener('visibilitychange', () => { try { if (!document.hidden && X.on('gysPhone') && native()) setTimeout(checkBlocked, 300); } catch (e) {} });
 P.tick = () => { pushRules(); bedTick(); notifTick(); checkBlocked(); };
 
@@ -294,9 +443,19 @@ function noNative() {
 }
 const PERMS = [['usage', '使用情况访问', '看屏幕使用时间、你在用哪个软件'], ['access', '无障碍「谷雨守护」', '锁软件、锁屏、截屏、读屏幕上的字'], ['overlay', '显示在其他应用上层', '被锁的软件一打开，谷雨能马上盖上来'], ['notify', '通知使用权', '知道别的软件发给你的通知'], ['write', '修改系统设置', '睡觉时间调暗屏幕'], ['dnd', '勿扰权限', '睡觉时间开勿扰'], ['battery', '后台不限制（省电白名单）', '不被手机冻住']];
 function permList() {
-    const p = N.perms();
-    return `<div class="ph-list">${PERMS.map(([k, n, d]) => `<div class="ph-row"><div><b>${n}</b><small>${d}</small></div>${k === 'battery' || !p[k] ? `<span class="ph-go" onclick="gysPh.openPerm('${k}')">${k === 'battery' ? '去设置' : '去打开'}</span>` : '<span class="ph-ok">✓ 开着</span>'}</div>`).join('')}</div>${p.sdk && p.sdk < 30 ? '<div class="ph-tip">你的安卓版本低于 11，截屏用不了（读屏幕上的字还能用）。</div>' : ''}`;
+    const p = N.perms(), js = jsOnly();
+    const rows = PERMS.map(([k, n, d]) => {
+        const needsPlug = js && (k === 'access' || k === 'notify');   // 这两个靠服务组件，免插件版给不了
+        const right = needsPlug ? '<span class="ph-go" style="color:#8e8e93" onclick="gysPh.pluginHelp()">需装插件</span>'
+            : (k === 'battery' || !p[k]) ? `<span class="ph-go" onclick="gysPh.openPerm('${k}')">${k === 'battery' ? '去设置' : '去打开'}</span>`
+                : '<span class="ph-ok">✓ 开着</span>';
+        return `<div class="ph-row"><div><b>${n}</b><small>${d}</small></div>${right}</div>`;
+    }).join('');
+    const tip = js ? '<div class="ph-tip">没装「谷雨守护」插件也能用上面大半：使用情况访问、修改系统设置、勿扰、后台不限制开了就行（屏幕时间、壁纸、闹钟、音量亮度勿扰都能用）。只有截屏、读屏、读通知、硬锁屏要装插件——看「使用指南 → 📲 真手机」。</div>'
+        : (p.sdk && p.sdk < 30 ? '<div class="ph-tip">你的安卓版本低于 11，截屏用不了（读屏幕上的字还能用）。</div>' : '');
+    return `<div class="ph-list">${rows}</div>${tip}`;
 }
+P.pluginHelp = () => X.toast('截屏 / 读屏 / 读通知 / 锁屏要装「谷雨守护」插件', '看 使用指南 → 📲 真手机');
 P.openPerm = k => { N.open(k); setTimeout(() => G.repaint(APP), 1500); };
 function goalHtml(u) {
     const g = Number(D.goal.min) || 0; if (!g) return '';
@@ -333,7 +492,7 @@ function guardTab() {
     const bl = blockedNow(), now = Date.now(), T = D.rules.temp && D.rules.temp.until > now ? D.rules.temp : null;
     const tc = T && T.by ? X.char(T.by) : null;
     return `${D.free > now ? `<div class="ph-card warn"><b>🆘 今天用了紧急解锁</b><p>今天之内不锁。<a onclick="gysPh.unfree()">现在恢复</a></p></div>` : ''}
-      <div class="ph-card"><b>🔒 现在锁着 ${Object.keys(bl).length} 个</b><p>${Object.keys(bl).slice(0, 12).map(labelOf).join('、') || '没有'}</p>${!N.perms().access ? '<p class="ph-warn">⚠️ 无障碍「谷雨守护」没开，锁不住。<a onclick="gysPh.openPerm(\'access\')">去打开</a></p>' : ''}</div>
+      <div class="ph-card"><b>🔒 现在锁着 ${Object.keys(bl).length} 个</b><p>${Object.keys(bl).slice(0, 12).map(labelOf).join('、') || '没有'}</p>${N.mode() === 'js' ? '<p class="ph-warn">⚠️ 没装「谷雨守护」插件，现在是<b>软锁</b>：只有你切回谷雨的那一下才拦得住，拦不住后台。要真的锁住，装插件（看 使用指南 → 📲 真手机）。</p>' : (!N.perms().access ? '<p class="ph-warn">⚠️ 无障碍「谷雨守护」没开，锁不住。<a onclick="gysPh.openPerm(\'access\')">去打开</a></p>' : '')}</div>
       ${T ? `<div class="ph-card"><b>${tc ? esc(tc.name) + ' ' : ''}临时锁到 ${G.hm(T.until)}</b><p>${T.pkgs === 'all' ? '除了谷雨的所有软件' : T.pkgs.map(labelOf).join('、')}${T.why ? '<br>「' + esc(T.why) + '」' : ''}</p><span class="gys-btn sm ghost" onclick="gysPh.beg('${T.pkgs === 'all' ? '' : T.pkgs[0]}')">🥺 求 TA 解开</span></div>` : ''}
       <div class="ph-sech">⏱️ 每天限时 <a onclick="gysPh.addLimit()">＋ 加一个</a></div>
       <div class="ph-list">${Object.entries(D.rules.limits).map(([p, m]) => `<div class="ph-row" onclick="gysPh.appMenu('${p}')">${tile(p, labelOf(p), 32)}<div><b>${esc(labelOf(p))}</b><small>每天 ${m} 分钟 · 今天用了 ${fmtDur(appMs(p))}</small></div>${bl[p] ? '<em>🔒</em>' : ''}</div>`).join('') || '<div class="ph-tip">比如抖音每天 60 分钟，到点就锁住</div>'}</div>
@@ -399,8 +558,11 @@ function seenTab() {
 P.clearLog = async () => { if (!(await G.confirm('清空 TA 看过、做过的记录和通知？'))) return; D.log = []; D.notifs = []; saveD(); G.repaint(APP); };
 P.export = () => { const t = D.log.map(l => `[${new Date(l.at).toLocaleString()}] ${l.k} ${l.text}${l.feel ? '（TA 心里：' + l.feel + '）' : ''}`).join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain' })); a.download = '谷雨-真手机记录.txt'; a.click(); };
 function setTab() {
-    const c = who(), ok = native();
-    return `${ok ? `<div class="ph-card ok"><b>✓ 谷雨守护 ${esc(N.ver())} 装好了</b></div>` : noNative()}
+    const c = who(), ok = native(), m = N.mode();
+    const banner = m === 'plugin' ? `<div class="ph-card ok"><b>✓ 谷雨守护 ${esc(N.ver())} 装好了（全功能）</b></div>`
+        : m === 'js' ? `<div class="ph-card ok"><b>✓ 真手机已就位（免插件版）</b><p>屏幕时间、现在在用什么、电量音量、换壁纸、设闹钟、震动、手电筒、剪贴板、音量亮度勿扰、把你拉回谷雨、软锁提醒——都能用。<br>截屏、读屏、读通知、硬锁屏要再装「谷雨守护」插件（看 使用指南 → 📲 真手机）。</p></div>`
+            : noNative();
+    return `${banner}
       ${ok ? `<div class="ph-sech">手机权限</div>${permList()}` : ''}
       <div class="ph-sech">谁来管你</div><div class="ph-list"><div class="ph-row" onclick="gysPh.pickWho()">${c ? G.av(APP, 'c:' + c.id, 34) : ''}<div><b>${c ? esc(c.name) : '还没有角色'}</b><small>点这里换</small></div><em>›</em></div></div>
       ${['看', '管', '玩'].map(g => `<div class="ph-sech">${{ 看: '👀 TA 看得到', 管: '🔒 TA 管着你', 玩: '🎁 好玩的' }[g]}</div><div class="ph-list">${CAPS.filter(x => x[4] === g).map(([k, i, n]) => `<div class="ph-row"><span class="ph-li">${i}</span><div><b>${n}</b></div><span class="ph-seg">${MODES.map(([m, t]) => `<i class="${perm(k) === m ? 'on' : ''}" onclick="gysPh.setPerm('${k}','${m}')">${t}</i>`).join('')}</span></div>`).join('')}</div>`).join('')}

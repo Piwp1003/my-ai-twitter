@@ -605,7 +605,7 @@ window.gyxRedOpen = () => G.open(APP);
 window.gyxRedView = id => window.gysRedOpenNote(id);
 
 /* ---------------- 谷雨这边 ---------------- */
-X.mini({ id: 'gysRed', icon: '📕', title: '小红书', desc: '刷笔记、发笔记、收藏夹、搜索；TA 发笔记、偷偷收藏', cat: '软件', onOpen: () => G.open(APP) }, 'gysRed');
+X.mini({ id: 'gysRed', icon: '📕', title: '小红书', desc: '刷笔记、发笔记、收藏夹、市集、购物车；TA 发笔记、偷偷收藏', cat: '软件', onOpen: () => G.open(APP) }, 'gysRed');
 const rare = (c, k, h) => Date.now() - ((D.last[k + c.id]) || 0) > h * 3600e3;
 const mark = (c, k) => { D.last[k + c.id] = Date.now(); saveD(); };
 /* ---------------- 🔴 直播 ---------------- */
