@@ -36,7 +36,7 @@
         ],
         dock: ['chat', 'notif', 'home', 'set'],
         names: {}, colors: {}, imgs: {},
-        style: 'white', font: 'sys', labels: true, lock: true, dark: false, xMerge: true,
+        style: 'white', font: 'sys', labels: true, lock: true, dark: false, xMerge: true, xTheme: 'blue',
         wall: null, wallColor: null
     });
     let C = DEF();
@@ -46,6 +46,8 @@
     const store = () => G().store;
     async function save() { try { if (store()) await store().setItem('cfg', C); } catch (e) {} }
     window.gyPmXOn = () => C.xMerge !== false;
+    window.gyPmXTheme = () => C.xTheme === 'black' ? 'black' : 'blue';
+    window.gyPmXThemeSet = v => { C.xTheme = v === 'black' ? 'black' : 'blue'; save(); };
     window.gyPmHomeLoad = async function () {
         try {
             const s = store(); if (!s) return;
@@ -182,7 +184,7 @@
         const img = C.imgs[k];
         const bg = C.colors[k] || (C.style === 'hand' ? a[3] : '');
         const fg = bg && isDark(bg) ? ';color:#fff' : (bg ? ';color:#111' : '');
-        const inner = img ? `<img src="${img}" alt="">` : svg(a[2], 1.6);
+        const inner = img ? `<img src="${img}" alt="">` : String(a[2]).startsWith('e:') ? `<span class="pm-emo">${esc(String(a[2]).slice(2))}</span>` : svg(a[2], 1.6);
         const pos = where === 'lib' ? `data-where="lib"` : `data-where="${where}" data-p="${p}" data-i="${i}"${where === 'page' && C.pages[p] && C.pages[p][i] ? ` data-id="${C.pages[p][i].id}"` : ''}`;
         const gst = where === 'page' && C.pages[p] ? gp(C.pages[p][i]) : '';
         return `<div class="pm-app pm-item" data-pmapp="${k}" ${pos}${gst}><i class="pm-del" data-del="1">−</i><div class="pm-ic${img ? ' img' : ''}"${bg ? ` style="background:${bg}!important${fg}"` : ''}>${inner}</div><span class="pm-lb">${esc(appName(k))}</span>${badge}</div>`;
@@ -399,8 +401,22 @@
         });
     }
     setInterval(() => { try { const m = window.gymNowInfo && window.gymNowInfo(); if (m && m.playing) tickMusic(); } catch (e) {} }, 3000);
+    // 🧩 新冒出来的小功能放到桌面最后的「小功能」页（每个只放一次；你收进资源库的不会再放回来）
+    function syncMinis() {
+        if (typeof G().miniApps !== 'function' && typeof window.gyPmMiniApps !== 'function') return false;
+        const keys = window.gyPmMiniApps(); C.mfSeen = C.mfSeen || []; let ch = false;
+        const placed = new Set(C.dock.concat(...C.pages.map(pg => pg.filter(x => x.t === 'app').map(x => x.k))));
+        keys.forEach(k => { if (C.mfSeen.includes(k)) return; C.mfSeen.push(k); ch = true; if (placed.has(k)) return;
+            let pg = C.mfPg != null ? C.pages[C.mfPg] : null;
+            if (!pg || pg.length >= 24) { pg = []; C.pages.push(pg); C.mfPg = C.pages.length - 1; }
+            pg.push({ id: uid(), t: 'app', k }); });
+        return ch;
+    }
+    window.gyPmSyncMinis = () => { if (syncMinis()) { save(); window.gyPmHomeRender(); } };
+    setInterval(() => { try { if (document.body.classList.contains('gyphm') && !document.body.classList.contains('gyphm-app')) window.gyPmSyncMinis(); } catch (e) {} }, 4000);
     window.gyPmHomeRender = function () {
         const home = document.getElementById('gyPmHome'); if (!home) return;
+        try { if (syncMinis()) save(); } catch (e) {}
         applyPrefs();
         M = mt(); if (norm(C, M)) save();
         const flip = flipNext ? new Map([...home.querySelectorAll('.pm-page .pm-item[data-id]')].map(e => [e.dataset.id, e.getBoundingClientRect()])) : null; flipNext = false;
@@ -1079,6 +1095,7 @@
             <div class="lbl">图标名字</div><div class="seg">${opt('labels', true, '显示')}${opt('labels', false, '不显示')}</div>
             <div class="lbl">锁屏</div><div class="seg">${opt('lock', true, '进来先锁屏')}${opt('lock', false, '不要锁屏')}</div>
             <div class="lbl">聊天和推特</div><div class="seg">${opt('xMerge', true, '合成一个「推特」（私信就是聊天）')}${opt('xMerge', false, '分开两个图标')}</div>
+            <div class="lbl">推特配色</div><div class="seg">${opt('xTheme', 'blue', '蓝色（白底蓝色）')}${opt('xTheme', 'black', '黑色（白底黑字）')}</div>
             <button class="it" onclick="gyPmAddWidget()">小组件</button>
             <button class="it" onclick="gyPmLibrary()">App 资源库</button>
             <button class="it pri" onclick="gyPmCloseSheet();gyPmEdit(true)">编辑桌面</button>

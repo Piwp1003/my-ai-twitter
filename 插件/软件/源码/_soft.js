@@ -230,7 +230,12 @@ ${list}
         gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.3M12 18.2v2.3M3.5 12h2.3M18.2 12h2.3M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6"/>',
         book: '<path d="M4 5.5c2.5-1 5.5-1 8 .8 2.5-1.8 5.5-1.8 8-.8V19c-2.5-1-5.5-1-8 .8-2.5-1.8-5.5-1.8-8-.8z"/><path d="M12 6.3v13.5"/>',
         flame: '<path d="M12 21c-3.6 0-6-2.4-6-5.6 0-3.8 3.4-5.6 3.8-9.4 2.4 1.5 3 3.7 2.8 5.3 1-.6 1.8-1.8 2-3.2 2 1.6 3.4 4 3.4 6.8 0 3.4-2.4 6.1-6 6.1z"/>',
-        bubble: '<circle cx="9" cy="10" r="5"/><circle cx="16.5" cy="15.5" r="3.5"/><circle cx="17" cy="6" r="1.8"/>'
+        bubble: '<circle cx="9" cy="10" r="5"/><circle cx="16.5" cy="15.5" r="3.5"/><circle cx="17" cy="6" r="1.8"/>',
+        video: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/>',
+        bag: '<path d="M5 8h14l-1 12H6z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>',
+        note: '<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/>',
+        disc: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/>',
+        roam: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><path d="M12 12l5.5-5.5"/>'
     };
     S.ic = (n, sz, fill) => `<svg class="gys-ic" viewBox="0 0 24 24" width="${sz || 24}" height="${sz || 24}" fill="${fill ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[n] || ''}</svg>`;
     const SB_R = '<svg width="17" height="11" viewBox="0 0 17 11"><rect x="0" y="7" width="3" height="4" rx=".7" fill="currentColor"/><rect x="4.5" y="5" width="3" height="6" rx=".7" fill="currentColor"/><rect x="9" y="2.5" width="3" height="8.5" rx=".7" fill="currentColor"/><rect x="13.5" y="0" width="3" height="11" rx=".7" fill="currentColor"/></svg><svg width="15" height="11" viewBox="0 0 15 11"><path d="M7.5 2.2c2.3 0 4.4.9 6 2.4l1-1C12.6 1.8 10.2.8 7.5.8S2.4 1.8.5 3.6l1 1c1.6-1.5 3.7-2.4 6-2.4zm0 3c1.5 0 2.8.6 3.8 1.5l1-1C11 4.5 9.3 3.8 7.5 3.8S4 4.5 2.7 5.7l1 1c1-.9 2.3-1.5 3.8-1.5zm0 3c.7 0 1.3.3 1.7.7L7.5 10.6 5.8 8.9c.4-.4 1-.7 1.7-.7z" fill="currentColor"/></svg>';
@@ -373,7 +378,30 @@ ${list}
         L.sort((a, b) => a.at - b.at); return L.slice(-(n || 8)).map(x => x.t).join('\n');
     };
     // 给各软件的提示词用：平时聊天 + 别的软件里最近的
-    S.recentAll = (c, except, n) => { const a = X.recent(c, n || 8) || '', b = S.otherChats(c, except, n || 8); return [a ? '（平时聊天的那个软件）\n' + a : '', b ? '（别的软件里）\n' + b : ''].filter(Boolean).join('\n') || '（最近没怎么聊）'; };
+    S.recentAll = (c, except, n) => { const a = X.recent(c, n || 8) || '', b = S.otherChats(c, except, n || 8); const sm = String((c && c.chatSummary) || '').split('\n').filter(l => l.trim()).slice(-4).join('\n'); return [sm ? '（之前聊过的总结，[微信] 这种标的是在哪个软件聊的）\n' + sm : '', a ? '（平时聊天的那个软件）\n' + a : '', b ? '（别的软件里）\n' + b : ''].filter(Boolean).join('\n') || '（最近没怎么聊）'; };
+    // 🧠 每个软件里的聊天也做总结（256）：攒够「聊天自动总结」的条数就总结一次，标上是哪个软件，存进角色的「聊天总结」（记忆总览里能看能改），
+    //    这样在任何地方聊，TA 都能说「之前在微信上你说……」。各软件登记 all: c => [{at, t}]（全部消息）
+    S.sumTick = async () => {
+        if (!ready || S.__sumBusy) return; S.__sumBusy = 1;
+        try {
+            if (typeof isAutoOn === 'function' && !isAutoOn('chatSummary')) return;
+            const N = Math.max(6, (typeof chatSummaryInterval !== 'undefined' && +chatSummaryInterval) || 20);
+            D.sum = D.sum || {};
+            for (const c of chars()) for (const k of Object.keys(S.chatApps)) {
+                const o = S.chatApps[k]; if (!o.all || !appOn(k)) continue; let L = []; try { L = o.all(c) || []; } catch (e) {} const key = k + '|' + c.id;
+                if (D.sum[key] == null) { D.sum[key] = Math.max(0, L.length - (L.length % N)); S.save(); continue; }   // 第一次：以前的不补总结，从现在开始数
+                if (L.length < D.sum[key]) { D.sum[key] = L.length; S.save(); continue; }
+                if (L.length - D.sum[key] < N) continue;
+                const seg = L.slice(D.sum[key], D.sum[key] + N); D.sum[key] += N; S.save();
+                const name = (S.APPS[k] || {}).n || k;
+                const t = X.plain(await X.ask(`下面是用户和「${c.name}」在「${name}」上的 ${seg.length} 条聊天（${c.name} 那边写成「你」）。请简要总结关键信息、当前话题和双方的情感状态（100 字以内）。说好了但还没做的事，写成"约好了……（还没发生）"。只输出总结本身。\n${seg.map(x => x.t).join('\n')}`) || '').slice(0, 300);
+                if (!t) continue;
+                const arr = String(c.chatSummary || '').split('\n').filter(l => l.trim()); arr.push(`[${new Date().toLocaleString()}] [${name}] ${t}`); c.chatSummary = arr.join('\n');
+                try { if (typeof saveAllData === 'function') saveAllData(); } catch (e) {}
+            }
+        } catch (e) {} finally { S.__sumBusy = 0; }
+    };
+    setInterval(() => S.sumTick(), 90e3); setTimeout(() => S.sumTick(), 20e3);
     // 平时聊天里也知道微博 / 小红书私信里说过的（微信、iMessage、抖音自己有一段）
     try { X.ctx(id => { const c = X.char(id); if (!c) return ''; const L = []; ['weibo', 'red'].forEach(k => { const o = S.chatApps[k]; if (!o || !o.lines || !appOn(k)) return; try { (o.lines(c) || []).slice(-4).forEach(x => L.push(`[${S.APPS[k].n}私信] ${x.t}`)); } catch (e) {} }); return L.length ? '【你们在别的软件私信里最近聊的（你都记得）】\n' + L.join('\n') : ''; }, 'gysShare'); X.inj('gysShare', [['你们在别的软件私信里最近聊的', '微博 / 小红书私信里最近几句', '让 TA 在平时聊天时也记得别的软件私信里说过什么']]); } catch (e) {}
     // 🗨️ TA 主动找你用哪个软件（角色设置里选；自主模式下 TA 自己挑：多半去你最近在的那个）

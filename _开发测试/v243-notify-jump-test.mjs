@@ -28,7 +28,7 @@ const r = await page.evaluate(async T => {
   let hit = []; const orig = window.gyxSillOpen; window.gyxSillOpen = (...a) => hit.push(['sill', a]);
   GYX.notify(c, '🪟 测试窗台', '', GYX.go('gyxSillOpen'));
   await sl(100); const t = [...document.querySelectorAll('[data-nid]')].find(e => /测试窗台/.test(e.innerText)) || document.querySelector('.toast-notification,[class*=toast]');
-  const n0 = globalNotifications[0]; o.stored = n0.jump && n0.jump.fn === 'gyxSillOpen';
+  o.__n0 = JSON.stringify(globalNotifications.slice(0,3).map(n=>(n.text||'').slice(0,40)+'|'+(n.jump&&n.jump.fn)));const n0 = globalNotifications.find(n => /测试窗台/.test(n.text||'')) || globalNotifications[0]; o.stored = n0.jump && n0.jump.fn === 'gyxSillOpen';
   if (t && t.onclick) t.onclick(); else gyOpenNotif(n0);
   o.toast = hit.length === 1;
   // 2) 通知页点

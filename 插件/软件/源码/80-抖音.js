@@ -168,12 +168,12 @@ function livesHtml() {
 Y.__lives = () => genLives();
 const GIFTS = [['🌹', '玫瑰', 1], ['❤️', '小心心', 1], ['🍭', '棒棒糖', 9], ['💌', '情书', 52], ['🚀', '火箭', 520], ['🏰', '嘉年华', 3000]];
 let RT = null;
-Y.room = id => { const l = liveOf(id); if (!l) return; G.push(APP, { id: 'room_' + id, title: '', cls: 'dy-rb', html: () => roomHtml(l), foot: () => l.end ? '' : `<div class="dy-rin"><input id="dyRin" placeholder="说点什么…" onkeydown="if(event.key==='Enter'&&!event.isComposing)gysDy.say('${id}')"><span onclick="gysDy.giftMenu('${id}')">🎁</span><span onclick="gysDy.heart('${id}')">❤️</span></div>` }); clearInterval(RT); if (!l.end) { if (!l.lines.length) step(l, '刚有人进来，招呼一下。'); RT = setInterval(() => { if (!document.querySelector('#gys_douyin .dy-room[data-id="' + id + '"]')) { clearInterval(RT); return; } l.viewers = Math.max(1, l.viewers + G.rnd(-20, 40)); step(l, ''); }, 25e3); } };
+Y.room = id => { const l = liveOf(id); if (!l) return; G.push(APP, { id: 'room_' + id, title: '', cls: 'dy-rb', html: () => roomHtml(l), foot: () => l.end ? '' : `<div class="dy-rin"><input id="dyRin" placeholder="说点什么…" onkeydown="if(event.key==='Enter'&&!event.isComposing)gysDy.say('${id}')">${G.charOf(l.host) && micOn() ? (l.mic ? `<span class="mic on" onclick="gysDy.micEnd('${id}')">挂断</span>` : `<span class="mic" onclick="gysDy.micAsk('${id}')">连麦</span>`) : ''}<span onclick="gysDy.giftMenu('${id}')">🎁</span><span onclick="gysDy.heart('${id}')">❤️</span></div>` }); clearInterval(RT); if (!l.end) { if (!l.lines.length) step(l, '刚有人进来，招呼一下。'); RT = setInterval(() => { if (!document.querySelector('#gys_douyin .dy-room[data-id="' + id + '"]')) { clearInterval(RT); return; } l.viewers = Math.max(1, l.viewers + G.rnd(-20, 40)); step(l, ''); }, 25e3); } };
 function roomHtml(l) {
     return `<div class="dy-room" data-id="${l.id}" style="background:${l.bg ? `url('${l.bg}') center/cover` : bgOf(l.title)}"><div class="dy-rh">${G.av(APP, l.host, 34)}<div><b>${esc(nameOf(l.host))}</b><small>${G.fmtN(l.likes || 0)} 本场点赞</small></div>${!isFollow(l.host) ? `<span onclick="gysDy.follow('${l.host}')">关注</span>` : ''}<em>${G.fmtN(l.viewers)} 人</em><i onclick="GYS.back('douyin')">✕</i></div>
       <div class="dy-rt">${esc(l.title)}${l.end ? ' · 已结束' : ''}</div>
-      <div class="dy-rscene"><i>${esc(l.ico || '🎤')}</i><p>${esc(l.scene || '')}</p></div>
-      <div class="dy-dm" id="dyDm">${l.lines.slice(-40).map(x => `<p class="${x.host ? 'h' : x.me ? 'm' : ''}">${x.host ? '🎙️ ' : ''}<b>${esc(x.host ? nameOf(l.host) : x.me ? nameOf('me') : x.by)}</b>${x.gift ? ` 送出了 ${esc(x.gift)}` : '：' + esc(x.t)}</p>`).join('')}</div>
+      ${l.mic ? `<div class="dy-mic"><div style="background:${bgOf(l.title)}">${G.av(APP, l.host, 46)}<b>${esc(nameOf(l.host))}</b><small>${esc(l.ico || '🎤')} ${esc((l.scene || '').slice(0, 24))}</small></div><div style="background:${bgOf(nameOf('me'))}">${G.av(APP, 'me', 46)}<b>${esc(nameOf('me'))}</b><small class="wv">🎙️ 连麦中 · ${G.hm(l.mic.at)}</small></div></div>` : `<div class="dy-rscene"><i>${esc(l.ico || '🎤')}</i><p>${esc(l.scene || '')}</p></div>`}
+      <div class="dy-dm" id="dyDm">${l.lines.slice(-40).map(x => `<p class="${x.host ? 'h' : x.me ? 'm' : ''}">${x.host ? '🎙️ ' : x.mic ? '🎙️ ' : ''}<b>${esc(x.host ? nameOf(l.host) : x.me ? nameOf('me') : x.by)}</b>${x.gift ? ` 送出了 ${esc(x.gift)}` : '：' + esc(x.t)}</p>`).join('')}</div>
       <div class="dy-fx" id="dyFx"></div>
       ${l.end ? `<div class="dy-rend">直播已结束${l.sum ? `<p>「${esc(l.sum)}」</p>` : ''}</div>` : ''}
       ${l.by === 'me' && !l.end ? `<div class="gys-acts"><span class="gys-btn sm" onclick="gysDy.endMine('${l.id}')">下播</span></div>` : ''}</div>`;
@@ -187,7 +187,7 @@ async function step(l, why) {
     } catch (e) {} finally { BUSY['l' + l.id] = 0; }
 }
 function paintRoom(l) { const r = document.querySelector('#gys_douyin .dy-room[data-id="' + l.id + '"]'); if (r) { G.repaint(APP); const d = document.getElementById('dyDm'); if (d) d.scrollTop = d.scrollHeight; } }
-Y.say = async id => { const l = liveOf(id), inp = document.getElementById('dyRin'); if (!l || !inp) return; const t = inp.value.trim(); if (!t) return; inp.value = ''; l.lines.push({ me: 1, t: t.slice(0, 60), at: Date.now() }); saveD(); paintRoom(l); await step(l, `她刚发了弹幕：「${t}」。${G.charOf(l.host) ? '你认得出是她，先回她。' : '挑着回一下。'}`); };
+Y.say = async id => { const l = liveOf(id), inp = document.getElementById('dyRin'); if (!l || !inp) return; const t = inp.value.trim(); if (!t) return; inp.value = ''; l.lines.push({ me: 1, t: t.slice(0, l.mic ? 200 : 60), mic: l.mic ? 1 : 0, at: Date.now() }); saveD(); paintRoom(l); await step(l, l.mic ? `你们正在连麦，她刚对着麦说：「${t}」。直接回她（是在直播里说话，直播间的人都听得到，弹幕会起哄）。` : `她刚发了弹幕：「${t}」。${G.charOf(l.host) ? '你认得出是她，先回她。' : '挑着回一下。'}`); };
 Y.heart = id => { const l = liveOf(id); if (!l) return; l.likes = (l.likes || 0) + G.rnd(1, 8); saveD(); const fx = document.getElementById('dyFx'); if (fx) { const i = document.createElement('i'); i.textContent = G.pick(['❤️', '💕', '💗', '💖']); i.style.left = G.rnd(60, 85) + '%'; fx.appendChild(i); setTimeout(() => i.remove(), 1800); } };
 Y.giftMenu = async id => {
     const l = liveOf(id); if (!l) return; const i = await G.sheet(GIFTS.map(g => `${g[0]} ${g[1]} · ${g[2]} 抖币（¥${(g[2] / 10).toFixed(1)}）`), '送礼物（从钱包扣）'); if (i == null) return; const g = GIFTS[i];
@@ -203,7 +203,7 @@ async function taLive(c, why) {
     D.lives.unshift(l); saveD(); await step(l, '刚开播，跟大家打招呼，也想她来看。');
     setTimeout(() => taEnd(l), G.rnd(40, 90) * 60e3); return l;
 }
-async function taEnd(l) { if (!l || l.end) return; l.end = Date.now(); const c = G.charOf(l.host); const ms = l.lines.filter(x => x.me).map(x => x.gift ? '送了' + x.gift : x.t).join('；'); if (c) l.sum = X.plain(await X.ask(`${X.who(c)}\n你刚播完抖音直播《${l.title}》。她在直播间：${ms || '（没来 / 只是看着）'}。用一句话（30 字以内）写下这场直播你最想记住的事。只输出这一句。`) || '').slice(0, 60) || `播了《${l.title}》`; saveD(); G.repaint(APP); }
+async function taEnd(l) { if (!l || l.end) return; if (l.mic) Y.micEnd(l.id); l.end = Date.now(); const c = G.charOf(l.host); const ms = l.lines.filter(x => x.me).map(x => x.gift ? '送了' + x.gift : x.t).join('；'); if (c) l.sum = X.plain(await X.ask(`${X.who(c)}\n你刚播完抖音直播《${l.title}》。她在直播间：${ms || '（没来 / 只是看着）'}。用一句话（30 字以内）写下这场直播你最想记住的事。只输出这一句。`) || '').slice(0, 60) || `播了《${l.title}》`; saveD(); G.repaint(APP); }
 Y.askLive = async () => { const cs = G.chars(); if (!cs.length) return; let c = cs[0]; if (cs.length > 1) { const i = await G.sheet(cs.map(x => x.name), '叫谁开播？'); if (i == null) return; c = cs[i]; } X.toast(X.v('📣 叫了', 'TA 在准备开播'), ''); const l = await taLive(c, '她叫你开一场'); if (l) { G.repaint(APP); Y.room(l.id); } };
 Y.myLive = async () => { const t = await G.input('直播标题', '随便聊聊'); if (!t) return; const sc = await G.input('直播画面是什么（可以空着）', ''); const l = { id: G.uid('dl'), host: 'me', by: 'me', title: X.plain(t).slice(0, 30), scene: X.plain(sc || '').slice(0, 120), ico: '📡', viewers: G.rnd(5, 60), lines: [], at: Date.now(), end: 0, gifts: 0, likes: 0 }; D.lives.unshift(l); saveD(); Y.room(l.id); G.chars().forEach(c => { if (Math.random() < 0.8) setTimeout(() => { if (l.end) return; l.lines.push({ by: nameOf(charW(c)), t: X.v('来了来了', '我来看你了', '前排'), at: Date.now() }); l.viewers++; saveD(); paintRoom(l); }, G.rnd(3, 30) * 1000); }); };
 Y.endMine = async id => { const l = liveOf(id); if (!l) return; l.end = Date.now(); l.sum = `你播了《${l.title}》，${G.fmtN(l.likes || 0)} 个赞`; saveD(); G.repaint(APP); };
@@ -233,7 +233,7 @@ Y.publish = () => {
 /* ---------------- 朋友 / 消息 / 私信 ---------------- */
 function friendTab() {
     const L = D.vids.filter(v => G.charOf(v.by) && v.vis !== 'self');
-    return `<div class="dy-fr"><div class="dy-sec">朋友</div><div class="dy-frs">${cast().map(w => `<span onclick="gysDy.prof('${w}')">${G.av(APP, w, 52)}<i>${esc(nameOf(w))}</i>${onAir().some(l => l.host === w) ? '<em>直播中</em>' : ''}</span>`).join('') || '<div class="gys-empty">还没有朋友</div>'}</div>
+    return `<div class="dy-fr">${dailyRow()}<div class="dy-sec">朋友</div><div class="dy-frs">${cast().map(w => `<span onclick="gysDy.prof('${w}')">${G.av(APP, w, 52)}<i>${esc(nameOf(w))}</i>${onAir().some(l => l.host === w) ? '<em>直播中</em>' : ''}</span>`).join('') || '<div class="gys-empty">还没有朋友</div>'}</div>
       <div class="dy-sec">朋友的作品</div><div class="dy-grid">${L.map(gridCell).join('') || '<div class="gys-empty">朋友还没发作品</div>'}</div></div>`;
 }
 const gridCell = v => `<div class="dy-cell" onclick="gysDy.openVid('${v.id}')" style="background:${v.img ? `url('${v.img}') center/cover` : bgOf(v.scene + v.id)}">${v.img ? '' : `<i>${esc(v.ico)}</i>`}<small>▷ ${G.fmtN((v.plays || 0) * 13 + v.likeN * 3)}</small>${v.vis === 'self' ? '<em>🔒</em>' : ''}</div>`;
@@ -243,7 +243,7 @@ const unread = () => Object.values(D.dms).reduce((n, t) => n + (t.unread || 0), 
 function msgTab() {
     const N = D.notes.slice(0, 40); N.forEach(n => { n.seen = 1; }); saveD();
     const T = Object.values(D.dms).filter(t => t.msgs.length).sort((a, b) => b.at - a.at);
-    return `<div class="dy-msg"><div class="dy-sec">互动消息</div>${N.map(n => { const v = vidOf(n.vid); return `<div class="dy-row" onclick="${v ? `gysDy.openVid('${v.id}')` : ''}">${G.av(APP, n.by, 38)}<div><b>${esc(nameOf(n.by))}</b><small>${n.t === 'like' ? '赞了你的作品' : n.t === 'cmt' ? '评论了：' + esc(n.text || '') : '关注了你'} · ${G.ago(n.at)}</small></div></div>`; }).join('') || '<div class="dy-tip">还没有</div>'}
+    return `<div class="dy-msg">${dailyRow()}<div class="dy-sec">互动消息</div>${N.map(n => { const v = vidOf(n.vid); return `<div class="dy-row" onclick="${v ? `gysDy.openVid('${v.id}')` : ''}">${G.av(APP, n.by, 38)}<div><b>${esc(nameOf(n.by))}</b><small>${n.t === 'like' ? '赞了你的作品' : n.t === 'cmt' ? '评论了：' + esc(n.text || '') : '关注了你'} · ${G.ago(n.at)}</small></div></div>`; }).join('') || '<div class="dy-tip">还没有</div>'}
       <div class="dy-sec">私信 <a onclick="gysDy.dmNew()">＋</a></div>${T.map(t => { const m = t.msgs[t.msgs.length - 1]; return `<div class="dy-row" onclick="gysDy.dm('${t.id}')">${G.av(APP, t.who, 44)}<div><b>${esc(nameOf(t.who))}</b><small>${esc(m.t === 'vid' ? '[视频]' : m.text || '')}</small></div>${t.unread ? `<sup>${t.unread}</sup>` : ''}</div>`; }).join('') || '<div class="dy-tip">在 TA 的主页点「私信」</div>'}</div>`;
 }
 Y.dmNew = async () => { const cs = G.chars(); if (!cs.length) return; const i = await G.sheet(cs.map(x => x.name), '私信谁？'); if (i != null) Y.dm(charW(cs[i])); };
@@ -279,10 +279,86 @@ Y.prof = w => G.push(APP, { id: 'prof_' + w, title: '', html: () => profHtml(w) 
 Y.settings = () => G.push(APP, { title: '设置', html: () => `<div class="gys-acts"><span class="gys-btn sm ghost" onclick="GYS.uiPage('douyin')">🍎 软件外观</span><span class="gys-btn sm ghost" onclick="gysDy.export()">导出（.txt）</span><span class="gys-btn sm ghost" onclick="gysDy.__clr()">清空刷到的视频（自己和 TA 的留着）</span></div>` });
 Y.__clr = async () => { if (!(await G.confirm('清空刷到的视频？'))) return; D.vids = D.vids.filter(v => v.by === 'me' || G.charOf(v.by)); saveD(); G.repaint(APP); };
 Y.export = () => { const L = ['🎶 抖音 导出 ' + new Date().toLocaleString(), '', '【作品】'].concat(D.vids.filter(v => v.by === 'me' || G.charOf(v.by)).map(v => `${nameOf(v.by)}：${v.cap}（画面：${v.scene}）`), ['', '【直播】']).concat(D.lives.filter(l => l.ta || l.by === 'me').map(l => `${nameOf(l.host)}《${l.title}》 ${l.sum || ''}`)); const t = L.join('\n'); try { if (typeof saveTextFileForApp === 'function') return saveTextFileForApp(t, '抖音.txt'); } catch (e) {} const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain' })); a.download = '抖音.txt'; a.click(); };
-Y.searchPage = () => G.push(APP, { id: 'search', title: '搜索', html: () => `<div class="dy-sbox"><input id="dyQ" placeholder="搜索" onkeydown="if(event.key==='Enter'&&!event.isComposing)gysDy.search(this.value)"><span onclick="gysDy.search(document.getElementById('dyQ').value)">搜索</span></div>${SQ ? `<div class="dy-grid">${D.vids.filter(v => (v.cap + v.scene + nameOf(v.by)).includes(SQ)).map(gridCell).join('')}</div>${BUSY.f ? '<div class="gys-busy">⏳</div>' : ''}` : ''}` });
+Y.searchPage = () => G.push(APP, { id: 'search', title: '搜索', html: () => `<div class="dy-sbox"><input id="dyQ" placeholder="搜索" onkeydown="if(event.key==='Enter'&&!event.isComposing)gysDy.search(this.value)"><span onclick="gysDy.search(document.getElementById('dyQ').value)">搜索</span></div>${SQ ? `<div class="dy-grid">${D.vids.filter(v => (v.cap + v.scene + nameOf(v.by)).includes(SQ)).map(gridCell).join('')}</div>${BUSY.f ? '<div class="gys-busy">⏳</div>' : ''}` : hotHtml()}` });
 let SQ = '';
 Y.search = q => { SQ = String(q || '').trim(); if (!SQ) return; G.repaint(APP); genFeed('rec', `都跟「${SQ}」有关（搜索结果），文案里带上这个词`); };
 
+/* ---------------- 日常（258）：24 小时后消失的「日常」，朋友 / 消息页顶上一排头像，有彩圈的是没看过的 ---------------- */
+X.feat('gysDyDaily', { n: '🌀 抖音日常', desc: '抖音的「日常」：24 小时就消失的随手拍；你发了 TA 会看、点赞、私信你，TA 也会发自己的日常' });
+X.feat('gysDyMic', { n: '🎙️ 抖音直播连麦', desc: '在 TA 的直播间申请连麦，或者 TA 邀请你连麦：屏幕一分为二，你说话 TA 当着直播间回你' });
+const dailyOn = () => X.on('gysDyDaily'), micOn = () => X.on('gysDyMic');
+const DEF_DAILY = `{{我是谁}}
+你要发一条抖音「日常」（24 小时后消失，只有朋友看得到，比正经作品随意得多：手边的东西、窗外、吃的、路上、一句心情）。最近你们聊的：
+{{最近}}
+只输出 JSON：{"scene":"画面是什么（一句）","cap":"配的一句话（可以很短，也可以空）","ico":"一个 emoji"}`;
+const DEF_HOT = `你在模拟抖音的「抖音热榜」（现在是 {{时间}}）。写 {{条数}} 条此刻最热的话题（社会、娱乐、生活、节日、天气、梗……像真热榜那样的短标题，不要编造真实名人的负面新闻）。
+只输出 JSON 数组：[{"t":"话题标题（20 字以内）","heat":热度（万，数字，比如 1234.5）,"tag":"新 / 热 / 爆 / 空"}]`;
+X.plGroup('🎶 抖音 · 日常 / 热榜 / 连麦', 'gysDouyin', [
+    ['dy.daily', 'TA 发日常', 'TA 自己想发时', '{{我是谁}} {{最近}}'],
+    ['dy.hot', '抖音热榜', '打开搜索页 / 刷新热榜时', '{{时间}} {{条数}}']
+], { 'dy.daily': DEF_DAILY, 'dy.hot': DEF_HOT });
+const DAY = 24 * 3600e3;
+const dailies = () => (D.daily = (D.daily || []).filter(d => Date.now() - d.at < DAY || d.keep || G.charOf(d.by)).slice(-200));   // TA 的过期日常不在抖音里显示，但留给记忆总览
+const liveDaily = () => dailies().filter(d => Date.now() - d.at < DAY);
+const dailyOf = w => liveDaily().filter(d => d.by === w).sort((a, b) => a.at - b.at);
+const dailySeen = w => dailyOf(w).every(d => (d.views || []).includes('me'));
+function dailyRow() {
+    if (!dailyOn()) return '';
+    const ws = Array.from(new Set(liveDaily().filter(d => d.by !== 'me').sort((a, b) => b.at - a.at).map(d => d.by))).sort((a, b) => dailySeen(a) - dailySeen(b));
+    const mine = dailyOf('me');
+    return `<div class="dy-dly"><span onclick="${mine.length ? "gysDy.dailyView('me')" : 'gysDy.dailyPost()'}"><b class="${mine.length ? 'ring seen' : ''}">${G.av(APP, 'me', 54)}${mine.length ? '' : '<u>＋</u>'}</b><i>${mine.length ? '我的日常' : '发日常'}</i></span>${ws.map(w => `<span onclick="gysDy.dailyView('${w}')"><b class="ring${dailySeen(w) ? ' seen' : ''}">${G.av(APP, w, 54)}</b><i>${esc(nameOf(w))}</i></span>`).join('')}</div>`;
+}
+let DV = null;   // { w, i }
+Y.dailyView = (w, i) => { const L = dailyOf(w); if (!L.length) return; DV = { w, i: i || Math.max(0, L.findIndex(d => !(d.views || []).includes('me'))) }; G.push(APP, { id: 'daily', title: '', cls: 'dy-dvb', html: () => dailyHtml() }); };
+function dailyHtml() {
+    const L = dailyOf(DV.w); const d = L[DV.i]; if (!d) return '<div class="dy-empty">没有了</div>';
+    d.views = d.views || []; if (!d.views.includes('me') && DV.w !== 'me') { d.views.push('me'); saveD(); }
+    const lk = (d.likes || []).includes('me');
+    return `<div class="dy-dv" style="background:${d.img ? `url('${d.img}') center/cover` : bgOf(d.scene + d.id)}" onclick="gysDy.dailyNext(event)">
+      <div class="dy-dvbar">${L.map((x, k) => `<i class="${k < DV.i ? 'done' : k === DV.i ? 'cur' : ''}"></i>`).join('')}</div>
+      <div class="dy-dvh">${G.av(APP, d.by, 32)}<b>${esc(nameOf(d.by))}</b><small>${G.ago(d.at)}</small><em onclick="event.stopPropagation();GYS.back('douyin')">✕</em></div>
+      ${d.img ? '' : `<div class="dy-scene"><i>${esc(d.ico || '📷')}</i><p>${esc(d.scene)}</p></div>`}
+      ${d.cap ? `<div class="dy-dvc">${esc(d.cap)}</div>` : ''}
+      <div class="dy-dvf" onclick="event.stopPropagation()">${d.by === 'me' ? `<span class="v">👁 ${(d.views || []).length} 人看过${(d.views || []).length ? '：' + d.views.map(x => esc(nameOf(x))).join('、') : ''}</span><span onclick="gysDy.dailyDel('${d.id}')">🗑</span>` : `<input id="dyDvIn" placeholder="发送消息" onkeydown="if(event.key==='Enter'&&!event.isComposing)gysDy.dailyReply('${d.id}')"><span class="${lk ? 'on' : ''}" onclick="gysDy.dailyLike('${d.id}')">${lk ? '❤️' : '🤍'}</span>`}</div></div>`;
+}
+Y.dailyNext = e => { const L = dailyOf(DV.w); const r = e.currentTarget.getBoundingClientRect(); const back = e.clientX - r.left < r.width / 3; DV.i += back ? -1 : 1; if (DV.i < 0) DV.i = 0; if (DV.i >= L.length) return G.back(APP); G.repaint(APP); };
+Y.dailyLike = id => { const d = dailies().find(x => x.id === id); if (!d) return; d.likes = d.likes || []; const i = d.likes.indexOf('me'); if (i >= 0) d.likes.splice(i, 1); else d.likes.push('me'); saveD(); G.repaint(APP); };
+Y.dailyReply = id => { const d = dailies().find(x => x.id === id), inp = document.getElementById('dyDvIn'); if (!d || !inp) return; const t = inp.value.trim(); if (!t) return; inp.value = ''; const th = dmOf(d.by); th.msgs.push({ id: G.uid('dm'), from: 'me', text: `回复了日常「${(d.cap || d.scene).slice(0, 16)}」：${t.slice(0, 300)}`, at: Date.now() }); th.at = Date.now(); saveD(); X.toast(X.v('发过去了', '已发送', '私信发出去了'), ''); setTimeout(() => dmReply(th), G.rnd(1500, 4000)); };
+Y.dailyDel = async id => { if (!(await G.confirm('删掉这条日常？'))) return; D.daily = dailies().filter(x => x.id !== id); saveD(); G.back(APP); G.repaint(APP); };
+Y.dailyPost = async () => {
+    const i = await G.sheet(['🖼️ 从相册选（可以裁）', '✏️ 用文字写画面'], '发日常（24 小时后消失）'); if (i == null) return;
+    const done = async (img, scene) => { const cap = await G.input('配一句话（可空）', ''); if (cap === null || cap === undefined) return; const d = { id: G.uid('dd'), by: 'me', img: img || '', scene: X.plain(scene || '').slice(0, 80), ico: G.pick(SCENES), cap: X.plain(cap).slice(0, 60), at: Date.now(), views: [], likes: [] }; dailies().push(d); saveD(); G.repaint(APP); X.toast(X.v('日常发出去了', '发好了，24 小时后消失'), ''); taSeeDaily(d); };
+    if (i === 0) G.pickImg(9 / 16, src => done(src, '')); else { const s = await G.input('画面是什么？', ''); if (s) done('', s); }
+};
+function taSeeDaily(d) {
+    G.chars().forEach(c => { setTimeout(async () => { const x = dailies().find(y => y.id === d.id); if (!x) return; const w = charW(c); if (!x.views.includes(w)) x.views.push(w); if (Math.random() < 0.6 && !x.likes.includes(w)) x.likes.push(w); saveD(); G.repaint(APP);
+        if (Math.random() < 0.45) { const r = X.plain(await X.ask(`${X.who(c)}\n她刚在抖音发了一条日常：${x.img ? '一张照片' : '画面「' + x.scene + '」'}${x.cap ? '，配的话「' + x.cap + '」' : ''}。你看到了，私信她一句（像真的私信，短）。只写那一句。`) || '').slice(0, 120); if (!r) return; const th = dmOf(w); th.msgs.push({ id: G.uid('dm'), from: w, text: r, at: Date.now() }); th.at = Date.now(); th.unread = (th.unread || 0) + 1; saveD(); G.repaint(APP); G.notify(APP, c, `🎶 <b>${X.esc(c.name)}</b> 回复了你的日常`, r, X.go('gysDouyinOpenDm', w)); }
+    }, G.rnd(20, 240) * 1000); });
+}
+async function taDaily(c) {
+    const o = X.json(await X.ask(P('dy.daily', DEF_DAILY, { 我是谁: X.who(c), 最近: X.recent(c, 8) || '（最近没怎么聊）' }))); if (!o || !o.scene) return null;
+    const d = { id: G.uid('dd'), by: charW(c), img: '', scene: X.plain(o.scene).slice(0, 80), ico: X.plain(o.ico || '').slice(0, 4) || G.pick(SCENES), cap: X.plain(o.cap || '').slice(0, 60), at: Date.now(), views: [], likes: [] }; dailies().push(d); saveD(); G.repaint(APP); return d;
+}
+window.gysDouyinOpenDaily = w => { G.open(APP, 'friend'); Y.dailyView(w); };
+
+/* ---------------- 抖音热榜（258）：搜索页里，一个小时换一次 ---------------- */
+async function genHot(force) {
+    if (BUSY.hot) return; if (!force && D.hot && Date.now() - D.hot.at < 3600e3) return; BUSY.hot = 1; G.repaint(APP);
+    try { const n = new Date(); const o = X.json(await X.ask(P('dy.hot', DEF_HOT, { 时间: `${n.getMonth() + 1}月${n.getDate()}日 ${n.getHours()}点`, 条数: 15 }))); if (Array.isArray(o) && o.length) D.hot = { at: Date.now(), L: o.filter(x => x && x.t).slice(0, 30).map(x => ({ t: X.plain(x.t).slice(0, 24), heat: Math.max(1, Number(x.heat) || G.rnd(50, 1200)), tag: /新|热|爆/.test(x.tag || '') ? x.tag.match(/新|热|爆/)[0] : '' })) }; saveD(); }
+    catch (e) {} finally { BUSY.hot = 0; G.repaint(APP); }
+}
+function hotHtml() {
+    if (!D.hot) setTimeout(() => genHot(), 50);
+    const L = (D.hot && D.hot.L) || [];
+    return `<div class="dy-hot"><div class="dy-hoth"><b>抖音热榜</b><small>${D.hot ? G.hm(D.hot.at) + ' 更新' : ''}</small><a onclick="gysDy.__hot()">${BUSY.hot ? '⏳' : '↻ 换一换'}</a></div>${L.map((x, i) => `<div class="dy-hr" onclick="document.getElementById('dyQ').value='${esc(x.t).replace(/'/g, '')}';gysDy.search('${esc(x.t).replace(/'/g, '')}')"><em class="r${i < 3 ? i + 1 : ''}">${i + 1}</em><b>${esc(x.t)}</b>${x.tag ? `<i class="t${'新热爆'.indexOf(x.tag)}">${x.tag}</i>` : ''}<small>${x.heat >= 10000 ? (x.heat / 10000).toFixed(1) + '亿' : x.heat.toFixed(1) + '万'}</small></div>`).join('') || (BUSY.hot ? '<div class="gys-busy">⏳</div>' : '')}</div>`;
+}
+Y.__hot = () => genHot(true);
+
+/* ---------------- 直播连麦（258） ---------------- */
+Y.micAsk = async id => { const l = liveOf(id); if (!l || l.end) return; if (!micOn()) return X.toast('连麦没开', '设置 → 全部开关 →「抖音直播连麦」'); if (!G.charOf(l.host)) return X.toast(X.v('主播没理你', '主播还没通过', '申请发出去了，主播没看到'), ''); X.toast(X.v('已申请连麦，等主播同意', '申请发过去了'), ''); setTimeout(() => micStart(l, 'ask'), G.rnd(1500, 4000)); };
+function micStart(l, why) { if (!l || l.end) return; l.mic = { at: Date.now(), lines: [] }; l.lines.push({ by: '系统', t: `${nameOf('me')} 和主播连麦了`, at: Date.now() }); saveD(); paintRoom(l); step(l, why === 'invite' ? '她接受了你的连麦邀请，现在你们在连麦（直播间的人都看得到听得到）。先跟她说句话。' : '她申请连麦，你同意了，现在你们在连麦（直播间的人都看得到听得到）。先跟她说句话。'); }
+Y.micEnd = id => { const l = liveOf(id); if (!l || !l.mic) return; const sec = Math.round((Date.now() - l.mic.at) / 1000); (l.micLog = l.micLog || []).push({ at: l.mic.at, sec, said: l.lines.filter(x => x.me && x.at >= l.mic.at).map(x => x.t).slice(-6) }); l.mic = null; l.lines.push({ by: '系统', t: `连麦结束 · ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`, at: Date.now() }); saveD(); paintRoom(l); step(l, '你们刚结束连麦，跟直播间说一句。'); };
+window.gysDouyinMicInvite = async id => { const l = liveOf(id); if (!l || l.end) return X.toast('直播已经结束了', ''); G.open(APP, 'home'); CH = 'live'; Y.room(id); setTimeout(async () => { if (await G.confirm(`${nameOf(l.host)} 邀请你连麦`)) micStart(l, 'invite'); }, 600); };
 function head(t) { return t === 'home' ? '' : `<div class="gys-hd dy-hd"><span class="gys-bk" onclick="GYS.close('douyin')">${G.ic('back', 22)}</span><b>${{ friend: '朋友', post: '发作品', msg: '消息', me: nameOf('me') }[t] || '抖音'}</b></div>`; }
 G.app(APP, {
     tabs: [['home', '首页', ''], ['friend', '朋友', ''], ['post', '＋', ''], ['msg', '消息', '', () => unread() || ''], ['me', '我', '']],
@@ -295,7 +371,8 @@ window.gysDouyinOpenCmt = id => { G.open(APP); Y.cmts(id); };
 window.gysDouyinOpenLive = id => { G.open(APP, 'home'); CH = 'live'; G.repaint(APP); if (liveOf(id)) Y.room(id); };
 window.gysDouyinOpenDm = w => { G.open(APP, 'msg'); Y.dm(w); };
 window.gysDouyinOpenProf = w => { G.open(APP); Y.prof(w); };
-// 老「📺 直播间」插件的入口还能用
+// 老「📺 直播间」插件的入口还能用（老通知点了也能跳过来）
+if (typeof window.gyxLiveOpen !== 'function') window.gyxLiveOpen = id => { const l = D.lives.find(x => x.oldId === id || x.id === id) || D.lives.find(x => x.ta && !x.end) || D.lives.find(x => x.ta); if (l) window.gysDouyinOpenLive(l.id); else { G.open(APP, 'home'); CH = 'live'; G.repaint(APP); } };
 window.gyxLiveStart = async cid => { const c = X.char(cid) || X.cur(); if (!c) return; const l = await taLive(c); if (l) window.gysDouyinOpenLive(l.id); return l; };
 
 /* ---------------- 谷雨这边 ---------------- */
@@ -380,4 +457,35 @@ X.css('gys-douyin-css', `
 })();
 window.gysDyState = () => D;
 // 💬 互通（256）
-try { G.chatReg(APP, { lines: c => { const t = D.dms['c:' + c.id]; return t ? t.msgs.slice(-6).map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你（' + c.name + '）') + '：' + (m.t === 'vid' ? '[分享了一个视频]' : m.text) })) : []; }, lastMe: c => { const t = D.dms['c:' + c.id]; const m = t && t.msgs.filter(x => x.from === 'me').slice(-1)[0]; return m ? m.at : 0; }, proactive: async c => { const t = dmOf('c:' + c.id); const n = t.msgs.length; await dmReply(t); return t.msgs.length > n; } }); } catch (e) {}
+try { G.chatReg(APP, { all: c => { const t = D.dms['c:' + c.id]; return t ? t.msgs.map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你') + '：' + (m.t === 'vid' ? '[分享了一个视频]' : m.text) })) : []; }, lines: c => { const t = D.dms['c:' + c.id]; return t ? t.msgs.slice(-6).map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你（' + c.name + '）') + '：' + (m.t === 'vid' ? '[分享了一个视频]' : m.text) })) : []; }, lastMe: c => { const t = D.dms['c:' + c.id]; const m = t && t.msgs.filter(x => x.from === 'me').slice(-1)[0]; return m ? m.at : 0; }, proactive: async c => { const t = dmOf('c:' + c.id); const n = t.msgs.length; await dmReply(t); return t.msgs.length > n; } }); } catch (e) {}
+// 🌀 日常 / 🎙️ 连麦（258）
+X.action({ key: 'gys_dy_daily', label: '在抖音发一条日常', hint: '24 小时消失的随手拍', need: c => dailyOn() && rare(c, 'dd', 10), run: async c => { mark(c, 'dd'); const d = await taDaily(c); if (!d) return null; return { text: `在抖音发了条日常：${d.scene}${d.cap ? '「' + d.cap + '」' : ''}`, jump: X.go('gysDouyinOpenDaily', d.by) }; } }, 'gysDyDaily');
+X.action({ key: 'gys_dy_daily_see', label: '看她的抖音日常，回一句', hint: '她 24 小时内发的', need: c => dailyOn() && dailyOf('me').some(d => !(d.views || []).includes(charW(c))), run: async c => { const d = dailyOf('me').find(x => !(x.views || []).includes(charW(c))); if (!d) return null; d.views.push(charW(c)); d.likes = d.likes || []; if (!d.likes.includes(charW(c))) d.likes.push(charW(c)); saveD(); const r = X.plain(await X.ask(`${X.who(c)}\n她在抖音发了一条日常：${d.img ? '一张照片' : '画面「' + d.scene + '」'}${d.cap ? '，配的话「' + d.cap + '」' : ''}。你私信她一句。只写那一句。`) || '').slice(0, 120); if (!r) return { text: '看了她的抖音日常，点了个赞' }; const th = dmOf(charW(c)); th.msgs.push({ id: G.uid('dm'), from: charW(c), text: r, at: Date.now() }); th.at = Date.now(); th.unread = (th.unread || 0) + 1; saveD(); G.notify(APP, c, `🎶 <b>${X.esc(c.name)}</b> 回复了你的日常`, r, X.go('gysDouyinOpenDm', charW(c))); return { text: '看了她的抖音日常，私信她：' + r, selfNotified: true }; } }, 'gysDyDaily');
+X.action({ key: 'gys_dy_mic', label: '在直播里邀请她连麦', hint: '你正在直播的时候', need: c => micOn() && onAir().some(l => l.host === charW(c) && !l.mic), run: async c => { const l = onAir().find(x => x.host === charW(c) && !x.mic); if (!l) return null; l.lines.push({ host: 1, t: X.v('我想叫一个人上来连麦…', '等一下，我邀请个人连麦', '连麦位给一个特别的人'), at: Date.now() }); saveD(); G.notify(APP, c, `🎙️ <b>${X.esc(c.name)}</b> 邀请你连麦`, '《' + l.title + '》', X.go('gysDouyinMicInvite', l.id)); return { text: `在直播《${l.title}》里邀请她连麦`, selfNotified: true, jump: X.go('gysDouyinMicInvite', l.id) }; } }, 'gysDyMic');
+X.today(() => { if (!dailyOn()) return null; const L = liveDaily().filter(d => G.charOf(d.by)); const mine = dailyOf('me'); if (!L.length && !mine.length) return null; return { title: '🌀 抖音日常', rows: L.slice(-3).reverse().map(d => ({ t: nameOf(d.by), x: (d.cap || d.scene).slice(0, 30) + ((d.views || []).includes('me') ? '' : ' · 没看'), go: X.go('gysDouyinOpenDaily', d.by) })).concat(mine.length ? [{ t: '我', x: `${mine.length} 条日常 · ${new Set(mine.flatMap(d => d.views || [])).size} 人看过`, go: X.go('gysDouyinOpenDaily', 'me') }] : []) }; }, 'gysDyDaily');
+X.today(() => { if (!micOn()) return null; const d = X.day(); const L = D.lives.filter(l => (l.micLog || []).some(m => X.day(new Date(m.at)) === d) || l.mic); if (!L.length) return null; return { title: '🎙️ 抖音连麦', rows: L.slice(0, 3).map(l => ({ t: nameOf(l.host), x: l.mic ? '正在连麦：' + l.title : `连麦 ${(l.micLog || []).length} 次 ·《${l.title}》`, go: X.go('gysDouyinOpenLive', l.id) })) }; }, 'gysDyMic');
+X.widget('gysDyDailyW', { n: '抖音日常', sizes: ['s', 'm'], tap: () => { const d = liveDaily().filter(x => x.by !== 'me' && !(x.views || []).includes('me'))[0]; if (d) window.gysDouyinOpenDaily(d.by); else G.open(APP, 'friend'); }, r: () => { const L = liveDaily().filter(x => x.by !== 'me'); const un = L.filter(x => !(x.views || []).includes('me')); return `<div style="padding:10px;font-size:12px;line-height:1.6;background:#161823;color:#fff;height:100%;box-sizing:border-box"><b>🌀 日常</b><br>${un.length ? `${esc(nameOf(un[0].by))} 等 ${un.length} 条没看<br>${esc((un[0].cap || un[0].scene).slice(0, 20))}` : L.length ? '都看过了' : '24 小时内没人发'}</div>`; } }, 'gysDyDaily');
+X.widget('gysDyMicW', { n: '抖音连麦', sizes: ['s'], tap: () => { const l = onAir().find(x => x.ta); if (l) window.gysDouyinOpenLive(l.id); else G.open(APP); }, r: () => { const l = onAir().find(x => x.ta); return `<div style="padding:10px;font-size:12px;line-height:1.6;background:#161823;color:#fff;height:100%;box-sizing:border-box"><b>🎙️ 连麦</b><br>${l ? (l.mic ? `正在和 ${esc(nameOf(l.host))} 连麦` : `${esc(nameOf(l.host))} 在播，可以申请连麦`) : '没人在播'}</div>`; } }, 'gysDyMic');
+X.mem({ k: 'gysDyDaily', ico: '🌀', n: 'TA 的抖音日常', d: 'TA 发过的日常（24 小时后在抖音里消失，这里留着；改了就是改那句话，删了就没了）', items: c => (D.daily || []).filter(d => d.by === 'c:' + c.id), text: d => (d.cap ? d.cap + ' · ' : '') + d.scene, edit: (d, v) => { d.cap = String(v).split(' · ')[0].slice(0, 60); }, del: (c, i) => { const L = (D.daily || []).filter(d => d.by === 'c:' + c.id); D.daily = (D.daily || []).filter(d => d !== L[i]); }, meta: d => G.ago(d.at), save: () => saveD() }, 'gysDyDaily');
+X.mem({ k: 'gysDyMic', ico: '🎙️', n: '和 TA 连过的麦', d: 'TA 直播时你们连麦的记录（改了就是改你说过的话，删了就没了）', items: c => D.lives.filter(l => l.host === 'c:' + c.id).flatMap(l => (l.micLog || []).map(m => Object.assign(m, { __l: l.title }))), text: m => `《${m.__l}》连麦 ${Math.round(m.sec / 60)} 分钟：${(m.said || []).join(' / ')}`, edit: (m, v) => { m.said = String(v).replace(/^.*?：/, '').split(' / ').slice(0, 6); }, del: (c, i) => { let k = 0; D.lives.filter(l => l.host === 'c:' + c.id).forEach(l => { l.micLog = (l.micLog || []).filter(() => k++ !== i); }); }, meta: m => G.ago(m.at), save: () => saveD() }, 'gysDyMic');
+X.css('gys-douyin-258-css', `
+.dy-dly{display:flex;gap:14px;overflow-x:auto;padding:12px 14px 8px;scrollbar-width:none}.dy-dly::-webkit-scrollbar{display:none}
+.dy-dly>span{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;width:62px}
+.dy-dly b{position:relative;display:block;padding:3px;border-radius:50%}.dy-dly b.ring{background:conic-gradient(#fe2c55,#ff8a00,#25f4ee,#fe2c55)}.dy-dly b.ring.seen{background:#3a3a46}
+.dy-dly b>.gys-av{border:2px solid #161823;display:block}.dy-dly u{position:absolute;right:0;bottom:0;width:18px;height:18px;border-radius:50%;background:#fe2c55;color:#fff;text-decoration:none;font-size:14px;line-height:17px;text-align:center;border:2px solid #161823}
+.dy-dly i{font-style:normal;font-size:11.5px;color:rgba(255,255,255,.75);max-width:62px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.gys-root.gys-douyin .dy-dvb{background:#000!important;padding:0!important}
+.dy-dv{position:relative;min-height:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer}
+.dy-dvbar{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:8px;right:8px;display:flex;gap:3px}.dy-dvbar i{flex:1;height:2px;border-radius:1px;background:rgba(255,255,255,.3)}.dy-dvbar i.done{background:#fff}.dy-dvbar i.cur{background:linear-gradient(90deg,#fff 50%,rgba(255,255,255,.3) 50%);background-size:200% 100%;animation:dyDvP 5s linear forwards}
+@keyframes dyDvP{from{background-position:100% 0}to{background-position:0 0}}
+.dy-dvh{position:absolute;top:calc(env(safe-area-inset-top,0px) + 20px);left:12px;right:12px;display:flex;align-items:center;gap:8px}.dy-dvh small{color:rgba(255,255,255,.6)}.dy-dvh em{margin-left:auto;font-style:normal;font-size:20px;padding:4px}
+.dy-dvc{position:absolute;left:16px;right:16px;bottom:90px;font-size:16px;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.dy-dvf{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);display:flex;gap:10px;align-items:center}
+.dy-dvf input{flex:1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:22px;padding:10px 14px;color:#fff;outline:none;font-size:14px}.dy-dvf span{font-size:24px;cursor:pointer}.dy-dvf .v{font-size:13px;flex:1;color:rgba(255,255,255,.8)}
+.dy-hot{padding:6px 0}.dy-hoth{display:flex;align-items:baseline;gap:8px;padding:10px 16px}.dy-hoth b{font-size:17px;color:#fff}.dy-hoth small{color:#888}.dy-hoth a{margin-left:auto;color:#aaa;font-size:13px;cursor:pointer}
+.dy-hr{display:flex;align-items:center;gap:10px;padding:11px 16px;cursor:pointer}.dy-hr em{width:20px;font-style:normal;font-weight:700;color:#888;text-align:center}.dy-hr em.r1{color:#fe2c55}.dy-hr em.r2{color:#ff6a00}.dy-hr em.r3{color:#ffb800}
+.dy-hr b{flex:1;font-weight:400;color:#fff;font-size:15px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.dy-hr small{color:#888;font-size:12px}
+.dy-hr i{font-style:normal;font-size:11px;color:#fff;border-radius:3px;padding:0 4px;line-height:16px}.dy-hr i.t0{background:#2e82ff}.dy-hr i.t1{background:#ff6a00}.dy-hr i.t2{background:#fe2c55}
+.dy-mic{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin:10px 0}.dy-mic>div{height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#fff;border-radius:4px}.dy-mic small{font-size:11.5px;color:rgba(255,255,255,.75);padding:0 6px;text-align:center}.dy-mic .wv{color:#25f4ee}
+.dy-rin .mic{font-size:13px!important;background:rgba(255,255,255,.15);border-radius:14px;padding:4px 10px}.dy-rin .mic.on{background:#fe2c55}
+`);

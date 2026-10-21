@@ -1,7 +1,7 @@
-/* 🎵 网易云音乐：照着网易云做的整页音乐软件——每日推荐、私人 FM（漫游）、歌单、排行榜、黑胶播放页、热评区（楼中楼）、云村动态、听歌排行、一起听；能放的歌走「音乐盒」（你上传 / 填直链的那些），TA 写给你的歌、共享歌单、深夜电台都接在里面 */
+/* 🎵 网易云音乐：照着网易云做的整页音乐软件——每日推荐、私人 FM（漫游）、笔记、歌单、排行榜、黑胶播放页、热评区（楼中楼）、笔记、听歌排行、一起听；能放的歌走「音乐盒」（你上传 / 填直链的那些），TA 写给你的歌、共享歌单、深夜电台都接在里面 */
 if (window.__gysMusic) return; window.__gysMusic = 1;
 const G = window.GYS, APP = 'music', esc = G.esc;
-X.feat('gysMusic', { n: '🎵 网易云音乐', desc: '网易云：每日推荐、私人 FM、歌单、排行榜、黑胶播放页、热评、云村动态、听歌排行、一起听；能放的歌用音乐盒里的；TA 也会分享歌、写热评、给你做歌单' });
+X.feat('gysMusic', { n: '🎵 网易云音乐', desc: '网易云：每日推荐、私人 FM、歌单、排行榜、黑胶播放页、热评、笔记、听歌排行、一起听；能放的歌用音乐盒里的；TA 也会分享歌、写热评、给你做歌单' });
 const ST = X.store('gysmusic');
 let D = { songs: {}, likes: {}, lists: [], plays: {}, hist: [], rank: {}, daily: null, posts: [], now: {}, fm: [], cfg: { keep: 300 }, last: {}, seq: 1 };
 const saveD = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => ST.set('d', D), 300); }; })();
@@ -68,7 +68,7 @@ const DEF_LIST = `{{我是谁}}
 {{最近}}
 只输出 JSON：{"name":"歌单名","desc":"简介","songs":[{"t":"歌名","a":"歌手","why":"为什么放这首"}]}`;
 const DEF_POST = `{{我是谁}}
-你在网易云的「云村」发一条动态，分享一首歌（真实存在的歌，按你此刻的心情 / 今天发生的事 / 想到她），配一段话（像真人发动态：可以很短、可以暗戳戳）。不要写歌词。你们最近聊的：
+你在网易云的「笔记」发一篇（图文笔记，配一首歌），分享一首歌（真实存在的歌，按你此刻的心情 / 今天发生的事 / 想到她），配一段话（像真人发动态：可以很短、可以暗戳戳）。不要写歌词。你们最近聊的：
 {{最近}}
 只输出 JSON：{"t":"歌名","a":"歌手","text":"动态文字"}`;
 const DEF_FM = `网易云音乐「私人 FM」，给用户 {{我}} 推 {{条数}} 首歌。她喜欢的：
@@ -81,7 +81,7 @@ X.plGroup('🎵 网易云音乐', 'gysMusic', [
     ['mu.rank', 'TA 的听歌排行', '第一次看 TA 的主页 / 刷新时', '{{我是谁}} {{条数}} {{最近}}'],
     ['mu.search', '搜歌', '搜索时', '{{词}} {{条数}}'],
     ['mu.list', 'TA 给你做歌单', 'TA 自己想做 / 你叫 TA 做时', '{{我是谁}} {{要求}} {{条数}} {{最近}}'],
-    ['mu.post', 'TA 在云村发动态', 'TA 自己想分享歌时', '{{我是谁}} {{最近}}'],
+    ['mu.post', 'TA 写网易云笔记', 'TA 自己想分享歌时', '{{我是谁}} {{最近}}'],
     ['mu.fm', '私人 FM', '漫游页没歌了时', '{{我}} {{听过}} {{模式}} {{条数}}']
 ], { 'mu.daily': DEF_DAILY, 'mu.cmt': DEF_CMT, 'mu.rank': DEF_RANK, 'mu.search': DEF_SEARCH, 'mu.list': DEF_LIST, 'mu.post': DEF_POST, 'mu.fm': DEF_FM });
 
@@ -184,7 +184,7 @@ M.menu = async id => { const s = songOf(id); if (!s) return; const ops = ['➕ �
 const ICO = { home: 'i:home', fm: '📻', post: '🌐', me: 'i:person' };
 function head(tab) {
     const n = nowInfo();
-    return `<div class="gys-hd mu-hd"><span class="gys-bk" onclick="GYS.close('${APP}')">${G.ic('back', 22)}</span>${tab === 'home' ? `<div class="mu-sb" onclick="gysMu.searchPage()">🔍 ${esc(D.daily && D.daily.ids[0] && songOf(D.daily.ids[0]) ? songOf(D.daily.ids[0]).t : '搜索歌曲、歌手')}</div>` : `<b>${{ fm: '漫游', post: '云村', me: '我的' }[tab] || '网易云音乐'}</b>`}${n ? `<span class="mu-nowb${n.playing ? ' on' : ''}" onclick="gysMu.openPlayer()">${cover(n.s, 28, 14)}</span>` : ''}</div>`;
+    return `<div class="gys-hd mu-hd"><span class="gys-bk" onclick="GYS.close('${APP}')">${G.ic('back', 22)}</span>${tab === 'home' || tab === 'find' ? `<div class="mu-sb" onclick="gysMu.searchPage()">🔍 ${esc(D.daily && D.daily.ids[0] && songOf(D.daily.ids[0]) ? songOf(D.daily.ids[0]).t : '搜索歌曲、歌手')}</div>` : `<b>${{ fm: '漫游', post: '笔记', me: '我的' }[tab] || '网易云音乐'}</b>`}${n ? `<span class="mu-nowb${n.playing ? ' on' : ''}" onclick="gysMu.openPlayer()">${cover(n.s, 28, 14)}</span>` : ''}</div>`;
 }
 const songRow = (s, i, opt) => { opt = opt || {}; const L = opt.ids || []; return `<div class="mu-row${NOW && NOW.id === s.id ? ' cur' : ''}" onclick="gysMu.playIn(${esc(JSON.stringify(L))},${i})">${opt.num ? `<em class="mu-n${i < 3 ? ' top' : ''}">${i + 1}</em>` : cover(s, 44)}<div class="mu-ri"><b>${esc(s.t)}${s.ta ? ' <u>原创</u>' : ''}${playable(s) ? ' <u class="ok">可播放</u>' : ''}</b><small>${esc(s.a || '未知歌手')}${s.al ? ' - ' + esc(s.al) : ''}${opt.why && opt.why[s.id] ? ` · <i>${esc(opt.why[s.id])}</i>` : ''}${opt.n ? ` · ${opt.n}次` : ''}</small></div><span class="mu-more" onclick="event.stopPropagation();gysMu.menu('${s.id}')">⋮</span></div>`; };
 const rows = (ids, opt) => { const L = ids.map(songOf).filter(Boolean); const I = L.map(s => s.id); return L.map((s, i) => songRow(s, i, Object.assign({ ids: I }, opt))).join(''); };
@@ -233,7 +233,7 @@ function playerHtml() {
       ${LYR ? `<div class="mu-lyr" onclick="gysMu.lyr()">${lrc.length ? lrc.map(l => `<p>${esc(l)}</p>`).join('') : `<p class="dim">${s.ta ? '这首没有歌词' : playable(s) ? '这首没有歌词<br>在音乐盒里给它传 .lrc 就有了' : '暂无歌词'}</p>`}</div>` : `<div class="mu-disc" onclick="gysMu.lyr()"><i class="mu-needle"></i><div class="mu-vinyl">${cover(s, 190, 95)}</div></div>`}
       ${ls.length ? `<div class="mu-tg">${ls.map(w => G.av(APP, w, 26)).join('')}<em>正在和 ${ls.map(nameOf).map(esc).join('、')} 一起听</em></div>` : ''}
       ${!n.s.ta && !playable(s) && !(window.gymFindTrack && window.gymFindTrack(s.t)) ? `<div class="mu-nosrc">🔇 这首没有音源，只是假装在放 · <a onclick="gysMu.toBox()">加到音乐盒</a></div>` : ''}
-      <div class="mu-pops"><span class="${liked(meW, s.id) ? 'on' : ''}" onclick="gysMu.like('${s.id}')">${liked(meW, s.id) ? '❤️' : '🤍'}</span><span onclick="gysMu.together()">🎧</span><span onclick="gysMu.cmts('${s.id}')">💬<sup>${s.cmtN ? G.fmtN(s.cmtN) : ''}</sup></span><span onclick="gysMu.menu('${s.id}')">⋯</span></div>
+      <div class="mu-pops"><span class="${liked(meW, s.id) ? 'on' : ''}" onclick="gysMu.like('${s.id}')">${liked(meW, s.id) ? '❤️' : '🤍'}</span><span onclick="gysMu.together()">🎧</span><span onclick="gysMu.cmts('${s.id}')">💬<sup>${s.cmtN ? G.fmtN(s.cmtN) : ''}</sup></span>${timerOn() ? `<span class="${TMR ? 'on' : ''}" onclick="gysMu.timer()">⏰${TMR ? `<sup>${TMR.after ? '本首' : Math.ceil((TMR.end - Date.now()) / 60000)}</sup>` : ''}</span>` : ''}<span onclick="gysMu.menu('${s.id}')">⋯</span></div>
       <div class="mu-prog"><i style="width:${n.d ? Math.min(100, n.t / n.d * 100) : 0}%"></i></div><div class="mu-tm"><span>${mmss(n.t)}</span><span>${mmss(n.d)}</span></div>
       <div class="mu-ctl"><span onclick="gysMu.prev()">⏮</span><span class="pp" onclick="gysMu.toggle()">${n.playing ? '⏸' : '▶'}</span><span onclick="gysMu.next()">⏭</span></div></div>`;
 }
@@ -285,24 +285,75 @@ M.fmNext = () => { D.fm.shift(); saveD(); G.repaint(APP); };
 M.fmDrop = () => { D.fm.shift(); saveD(); X.toast(X.v('以后少推这类', '不喜欢，跳过'), ''); G.repaint(APP); };
 M.__fm = () => genFm();
 
-/* ---------------- 云村（动态） ---------------- */
+/* ---------------- 笔记（以前叫云村 / 动态） ---------------- */
 function postHtml(p) { const s = songOf(p.sid); return `<div class="mu-post">${G.av(APP, p.by, 40)}<div class="mu-pi"><b onclick="gysMu.prof('${p.by}')">${esc(nameOf(p.by))}</b><small>${G.ago(p.at)} 分享单曲</small>${p.text ? `<p>${esc(p.text)}</p>` : ''}${s ? `<div class="mu-ps" onclick="gysMu.playIn(['${s.id}'],0)">${cover(s, 42)}<div><b>${esc(s.t)}</b><small>${esc(s.a)}</small></div><i>▶</i></div>` : ''}<div class="mu-pa"><span class="${p.likes.includes('me') ? 'on' : ''}" onclick="gysMu.pLike('${p.id}')">👍 ${(p.likeN || 0) + p.likes.length || ''}</span><span onclick="gysMu.pCmt('${p.id}')">💬 ${p.cmts.length || ''}</span>${s ? `<span onclick="gysMu.share('${s.id}')">↗</span>` : ''}</div>${p.cmts.length ? `<div class="mu-pc">${p.cmts.map(c => `<p><b>${esc(nameOf(c.by))}</b>${c.to ? ' 回复 ' + esc(nameOf(c.to)) : ''}：${esc(c.text)}</p>`).join('')}</div>` : ''}</div></div>`; }
-function postTab() { return `<div class="mu-pbar"><span class="gys-btn sm" onclick="gysMu.newPost()">✏️ 发动态</span></div>${D.posts.map(postHtml).join('') || '<div class="gys-empty">云村还没有动态<br>你和 TA 分享的歌会在这里</div>'}`; }
+// 发现：搜索 + 排行榜 + 歌单广场 + 电台（推荐页放每日推荐、雷达、TA 在听）
+function findTab() {
+    const all = Object.values(D.songs);
+    const top3 = L => L.slice(0, 3).map((s, i) => `<p>${i + 1} ${esc(s.t)} <i>- ${esc(s.a || '')}</i></p>`).join('');
+    const hot = all.slice().sort((a, b) => (b.likeN || 0) - (a.likeN || 0)), up = all.slice().sort((a, b) => b.at - a.at), ori = all.filter(s => s.ta);
+    return `<div class="mu-home"><div class="mu-sec">排行榜<a onclick="gysMu.charts()">更多 ›</a></div>
+      <div class="mu-chs">${[['飙升榜', up, '#ff6a6a,#c62828'], ['热歌榜', hot, '#ff9a3c,#e65100'], ['原创榜', ori, '#7f7fd5,#5b3cc4']].map(([n, L, c]) => `<div class="mu-chc" onclick="gysMu.charts()" style="background:linear-gradient(135deg,${c})"><b>${n}</b>${top3(L) || '<p>还没有</p>'}</div>`).join('')}</div>
+      <div class="mu-sec">歌单广场<a onclick="gysMu.askList()">✨ 叫 TA 做</a></div><div class="mu-grid">${D.lists.map(listCard).join('') || '<div class="gys-empty">还没有歌单</div>'}</div>
+      ${window.gyxRadioOpen ? `<div class="mu-sec">播客 / 电台</div><div class="mu-row" onclick="gyxRadioOpen()"><span class="mu-cv" style="width:44px;height:44px;background:linear-gradient(135deg,#334,#556)"><i style="font-size:20px">🎙️</i></span><div class="mu-ri"><b>TA 的深夜电台</b><small>只给你一个人开的电台</small></div></div>` : ''}</div>`;
+}
+// 笔记：双列图文卡片（网易云「笔记」取代了以前的「动态」）：上面图、下面一段话、作者，点进去是大图 + 文字 + 配的歌
+function noteCard(p) { const s = songOf(p.sid); return `<div class="mu-nc" onclick="gysMu.note('${p.id}')">${p.img ? `<span class="mu-ncimg" style="background-image:url('${p.img}')"></span>` : `<span class="mu-ncimg" style="background:${coverBg(s)}"><i>${s ? '♪ ' + esc(s.t) : '♪'}</i></span>`}<p>${esc(p.text || (s ? '分享单曲《' + s.t + '》' : ''))}</p><div class="mu-nca">${G.av(APP, p.by, 18)}<em>${esc(nameOf(p.by))}</em><small class="${p.likes.includes('me') ? 'on' : ''}">♡ ${(p.likeN || 0) + p.likes.length || ''}</small></div></div>`; }
+M.note = id => { const p = D.posts.find(x => x.id === id); if (!p) return; G.push(APP, { id: 'note_' + id, title: '笔记', html: () => `${p.img ? `<img class="mu-nimg" src="${p.img}" onclick="GYS.imgView(this.src)">` : ''}${postHtml(p)}` }); };
+function postTab() { const L = D.posts; const a = L.filter((x, i) => i % 2 === 0), b = L.filter((x, i) => i % 2 === 1); return `<div class="mu-pbar"><span class="gys-btn sm" onclick="gysMu.newPost()">✏️ 写笔记</span></div>${L.length ? `<div class="mu-ncols"><div>${a.map(noteCard).join('')}</div><div>${b.map(noteCard).join('')}</div></div>` : '<div class="gys-empty">还没有笔记<br>你和 TA 分享的歌会在这里</div>'}`; }
+function postTabOld() { return `<div class="mu-pbar"><span class="gys-btn sm" onclick="gysMu.newPost()">✏️ 发动态</span></div>${D.posts.map(postHtml).join('') || '<div class="gys-empty">云村还没有动态<br>你和 TA 分享的歌会在这里</div>'}`; }
 M.pLike = id => { const p = D.posts.find(x => x.id === id); if (!p) return; const i = p.likes.indexOf('me'); if (i >= 0) p.likes.splice(i, 1); else p.likes.push('me'); saveD(); G.repaint(APP); };
 M.pCmt = async id => {
     const p = D.posts.find(x => x.id === id); if (!p) return; const t = await G.input('评论', ''); if (!t) return; p.cmts.push({ by: 'me', text: X.plain(t).slice(0, 200), at: Date.now(), to: p.by === 'me' ? '' : p.by }); saveD(); G.repaint(APP);
-    const c = G.charOf(p.by); if (c) { const s = songOf(p.sid); const r = X.plain(await X.ask(`${X.who(c)}\n你在网易云云村分享了《${s ? s.t : ''}》，配的话是「${p.text}」。她评论：「${t}」。回她一句（短）。只写那一句。`) || '').slice(0, 200); if (r) { p.cmts.push({ by: charW(c), text: r, at: Date.now(), to: 'me' }); saveD(); G.repaint(APP); } }
+    const c = G.charOf(p.by); if (c) { const s = songOf(p.sid); const r = X.plain(await X.ask(`${X.who(c)}\n你在网易云笔记里分享了《${s ? s.t : ''}》，配的话是「${p.text}」。她评论：「${t}」。回她一句（短）。只写那一句。`) || '').slice(0, 200); if (r) { p.cmts.push({ by: charW(c), text: r, at: Date.now(), to: 'me' }); saveD(); G.repaint(APP); } }
 };
 M.newPost = async () => {
     const L = Array.from(new Set((D.likes[meW] || []).concat(D.hist.map(h => h.id)))).map(songOf).filter(Boolean).slice(0, 20);
     let s = null; const i = await G.sheet(L.map(x => '♪ ' + x.t + ' - ' + (x.a || '')).concat(['🔍 自己填一首']), '分享哪首？'); if (i == null) return;
     if (i < L.length) s = L[i]; else { const t = await G.input('歌名', ''); if (!t) return; const a = await G.input('歌手（可空）', '') || ''; s = mkSong({ t, a }); }
     if (!s) return; const text = await G.input('说点什么（可以空着）', ''); if (text === null || text === undefined) return;
-    const p = { id: G.uid('mp'), by: 'me', sid: s.id, text: X.plain(text).slice(0, 300), at: Date.now(), likes: [], likeN: 0, cmts: [] }; D.posts.unshift(p); saveD(); G.repaint(APP);
-    X.toast(X.v('🌐 发到云村了', '分享出去了'), '');
-    for (const c of G.chars()) { if (Math.random() < 0.6) setTimeout(async () => { const r = X.plain(await X.ask(`${X.who(c)}\n她在网易云云村分享了《${s.t}》- ${s.a}，配的话是「${p.text || '（没写）'}」。你刷到了，在下面评论一句（短，按你们的关系）。只写那一句。`) || '').slice(0, 200); if (!r) return; p.cmts.push({ by: charW(c), text: r, at: Date.now(), to: '' }); saveD(); G.repaint(APP); G.notify(APP, c, `🎵 <b>${X.esc(c.name)}</b> 评论了你的动态`, r, X.go('gysMusicOpen', 'post')); }, G.rnd(5, 40) * 1000); }
+    const img = await new Promise(res => { G.sheet(['🖼️ 配一张图（能裁剪）', '不配图'], '').then(k => { if (k === 0) G.pickImg(3 / 4, url => res(url)); else res(''); }); });
+    const p = { id: G.uid('mp'), by: 'me', sid: s.id, img: img || '', text: X.plain(text).slice(0, 300), at: Date.now(), likes: [], likeN: 0, cmts: [] }; D.posts.unshift(p); saveD(); G.repaint(APP);
+    X.toast(X.v('📝 笔记发布了', '分享出去了'), '');
+    for (const c of G.chars()) { if (Math.random() < 0.6) setTimeout(async () => { const r = X.plain(await X.ask(`${X.who(c)}\n她在网易云写了篇笔记，分享了《${s.t}》- ${s.a}，配的话是「${p.text || '（没写）'}」。你刷到了，在下面评论一句（短，按你们的关系）。只写那一句。`) || '').slice(0, 200); if (!r) return; p.cmts.push({ by: charW(c), text: r, at: Date.now(), to: '' }); saveD(); G.repaint(APP); G.notify(APP, c, `🎵 <b>${X.esc(c.name)}</b> 评论了你的笔记`, r, X.go('gysMusicOpen', 'post')); }, G.rnd(5, 40) * 1000); }
 };
 
+/* ---------------- 音乐匹配度（258）：TA 主页上那个「你们的音乐匹配度」，点进去是共同喜欢的歌 ---------------- */
+X.feat('gysMuMatch', { n: '💞 网易云音乐匹配度', desc: 'TA 的网易云主页上显示你们的音乐匹配度（按你们都听过、都喜欢的歌和歌手算），点进去是共同喜欢的歌；TA 偶尔会看到然后跟你说一句' });
+X.feat('gysMuTimer', { n: '⏰ 网易云定时关闭', desc: '播放页里的定时关闭（10 / 20 / 30 / 60 分钟、播完这首）；深夜你还在听的时候 TA 可能会帮你定一个，让你早点睡' });
+const matchOn = () => X.on('gysMuMatch'), timerOn = () => X.on('gysMuTimer');
+function songSet(w) { const S = new Set(Object.keys(D.plays[w] || {}).concat(D.likes[w] || [])); const r = D.rank[w]; if (r) { (r.week || []).forEach(x => S.add(x.id)); (r.all || []).forEach(id => S.add(id)); } return Array.from(S).filter(id => songOf(id)); }
+function matchOf(w) {
+    const a = songSet(meW), b = songSet(w); if (a.length < 2 || b.length < 2) return null;
+    const B = new Set(b), common = a.filter(id => B.has(id));
+    const ar = s => String((songOf(s) || {}).a || '').split(/[\/、,&]/)[0].trim(); const A1 = new Set(a.map(ar).filter(Boolean)), A2 = new Set(b.map(ar).filter(Boolean)); const ca = Array.from(A1).filter(x => A2.has(x));
+    const score = (common.length * 2 + ca.length) / Math.max(4, Math.min(a.length, b.length) + Math.min(A1.size, A2.size) / 2);
+    const pct = Math.max(12, Math.min(99, Math.round(35 + 64 * Math.min(1, score))));
+    return { pct, common, artists: ca };
+}
+M.match = w => { const m = matchOf(w); if (!m) return X.toast(X.v('还算不出来', '多听几首再看'), '你们都多听点歌，匹配度就出来了'); D.match = D.match || {}; G.push(APP, { id: 'match_' + w, title: '音乐匹配度', html: () => { const L = (D.match[w] || []); return `<div class="mu-mt"><div class="mu-mtav">${G.av(APP, meW, 64)}<i>${m.pct}%</i>${G.av(APP, w, 64)}</div><b>你和 ${esc(nameOf(w))} 的音乐匹配度</b><small>${m.pct >= 85 ? '灵魂乐友' : m.pct >= 65 ? '品味相近' : m.pct >= 45 ? '有共同语言' : '可以互相安利'}</small>${L[0] && L[0].say ? `<p>「${esc(L[0].say)}」—— ${esc(nameOf(w))}</p>` : ''}</div>
+  ${m.artists.length ? `<div class="mu-sec">你们都爱听的歌手</div><div class="mu-tip">${m.artists.slice(0, 10).map(esc).join(' · ')}</div>` : ''}
+  <div class="mu-sec">你们都听过的歌（${m.common.length}）${m.common.length ? `<a onclick="gysMu.playIn(${esc(JSON.stringify(m.common))},0)">▶ 播放全部</a>` : ''}</div>${rows(m.common) || '<div class="mu-tip">还没有重合的歌，去 TA 的听歌排行里听几首</div>'}`; } }); };
+async function taMatchSay(c) {
+    const w = charW(c), m = matchOf(w); if (!m) return null;
+    const say = X.plain(await X.ask(`${X.who(c)}\n你在网易云上看到你和她的音乐匹配度是 ${m.pct}%。${m.common.length ? '你们都听过：' + m.common.slice(0, 6).map(id => '《' + songOf(id).t + '》').join('') : '你们几乎没听过一样的歌'}${m.artists.length ? '，都喜欢的歌手：' + m.artists.slice(0, 4).join('、') : ''}。对这个数字说一句（像你平时说话）。只写那一句。`) || '').slice(0, 80); if (!say) return null;
+    D.match = D.match || {}; (D.match[w] = D.match[w] || []).unshift({ at: Date.now(), pct: m.pct, say }); D.match[w] = D.match[w].slice(0, 30); saveD(); return { m, say };
+}
+
+/* ---------------- 定时关闭（258） ---------------- */
+let TMR = null;   // { end, after:1 播完这首, by }
+function timerFire() { if (!TMR) return; const by = TMR.by; TMR = null; try { const n = nowInfo(); if (n && n.playing) M.toggle(); } catch (e) {} G.repaint(APP); X.toast(by ? X.v(`${nameOf(by)} 帮你定的时间到了，停了`, '到点了，晚安') : X.v('定时关闭：已暂停', '到点了，音乐停了', '⏰ 时间到，已停止播放'), ''); }
+setInterval(() => { if (!TMR) return; if (TMR.after) { const n = nowInfo(); if (!n || !n.playing || (n.d && n.t >= n.d - 1.5) || (TMR.sid && NOW && NOW.id !== TMR.sid)) timerFire(); } else if (Date.now() >= TMR.end) timerFire(); }, 1000);
+const tmrLeft = () => TMR ? (TMR.after ? '播完这首' : Math.max(1, Math.ceil((TMR.end - Date.now()) / 60000)) + ' 分钟') : '';
+M.timer = async () => {
+    if (!timerOn()) return X.toast('定时关闭没开', '设置 → 全部开关 →「网易云定时关闭」');
+    const O = [['10 分钟', 10], ['20 分钟', 20], ['30 分钟', 30], ['45 分钟', 45], ['60 分钟', 60], ['90 分钟', 90], ['播完当前歌曲', -1]];
+    const i = await G.sheet(O.map(o => o[0]).concat(TMR ? ['不开启（现在还剩 ' + tmrLeft() + '）'] : []), '定时关闭'); if (i == null) return;
+    if (i === O.length) { TMR = null; X.toast(X.v('定时关闭取消了', '不定时了'), ''); }
+    else { const v = O[i][1]; TMR = v < 0 ? { after: 1, sid: NOW && NOW.id } : { end: Date.now() + v * 60e3 }; X.toast(X.v('定好了', '⏰ 设置成功'), v < 0 ? '这首播完就停' : `${v} 分钟后停止播放`); }
+    G.repaint(APP);
+};
+window.gysMuTimerLeft = tmrLeft;
 /* ---------------- 我的 / 主页 ---------------- */
 function lv(w) { const n = Object.values(D.plays[w] || {}).reduce((a, b) => a + b, 0); return Math.min(10, 1 + Math.floor(Math.sqrt(n / 3))); }
 function meTab() {
@@ -325,6 +376,7 @@ M.prof = w => {
         const p = G.prof(APP, w), L = D.lists.filter(l => l.by === w), Ps = D.posts.filter(x => x.by === w), now = D.now[w] && songOf(D.now[w].id), r = D.rank[w];
         const sg = G.charOf(w) && window.gyxSongData ? (window.gyxSongData().list || []).filter(x => 'c:' + x.cid === w).map(taSong).filter(Boolean) : [];
         return `<div class="mu-pf" style="${p.bg ? `background-image:url('${p.bg}')` : ''}">${G.av(APP, w, 76)}<b>${esc(p.nick)}</b><small>Lv.${G.charOf(w) ? Math.max(lv(w), 6) : lv(w)} · ${G.fmtN(p.following || 0)} 关注 · ${G.fmtN(p.followers)} 粉丝</small><p>${esc(p.bio || '')}</p>${G.linksOf(APP, w).map(([k, h]) => `<em>${G.APPS[k].ico} ${esc(h)}</em>`).join('')}<div class="gys-acts" style="justify-content:center">${w === 'me' ? `<span class="gys-btn sm ghost" onclick="gysMu.editMe()">编辑资料</span>` : `<span class="gys-btn sm ghost" onclick="GYS.editProf('music','${w}')">✏️ 改 TA 的主页</span>`}</div></div>
+          ${w !== 'me' && matchOn() ? (() => { const m = matchOf(w); return `<div class="mu-mtb" onclick="gysMu.match('${w}')"><i>💞</i><span>你们的音乐匹配度</span><b>${m ? m.pct + '%' : '--'}</b><em>›</em></div>`; })() : ''}
           ${now && w !== 'me' ? `<div class="mu-nowp" onclick="gysMu.playIn(['${now.id}'],0)">🎧 正在听：<b>${esc(now.t)}</b> - ${esc(now.a)}</div>` : ''}
           ${r && r.say ? `<div class="mu-tip">「${esc(r.say)}」</div>` : ''}
           <div class="mu-sec">听歌排行<a onclick="gysMu.rankPage('${w}')">全部 ›</a></div>${w === 'me' ? rows(myRank().slice(0, 5).map(x => x.id), { num: 1 }) : r ? rows(r.week.slice(0, 5).map(x => x.id), { num: 1 }) : (BUSY['r' + w] ? '<div class="gys-busy">⏳ 正在看 TA 听了什么…</div>' : '<div class="mu-tip">还看不到</div>')}
@@ -353,11 +405,11 @@ M.report = () => {
 M.settings = () => G.push(APP, { title: '设置', html: () => `<label class="gys-f"><span>最近播放记几条（${D.cfg.keep}）</span><select onchange="gysMu.__keep(this.value)">${[100, 300, 1000, 5000].map(n => `<option ${+D.cfg.keep === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label><div class="gys-acts"><span class="gys-btn sm ghost" onclick="gysMu.export()">导出（.txt）</span><span class="gys-btn sm ghost" onclick="gysMu.__clrHist()">清空最近播放</span></div>` });
 M.__keep = v => { D.cfg.keep = +v; saveD(); };
 M.__clrHist = async () => { if (await G.confirm('清空最近播放？')) { D.hist = []; saveD(); G.repaint(APP); } };
-M.export = () => { const L = ['🎵 网易云音乐 导出 ' + new Date().toLocaleString(), '', '【我喜欢的音乐】'].concat((D.likes[meW] || []).map(songOf).filter(Boolean).map(s => `${s.t} - ${s.a}`), ['', '【歌单】']).concat(D.lists.map(l => `${l.name}（${nameOf(l.by)}）：` + l.ids.map(songOf).filter(Boolean).map(s => s.t).join(' / ')), ['', '【云村动态】']).concat(D.posts.map(p => `${nameOf(p.by)}：${p.text}（${(songOf(p.sid) || {}).t || ''}）`)); const t = L.join('\n'); try { if (typeof saveTextFileForApp === 'function') return saveTextFileForApp(t, '网易云音乐.txt'); } catch (e) {} const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain' })); a.download = '网易云音乐.txt'; a.click(); };
+M.export = () => { const L = ['🎵 网易云音乐 导出 ' + new Date().toLocaleString(), '', '【我喜欢的音乐】'].concat((D.likes[meW] || []).map(songOf).filter(Boolean).map(s => `${s.t} - ${s.a}`), ['', '【歌单】']).concat(D.lists.map(l => `${l.name}（${nameOf(l.by)}）：` + l.ids.map(songOf).filter(Boolean).map(s => s.t).join(' / ')), ['', '【笔记】']).concat(D.posts.map(p => `${nameOf(p.by)}：${p.text}（${(songOf(p.sid) || {}).t || ''}）`)); const t = L.join('\n'); try { if (typeof saveTextFileForApp === 'function') return saveTextFileForApp(t, '网易云音乐.txt'); } catch (e) {} const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain' })); a.download = '网易云音乐.txt'; a.click(); };
 
 G.app(APP, {
-    tabs: [['home', 'i:home', '发现'], ['fm', '📻', '漫游'], ['post', '🌐', '云村'], ['me', 'i:person', '我的']],
-    head, render: t => t === 'fm' ? fmTab() : t === 'post' ? postTab() : t === 'me' ? meTab() : home()
+    tabs: [['home', 'i:disc', '推荐'], ['find', 'i:compass', '发现'], ['fm', 'i:roam', '漫游'], ['post', 'i:note', '笔记'], ['me', 'i:person', '我的']],
+    head, render: t => t === 'fm' ? fmTab() : t === 'post' ? postTab() : t === 'me' ? meTab() : t === 'find' ? findTab() : home()
 });
 window.gysMusicOpen = tab => G.open(APP, tab);
 window.gysMusicOpenSong = id => { G.open(APP); if (songOf(id)) M.play(id, 1), M.openPlayer(); };
@@ -369,7 +421,7 @@ window.gysMusicOpenProf = w => { G.open(APP); M.prof(w); };
 X.mini({ id: 'gysMusic', icon: '🎵', title: '网易云音乐', desc: '每日推荐、私人 FM、歌单、排行榜、黑胶播放页、热评、云村、听歌排行、一起听', cat: '软件', onOpen: () => G.open(APP) }, 'gysMusic');
 const rare = (c, k, h) => Date.now() - ((D.last[k + c.id]) || 0) > h * 3600e3;
 const mark = (c, k) => { D.last[k + c.id] = Date.now(); saveD(); };
-X.action({ key: 'gys_mu_post', label: '在网易云云村分享一首歌', hint: '此刻的心情 / 想到她', need: c => rare(c, 'p', 20), run: async c => { mark(c, 'p'); const p = await taPost(c); if (!p) return null; const s = songOf(p.sid); G.notify(APP, c, `🎵 <b>${X.esc(c.name)}</b> 在云村分享了一首歌`, `《${s.t}》${p.text ? '：' + p.text.slice(0, 30) : ''}`, X.go('gysMusicOpen', 'post')); return { text: `在网易云分享了《${s.t}》：${p.text}`, selfNotified: true, jump: X.go('gysMusicOpen', 'post') }; } }, 'gysMusic');
+X.action({ key: 'gys_mu_post', label: '在网易云写一篇笔记分享一首歌', hint: '此刻的心情 / 想到她', need: c => rare(c, 'p', 20), run: async c => { mark(c, 'p'); const p = await taPost(c); if (!p) return null; const s = songOf(p.sid); G.notify(APP, c, `🎵 <b>${X.esc(c.name)}</b> 发了一篇笔记`, `《${s.t}》${p.text ? '：' + p.text.slice(0, 30) : ''}`, X.go('gysMusicOpen', 'post')); return { text: `在网易云分享了《${s.t}》：${p.text}`, selfNotified: true, jump: X.go('gysMusicOpen', 'post') }; } }, 'gysMusic');
 X.action({ key: 'gys_mu_list', label: '在网易云给她做一个歌单', hint: '挑一堆想让她听的歌', need: c => rare(c, 'l', 120), run: async c => { mark(c, 'l'); const l = await taList(c); if (!l) return null; G.notify(APP, c, `🎵 <b>${X.esc(c.name)}</b> 给你做了一个歌单`, `「${l.name}」${l.ids.length} 首`, X.go('gysMusicOpenList', l.id)); return { text: `在网易云给她做了个歌单「${l.name}」`, selfNotified: true, jump: X.go('gysMusicOpenList', l.id) }; } }, 'gysMusic');
 X.action({ key: 'gys_mu_cmt', label: '去她最近在听的歌下面写一条评论', hint: '网易云评论区，她看得到', need: c => D.hist.length > 0 && rare(c, 'c', 30), run: async c => {
     mark(c, 'c'); const s = songOf(D.hist[0].id); if (!s) return null;
@@ -380,7 +432,7 @@ X.action({ key: 'gys_mu_cmt', label: '去她最近在听的歌下面写一条评
 X.action({ key: 'gys_mu_listen', label: '自己听会儿网易云（换了首在听的歌）', hint: '她点开你主页能看到你在听什么', need: c => rare(c, 'n', 8), run: async c => { mark(c, 'n'); await genRank(charW(c), 1); const s = D.now[charW(c)] && songOf(D.now[charW(c)].id); return s ? { text: `在网易云听《${s.t}》- ${s.a}`, selfNotified: true } : null; } }, 'gysMusic');
 X.today(() => { const d = X.day(); const h = D.hist.filter(x => X.day(new Date(x.at)) === d); const ps = D.posts.filter(p => p.by !== 'me' && X.day(new Date(p.at)) === d); const ls = D.lists.filter(l => l.by !== 'me' && X.day(new Date(l.at)) === d); const rows = []; if (h.length) rows.push({ t: '你', x: `听了 ${h.length} 首 · 最近：${(songOf(h[0].id) || {}).t || ''}`, go: X.go('gysMusicOpen', 'me') }); ps.slice(0, 2).forEach(p => rows.push({ t: nameOf(p.by), x: '分享了《' + ((songOf(p.sid) || {}).t || '') + '》', go: X.go('gysMusicOpen', 'post') })); ls.slice(0, 1).forEach(l => rows.push({ t: nameOf(l.by), x: '给你做了歌单「' + l.name + '」', go: X.go('gysMusicOpenList', l.id) })); return rows.length ? { title: '🎵 网易云', rows } : null; }, 'gysMusic');
 X.widget('gysMuW', { n: '网易云', sizes: ['s', 'm'], tap: () => { if (NOW) { G.open(APP); M.openPlayer(); } else G.open(APP); }, r: () => { const n = nowInfo(); const s = n ? n.s : (D.daily && songOf(D.daily.ids[0])); return `<div style="padding:10px;font-size:12px;line-height:1.6"><b style="color:#e33">🎵 ${n ? '正在播放' : '每日推荐'}</b><br>${s ? `${esc(s.t)}<br><span style="opacity:.6">${esc(s.a || '')}</span>` : '打开网易云看看'}</div>`; } }, 'gysMusic');
-X.mem({ k: 'gysMuPost', ico: '🎵', n: 'TA 在网易云分享的歌', d: 'TA 在云村发过的动态（改了就是改那段话，删了就没了）', items: c => D.posts.filter(p => p.by === 'c:' + c.id), text: p => `《${(songOf(p.sid) || {}).t || ''}》${p.text}`, edit: (p, v) => { p.text = String(v).replace(/^《[^》]*》/, '').slice(0, 300); }, del: (c, i) => { const L = D.posts.filter(p => p.by === 'c:' + c.id); if (L[i]) D.posts = D.posts.filter(x => x !== L[i]); }, meta: p => G.ago(p.at), save: () => saveD() }, 'gysMusic');
+X.mem({ k: 'gysMuPost', ico: '🎵', n: 'TA 在网易云分享的歌', d: 'TA 在网易云写过的笔记（改了就是改那段话，删了就没了）', items: c => D.posts.filter(p => p.by === 'c:' + c.id), text: p => `《${(songOf(p.sid) || {}).t || ''}》${p.text}`, edit: (p, v) => { p.text = String(v).replace(/^《[^》]*》/, '').slice(0, 300); }, del: (c, i) => { const L = D.posts.filter(p => p.by === 'c:' + c.id); if (L[i]) D.posts = D.posts.filter(x => x !== L[i]); }, meta: p => G.ago(p.at), save: () => saveD() }, 'gysMusic');
 X.mem({ k: 'gysMuList', ico: '📑', n: 'TA 给你做的歌单', d: 'TA 在网易云给你做的歌单（改了就是改歌单名，删了就没了）', items: c => D.lists.filter(l => l.by === 'c:' + c.id), text: l => l.name, edit: (l, v) => { l.name = String(v).slice(0, 30); }, del: (c, i) => { const L = D.lists.filter(l => l.by === 'c:' + c.id); if (L[i]) D.lists = D.lists.filter(x => x !== L[i]); }, meta: l => l.ids.length + ' 首 · ' + G.ago(l.at), save: () => saveD() }, 'gysMusic');
 X.ctx(id => {
     const c = X.char(id); if (!c) return ''; const w = charW(c), L = [];
@@ -434,7 +486,10 @@ X.css('gys-music-css', `
 .mu-fm{min-height:100%;background:linear-gradient(#3a2a3a,#1a1420);color:#fff;padding:14px 20px 30px;box-sizing:border-box}.mu-fmm{display:flex;justify-content:center;gap:24px;font-size:15px;opacity:.7}.mu-fmm span{cursor:pointer}.mu-fmm span.on{opacity:1;font-weight:600;border-bottom:2px solid #ec4141}
 .mu-fmc{margin:26px auto 0;border-radius:20px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:8px;max-width:300px;box-shadow:0 20px 50px rgba(0,0,0,.4)}.mu-fmc b{font-size:20px;margin-top:8px}.mu-fmc small{opacity:.8}
 .mu-fmo{display:flex;justify-content:space-around;align-items:center;margin:26px 10px 0;font-size:24px}.mu-fmo span{cursor:pointer}.mu-fmo .pp{width:58px;height:58px;border-radius:50%;background:#ec4141;display:flex;align-items:center;justify-content:center}
-.mu-pbar{padding:10px 16px}.mu-post{display:flex;gap:10px;padding:12px 16px;border-bottom:.5px solid rgba(0,0,0,.06)}.mu-pi{flex:1;min-width:0}.mu-pi>b{font-size:14.5px;color:#507daf;cursor:pointer}.mu-pi>small{display:block;font-size:11.5px;color:#999}.mu-pi>p{margin:6px 0;font-size:15px;line-height:1.55}
+.mu-pbar{padding:10px 16px}.mu-ncols{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 6px 20px}.mu-ncols>div{display:flex;flex-direction:column;gap:6px}
+.mu-nc{background:#fff;border-radius:8px;overflow:hidden;cursor:pointer}body.dark-theme .mu-nc{background:#1d1d24}.mu-ncimg{display:flex;align-items:flex-end;aspect-ratio:3/4;background:#ddd center/cover no-repeat;padding:8px;box-sizing:border-box}.mu-ncimg i{font-style:normal;color:#fff;font-size:12px;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.mu-nc p{margin:6px 8px;font-size:13.5px;line-height:1.4;max-height:2.8em;overflow:hidden}.mu-nca{display:flex;align-items:center;gap:5px;padding:0 8px 8px;font-size:11.5px;color:#888}.mu-nca em{font-style:normal;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.mu-nca small.on{color:#ec4141}
+.mu-nimg{width:100%;display:block}.mu-chs{display:flex;gap:10px;overflow-x:auto;padding:0 16px}.mu-chc{flex:0 0 240px;border-radius:12px;padding:12px;color:#fff;cursor:pointer}.mu-chc b{font-size:16px}.mu-chc p{margin:5px 0 0;font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.mu-chc i{font-style:normal;opacity:.75}.mu-post{display:flex;gap:10px;padding:12px 16px;border-bottom:.5px solid rgba(0,0,0,.06)}.mu-pi{flex:1;min-width:0}.mu-pi>b{font-size:14.5px;color:#507daf;cursor:pointer}.mu-pi>small{display:block;font-size:11.5px;color:#999}.mu-pi>p{margin:6px 0;font-size:15px;line-height:1.55}
 .mu-ps{display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.04);border-radius:8px;padding:7px;cursor:pointer}.mu-ps>div{flex:1;min-width:0}.mu-ps b{display:block;font-size:14px;font-weight:400}.mu-ps small{font-size:12px;color:#999}.mu-ps i{font-style:normal;color:#ec4141}
 .mu-pa{display:flex;gap:26px;margin-top:8px;font-size:13px;color:#999}.mu-pa span{cursor:pointer}.mu-pa span.on{color:#ec4141}.mu-pc{background:rgba(0,0,0,.035);border-radius:6px;padding:6px 10px;margin-top:8px}.mu-pc p{margin:3px 0;font-size:13.5px}.mu-pc b{color:#507daf;font-weight:400}
 .mu-me{padding-bottom:20px}.mu-mh{display:flex;align-items:center;gap:12px;padding:18px 16px;cursor:pointer}.mu-mh>div{flex:1}.mu-mh b{font-size:19px;display:block}.mu-mh small{color:#999}
@@ -447,3 +502,22 @@ X.css('gys-music-css', `
 
 (async () => { await G.ready(); D = Object.assign(D, await ST.get('d', {}) || {}); ['songs', 'likes', 'plays', 'rank', 'now', 'last'].forEach(k => { if (!D[k] || typeof D[k] !== 'object' || Array.isArray(D[k])) D[k] = {}; }); ['lists', 'hist', 'posts', 'fm'].forEach(k => { if (!Array.isArray(D[k])) D[k] = []; }); D.cfg = Object.assign({ keep: 300 }, D.cfg || {}); })();
 window.gysMuState = () => D;
+// 💞 匹配度 / ⏰ 定时关闭（258）
+X.action({ key: 'gys_mu_match', label: '看到你们网易云的音乐匹配度，跟她说一句', hint: '「我们居然有 87%」', need: c => matchOn() && !!matchOf(charW(c)) && rare(c, 'mt', 72), run: async c => { mark(c, 'mt'); const r = await taMatchSay(c); if (!r) return null; G.notify(APP, c, `💞 <b>${X.esc(c.name)}</b> 看了你们的音乐匹配度`, `${r.m.pct}% ·「${r.say}」`, X.go('gysMusicOpenMatch', charW(c))); return { text: `看到你们网易云音乐匹配度 ${r.m.pct}%，说：${r.say}`, selfNotified: true, jump: X.go('gysMusicOpenMatch', charW(c)) }; } }, 'gysMuMatch');
+X.action({ key: 'gys_mu_timer', label: '看她深夜还在听歌，帮她定个定时关闭', hint: '让她早点睡', need: c => { if (!timerOn() || TMR || !NOW) return false; const h = new Date().getHours(); const n = nowInfo(); return (h >= 23 || h < 4) && n && n.playing && rare(c, 'tm', 20); }, run: async c => { mark(c, 'tm'); const v = G.pick([15, 20, 30]); TMR = { end: Date.now() + v * 60e3, by: charW(c) }; const note = X.plain(await X.ask(`${X.who(c)}\n已经很晚了，她还在网易云听歌。你帮她把定时关闭设成了 ${v} 分钟。跟她说一句（哄她睡 / 叮嘱 / 撒娇都行）。只写那一句。`) || '').slice(0, 60) || '早点睡'; D.timers = (D.timers || []).concat([{ at: Date.now(), by: charW(c), min: v, note }]).slice(-50); saveD(); G.repaint(APP); G.notify(APP, c, `⏰ <b>${X.esc(c.name)}</b> 帮你定了 ${v} 分钟后关闭`, note, X.go('gysMusicOpenPlayer')); return { text: `她深夜还在听歌，你帮她把网易云定时关闭设成 ${v} 分钟，说：${note}`, selfNotified: true }; } }, 'gysMuTimer');
+window.gysMusicOpenMatch = w => { G.open(APP); M.prof(w); M.match(w); };
+window.gysMusicOpenPlayer = () => { G.open(APP); if (NOW) M.openPlayer(); };
+X.today(() => { if (!matchOn()) return null; const L = cast().map(w => ({ w, m: matchOf(w) })).filter(x => x.m); if (!L.length) return null; return { title: '💞 音乐匹配度', rows: L.slice(0, 3).map(x => { const s = ((D.match || {})[x.w] || [])[0]; return { t: nameOf(x.w), x: `${x.m.pct}% · 一起听过 ${x.m.common.length} 首${s && X.day(new Date(s.at)) === X.day() ? ' ·「' + s.say + '」' : ''}`, go: X.go('gysMusicOpenMatch', x.w) }; }) }; }, 'gysMuMatch');
+X.today(() => { if (!timerOn()) return null; const T = (D.timers || []).filter(t => X.day(new Date(t.at)) === X.day()); if (!TMR && !T.length) return null; return { title: '⏰ 定时关闭', rows: (TMR ? [{ t: TMR.by ? nameOf(TMR.by) + ' 定的' : '我', x: '还剩 ' + tmrLeft(), go: X.go('gysMusicOpenPlayer') }] : []).concat(T.slice(-2).map(t => ({ t: nameOf(t.by), x: `帮你定了 ${t.min} 分钟 ·「${t.note}」`, go: X.go('gysMusicOpenPlayer') }))) }; }, 'gysMuTimer');
+X.widget('gysMuMatchW', { n: '音乐匹配度', sizes: ['s'], tap: () => { const w = cast()[0]; if (w) window.gysMusicOpenMatch(w); else G.open(APP); }, r: () => { const w = cast()[0], m = w && matchOf(w); return `<div style="padding:10px;font-size:12px;line-height:1.6"><b style="color:#fc3d49">💞 音乐匹配度</b><br>${m ? `和 ${esc(nameOf(w))}<br><span style="font-size:22px;font-weight:700">${m.pct}%</span>` : '多听几首再看'}</div>`; } }, 'gysMuMatch');
+X.widget('gysMuTimerW', { n: '定时关闭', sizes: ['s'], tap: () => { G.open(APP); if (NOW) { M.openPlayer(); M.timer(); } }, r: () => `<div style="padding:10px;font-size:12px;line-height:1.6"><b style="color:#fc3d49">⏰ 定时关闭</b><br>${TMR ? '还剩 ' + tmrLeft() + (TMR.by ? '<br>' + esc(nameOf(TMR.by)) + ' 定的' : '') : NOW ? '没开 · 点一下设' : '没在放歌'}</div>` }, 'gysMuTimer');
+X.mem({ k: 'gysMuMatch', ico: '💞', n: 'TA 说过的音乐匹配度', d: 'TA 看到你们音乐匹配度时说的话（改了就是改那句，删了就没了）', items: c => ((D.match || {})['c:' + c.id] || []), text: x => `${x.pct}%：${x.say}`, edit: (x, v) => { x.say = String(v).replace(/^\d+%：/, '').slice(0, 80); }, del: (c, i) => { const L = (D.match || {})['c:' + c.id] || []; L.splice(i, 1); }, meta: x => G.ago(x.at), save: () => saveD() }, 'gysMuMatch');
+X.mem({ k: 'gysMuTimer', ico: '⏰', n: 'TA 帮你定的睡前定时', d: '深夜 TA 帮你定的网易云定时关闭和那句话（改了就是改那句，删了就没了）', items: c => (D.timers || []).filter(t => t.by === 'c:' + c.id), text: t => `${t.min} 分钟：${t.note}`, edit: (t, v) => { t.note = String(v).replace(/^\d+ 分钟：/, '').slice(0, 60); }, del: (c, i) => { const L = (D.timers || []).filter(t => t.by === 'c:' + c.id); D.timers = (D.timers || []).filter(t => t !== L[i]); }, meta: t => G.ago(t.at), save: () => saveD() }, 'gysMuTimer');
+X.css('gys-music-258-css', `
+.mu-mtb{display:flex;align-items:center;gap:8px;margin:10px 16px;padding:12px 14px;border-radius:12px;background:linear-gradient(90deg,#fff0f1,#fff);cursor:pointer;font-size:14px}body.dark-theme .mu-mtb{background:linear-gradient(90deg,#3a1f22,#1d1d1d)}
+.mu-mtb i{font-style:normal}.mu-mtb span{flex:1}.mu-mtb b{color:#fc3d49;font-size:18px}.mu-mtb em{font-style:normal;color:#aaa}
+.mu-mt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 16px 14px;text-align:center}
+.mu-mtav{display:flex;align-items:center;gap:14px}.mu-mtav i{font-style:normal;font-size:26px;font-weight:800;color:#fc3d49}
+.mu-mt>b{font-size:16px;margin-top:8px}.mu-mt>small{color:#fc3d49;border:1px solid #fc3d49;border-radius:999px;padding:1px 10px;font-size:12px}.mu-mt>p{color:#666;font-size:14px;margin:8px 0 0;line-height:1.6}
+.mu-pops span.on{color:#fc3d49}.mu-pops sup{font-size:10px}
+`);

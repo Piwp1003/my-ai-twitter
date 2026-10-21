@@ -154,6 +154,7 @@ body.gyphm-mob .pm-sb{padding-top:env(safe-area-inset-top);height:calc(46px + en
 .pm-app{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;position:relative;-webkit-tap-highlight-color:transparent}
 .pm-ic{width:60px;height:60px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:var(--pm-ic-fg);background:var(--pm-ic-bg)!important;box-shadow:var(--pm-shadow);transition:transform .15s}
 .pm-app:active .pm-ic{transform:scale(.9)}
+.pm-ic .pm-emo{font-size:30px;line-height:1}
 .pm-ic svg{width:28px;height:28px}
 .pm-lb{font-size:11.5px;color:var(--pm-text);white-space:nowrap;font-weight:500;letter-spacing:.2px}
 #gyPmHome.has-wall .pm-page .pm-lb{color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.35)}
@@ -414,6 +415,20 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
     function renderHome() { try { if (typeof window.gyPmHomeRender === 'function') window.gyPmHomeRender(); } catch (e) { console.warn('[小手机] 桌面画不出来：', e); } }
 
     /* ---------------- 打开 App ---------------- */
+    // 🧩 小功能都变成桌面图标（256）：小功能页里看得到的每一项（合集算一个）都有一个图标，点了直接打开
+    window.gyPmMiniApps = function () {
+        const L = typeof GY_MINI_FEATURES !== 'undefined' ? GY_MINI_FEATURES : [];
+        const hid = typeof window.gyHubHiddenIds === 'function' ? window.gyHubHiddenIds() : new Set();
+        const fixed = new Set(APPS.map(a => a[4] && (a[4].feature || '')).filter(Boolean));
+        const keys = [];
+        L.forEach(f => {
+            if (!f || !f.id || hid.has(f.id) || fixed.has(f.id)) return;
+            const k = 'mf_' + f.id; keys.push(k);
+            const def = [k, String(f.title || f.id).replace(/^\S+\s(?=\S)/u, m => /\p{Extended_Pictographic}/u.test(m) ? '' : m).slice(0, 8), 'e:' + (f.icon || '🧩'), '', { mini: f.id }];
+            const i = APPS.findIndex(a => a[0] === k); if (i >= 0) APPS[i] = def; else APPS.push(def);
+        });
+        return keys;
+    };
     const appOf = k => APPS.find(a => a[0] === k);
     function setTitle(t) { S.title = t || ''; const el = document.getElementById('gyPmT'); if (el) el.textContent = S.title; }
     function viewTitle(v) {
@@ -572,6 +587,7 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         if (j.sheet) { if (typeof window.gyPmBeauty === 'function') window.gyPmBeauty(); return; }
         // 弹窗类（相册、账单）：直接盖在桌面上，不用进 App
         if (j.fn && !j.native) { try { window[j.fn].apply(null, j.args || []); } catch (e) { console.warn('[小手机] 打开失败：', e); } return; }
+        if (j.mini) { try { if (typeof gyOpenMiniFeature === 'function') gyOpenMiniFeature(j.mini); } catch (e) { console.warn('[小手机] 打开失败：', e); } return; }
         // 🪟 小窗开着时点了别的 App：原来那个留在小窗里（还能点），新的这个全屏打开
         const pp = F.on ? pipBegin() : null;
         closeNative();
@@ -872,30 +888,281 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
     }
 
     // 给 js/63（桌面）用的一些小工具
-    /* ---------- 🐦 推特（256）：小手机里「推特」= 谷雨的主页 + 私信（就是原来的聊天），底下一排推特那样的标签 ----------
+    /* ---------- 🐦 推特（256）：小手机里「推特」= 谷雨的主页 + 私信（原来的聊天），照真的 X 的样子：
+       顶上 头像 / X 标志（私信页是「私信」+ ⚙ ✉）、「为你推荐 / 正在关注」蓝色下划线、蓝色发帖按钮、
+       底栏 主页 / 搜索 / 通知 / 私信 四个 X 图标；私信是 X 私信那种列表，进去是蓝色 / 灰色气泡。
        美化 →「聊天和推特」能改回分开两个图标；不开小手机时谷雨还是原来的样子 */
+    const XI = {
+        logo: '<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>',
+        home: '<path d="M21.591 7.146L12.52 1.157c-.316-.21-.724-.21-1.04 0l-9.071 5.99c-.26.173-.409.456-.409.757v13.183c0 .502.418.913.929.913H9.14c.51 0 .929-.41.929-.913v-7.075h3.909v7.075c0 .502.417.913.928.913h6.165c.511 0 .929-.41.929-.913V7.904c0-.301-.158-.584-.408-.758z"/>',
+        homeO: '<path d="M12 1.696L.622 8.807l1.06 1.696L3 9.679V19.5C3 20.881 4.119 22 5.5 22h13c1.381 0 2.5-1.119 2.5-2.5V9.679l1.318.824 1.06-1.696L12 1.696zM12 16.5c-1.933 0-3.5-1.567-3.5-3.5s1.567-3.5 3.5-3.5 3.5 1.567 3.5 3.5-1.567 3.5-3.5 3.5z" fill="none"/><path d="M12 1.696L.622 8.807l1.06 1.696L3 9.679V19.5C3 20.881 4.119 22 5.5 22h4.5v-7h4v7h4.5c1.381 0 2.5-1.119 2.5-2.5V9.679l1.318.824 1.06-1.696L12 1.696zM19 19.5c0 .276-.224.5-.5.5H16v-7H8v7H5.5c-.276 0-.5-.224-.5-.5V8.429l7-4.375 7 4.375V19.5z"/>',
+        search: '<path d="M10.25 3.75c-3.59 0-6.5 2.91-6.5 6.5s2.91 6.5 6.5 6.5c1.795 0 3.419-.726 4.596-1.904 1.178-1.177 1.904-2.801 1.904-4.596 0-3.59-2.91-6.5-6.5-6.5zm-8.5 6.5c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5c0 1.986-.682 3.815-1.824 5.262l4.781 4.781-1.414 1.414-4.781-4.781c-1.447 1.142-3.276 1.824-5.262 1.824-4.694 0-8.5-3.806-8.5-8.5z"/>',
+        bell: '<path d="M19.993 9.042C19.48 5.017 16.054 2 11.996 2s-7.49 3.021-7.999 7.051L2.866 18H7.1c.463 2.282 2.481 4 4.9 4s4.437-1.718 4.9-4h4.236l-1.143-8.958zM12 20c-1.306 0-2.417-.835-2.829-2h5.658c-.412 1.165-1.523 2-2.829 2zm-6.866-4l.847-6.698C6.364 6.272 8.941 4 11.996 4s5.627 2.268 6.013 5.295L18.864 16H5.134z"/>',
+        mail: '<path d="M1.998 5.5c0-1.381 1.119-2.5 2.5-2.5h15c1.381 0 2.5 1.119 2.5 2.5v13c0 1.381-1.119 2.5-2.5 2.5h-15c-1.381 0-2.5-1.119-2.5-2.5v-13zm2.5-.5c-.276 0-.5.224-.5.5v2.764l8 3.638 8-3.636V5.5c0-.276-.224-.5-.5-.5h-15zm15.5 5.463l-8 3.636-8-3.638V18.5c0 .276.224.5.5.5h15c.276 0 .5-.224.5-.5v-8.037z"/>',
+        mailF: '<path d="M1.998 4.499c0-.828.671-1.499 1.5-1.499h17c.828 0 1.5.671 1.5 1.499v2.858l-10 4.545-10-4.547V4.499zm0 5.053V19.5c0 .828.671 1.5 1.5 1.5h17c.828 0 1.5-.672 1.5-1.5V9.554l-10 4.545-10-4.547z"/>',
+        gear: '<path d="M10.54 1.75h2.92l1.57 2.36c.11.17.32.25.53.21l2.53-.59 2.17 2.17-.58 2.54c-.05.2.04.41.21.53l2.36 1.57v2.92l-2.36 1.57c-.17.12-.26.33-.21.53l.58 2.54-2.17 2.17-2.53-.59c-.21-.04-.42.04-.53.21l-1.57 2.36h-2.92l-1.58-2.36c-.11-.17-.32-.25-.52-.21l-2.54.59-2.17-2.17.58-2.54c.05-.2-.03-.41-.21-.53l-2.35-1.57v-2.92L4.1 8.97c.18-.12.26-.33.21-.53L3.73 5.9 5.9 3.73l2.54.59c.2.04.41-.04.52-.21l1.58-2.36zm1.07 2l-.98 1.47C10.05 6.08 9 6.5 7.99 6.27l-1.46-.34-.6.6.33 1.46c.24 1.01-.18 2.07-1.05 2.64l-1.46.98v.78l1.46.98c.87.57 1.29 1.63 1.05 2.64l-.33 1.46.6.6 1.46-.34c1.01-.23 2.06.19 2.64 1.05l.98 1.47h.78l.97-1.47c.58-.86 1.63-1.28 2.65-1.05l1.45.34.61-.6-.34-1.46c-.23-1.01.18-2.07 1.05-2.64l1.47-.98v-.78l-1.47-.98c-.87-.57-1.28-1.63-1.05-2.64l.34-1.46-.61-.6-1.45.34c-1.02.23-2.07-.19-2.65-1.05l-.97-1.47h-.78zM12 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5c.82 0 1.5-.67 1.5-1.5s-.68-1.5-1.5-1.5zM8.5 12c0-1.93 1.56-3.5 3.5-3.5 1.93 0 3.5 1.57 3.5 3.5s-1.57 3.5-3.5 3.5c-1.94 0-3.5-1.57-3.5-3.5z"/>',
+        newmsg: '<path d="M1.998 5.5c0-1.381 1.119-2.5 2.5-2.5h15c1.381 0 2.5 1.119 2.5 2.5V12h-2v-1.537l-8 3.635-8-3.635V18.5c0 .276.224.5.5.5H13v2H4.498c-1.381 0-2.5-1.119-2.5-2.5v-13zm2 2.766l8 3.635 8-3.635V5.5c0-.276-.224-.5-.5-.5h-15c-.276 0-.5.224-.5.5v2.766zM19 18v-3h2v3h3v2h-3v3h-2v-3h-3v-2h3z"/>'
+    };
+    const xs = (k, sz) => `<svg viewBox="0 0 24 24" width="${sz || 26}" height="${sz || 26}" fill="currentColor" aria-hidden="true">${XI[k]}</svg>`;
     const xOn = () => document.body.classList.contains('gyphm') && typeof window.gyPmXOn === 'function' && window.gyPmXOn();
+    let XPREV = null;   // 进推特前聊天列表是头像条还是列表（推特私信一律列表，出来还原）
     function xBar() {
-        let b = document.getElementById('gyPmX');
-        const show = xOn() && document.body.classList.contains('gyphm-app') && !S.native && (S.view === 'home' || (S.view === 'chat' && !chatOpen())) && (S.app === 'home' || S.app === 'chat' || S.app === 'x');
-        if (!show) { if (b) b.style.display = 'none'; document.body.classList.remove('gyphm-x'); return; }
+        let b = document.getElementById('gyPmX'); const bd = document.body.classList;
+        const inX = xOn() && bd.contains('gyphm-app') && !S.native && (S.view === 'home' || S.view === 'chat') && (S.app === 'home' || S.app === 'chat' || S.app === 'x');
+        const thread = inX && S.view === 'chat' && chatOpen();
+        const show = inX && !thread;
+        bd.toggle('gyphm-xa', inX); bd.toggle('gyphm-xt', thread); bd.toggle('gyphm-x', show); bd.toggle('gyphm-xdm', inX && S.view === 'chat'); const inXP = xOn() && bd.contains('gyphm-app') && !S.native && (S.view === 'profile' || S.view === 'postDetail') && (S.app === 'home' || S.app === 'chat' || S.app === 'x'); bd.toggle('gyphm-xp', inXP); bd.toggle('gyphm-xk', (inX || inXP) && typeof window.gyPmXTheme === 'function' && window.gyPmXTheme() === 'black'); if (inX || inXP) { try { xBmButtons(); } catch (e) {} }
+        if (!inX && XPREV != null) { try { chatListViewMode = XPREV; renderChatCharList(); } catch (e) {} XPREV = null; }
+        if (!show) { if (b) b.style.display = 'none'; xHead(false); return; }
         if (!b) { b = document.createElement('div'); b.id = 'gyPmX'; document.body.appendChild(b); }
         const n = unread ? unread() : 0;
         const tab = S.view === 'chat' ? 'dm' : 'home';
-        const html = `<span class="${tab === 'home' ? 'on' : ''}" onclick="gyPmXGo('home')"><i>${svg('home', tab === 'home' ? 2.4 : 1.6)}</i></span><span onclick="gyPmXGo('notif')"><i>${svg('bell', 1.6)}</i></span><span class="${tab === 'dm' ? 'on' : ''}" onclick="gyPmXGo('dm')"><i>${svg('chat', tab === 'dm' ? 2.4 : 1.6)}</i>${n ? `<b>${n > 99 ? '99+' : n}</b>` : ''}</span>`;
+        let nn = 0; try { nn = unreadNotifs || 0; } catch (e) {}
+        const html = `<span class="${tab === 'home' ? 'on' : ''}" onclick="gyPmXGo('home')">${xs(tab === 'home' ? 'home' : 'homeO')}</span><span onclick="gyPmXGo('search')">${xs('search')}</span><span onclick="gyPmXGo('notif')">${xs('bell')}${nn ? `<b>${nn > 99 ? '99+' : nn}</b>` : ''}</span><span class="${tab === 'dm' ? 'on' : ''}" onclick="gyPmXGo('dm')">${xs(tab === 'dm' ? 'mailF' : 'mail')}${n ? `<b>${n > 99 ? '99+' : n}</b>` : ''}</span>`;
         if (b.__h !== html) { b.innerHTML = html; b.__h = html; }
-        b.style.display = 'flex'; document.body.classList.add('gyphm-x');
+        b.style.display = 'flex'; xHead(tab);
     }
+    function xHead(tab) {
+        const nav = document.querySelector('#gyPmBar .nav'); if (!nav) return;
+        let h = document.getElementById('gyPmXHead');
+        if (!tab) { if (h) h.remove(); return; }
+        if (!h) { h = document.createElement('div'); h.id = 'gyPmXHead'; nav.appendChild(h); }
+        let me = ''; try { me = getAvatarHTML(currentUser, 32); } catch (e) {}
+        const html = tab === 'dm' ? `<span class="xa" onclick="gyPmXDrawer()">${me}</span><b class="xt">私信</b><span class="xr"><i onclick="openSettingsPanel && openSettingsPanel('notify')">${xs('gear', 22)}</i><i onclick="gyPmXNew()">${xs('newmsg', 22)}</i></span>`
+            : `<span class="xa" onclick="gyPmXDrawer()">${me}</span><span class="xl">${xs('logo', 26)}</span><span class="xr"></span>`;
+        if (h.__h !== html) { h.innerHTML = html; h.__h = html; }
+    }
+    window.gyPmXNew = async function () { try { const L = chars(); if (!L.length) return; window.gyPmXGo('dm'); } catch (e) {} };
     window.gyPmXGo = function (k) {
         if (k === 'notif') { window.gyPmOpen('notif'); return; }
         S.nav = true;
-        try { if (k === 'dm') { switchMainView('chat'); if (chatOpen() && typeof window.gyChatBack === 'function') window.gyChatBack(); } else switchMainView('home'); } catch (e) {}
+        try {
+            if (k === 'search') { switchMainView(document.getElementById('view-search') ? 'search' : 'home'); }
+            else if (k === 'dm') {
+                switchMainView('chat');
+                if (XPREV == null) { try { XPREV = chatListViewMode; chatListViewMode = 'list'; } catch (e) {} }
+                try { chatListShowingList = true; renderChatCharList(); } catch (e) {}
+                if (chatOpen() && typeof window.gyChatBack === 'function') window.gyChatBack();
+            } else switchMainView('home');
+        } catch (e) {}
         S.nav = false; S.app = 'home';
-        const t = k === 'dm' ? '私信' : '推特'; setTitle(t); S.stack = [{ v: k === 'dm' ? 'chat' : 'home', t }]; syncNav(); xBar();
+        const t = k === 'dm' ? '私信' : k === 'search' ? '搜索' : '推特'; setTitle(t); S.stack = [{ v: k === 'dm' ? 'chat' : k === 'search' ? 'search' : 'home', t }]; syncNav(); xBar();
         try { document.querySelector('.main-content').scrollTop = 0; } catch (e) {}
     };
     setInterval(() => { try { if (document.body.classList.contains('gyphm')) xBar(); } catch (e) {} }, 400);
-    (function () { const st = document.createElement('style'); st.textContent = `#gyPmX{position:fixed;left:var(--pm-sl);width:var(--pm-sw);top:calc(var(--pm-st) + var(--pm-sh) - 58px);height:58px;z-index:2004;display:none;align-items:flex-start;justify-content:space-around;padding-top:8px;box-sizing:border-box;background:var(--pm-glass,rgba(255,255,255,.92));backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:.5px solid var(--pm-hair,rgba(0,0,0,.1));border-radius:0 0 var(--pm-sr) var(--pm-sr)}#gyPmX span{position:relative;cursor:pointer;opacity:.6;padding:2px 14px}#gyPmX span.on{opacity:1}#gyPmX i{display:block;width:26px;height:26px}#gyPmX i svg{width:26px;height:26px}#gyPmX b{position:absolute;top:-4px;right:4px;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:#1d9bf0;color:#fff;font-size:11px;text-align:center;padding:0 5px;box-sizing:border-box}body.gyphm-x .main-content{padding-bottom:64px!important}body.gyphm-x .fab-btn{bottom:calc(100vh - var(--pm-st) - var(--pm-sh) + 74px)!important}`; document.head.appendChild(st); })();
+    /* ---------- 推特：左上头像 → 侧边抽屉（个人资料 / 书签 / 设置），书签 = 推文收藏（回忆相册里的推文） ---------- */
+    XI.bm = '<path d="M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5zM6.5 4c-.276 0-.5.22-.5.5v14.56l6-4.29 6 4.29V4.5c0-.28-.224-.5-.5-.5h-11z"/>';
+    XI.bmF = '<path d="M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5z"/>';
+    XI.user = '<path d="M5.651 19h12.698c-.337-1.8-1.023-3.21-1.945-4.19C15.318 13.65 13.838 13 12 13s-3.317.65-4.404 1.81c-.922.98-1.608 2.39-1.945 4.19zm.486-5.56C7.627 11.85 9.648 11 12 11s4.373.85 5.863 2.44c1.477 1.58 2.366 3.8 2.632 6.46l.11 1.1H3.395l.11-1.1c.266-2.66 1.155-4.88 2.632-6.46zM12 4c-1.105 0-2 .9-2 2s.895 2 2 2 2-.9 2-2-.895-2-2-2zM8 6c0-2.21 1.791-4 4-4s4 1.79 4 4-1.791 4-4 4-4-1.79-4-4z"/>';
+    XI.back = '<path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z"/>';
+    XI.more = '<path d="M3 12c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm9 2c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm7 0c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/>';
+    const xEsc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const xPostOf = id => { try { return globalPosts.find(p => String(p.id) === String(id)); } catch (e) { return null; } };
+    const xIsBm = id => { try { return typeof isInMemoryAlbum === 'function' && memoryAlbum.some(m => m.type === 'post' && String(m.refId) === String(id)); } catch (e) { return false; } };
+    const XBM_SAY = ['已加入书签', '收进书签了', '书签 +1', '存好了，在左上头像 → 书签里'];
+    const XBM_OFF = ['已从书签移除', '拿出书签了', '不收着了'];
+    const xToast = (a) => { try { const t = a[Math.floor(Math.random() * a.length)]; if (typeof showToast === 'function') showToast('<span style="font-size:20px">🔖</span>', t, ''); else if (typeof toast === 'function') toast(t); } catch (e) {} };
+    window.gyPmXBm = function (id, el) {
+        const p = xPostOf(id); if (!p || typeof toggleMemoryStar !== 'function') return;
+        const was = xIsBm(p.id); toggleMemoryStar(null, 'post', p.id);
+        xToast(was ? XBM_OFF : XBM_SAY);
+        if (el) { el.classList.toggle('on', !was); el.innerHTML = xs(was ? 'bm' : 'bmF', 19); }
+        if (document.getElementById('gyPmXBmPg')) xBmPage(true);
+    };
+    // 推文操作栏里补一个书签键（真 X 就在分享键左边）——只在推特皮肤里看得见
+    function xBmButtons() {
+        if (!document.body.classList.contains('gyphm-xa') && !document.body.classList.contains('gyphm-xp')) return;
+        document.querySelectorAll('#feedSection .post-actions, #profileFeedSection .post-actions, #postDetailSection .post-actions').forEach(bar => {
+            if (bar.querySelector('.pa-bm')) return;
+            const src = bar.innerHTML.match(/postDetail',\s*'([^']+)'/) || bar.innerHTML.match(/openShareToChatModal\('([^']+)'/); if (!src) return;
+            const id = src[1]; const on = xIsBm(id);
+            const d = document.createElement('div'); d.className = 'pa-item pa-bm' + (on ? ' on' : ''); d.title = '书签';
+            d.innerHTML = xs(on ? 'bmF' : 'bm', 19);
+            d.onclick = e => { e.stopPropagation(); window.gyPmXBm(id, d); };
+            const sh = bar.querySelector('.pa-share'); sh ? bar.insertBefore(d, sh) : bar.appendChild(d);
+        });
+    }
+    function xBox(id, cls) {
+        let el = document.getElementById(id);
+        if (!el) { el = document.createElement('div'); el.id = id; document.body.appendChild(el); }
+        el.className = 'gyPmXBox ' + (cls || '') + (document.body.classList.contains('gyphm-xk') ? ' xk' : ''); return el;
+    }
+    window.gyPmXDrawer = function (open) {
+        if (open === false) { const d = document.getElementById('gyPmXDr'); if (d) { d.classList.remove('on'); setTimeout(() => d.remove(), 220); } return; }
+        const u = (typeof currentUser !== 'undefined' && currentUser) || {};
+        let me = ''; try { me = getAvatarHTML(currentUser, 40); } catch (e) {}
+        let fing = 0; try { fing = chars().filter(c => c.isFollowing !== false).length; } catch (e) {}
+        const nBm = (() => { try { return memoryAlbum.filter(m => m.type === 'post').length; } catch (e) { return 0; } })();
+        const d = xBox('gyPmXDr', 'dr');
+        d.innerHTML = `<div class="mask" onclick="gyPmXDrawer(false)"></div><div class="pane">
+            <div class="who"><span onclick="gyPmXDrawer(false);switchMainView('profile','me')">${me}</span>
+            <b>${xEsc(u.name || '我')}</b><em>${xEsc(u.handle || '@me')}</em>
+            <p><b>${typeof formatStat === 'function' ? formatStat(u.following || fing) : (u.following || fing)}</b> 正在关注　<b>${typeof formatStat === 'function' ? formatStat(u.followers || 0) : (u.followers || 0)}</b> 关注者</p></div>
+            <div class="li" onclick="gyPmXDrawer(false);switchMainView('profile','me')">${xs('user', 26)}<span>个人资料</span></div>
+            <div class="li" onclick="gyPmXDrawer(false);gyPmXBookmarks()">${xs('bm', 26)}<span>书签</span>${nBm ? `<i>${nBm}</i>` : ''}</div>
+            <div class="li" onclick="gyPmXDrawer(false);gyPmXGo('search')">${xs('search', 26)}<span>搜索</span></div>
+            <div class="hr"></div>
+            <div class="li sm" onclick="gyPmXDrawer(false);gyPmXThemeSheet()"><span>推特配色：${window.gyPmXTheme && window.gyPmXTheme() === 'black' ? '黑色' : '蓝色'}</span></div>
+            <div class="li sm" onclick="gyPmXDrawer(false);typeof openSettingsPanel==='function'&&openSettingsPanel()"><span>设置和隐私</span></div>
+        </div>`;
+        requestAnimationFrame(() => d.classList.add('on'));
+    };
+    window.gyPmXThemeSheet = function () {
+        const set = v => { try { if (typeof window.gyPmXThemeSet === 'function') window.gyPmXThemeSet(v); } catch (e) {} xToast(v === 'black' ? ['换成黑色了', '熄灯模式', '黑色版'] : ['换成蓝色了', '经典蓝', '蓝色版']); xBar(); const p = document.getElementById('gyPmXBmPg'); if (p) xBmPage(true); };
+        try { if (window.GYS && GYS.sheet) { GYS.sheet(['蓝色（经典推特）', '黑色（黑白）'], '推特配色').then(i => { if (i === 0) set('blue'); else if (i === 1) set('black'); }); return; } } catch (e) {}
+        set(window.gyPmXTheme && window.gyPmXTheme() === 'black' ? 'blue' : 'black');
+    };
+    function xBmPage(re) {
+        let L = []; try { L = memoryAlbum.filter(m => m.type === 'post'); } catch (e) {}
+        const u = (typeof currentUser !== 'undefined' && currentUser) || {};
+        const row = m => {
+            const p = xPostOf(m.refId); const c = (p && p.char) || { name: m.charName };
+            let av = ''; try { av = getAvatarHTML(c, 40); } catch (e) {}
+            const t = (p && p.timestamp) || m.timestamp; const ta = t && typeof timeAgo === 'function' ? timeAgo(t) : '';
+            const img = p && p.mediaUrl && !/^gylive:/.test(p.mediaUrl) ? `<img src="${xEsc(p.mediaUrl)}" alt="">` : '';
+            return `<div class="tw" onclick="gyPmXBookmarks(false);switchMainView('postDetail','${xEsc(m.refId)}')">${av}<div class="tb"><div class="th"><b>${xEsc(c.name || '')}</b><em>${xEsc(c.handle || '')} · ${ta}</em></div><div class="tx">${xEsc((p && p.text) || m.text || '（这条推文已经删了）')}</div>${img}
+                <div class="ta"><span>${p && p.stats ? (typeof formatStat === 'function' ? formatStat(p.stats.comments) : p.stats.comments) : ''}</span><span>${p && p.stats ? (typeof formatStat === 'function' ? formatStat(p.stats.likes) : p.stats.likes) : ''}</span><i class="on" onclick="event.stopPropagation();gyPmXBm('${xEsc(m.refId)}')">${xs('bmF', 19)}</i></div></div></div>`;
+        };
+        const el = xBox('gyPmXBmPg', 'pg');
+        el.innerHTML = `<div class="hd"><i onclick="gyPmXBookmarks(false)">${xs('back', 22)}</i><div><b>书签</b><em>${xEsc(u.handle || '@me')}</em></div><i class="r" onclick="gyPmXBmMore()">${xs('more', 22)}</i></div>
+            <div class="bd">${L.length ? L.map(row).join('') : `<div class="emp"><b>把推文存进书签，以后回来看</b><p>在任意推文上点书签图标，它就会出现在这里，只有你看得见。</p></div>`}</div>`;
+        if (!re) requestAnimationFrame(() => el.classList.add('on')); else el.classList.add('on');
+    }
+    window.gyPmXBookmarks = function (open) {
+        if (open === false) { const e = document.getElementById('gyPmXBmPg'); if (e) e.remove(); return; }
+        xBmPage(false);
+    };
+    window.gyPmXBmMore = async function () {
+        let n = 0; try { n = memoryAlbum.filter(m => m.type === 'post').length; } catch (e) {}
+        if (!n) return;
+        const ok = typeof appConfirm === 'function' ? await appConfirm(`清空全部 ${n} 个书签？（回忆相册里的推文收藏也会一起拿掉，聊天收藏不动）`) : confirm('清空全部书签？');
+        if (!ok) return;
+        try { memoryAlbum = memoryAlbum.filter(m => m.type !== 'post'); saveAllData(); } catch (e) {}
+        xToast(['书签清空了', '全部拿掉了']); xBmPage(true);
+    };
+    (function () {
+        const st = document.createElement('style'); st.id = 'gyPmXCss';
+        st.textContent = `
+/* 推特配色：两版都是白底。蓝色 = 经典推特蓝点缀；黑色 = 黑白（按钮、我的气泡、角标都是黑的） */
+body.gyphm{--xb:#fff;--xf:#0f1419;--xs:#536471;--xl:#eff3f4;--xa:#1d9bf0;--xaf:#fff;--xbub:#eff3f4;--xbar:rgba(255,255,255,.92);--xhov:#f7f9f9;--xlike:#f91880}
+body.gyphm.gyphm-xk{--xa:#0f1419;--xaf:#fff}
+/* 推特里整页底色跟着配色走；页面里原本写死的蓝色在推特里就用推特色 */
+body.gyphm.gyphm-xa .main-content,body.gyphm.gyphm-xa #view-home,body.gyphm.gyphm-xa #feedSection,body.gyphm.gyphm-xdm #view-chat,body.gyphm.gyphm-xdm #chatListVertical{background:var(--xb)!important;color:var(--xf)}
+body.gyphm.gyphm-xa [style*="color:#1d9bf0"],body.gyphm.gyphm-xa [style*="color: #1d9bf0"]{color:var(--xa)!important}
+body.gyphm.gyphm-xa [style*="background:#1d9bf0"],body.gyphm.gyphm-xa [style*="background: #1d9bf0"],body.gyphm.gyphm-xa [style*="background-color:#1d9bf0"]{background:var(--xa)!important;color:var(--xaf)!important}
+body.gyphm.gyphm-xa .btn-post,body.gyphm.gyphm-xa .btn-primary{background:var(--xa)!important;color:var(--xaf)!important}
+body.gyphm.gyphm-xa #feedSection .pa-item.like.on,body.gyphm.gyphm-xa #feedSection .pa-item.liked{color:var(--xlike)!important}
+/* 底栏：四个 X 图标，选中的是实心 */
+#gyPmX{position:fixed;left:var(--pm-sl);width:var(--pm-sw);top:calc(var(--pm-st) + var(--pm-sh) - 56px);height:56px;z-index:2004;display:none;align-items:flex-start;justify-content:space-around;padding-top:9px;box-sizing:border-box;background:var(--xbar);border-top:1px solid var(--xl);border-radius:0 0 var(--pm-sr) var(--pm-sr);color:var(--xf)}
+#gyPmX span{position:relative;cursor:pointer;padding:0 14px;line-height:0}
+#gyPmX b{position:absolute;top:-6px;left:28px;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:var(--xa);color:var(--xaf);font-size:11px;text-align:center;padding:0 5px;box-sizing:border-box;border:1.5px solid var(--xb)}
+body.gyphm.gyphm-x .main-content{padding-bottom:64px!important}
+/* 顶栏：左头像 / 中 X 标志（私信页：私信 + ⚙ ✉） */
+body.gyphm.gyphm-xa #gyPmBar{background:var(--xbar)!important;color:var(--xf)!important;border-bottom:1px solid var(--xl)}
+body.gyphm.gyphm-x #gyPmBar .nav .l,body.gyphm.gyphm-x #gyPmBar .nav .t{visibility:hidden}
+#gyPmXHead{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:0 14px}
+#gyPmXHead .xa{position:absolute;left:14px;cursor:pointer;line-height:0}#gyPmXHead .xa .avatar{width:32px!important;height:32px!important;font-size:13px!important;border:none!important}
+#gyPmXHead .xl{line-height:0;color:var(--xf)}
+#gyPmXHead .xt{font-size:17px;font-weight:700}
+#gyPmXHead .xr{position:absolute;right:12px;display:flex;gap:18px;line-height:0}#gyPmXHead .xr i{cursor:pointer}
+/* 主页：为你推荐 / 正在关注 —— 选中的粗体 + 蓝色圆角短条 */
+body.gyphm.gyphm-xa #view-home .top-tabs{border-bottom:1px solid var(--xl)!important;background:var(--xbar)!important}
+body.gyphm.gyphm-xa #view-home .top-tabs .tab{color:var(--xs)!important;font-weight:500!important;font-size:15px!important}
+body.gyphm.gyphm-xa #view-home .top-tabs .tab.active{color:var(--xf)!important;font-weight:700!important}
+body.gyphm.gyphm-xa #view-home .top-tabs .tab.active::after{background:var(--xa)!important;height:4px!important;border-radius:9999px!important;width:56px!important}
+/* 推文：头像不描边，名字粗体，灰色 @ 和时间，操作栏灰色 */
+body.gyphm.gyphm-xa #feedSection .post-placeholder{border-bottom:1px solid var(--xl)!important;padding:12px 16px!important;gap:8px}
+body.gyphm.gyphm-xa #feedSection .avatar{border:none!important}
+body.gyphm.gyphm-xa #feedSection .post-name{font-weight:700!important;color:var(--xf)!important;font-size:15px!important}
+body.gyphm.gyphm-xa #feedSection .post-handle,body.gyphm.gyphm-xa #feedSection .post-dot,body.gyphm.gyphm-xa #feedSection .post-time{color:var(--xs)!important;font-size:15px!important}
+body.gyphm.gyphm-xa #feedSection .post-body{font-size:15px!important;line-height:20px!important;color:var(--xf)!important}
+body.gyphm.gyphm-xa #feedSection .post-body a,body.gyphm.gyphm-xa #feedSection .post-body .hashtag{color:var(--xa)!important}
+body.gyphm.gyphm-xa #feedSection .post-actions{color:var(--xs)!important;max-width:100%}
+body.gyphm.gyphm-xa #feedSection .pa-item{color:var(--xs)!important;font-size:13px!important}
+body.gyphm.gyphm-xa #feedSection .pa-item svg{width:18.75px!important;height:18.75px!important;fill:currentColor!important}
+body.gyphm.gyphm-xa #feedSection .pa-item.like.on,body.gyphm.gyphm-xa #feedSection .pa-item.liked{color:#f91880!important}
+body.gyphm.gyphm-xa #feedSection img{border-radius:16px!important;border:1px solid var(--xl)}
+/* 发帖：蓝色圆按钮 */
+body.gyphm.gyphm-x .fab-btn,body.gyphm.gyphm-x #fabPost{background:var(--xa)!important;color:var(--xaf)!important;box-shadow:0 0 10px rgba(101,119,134,.2),0 1px 3px rgba(101,119,134,.15)!important;width:56px!important;height:56px!important;bottom:calc(100vh - var(--pm-st) - var(--pm-sh) + 72px)!important}
+/* 私信列表：X 私信那样 —— 没有顶上那排按钮，一行：头像 / 名字 + 时间 / 最后一句 */
+body.gyphm.gyphm-xdm #chatTopBar,body.gyphm.gyphm-xdm #chatCharRow{display:none!important}
+body.gyphm.gyphm-xdm #chatListVertical{padding:0!important}
+body.gyphm.gyphm-xdm .chat-list-row{padding:12px 16px!important;gap:12px!important;border:none!important;border-radius:0!important;background:transparent!important;margin:0!important}
+body.gyphm.gyphm-xdm .chat-list-row:active{background:var(--xhov)!important}
+body.gyphm.gyphm-xdm .chat-list-row .avatar{width:48px!important;height:48px!important;border:none!important}
+body.gyphm.gyphm-xdm .chat-list-name{font-weight:700!important;font-size:15px!important;color:var(--xf)!important}
+body.gyphm.gyphm-xdm .chat-list-time{color:var(--xs)!important;font-size:15px!important}
+body.gyphm.gyphm-xdm .chat-list-time::before{content:"· ";}
+body.gyphm.gyphm-xdm .chat-list-top-row{justify-content:flex-start!important;gap:4px}
+body.gyphm.gyphm-xdm .chat-list-preview{color:var(--xs)!important;font-size:15px!important}
+/* 私信里面：我是蓝色、对方是灰色，圆角，右下 / 左下一个小角；不显示我自己的头像 */
+body.gyphm.gyphm-xt #chatMessagesArea{background:var(--xb)!important}
+body.gyphm.gyphm-xt #chatMessagesArea .chat-bubble{border-radius:24px!important;padding:12px 16px!important;font-size:15px!important;line-height:20px!important;box-shadow:none!important;border:none!important;max-width:100%}
+body.gyphm.gyphm-xt #chatMessagesArea .chat-bubble.me{background:var(--xa)!important;color:var(--xaf)!important;border-bottom-right-radius:4px!important}
+body.gyphm.gyphm-xt #chatMessagesArea .chat-bubble.other{background:var(--xbub)!important;color:var(--xf)!important;border-bottom-left-radius:4px!important}
+body.gyphm.gyphm-xt .chat-msg-row.me>div:last-child:not(.chat-bubble-wrapper){display:none!important}
+body.gyphm.gyphm-xt .chat-msg-row .avatar{width:32px!important;height:32px!important;border:none!important;font-size:13px!important}
+body.gyphm.gyphm-xt .chat-sender-name{color:var(--xs)!important}
+body.gyphm.gyphm-xt .chat-input-area{border-top:1px solid var(--xl)!important;background:var(--xb)!important}
+body.gyphm.gyphm-xt .chat-input-area textarea,body.gyphm.gyphm-xt .chat-input-area input[type=text]{background:var(--xbub)!important;color:var(--xf)!important;border:none!important;border-radius:16px!important}
+body.gyphm.gyphm-xt #chatInputArea #chatSendBtn{font-size:0!important;width:40px!important;min-width:40px!important;height:40px!important;padding:0!important;border-radius:50%!important;background:var(--xa)!important;-webkit-mask:none;position:relative}body.gyphm.gyphm-xt #chatSendBtn::after{content:'';position:absolute;inset:10px;background:var(--xaf);-webkit-mask:url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M2.504 21.866l.526-2.108C3.04 19.719 4 15.823 4 12s-.96-7.719-.97-7.757l-.527-2.109L22.236 12 2.504 21.866zM5.981 13c-.072 1.962-.34 3.833-.583 5.183L17.764 12 5.398 5.818c.242 1.349.51 3.221.583 5.183H10v2H5.981z'/></svg>\") center/contain no-repeat;mask:url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M2.504 21.866l.526-2.108C3.04 19.719 4 15.823 4 12s-.96-7.719-.97-7.757l-.527-2.109L22.236 12 2.504 21.866zM5.981 13c-.072 1.962-.34 3.833-.583 5.183L17.764 12 5.398 5.818c.242 1.349.51 3.221.583 5.183H10v2H5.981z'/></svg>\") center/contain no-repeat}
+`;
+        st.textContent += `
+/* 书签键（推文操作栏） */
+.pa-bm{display:none!important}
+body.gyphm.gyphm-xa .pa-bm,body.gyphm.gyphm-xp .pa-bm{display:flex!important;align-items:center;cursor:pointer}
+body.gyphm .pa-bm.on{color:var(--xa)!important}
+/* 抽屉 / 书签页：就在小手机屏幕里 */
+.gyPmXBox{position:fixed;left:var(--pm-sl);top:var(--pm-st);width:var(--pm-sw);height:var(--pm-sh);z-index:2008;border-radius:var(--pm-sr);overflow:hidden;color:var(--xf);font-size:15px;font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC",sans-serif}
+.gyPmXBox .mask{position:absolute;inset:0;background:rgba(91,112,131,.4);opacity:0;transition:opacity .2s}
+.gyPmXBox.xk .mask{background:rgba(91,112,131,.25)}
+.gyPmXBox.dr .pane{position:absolute;left:0;top:0;bottom:0;width:80%;max-width:300px;background:var(--xb);transform:translateX(-100%);transition:transform .22s ease;padding:calc(env(safe-area-inset-top,0px) + 44px) 0 20px;box-sizing:border-box;overflow:auto;box-shadow:0 0 15px rgba(101,119,134,.2)}
+.gyPmXBox.dr.on .mask{opacity:1}.gyPmXBox.dr.on .pane{transform:none}
+.gyPmXBox .who{padding:0 16px 12px}.gyPmXBox .who .avatar{width:40px!important;height:40px!important;border:none!important;cursor:pointer}
+.gyPmXBox .who>b{display:block;font-size:17px;font-weight:700;margin-top:8px}.gyPmXBox .who>em{display:block;font-style:normal;color:var(--xs)}
+.gyPmXBox .who p{margin:12px 0 0;color:var(--xs);font-size:14px}.gyPmXBox .who p b{color:var(--xf)}
+.gyPmXBox .li{display:flex;align-items:center;gap:20px;padding:14px 16px;font-size:20px;font-weight:700;cursor:pointer;line-height:0}
+.gyPmXBox .li span{line-height:1.2}.gyPmXBox .li i{font-style:normal;margin-left:auto;font-size:13px;color:var(--xs);font-weight:400;line-height:1}
+.gyPmXBox .li:active{background:var(--xhov)}.gyPmXBox .li.sm{font-size:16px;font-weight:500;padding:12px 16px}
+.gyPmXBox .hr{height:1px;background:var(--xl);margin:8px 16px}
+.gyPmXBox.pg{background:var(--xb);transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column}.gyPmXBox.pg.on{transform:none}
+.gyPmXBox.pg .hd{display:flex;align-items:center;gap:24px;padding:calc(env(safe-area-inset-top,0px) + 40px) 16px 8px;border-bottom:1px solid var(--xl);background:var(--xbar);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.gyPmXBox.pg .hd i{cursor:pointer;line-height:0}.gyPmXBox.pg .hd .r{margin-left:auto}.gyPmXBox.pg .hd b{display:block;font-size:20px;font-weight:700}.gyPmXBox.pg .hd em{font-style:normal;color:var(--xs);font-size:13px}
+.gyPmXBox.pg .bd{flex:1;overflow:auto}
+.gyPmXBox .tw{display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--xl);cursor:pointer}.gyPmXBox .tw:active{background:var(--xhov)}
+.gyPmXBox .tw .avatar{width:40px!important;height:40px!important;border:none!important;flex-shrink:0}
+.gyPmXBox .tb{flex:1;min-width:0}.gyPmXBox .th{display:flex;gap:4px;white-space:nowrap;overflow:hidden}.gyPmXBox .th em{font-style:normal;color:var(--xs);overflow:hidden;text-overflow:ellipsis}
+.gyPmXBox .tx{line-height:20px;white-space:pre-wrap;word-break:break-word;margin-top:2px}
+.gyPmXBox .tb img{width:100%;max-height:260px;object-fit:cover;border-radius:16px;border:1px solid var(--xl);margin-top:10px}
+.gyPmXBox .ta{display:flex;gap:42px;color:var(--xs);font-size:13px;margin-top:10px;align-items:center}.gyPmXBox .ta i{margin-left:auto;line-height:0;color:var(--xa)}
+.gyPmXBox .emp{padding:40px 32px}.gyPmXBox .emp b{display:block;font-size:31px;line-height:36px;font-weight:800}.gyPmXBox .emp p{color:var(--xs);margin-top:8px}
+/* X 个人主页：3:1 横幅、头像压在横幅上带底色描边、「编辑个人资料」描边胶囊、灰色元信息、蓝色短下划线标签 */
+body.gyphm.gyphm-xp #view-profile,body.gyphm.gyphm-xp #view-post-detail{background:var(--xb)!important;color:var(--xf)!important}
+body.gyphm.gyphm-xp #view-profile .profile-banner{height:auto!important;aspect-ratio:3/1;border:none!important;background-color:#cfd9de!important}
+body.gyphm.gyphm-xp #view-profile .profile-details{padding:12px 16px 0!important;border-bottom:none!important}
+body.gyphm.gyphm-xp #view-profile #profAvatarWrap .profile-avatar-large{width:80px!important;height:80px!important;top:-46px!important;margin-top:0!important;border:4px solid var(--xb)!important;font-size:36px!important}
+body.gyphm.gyphm-xp #view-profile .profile-actions{height:auto!important;min-height:36px;margin-bottom:12px!important}
+body.gyphm.gyphm-xp #view-profile .follow-btn,body.gyphm.gyphm-xp #view-profile .btn-edit-small{background:transparent!important;color:var(--xf)!important;box-shadow:none!important;border:1px solid #cfd9de!important;border-radius:9999px!important;font-weight:700!important;font-size:14px!important;padding:0 16px!important;height:34px!important}
+body.gyphm.gyphm-xp #view-profile #profFollowBtn:not(.following){background:var(--xf)!important;color:var(--xb)!important;border-color:var(--xf)!important}
+body.gyphm.gyphm-xp #view-profile #profName{font-size:20px!important;font-weight:800!important;color:var(--xf)!important}
+body.gyphm.gyphm-xp #view-profile #profHandle,body.gyphm.gyphm-xp #view-profile .profile-meta-item{color:var(--xs)!important;font-size:15px!important}
+body.gyphm.gyphm-xp #view-profile .profile-meta-item svg{stroke:var(--xs)!important}
+body.gyphm.gyphm-xp #view-profile .profile-bio{font-size:15px!important;line-height:20px!important;color:var(--xf)!important;margin:12px 0!important}
+body.gyphm.gyphm-xp #view-profile .profile-stats{color:var(--xs)!important;font-size:14px!important;gap:20px!important}
+body.gyphm.gyphm-xp #view-profile .profile-stats b{color:var(--xf)!important}
+body.gyphm.gyphm-xp #view-profile .top-tabs{border-bottom:1px solid var(--xl)!important;background:var(--xb)!important}
+body.gyphm.gyphm-xp #view-profile .top-tabs .tab{color:var(--xs)!important;font-weight:500!important;font-size:15px!important}
+body.gyphm.gyphm-xp #view-profile .top-tabs .tab.active{color:var(--xf)!important;font-weight:700!important}
+body.gyphm.gyphm-xp #view-profile .top-tabs .tab.active::after{background:var(--xa)!important;height:4px!important;border-radius:9999px!important}
+body.gyphm.gyphm-xp .post-placeholder{border-bottom:1px solid var(--xl)!important;padding:12px 16px!important}
+body.gyphm.gyphm-xp .post-name{font-weight:700!important;color:var(--xf)!important}
+body.gyphm.gyphm-xp .post-handle,body.gyphm.gyphm-xp .post-time,body.gyphm.gyphm-xp .post-dot,body.gyphm.gyphm-xp .pa-item{color:var(--xs)!important}
+body.gyphm.gyphm-xp .post-body{color:var(--xf)!important;font-size:15px!important;line-height:20px!important}
+body.gyphm.gyphm-xp .fab-btn,body.gyphm.gyphm-xp #fabPost{background:var(--xa)!important;color:var(--xaf)!important}
+body.gyphm.gyphm-xp #gyPmBar{background:var(--xbar)!important;color:var(--xf)!important;border-bottom:1px solid var(--xl)}
+`;
+        document.head.appendChild(st);
+    })();
     window.__gyPm = { S, APPS, svg, tickSb: () => tickSb(), esc, av, chars, groups, sessOf, unread, lastChat, plain, sbHtml, pad, store, isDesk, closeSheet, enterApp: () => enterApp(), setTitle: t => setTitle(t) };
 
     /* ---------------- 开关 ---------------- */

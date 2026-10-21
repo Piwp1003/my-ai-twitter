@@ -517,16 +517,89 @@ function syncPhone() {
     } catch (e) {}
 }
 
+/* ---------------- 🛍️ 市集（256，小红书底栏第二个）：双列商品流，买了从钱包扣；能买给 TA；TA 也会在市集给你下单 ---------------- */
+const DEF_MALL = `你在模拟小红书「市集」的商品推荐流。逛的人是 {{我}}，她身边的人：
+{{人}}
+她最近在小红书上看的：{{看过}}
+写 {{条数}} 件商品（小红书市集那种：买手店、小众设计、好物、手作、零食、穿搭、家居、美妆……像真实在卖的，价格合理）。
+只输出 JSON 数组：[{"name":"商品名（带点小红书味）","shop":"店铺 / 买手名","price":价格,"emo":"一个代表商品的 emoji","desc":"卖点（一两句）","sold":已售数量,"tags":["标签"]}]`;
+X.plGroup('📕 小红书市集', 'gysRed', [['red.mall', '市集商品流', '打开市集 / 刷新时', '{{我}} {{人}} {{看过}} {{条数}}']], { 'red.mall': DEF_MALL });
+async function genMall() {
+    if (BUSY.mall) return; BUSY.mall = 1; G.repaint(APP);
+    try {
+        const seen = D.notes.filter(n => n.by !== 'me').slice(0, 8).map(n => n.title).join('、') || '（还没看什么）';
+        const o = X.json(await X.ask(P('red.mall', DEF_MALL, { 我: G.meName(), 人: G.chars().slice(0, 4).map(c => c.name + '：' + String(c.persona || '').slice(0, 60)).join('\n') || '（没有）', 看过: seen, 条数: 10 })));
+        if (Array.isArray(o)) { D.goods = (o.filter(x => x && x.name).map(x => ({ id: G.uid('rg'), name: X.plain(x.name).slice(0, 40), shop: X.plain(x.shop || '').slice(0, 20), price: Math.max(1, Math.round((+x.price || 59) * 100) / 100), emo: X.plain(x.emo || '🛍️').slice(0, 4), desc: X.plain(x.desc || '').slice(0, 120), sold: +x.sold || G.rnd(10, 9999), tags: (x.tags || []).slice(0, 3).map(t => X.plain(t).slice(0, 8)), at: Date.now() }))).concat((D.goods || []).filter(g => g.keep)).slice(0, 60); D.mallAt = Date.now(); saveD(); }
+    } catch (e) {} finally { BUSY.mall = 0; G.repaint(APP); }
+}
+const gOf = id => (D.goods || []).find(g => g.id === id);
+const gBg = g => { let h = 0; for (const ch of String(g.name)) h = (h * 31 + ch.charCodeAt(0)) % 360; return `linear-gradient(160deg,hsl(${h},60%,92%),hsl(${(h + 30) % 360},55%,82%))`; };
+function mallTab() {
+    if (!D.goods || !D.goods.length || Date.now() - (D.mallAt || 0) > 12 * 3600e3) setTimeout(genMall, 50);
+    const L = D.goods || [], a = L.filter((x, i) => i % 2 === 0), b = L.filter((x, i) => i % 2 === 1);
+    const card = g => `<div class="rd-gc" onclick="gysRd.good('${g.id}')"><span class="rd-gimg" style="${g.img ? `background-image:url('${g.img}')` : `background:${gBg(g)}`}">${g.img ? '' : `<i>${esc(g.emo)}</i>`}</span><b>${esc(g.name)}</b><div class="rd-gp"><em>¥<u>${g.price}</u></em><small>已售 ${G.fmtN(g.sold)}</small></div><small class="rd-gs" onclick="event.stopPropagation();gysRd.shop('${esc(g.shop || '小红书市集').replace(/'/g, '')}')">${esc(g.shop)} ›</small></div>`;
+    return `<div class="rd-mall"><div class="rd-mtop"><span onclick="gysRd.orders()">📦 我的订单${(D.orders || []).length ? ' ' + D.orders.length : ''}</span>${cartOn() ? `<span onclick="gysRd.cart()">🛒 购物车${cartN() ? ' ' + cartN() : ''}</span>` : ''}<span onclick="gysRd.__mall()">${BUSY.mall ? '⏳' : '↻ 换一批'}</span></div>${L.length ? `<div class="rd-gcols"><div>${a.map(card).join('')}</div><div>${b.map(card).join('')}</div></div>` : `<div class="gys-busy">${BUSY.mall ? '⏳ 正在上新…' : '还没有商品'}</div>`}</div>`;
+}
+R.__mall = () => genMall();
+R.good = id => { const g = gOf(id); if (!g) return; G.push(APP, { id: 'good_' + id, title: '', html: () => `<div class="rd-gd"><div class="rd-gdimg" style="${g.img ? `background-image:url('${g.img}')` : `background:${gBg(g)}`}" onclick="gysRd.gImg('${id}')">${g.img ? '' : `<i>${esc(g.emo)}</i>`}<small>换图</small></div><div class="rd-gdp">¥<b>${g.price}</b><small>已售 ${G.fmtN(g.sold)}</small></div><h3>${esc(g.name)}</h3><p>${esc(g.desc)}</p><div class="rd-chips">${g.tags.map(t => `<span>${esc(t)}</span>`).join('')}</div><div class="rd-gshop" onclick="gysRd.shop('${esc(g.shop || '小红书市集').replace(/'/g, '')}')">🏪 ${esc(g.shop)} <em>进店 ›</em></div></div>`, foot: () => `<div class="rd-gbar"><i onclick="gysRd.shop('${esc(g.shop || '小红书市集').replace(/'/g, '')}')"><b>🏪</b>店铺</i>${cartOn() ? `<i onclick="gysRd.cart()"><b>🛒${cartN() ? `<sup>${cartN()}</sup>` : ''}</b>购物车</i><span class="c" onclick="gysRd.addCart('${id}')">加入购物车</span>` : ''}<span onclick="gysRd.buy('${id}','me')">立即购买</span><span class="g" onclick="gysRd.buy('${id}','ta')">🎁 送 TA</span></div>` }); };
+R.gImg = id => { const g = gOf(id); G.pickImg(1, url => { g.img = url; g.keep = 1; saveD(); G.repaint(APP); }); };
+R.buy = async (id, to) => {
+    const g = gOf(id); if (!g) return; let c = null;
+    if (to === 'ta') { const cs = G.chars(); if (!cs.length) return; c = cs[0]; if (cs.length > 1) { const i = await G.sheet(cs.map(x => x.name), '买给谁？'); if (i == null) return; c = cs[i]; } }
+    if (!(await G.confirm(`${to === 'ta' ? '买给 ' + c.name : '购买'}「${g.name}」\n¥${g.price}${window.gyWallet ? '（从钱包扣）' : ''}`))) return;
+    const W = window.gyWallet; if (W && W.spend) { try { await W.spend('me', g.price, '小红书市集：' + g.name + (c ? '（送 ' + c.name + '）' : '')); } catch (e) {} }
+    (D.orders = D.orders || []).unshift({ id: G.uid('ro'), gid: id, name: g.name, emo: g.emo, price: g.price, to: c ? 'c:' + c.id : 'me', from: 'me', at: Date.now() }); g.keep = 1; g.sold++; saveD();
+    X.toast(X.v('📦 下单成功', '买好了'), c ? '会寄给 ' + c.name : '');
+    if (c) X.reach(c, `她在小红书市集给你买了「${g.name}」（¥${g.price}），你收到了。`);
+};
+R.orders = () => G.push(APP, { title: '我的订单', html: () => (D.orders || []).map(o => `<div class="rd-urow" onclick="${gOf(o.gid) ? `gysRd.good('${o.gid}')` : ''}"><span class="rd-oico">${esc(o.emo)}</span><div><b>${esc(o.name)}</b><em>¥${o.price} · ${o.from === 'me' ? (o.to === 'me' ? '自己买的' : '送给 ' + esc(nameOf(o.to))) : esc(nameOf(o.from)) + ' 送你的'}</em></div><small>${G.ago(o.at)}</small></div>`).join('') || '<div class="gys-empty">还没有订单</div>' });
+/* ---------------- 购物车 / 店铺页（258） ---------------- */
+X.feat('gysRedCart', { n: '🛒 小红书购物车', desc: '小红书市集的购物车：加购、改数量、按店铺勾选结算（走钱包）；TA 偶尔会偷看你的购物车，悄悄把其中一件买给你' });
+const cartOn = () => X.on('gysRedCart');
+const cart = () => (D.cart = (D.cart || []).filter(x => gOf(x.gid)));
+const cartN = () => cart().reduce((n, x) => n + x.n, 0);
+R.addCart = id => { if (!cartOn()) return X.toast('购物车没开', '设置 → 全部开关 →「小红书购物车」'); const g = gOf(id); if (!g) return; g.keep = 1; const x = cart().find(y => y.gid === id); if (x) x.n = Math.min(99, x.n + 1); else D.cart.unshift({ gid: id, n: 1, sel: true, at: Date.now() }); saveD(); G.repaint(APP); X.toast(X.v('已加入购物车', '加购成功', '在购物车等你'), ''); };
+R.cart = () => G.push(APP, { id: 'cart', title: `购物车(${cartN()})`, html: () => {
+    const L = cart(); if (!L.length) return '<div class="gys-empty">购物车是空的<br>去市集逛逛吧</div>';
+    const shops = Array.from(new Set(L.map(x => gOf(x.gid).shop || '小红书市集')));
+    return `<div class="rd-cart">${shops.map(sh => { const its = L.filter(x => (gOf(x.gid).shop || '小红书市集') === sh); const all = its.every(x => x.sel); return `<div class="rd-cs"><div class="rd-csh"><i class="rd-ck${all ? ' on' : ''}" onclick="gysRd.cartSelShop('${esc(sh).replace(/'/g, '')}')"></i><b onclick="gysRd.shop('${esc(sh).replace(/'/g, '')}')">🏪 ${esc(sh)} ›</b></div>${its.map(x => { const g = gOf(x.gid); return `<div class="rd-ci"><i class="rd-ck${x.sel ? ' on' : ''}" onclick="gysRd.cartSel('${g.id}')"></i><span class="rd-cimg" onclick="gysRd.good('${g.id}')" style="${g.img ? `background-image:url('${g.img}')` : `background:${gBg(g)}`}">${g.img ? '' : esc(g.emo)}</span><div><b onclick="gysRd.good('${g.id}')">${esc(g.name)}</b><div class="rd-cp"><em>¥<u>${g.price}</u></em><span class="rd-qty"><a onclick="gysRd.cartN('${g.id}',-1)">−</a><i>${x.n}</i><a onclick="gysRd.cartN('${g.id}',1)">＋</a></span></div></div></div>`; }).join('')}</div>`; }).join('')}</div>`;
+}, foot: () => { const L = cart(); if (!L.length) return ''; const sel = L.filter(x => x.sel); const sum = sel.reduce((s, x) => s + gOf(x.gid).price * x.n, 0); return `<div class="rd-cbar"><i class="rd-ck${sel.length === L.length ? ' on' : ''}" onclick="gysRd.cartAll()"></i><span>全选</span><em>合计：<b>¥${sum.toFixed(2)}</b></em><a class="${sel.length ? '' : 'off'}" onclick="gysRd.cartPay()">结算(${sel.reduce((n, x) => n + x.n, 0)})</a></div>`; } });
+R.cartSel = id => { const x = cart().find(y => y.gid === id); if (x) { x.sel = !x.sel; saveD(); G.repaint(APP); } };
+R.cartSelShop = sh => { const its = cart().filter(x => (gOf(x.gid).shop || '小红书市集') === sh); const v = !its.every(x => x.sel); its.forEach(x => { x.sel = v; }); saveD(); G.repaint(APP); };
+R.cartAll = () => { const L = cart(); const v = !L.every(x => x.sel); L.forEach(x => { x.sel = v; }); saveD(); G.repaint(APP); };
+R.cartN = async (id, d) => { const x = cart().find(y => y.gid === id); if (!x) return; if (x.n + d <= 0) { if (await G.confirm('从购物车删掉这件？')) D.cart = D.cart.filter(y => y !== x); } else x.n = Math.min(99, x.n + d); saveD(); G.repaint(APP); };
+R.cartPay = async () => {
+    const sel = cart().filter(x => x.sel); if (!sel.length) return; const sum = sel.reduce((s, x) => s + gOf(x.gid).price * x.n, 0);
+    if (!(await G.confirm(`结算 ${sel.length} 件，共 ¥${sum.toFixed(2)}${window.gyWallet ? '（从钱包扣）' : ''}`))) return;
+    const W = window.gyWallet; if (W && W.spend) { try { const ok = await W.spend('me', Math.round(sum * 100) / 100, '小红书购物车结算：' + sel.map(x => gOf(x.gid).name).join('、').slice(0, 40)); if (ok === false) return X.toast('钱包里钱不够', ''); } catch (e) { return X.toast('钱包里钱不够', ''); } }
+    sel.forEach(x => { const g = gOf(x.gid); g.sold += x.n; (D.orders = D.orders || []).unshift({ id: G.uid('ro'), gid: g.id, name: g.name + (x.n > 1 ? ' ×' + x.n : ''), emo: g.emo, price: Math.round(g.price * x.n * 100) / 100, to: 'me', from: 'me', at: Date.now() }); });
+    D.cart = cart().filter(x => !x.sel); saveD(); G.repaint(APP); X.toast(X.v('📦 支付成功', '下单了', '买好了，等快递'), '');
+};
+// 店铺页：头像、店名、粉丝 / 已售、关注店铺，下面是这家店的商品；可以让它「上新」
+const DEF_SHOP = `你在模拟小红书市集里的一家店「{{店}}」。已有的商品：{{已有}}
+再写 {{条数}} 件这家店会卖的商品（风格一致，像真实在卖的，价格合理）。
+只输出 JSON 数组：[{"name":"商品名","price":价格,"emo":"一个 emoji","desc":"卖点","sold":已售数量,"tags":["标签"]}]`;
+X.plGroup('📕 小红书店铺', 'gysRed', [['red.shop', '店铺上新', '打开一家店点「上新」时', '{{店}} {{已有}} {{条数}}']], { 'red.shop': DEF_SHOP });
+R.shop = name => { name = String(name || '小红书市集'); D.shops = D.shops || {}; const S = D.shops[name] = D.shops[name] || { fans: G.rnd(800, 90000), score: (4.6 + Math.random() * 0.39).toFixed(2), f: false };
+    G.push(APP, { id: 'shop_' + name, title: '', html: () => { const L = (D.goods || []).filter(g => g.shop === name); const sold = L.reduce((n, g) => n + (g.sold || 0), 0); const a = L.filter((x, i) => i % 2 === 0), b = L.filter((x, i) => i % 2 === 1);
+        const card = g => `<div class="rd-gc" onclick="gysRd.good('${g.id}')"><span class="rd-gimg" style="${g.img ? `background-image:url('${g.img}')` : `background:${gBg(g)}`}">${g.img ? '' : `<i>${esc(g.emo)}</i>`}</span><b>${esc(g.name)}</b><div class="rd-gp"><em>¥<u>${g.price}</u></em><small>已售 ${G.fmtN(g.sold)}</small></div></div>`;
+        return `<div class="rd-shop"><div class="rd-shh"><span class="rd-shav" style="background:${gBg({ name })}">${esc((L[0] || {}).emo || '🏪')}</span><div><b>${esc(name)}</b><small>${G.fmtN(S.fans + (S.f ? 1 : 0))} 粉丝 · 已售 ${G.fmtN(sold)} · 店铺评分 ${S.score}</small></div><a class="${S.f ? 'on' : ''}" onclick="gysRd.shopF('${esc(name).replace(/'/g, '')}')">${S.f ? '已关注' : '关注'}</a></div>
+          <div class="rd-shtab"><b>商品 ${L.length}</b><span onclick="gysRd.shopMore('${esc(name).replace(/'/g, '')}')">${BUSY['sh' + name] ? '⏳ 上新中' : '✨ 上新'}</span></div>
+          ${L.length ? `<div class="rd-gcols"><div>${a.map(card).join('')}</div><div>${b.map(card).join('')}</div></div>` : '<div class="gys-empty">这家店还没有商品</div>'}</div>`; } }); };
+R.shopF = name => { const S = (D.shops || {})[name]; if (!S) return; S.f = !S.f; saveD(); G.repaint(APP); X.toast(S.f ? X.v('关注了这家店', '已关注店铺') : '取消关注', ''); };
+R.shopMore = async name => { if (BUSY['sh' + name]) return; BUSY['sh' + name] = 1; G.repaint(APP); try { const have = (D.goods || []).filter(g => g.shop === name).map(g => g.name).join('、') || '（还没有）'; const o = X.json(await X.ask(P('red.shop', DEF_SHOP, { 店: name, 已有: have, 条数: 6 }))); if (Array.isArray(o)) { o.filter(x => x && x.name).forEach(x => (D.goods = D.goods || []).push({ id: G.uid('rg'), name: X.plain(x.name).slice(0, 40), shop: name, price: Math.max(1, Math.round((+x.price || 59) * 100) / 100), emo: X.plain(x.emo || '🛍️').slice(0, 4), desc: X.plain(x.desc || '').slice(0, 120), sold: +x.sold || G.rnd(10, 9999), tags: (x.tags || []).slice(0, 3).map(t => X.plain(t).slice(0, 8)), at: Date.now(), keep: 1 })); saveD(); } } catch (e) {} finally { BUSY['sh' + name] = 0; G.repaint(APP); } };
+window.gysRedOpenCart = () => { G.open(APP, 'mall'); R.cart(); };
 /* ---------------- 外壳 ---------------- */
 const STYLE = '- 这是「小红书」：昵称多半带 emoji 或「是xx呀」「xx酱」这种；简介写星座、城市、职业、爱好、「日常分享」「不定期更新」；tags 写 2~4 个（星座、城市、学校、MBTI 之类）；粉丝数按身份给';
 G.app(APP, {
-    tabs: [['home', 'i:home', '首页'], ['post', 'i:plus', '发布'], ['msg', 'i:chat', '消息', () => unread() || ''], ['me', 'i:person', '我']],
-    head, render: t => t === 'post' ? composeHtml() : t === 'msg' ? msgTab() : t === 'me' ? meTab() : home(),
+    tabs: [['home', 'i:home', '首页'], ['mall', 'i:bag', '市集'], ['post', 'i:plus', ''], ['msg', 'i:chat', '消息', () => unread() || ''], ['me', 'i:person', '我']],
+    head, render: t => t === 'post' ? composeHtml() : t === 'mall' ? mallTab() : t === 'msg' ? msgTab() : t === 'me' ? meTab() : home(),
     onOpen: async () => { await migrate(); syncPhone(); if (!D.notes.some(n => n.by !== 'me') && !BUSY['f推荐']) genFeed('推荐'); else if (Date.now() - (D.last['feedf推荐'] || 0) > 4 * 3600e3 && !BUSY['f推荐']) genFeed('推荐'); const L = cast().filter(w => !G.prof(APP, w).gen); if (L.length) G.genProfiles(APP, L.slice(0, 8), STYLE).then(() => G.repaint(APP)); }
 });
 window.gysRedOpen = tab => G.open(APP, tab);
 window.gysRedOpenNote = id => { G.open(APP); R.open(id); };
 window.gysRedLive = () => { G.open(APP); R.liveList(); };
+window.gysRedOpenOrders = () => { G.open(APP, 'mall'); R.orders(); };
 // 老小红书的入口 / 通知还能用
 window.gyxRedOpen = () => G.open(APP);
 window.gyxRedView = id => window.gysRedOpenNote(id);
@@ -553,6 +626,12 @@ R.yearWord = async () => { const c = X.cur() || G.chars()[0]; if (!c) return; co
 
 X.action({ key: 'gys_red_live', label: '在小红书开直播，叫她来看', hint: '带货 / 唠嗑 / 才艺', need: c => rare(c, 'lv', 36), run: async c => { mark(c, 'lv'); const o = X.json(await X.ask(`${X.who(c)}\n你在小红书开了个直播。只输出 JSON：{"cover":"emoji","title":"直播标题","goods":[{"name":"商品","price":"99"}]}`)); if (!o || !o.title) return null; (D.lives || []).forEach(x => x.on = false); (D.lives = D.lives || []).unshift({ id: G.uid('lv'), host: 'c:' + c.id, cover: String(o.cover || '🔴').slice(0, 2), title: X.plain(o.title).slice(0, 50), viewers: G.rnd(20, 3000), goods: (o.goods || []).slice(0, 4).map(g => ({ name: X.plain(g.name || '').slice(0, 30), price: String(g.price || '').slice(0, 10) })), danmu: [], on: true, at: Date.now() }); saveD(); G.notify(APP, c, `📕 <b>${X.esc(c.name)}</b> 开直播了`, o.title, X.go('gysRedLive')); return { text: '在小红书开了直播：' + o.title, selfNotified: true }; } }, 'gysRed');
 
+X.action({ key: 'gys_red_buy', label: '在小红书市集偷偷给她买了个东西', hint: '刷到觉得她会喜欢的', need: c => rare(c, 'buy', 120) && (D.goods || []).length > 0, run: async c => {
+    mark(c, 'buy'); const L = (D.goods || []).slice(0, 10); const o = X.json(await X.ask(`${X.who(c)}\n你在逛小红书市集，看到：\n${L.map((g, i) => `${i + 1}. ${g.name}（¥${g.price}）${g.desc}`).join('\n')}\n挑一件想买给她的（按你的性格和对她的了解，不想买就 {"i":0}），再写一句附言。只输出 JSON：{"i":序号,"say":"附言"}`)); const k = o && Number(o.i); const g = k && L[k - 1]; if (!g) return null;
+    (D.orders = D.orders || []).unshift({ id: G.uid('ro'), gid: g.id, name: g.name, emo: g.emo, price: g.price, to: 'me', from: 'c:' + c.id, say: X.plain(o.say || '').slice(0, 80), at: Date.now() }); g.keep = 1; saveD();
+    G.notify(APP, c, `📦 <b>${X.esc(c.name)}</b> 在小红书市集给你买了东西`, g.name + (o.say ? '：' + o.say : ''), X.go('gysRedOpenOrders'));
+    return { text: `在小红书市集给她买了「${g.name}」${o.say ? '，附言：' + o.say : ''}`, selfNotified: true };
+} }, 'gysRed');
 X.action({ key: 'gys_red_post', label: '发一篇小红书', hint: '日常、攻略、种草，偶尔偷偷写点跟她有关的', need: c => rare(c, 'p', 10), run: async c => { mark(c, 'p'); const n = await taPost(c); return n ? { text: '发了一篇小红书：' + n.title, selfNotified: true, jump: X.go('gysRedOpenNote', n.id) } : null; } }, 'gysRed');
 X.action({ key: 'gys_red_fav', label: '刷小红书，偷偷收藏一篇（多半跟她有关）', hint: '她看得到你收藏了什么，但你不会说', need: c => D.notes.length >= 3 && rare(c, 'f', 12), run: async c => { mark(c, 'f'); const n = await taFav(c); return n ? { text: '偷偷收藏了一篇小红书', selfNotified: true, secret: true } : null; } }, 'gysRed');
 X.action({ key: 'gys_red_cmt', label: '去评论她的小红书', hint: '她发了笔记，你去评论区说一句', need: c => D.notes.some(n => n.by === 'me' && n.vis !== 'self' && Date.now() - n.at < 3 * 86400e3 && !flat(n.cmts).some(k => k.by === 'c:' + c.id)), run: async c => { const n = D.notes.find(n => n.by === 'me' && n.vis !== 'self' && !flat(n.cmts).some(k => k.by === 'c:' + c.id)); if (!n) return null; const t = X.plain(await X.ask(`${X.who(c)}\n${X.me(c)}在小红书上发了一篇笔记「${n.title}」：${n.body.slice(0, 200)}\n你在评论区说一句（公开场合，别人也看得到）。只写评论。`) || ''); if (!t) return null; n.cmts.push({ id: G.uid('c'), by: 'c:' + c.id, text: t.slice(0, 200), at: Date.now(), likeN: 0, likes: [], kids: [] }); if (!n.likes.includes('c:' + c.id)) n.likes.push('c:' + c.id); act('cmt', 'c:' + c.id, n.id, t); saveD(); G.notify(APP, c, `📕 <b>${X.esc(c.name)}</b> 评论了你的小红书`, t, X.go('gysRedOpenNote', n.id)); return { text: '评论了她的小红书', selfNotified: true }; } }, 'gysRed');
@@ -624,6 +703,10 @@ body.dark-theme .gys-red{background:#0b0b0b}
 .rd-bar{display:flex;align-items:center;gap:12px;padding:8px 12px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));border-top:.5px solid #eee;background:#fff}body.dark-theme .rd-bar{background:#141414;border-color:#222}
 .rd-bar input{flex:1;min-width:0;border:none;background:#f5f5f5;border-radius:999px;padding:9px 14px;font-size:14px;color:inherit;outline:none}body.dark-theme .rd-bar input{background:#222}
 .rd-bar>span{display:flex;flex-direction:column;align-items:center;font-size:18px;cursor:pointer}.rd-bar em{font-style:normal;font-size:10.5px;color:#666}.rd-send{font-size:14px!important;color:#fff;background:#ff2442;border-radius:999px;padding:6px 14px}
+.rd-mall{padding-bottom:20px}.rd-mtop{display:flex;justify-content:space-between;padding:10px 14px;font-size:13.5px;color:#666}.rd-mtop span{cursor:pointer}.rd-gcols{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 6px}.rd-gcols>div{display:flex;flex-direction:column;gap:6px}
+.rd-gc{background:#fff;border-radius:8px;overflow:hidden;cursor:pointer}body.dark-theme .rd-gc{background:#1c1c1c}.rd-gimg{display:flex;align-items:center;justify-content:center;aspect-ratio:1;background:#eee center/cover}.rd-gimg i{font-style:normal;font-size:56px}.rd-gc b{display:block;margin:6px 8px 2px;font-size:13.5px;font-weight:500;line-height:1.35;max-height:2.7em;overflow:hidden}.rd-gp{display:flex;align-items:baseline;justify-content:space-between;padding:0 8px}.rd-gp em{font-style:normal;color:#ff2442;font-size:12px}.rd-gp u{text-decoration:none;font-size:16px;font-weight:600}.rd-gp small,.rd-gs{font-size:11px;color:#999}.rd-gs{display:block;padding:2px 8px 8px}
+.rd-gd{padding-bottom:20px}.rd-gdimg{position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:#eee center/cover;cursor:pointer}.rd-gdimg i{font-style:normal;font-size:120px}.rd-gdimg small{position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.4);color:#fff;font-size:11px;border-radius:9px;padding:2px 8px}.rd-gdp{padding:12px 16px 0;color:#ff2442;font-size:14px}.rd-gdp b{font-size:24px}.rd-gdp small{color:#999;margin-left:10px;font-size:12px}.rd-gd h3{margin:6px 16px;font-size:17px}.rd-gd p{margin:4px 16px;color:#555;font-size:14px;line-height:1.6}.rd-gshop{margin:12px 16px;padding:10px;border-radius:8px;background:#f6f6f6;font-size:14px}body.dark-theme .rd-gshop{background:#222}
+.rd-gbar{display:flex;gap:8px;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));border-top:.5px solid #eee;background:inherit}.rd-gbar span{flex:1;text-align:center;padding:11px;border-radius:999px;background:#ff2442;color:#fff;font-weight:600;cursor:pointer}.rd-gbar span.g{background:#ffb300}.rd-oico{width:44px;height:44px;border-radius:8px;background:#f6f6f6;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
 .rd-drbar{display:flex;align-items:center;gap:6px;margin:-4px 0 10px;padding:9px 12px;border-radius:10px;background:#f6f6f6;font-size:14px;cursor:pointer}body.dark-theme .rd-drbar{background:#222}.rd-drbar b{background:#ff2442;color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.rd-drbar em{margin-left:auto;font-style:normal;color:#999;font-size:12px}
 .rd-drgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px}.rd-dr{background:#fff;border-radius:8px;overflow:hidden;cursor:pointer}body.dark-theme .rd-dr{background:#1c1c1c}.rd-dr>span{display:flex;align-items:center;justify-content:center;aspect-ratio:3/4;background:#eee center/cover no-repeat;font-size:15px;padding:10px;box-sizing:border-box;text-align:center;color:#555}.rd-dr>span.t{background:linear-gradient(135deg,#ffe3e3,#ffd0d8)}.rd-dr b{display:block;padding:7px 9px 2px;font-size:13.5px;font-weight:500;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.rd-dr small{display:flex;justify-content:space-between;padding:0 9px 8px;color:#999;font-size:11.5px}.rd-dr small i{font-style:normal;color:#ff2442}
 .rd-cmp{background:#fff;min-height:100%;padding:12px 16px}body.dark-theme .rd-cmp{background:#141414}
@@ -667,4 +750,32 @@ body.dark-theme .gys-red{background:#0b0b0b}
 })();
 window.gysRedState = () => D;
 // 💬 互通（256）：小红书私信别处也知道
-try { G.chatReg(APP, { lines: c => { const th = D.dms['c:' + c.id]; return th ? th.msgs.slice(-6).map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你（' + c.name + '）') + '：' + m.t })) : []; }, lastMe: c => { const th = D.dms['c:' + c.id]; const m = th && th.msgs.filter(x => x.from === 'me').slice(-1)[0]; return m ? m.at : 0; } }); } catch (e) {}
+try { G.chatReg(APP, { all: c => { const th = D.dms['c:' + c.id]; return th ? th.msgs.map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你') + '：' + m.t })) : []; }, lines: c => { const th = D.dms['c:' + c.id]; return th ? th.msgs.slice(-6).map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你（' + c.name + '）') + '：' + m.t })) : []; }, lastMe: c => { const th = D.dms['c:' + c.id]; const m = th && th.msgs.filter(x => x.from === 'me').slice(-1)[0]; return m ? m.at : 0; } }); } catch (e) {}
+// 🛍️ 市集：今天 TA 给你买的
+X.today(() => { const d = X.day(); const L = (D.orders || []).filter(o => o.from !== 'me' && X.day(new Date(o.at)) === d); return L.length ? { title: '🛍️ 小红书市集', rows: L.slice(0, 3).map(o => ({ t: nameOf(o.from), x: '给你买了「' + o.name + '」', go: X.go('gysRedOpenOrders') })) } : null; }, 'gysRed');
+// 🛒 购物车（258）：TA 偷看你的购物车
+X.action({ key: 'gys_red_cart', label: '偷看她的小红书购物车，悄悄买下一件', hint: '她加购了一直没买的', need: c => cartOn() && cart().length > 0 && rare(c, 'cart', 96), run: async c => {
+    mark(c, 'cart'); const L = cart().slice(0, 10); const o = X.json(await X.ask(`${X.who(c)}\n你偷偷看到她小红书购物车里放着：\n${L.map((x, i) => `${i + 1}. ${gOf(x.gid).name}（¥${gOf(x.gid).price}）`).join('\n')}\n挑一件悄悄买给她（不想买就 {"i":0}），写一句附言。只输出 JSON：{"i":序号,"say":"附言"}`)); const k = o && Number(o.i); const x = k && L[k - 1]; if (!x) return null; const g = gOf(x.gid);
+    (D.orders = D.orders || []).unshift({ id: G.uid('ro'), gid: g.id, name: g.name, emo: g.emo, price: g.price, to: 'me', from: 'c:' + c.id, say: X.plain(o.say || '').slice(0, 80), cart: 1, at: Date.now() }); D.cart = cart().filter(y => y !== x); g.sold++; saveD(); G.repaint(APP);
+    G.notify(APP, c, `🛒 <b>${X.esc(c.name)}</b> 把你购物车里的东西买了`, g.name + (o.say ? '：' + o.say : ''), X.go('gysRedOpenOrders'));
+    return { text: `偷看了她的小红书购物车，悄悄把「${g.name}」买给了她${o.say ? '，附言：' + o.say : ''}`, selfNotified: true };
+} }, 'gysRedCart');
+X.today(() => { if (!cartOn()) return null; const n = cartN(); const T = (D.orders || []).filter(o => o.cart && X.day(new Date(o.at)) === X.day()); if (!n && !T.length) return null; return { title: '🛒 小红书购物车', rows: (n ? [{ t: '购物车', x: `${n} 件 · ¥${cart().reduce((s, x) => s + gOf(x.gid).price * x.n, 0).toFixed(2)}`, go: X.go('gysRedOpenCart') }] : []).concat(T.map(o => ({ t: nameOf(o.from), x: `从你购物车买了「${o.name}」`, go: X.go('gysRedOpenOrders') }))) }; }, 'gysRedCart');
+X.widget('gysRedCartW', { n: '小红书购物车', sizes: ['s'], tap: () => window.gysRedOpenCart(), r: () => `<div style="padding:10px;font-size:12px;line-height:1.6"><b style="color:#ff2442">🛒 购物车</b><br><span style="font-size:22px;font-weight:700">${cartN()}</span> 件${cart()[0] ? '<br>' + esc(gOf(cart()[0].gid).name.slice(0, 12)) : ''}</div>` }, 'gysRedCart');
+X.mem({ k: 'gysRedCart', ico: '🛒', n: 'TA 从你购物车里买的', d: 'TA 偷看你小红书购物车后悄悄买给你的（改了就是改附言，删了就没了）', items: c => (D.orders || []).filter(o => o.cart && o.from === 'c:' + c.id), text: o => `${o.name}${o.say ? '：' + o.say : ''}`, edit: (o, v) => { o.say = String(v).replace(/^[^：]*：/, '').slice(0, 80); }, del: (c, i) => { const L = (D.orders || []).filter(o => o.cart && o.from === 'c:' + c.id); D.orders = D.orders.filter(o => o !== L[i]); }, meta: o => G.ago(o.at), save: () => saveD() }, 'gysRedCart');
+X.css('gys-red-258-css', `
+.rd-gbar{display:flex;align-items:center;gap:8px}.rd-gbar>i{font-style:normal;display:flex;flex-direction:column;align-items:center;font-size:10.5px;color:#666;cursor:pointer;min-width:38px}.rd-gbar>i b{position:relative;font-size:19px;font-weight:400;line-height:1.2}.rd-gbar>i sup{position:absolute;top:-4px;right:-10px;background:#ff2442;color:#fff;border-radius:8px;font-size:10px;padding:0 4px;line-height:14px}
+.rd-gbar span.c{background:#fff3f4!important;color:#ff2442!important}.rd-gbar span{padding:10px 4px!important;font-size:14px;white-space:nowrap}
+.rd-gshop{cursor:pointer}.rd-gshop em{font-style:normal;color:#999;float:right}.rd-gs{cursor:pointer}
+.rd-cart{padding:8px 10px 20px}.rd-cs{background:#fff;border-radius:12px;padding:10px 12px;margin-bottom:10px}body.dark-theme .rd-cs{background:#1a1a1a}
+.rd-csh{display:flex;align-items:center;gap:10px;padding-bottom:6px}.rd-csh b{font-size:14px;cursor:pointer}
+.rd-ck{width:18px;height:18px;border-radius:50%;border:1.5px solid #ccc;flex-shrink:0;cursor:pointer;box-sizing:border-box;position:relative}.rd-ck.on{background:#ff2442;border-color:#ff2442}.rd-ck.on::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.rd-ci{display:flex;align-items:center;gap:10px;padding:8px 0}.rd-cimg{width:84px;height:84px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:36px;background:#eee center/cover;flex-shrink:0;cursor:pointer}
+.rd-ci>div{flex:1;min-width:0}.rd-ci b{display:block;font-size:14px;font-weight:400;line-height:1.4;max-height:2.8em;overflow:hidden;cursor:pointer}.rd-cp{display:flex;align-items:center;justify-content:space-between;margin-top:10px}.rd-cp em{font-style:normal;color:#ff2442;font-size:12px}.rd-cp em u{text-decoration:none;font-size:17px;font-weight:600}
+.rd-qty{display:flex;align-items:center;border:.5px solid #ddd;border-radius:4px}.rd-qty a{width:24px;text-align:center;cursor:pointer;color:#333}.rd-qty i{font-style:normal;min-width:26px;text-align:center;border-left:.5px solid #ddd;border-right:.5px solid #ddd;font-size:13px}
+.rd-cbar{display:flex;align-items:center;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));background:#fff;border-top:.5px solid #eee;font-size:13px}body.dark-theme .rd-cbar{background:#141414;border-color:#222}.rd-cbar em{margin-left:auto;font-style:normal}.rd-cbar em b{color:#ff2442;font-size:17px}.rd-cbar a{background:#ff2442;color:#fff;border-radius:999px;padding:9px 18px;cursor:pointer;font-weight:600}.rd-cbar a.off{opacity:.4}
+.rd-shh{display:flex;align-items:center;gap:12px;padding:20px 16px 14px;background:linear-gradient(180deg,#fff5f6,transparent)}body.dark-theme .rd-shh{background:none}.rd-shav{width:56px;height:56px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:30px;flex-shrink:0}
+.rd-shh>div{flex:1;min-width:0}.rd-shh b{display:block;font-size:17px}.rd-shh small{color:#999;font-size:12px}.rd-shh a{background:#ff2442;color:#fff;border-radius:999px;padding:6px 16px;font-size:13px;cursor:pointer}.rd-shh a.on{background:#f2f2f2;color:#999}
+.rd-shtab{display:flex;justify-content:space-between;align-items:center;padding:8px 16px 10px;font-size:14px}.rd-shtab span{color:#666;font-size:13px;cursor:pointer}
+`);
+window.gysRdState = () => D;

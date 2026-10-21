@@ -17,7 +17,7 @@ check('桌面上没有单独的「聊天」图标', await page.evaluate(() => !d
 await page.evaluate(() => gyPmOpen('home')); await page.waitForTimeout(700);
 check('打开推特：底下有推特那样的标签', await vis('#gyPmX'));
 await page.evaluate(() => gyPmXGo('dm')); await page.waitForTimeout(500);
-const v = await page.evaluate(() => ({ chat: document.getElementById('view-chat') && getComputedStyle(document.getElementById('view-chat')).display !== 'none', on: document.querySelector('#gyPmX span.on') && document.querySelectorAll('#gyPmX span')[2] === document.querySelector('#gyPmX span.on') }));
+const v = await page.evaluate(() => ({ chat: document.getElementById('view-chat') && getComputedStyle(document.getElementById('view-chat')).display !== 'none', on: document.querySelector('#gyPmX span.on') && document.querySelectorAll('#gyPmX span')[3] === document.querySelector('#gyPmX span.on') }));
 check('点「私信」：就是原来的聊天列表', v.chat && v.on, JSON.stringify(v));
 await page.evaluate(() => { switchChatSession('9101'); }); await page.waitForTimeout(700);
 check('进到一个人的聊天：标签收起来（不挡输入框）', !(await vis('#gyPmX')));

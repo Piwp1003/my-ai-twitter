@@ -38,7 +38,7 @@ await page.evaluate(async ({ plugs }) => {
     else if (/听歌排行/.test(t)) c = J({ week: [{ t: '夜曲', a: '周杰伦', n: 30 }, { t: 'Creep', a: 'Radiohead', n: 12 }], all: [{ t: 'Creep', a: 'Radiohead' }], say: '最近在听老歌' });
     else if (/用户搜了/.test(t)) c = J([{ t: '七里香', a: '周杰伦', al: '七里香' }]);
     else if (/给她做一个歌单/.test(t)) c = J({ name: '给你的夏天', desc: '你懂的', songs: [{ t: '晴天', a: '周杰伦', why: '那天你哼过' }] });
-    else if (/「云村」发一条动态/.test(t)) c = J({ t: 'Creep', a: 'Radiohead', text: '今天有点丧' });
+    else if (/「笔记」发一篇/.test(t)) c = J({ t: 'Creep', a: 'Radiohead', text: '今天有点丧' });
     else if (/私人 FM/.test(t)) c = J([{ t: '光年之外', a: '邓紫棋' }, { t: '稻香', a: '周杰伦' }]);
     else if (/回她一句|评论一句/.test(t)) c = '好听';
     else if (/刷到了这些/.test(t)) c = J({ i: 1, say: ['你看这个', '好像你'] });
@@ -123,7 +123,7 @@ check('评论区（热评 + 你发评论）', r.cmts && r.myCmt);
 check('TA 主页：听歌排行 + 正在听', r.rank);
 check('搜索', r.search);
 check('私人 FM', r.fm);
-check('云村：TA 分享歌', r.post && r.postRender);
+check('笔记：TA 写笔记分享歌', r.post && r.postRender);
 check('TA 给你做歌单', r.list && r.listPage);
 check('TA 去评论区', r.taCmt);
 check('自主行动都注册了', r.acts);

@@ -123,7 +123,8 @@ const timeShort = t => { const d = new Date(t), n = new Date(); if (d.toDateStri
 const wav = (w, sz) => `<span class="wx-av" style="width:${sz}px;height:${sz}px">${G.av(APP, w, sz)}</span>`;
 function chatsTab() {
     const L = Object.values(D.th).filter(t => t.msgs.length || t.kind === 'group').sort((a, b) => (b.pin - a.pin) || (b.at - a.at));
-    return `<div class="wx-srch" onclick="gysWx.search()">🔍 搜索</div>${L.map(t => { const m = t.msgs.filter(x => x.t !== 'sys').slice(-1)[0]; return `<div class="wx-ch${t.pin ? ' pin' : ''}" onclick="gysWx.open('${t.id}')" oncontextmenu="event.preventDefault();gysWx.rowMenu('${t.id}')">${t.kind === 'group' ? `<span class="wx-gav">${t.members.slice(0, 4).map(w => G.av(APP, w, 20)).join('')}</span>` : wav(t.who, 48)}${t.unread ? (t.mute ? '<i class="wx-dot"></i>' : `<i class="wx-red">${t.unread > 99 ? '99+' : t.unread}</i>`) : ''}<div><b>${esc(thName(t))}</b><small>${t.typing ? '对方正在输入…' : esc(preview(t, m)).slice(0, 40)}</small></div><em>${m ? timeShort(m.at) : ''}${t.mute ? '<br>🔕' : ''}</em></div>`; }).join('') || '<div class="gys-empty">还没有聊天<br>去「通讯录」点一个人发消息</div>'}`;
+    const run = runOn() && (G.chars().length || mySteps()) ? (() => { const RL = runList(), me = RL.findIndex(x => x.w === 'me'); const nl = Object.keys(runDay().lkMe).length; return `<div class="wx-ch" onclick="gysWx.run()"><span class="wx-av wx-runav" style="width:48px;height:48px">🏃</span>${nl && (D.runSeen || 0) < Math.max(...Object.values(runDay().lkMe)) ? '<i class="wx-dot"></i>' : ''}<div><b>微信运动</b><small>${nl ? `[${nl}个赞] ` : ''}[应用消息] 今天 ${fmtN(mySteps())} 步，排名第 ${me + 1}</small></div><em>${G.hm(Date.now())}</em></div>`; })() : '';
+    return `<div class="wx-srch" onclick="gysWx.search()">🔍 搜索</div>${run}${L.map(t => { const m = t.msgs.filter(x => x.t !== 'sys').slice(-1)[0]; return `<div class="wx-ch${t.pin ? ' pin' : ''}" onclick="gysWx.open('${t.id}')" oncontextmenu="event.preventDefault();gysWx.rowMenu('${t.id}')">${t.kind === 'group' ? `<span class="wx-gav">${t.members.slice(0, 4).map(w => G.av(APP, w, 20)).join('')}</span>` : wav(t.who, 48)}${t.unread ? (t.mute ? '<i class="wx-dot"></i>' : `<i class="wx-red">${t.unread > 99 ? '99+' : t.unread}</i>`) : ''}<div><b>${esc(thName(t))}</b><small>${t.typing ? '对方正在输入…' : esc(preview(t, m)).slice(0, 40)}</small></div><em>${m ? timeShort(m.at) : ''}${t.mute ? '<br>🔕' : ''}</em></div>`; }).join('') || '<div class="gys-empty">还没有聊天<br>去「通讯录」点一个人发消息</div>'}`;
 }
 W.rowMenu = async id => { const t = thOf(id); if (!t) return; const ops = [t.pin ? '取消置顶' : '置顶该聊天', t.mute ? '开启新消息提醒' : '消息免打扰', t.unread ? '标为已读' : '标为未读', '删除该聊天']; const i = await G.sheet(ops); if (i == null) return; if (i === 0) t.pin = !t.pin; else if (i === 1) t.mute = !t.mute; else if (i === 2) t.unread = t.unread ? 0 : 1; else if (await G.confirm('删除和' + thName(t) + '的聊天记录？')) delete D.th[id]; saveD(); G.repaint(APP); };
 function contactsTab() {
@@ -151,7 +152,7 @@ W.plusMenu = async () => { const i = await G.sheet(['💬 发起群聊', '👤 �
 
 /* ---------------- 聊天页 ---------------- */
 let QUOTE = {}, PLUS = 0, EMO = 0;
-W.open = id => { const t = thOf(id) || (String(id).startsWith('c:') || String(id).startsWith('n:') ? dmOf(id) : null); if (!t) return; t.unread = 0; saveD(); PLUS = 0; EMO = 0; G.push(APP, { id: 'th_' + t.id, get title() { const st = t.kind === 'dm' ? statusOf(t.who) : null; return `${esc(thName(t))}${t.typing ? '<small class="wx-sub">对方正在输入…</small>' : st ? `<small class="wx-sub">${esc(st.ico)} ${esc(st.t)}</small>` : ''}`; }, right: `<span onclick="gysWx.info('${t.id}')" style="font-size:20px">···</span>`, cls: 'wx-tb', html: () => thHtml(t), foot: () => footHtml(t), after: r => { const b = r.querySelector('.gys-body'); if (b) b.scrollTop = b.scrollHeight; bindLong(r, t); } }); };
+W.open = id => { const t = thOf(id) || (String(id).startsWith('c:') || String(id).startsWith('n:') ? dmOf(id) : null); if (!t) return; t.unread = 0; saveD(); PLUS = 0; EMO = 0; G.push(APP, { id: 'th_' + t.id, get title() { const st = t.kind === 'dm' ? statusOf(t.who) : null; return `${esc(thName(t))}${t.typing ? '<small class="wx-sub">对方正在输入…</small>' : st ? `<small class="wx-sub">${esc(st.ico)} ${esc(st.t)}</small>` : ''}`; }, right: `<span onclick="gysWx.info('${t.id}')" style="font-size:20px">···</span>`, cls: 'wx-tb', html: () => thHtml(t), foot: () => footHtml(t), after: r => { applyBg(r, t); const b = r.querySelector('.gys-body'); if (b) b.scrollTop = b.scrollHeight; bindLong(r, t); } }); };
 function thHtml(t) {
     let last = 0;
     const rows = t.msgs.map(m => { let tm = ''; if (m.at - last > 5 * 60e3) tm = `<div class="wx-tm">${timeShort(m.at)}${new Date(m.at).toDateString() !== new Date().toDateString() ? ' ' + G.hm(m.at) : ''}</div>`; last = m.at; return tm + bubble(t, m); }).join('');
@@ -238,7 +239,7 @@ W.pat = (tid, w) => {
     if (t.kind === 'dm' && Math.random() < 0.8) setTimeout(() => taReply(t, '她刚拍了拍你'), 1500);
 };
 W.patSet = async () => { const v = await G.input('拍一拍后面加的话（比如：的小脑袋）', D.pat.me || ''); if (v === null || v === undefined) return; D.pat.me = X.plain(v).slice(0, 16); saveD(); G.repaint(APP); };
-W.info = id => { const t = thOf(id); if (!t) return; if (t.kind === 'dm') return W.card(t.who); G.push(APP, { title: '聊天信息', html: () => `<div class="wx-gm">${t.members.map(w => `<span onclick="gysWx.card('${w}')">${wav(w, 50)}<i>${esc(nameOf(w))}</i></span>`).join('')}<span onclick="gysWx.gAdd('${id}')"><b>＋</b><i>邀请</i></span></div><div class="wx-cells"><div onclick="gysWx.gName('${id}')">群聊名称<em>${esc(t.name || '未命名')}</em></div><div onclick="gysWx.toggle('${id}','mute')">消息免打扰<em>${t.mute ? '开' : '关'}</em></div><div onclick="gysWx.toggle('${id}','pin')">置顶聊天<em>${t.pin ? '开' : '关'}</em></div></div><div class="wx-cells"><div class="red" onclick="gysWx.leave('${id}')">删除并退出</div></div>` }); };
+W.info = id => { const t = thOf(id); if (!t) return; if (t.kind === 'dm') return W.dmInfo(id); G.push(APP, { title: '聊天信息', html: () => `<div class="wx-gm">${t.members.map(w => `<span onclick="gysWx.card('${w}')">${wav(w, 50)}<i>${esc(nameOf(w))}</i></span>`).join('')}<span onclick="gysWx.gAdd('${id}')"><b>＋</b><i>邀请</i></span></div><div class="wx-cells"><div onclick="gysWx.gName('${id}')">群聊名称<em>${esc(t.name || '未命名')}</em></div><div onclick="gysWx.toggle('${id}','mute')">消息免打扰<em>${t.mute ? '开' : '关'}</em></div><div onclick="gysWx.toggle('${id}','pin')">置顶聊天<em>${t.pin ? '开' : '关'}</em></div></div><div class="wx-cells"><div onclick="gysWx.bgSet('${id}')">设置当前聊天背景<em>${t.bg ? '已设置' : ''}</em></div></div><div class="wx-cells"><div class="red" onclick="gysWx.leave('${id}')">删除并退出</div></div>` }); };
 W.toggle = (id, k) => { const t = thOf(id); t[k] = !t[k]; saveD(); G.repaint(APP); };
 W.gName = async id => { const t = thOf(id); const v = await G.input('群聊名称', t.name || ''); if (v === null || v === undefined) return; t.name = X.plain(v).slice(0, 20); addMsg(t, { from: 'sys', t: 'sys', text: `你修改群名为“${t.name}”` }); G.repaint(APP); };
 W.gAdd = async id => { const t = thOf(id); const L = G.chars().map(c => 'c:' + c.id).concat(G.npcs().map(n => 'n:' + n.id)).filter(w => !t.members.includes(w)); if (!L.length) return; const i = await G.sheet(L.map(nameOf), '邀请谁？'); if (i == null) return; t.members.push(L[i]); addMsg(t, { from: 'sys', t: 'sys', text: `你邀请"${nameOf(L[i])}"加入了群聊` }); G.repaint(APP); };
@@ -298,7 +299,7 @@ W.moments = w => { MOW = w || ''; D.moSeen = Date.now(); saveD(); G.push(APP, { 
 function momentsHtml() {
     const me = G.prof(APP, 'me'), who = MOW || 'me', p = G.prof(APP, who), L = moments().filter(m => !MOW || m.who === MOW);
     return `<div class="wx-mo"><div class="wx-mocv" style="${p.bg ? `background-image:url('${p.bg}')` : ''}" onclick="${who === 'me' ? "gysWx.editMe()" : ''}"><span class="wx-mob-b" onclick="event.stopPropagation();GYS.back('wechat')">‹</span>${!MOW || MOW === 'me' ? `<span class="wx-mob-c" onclick="event.stopPropagation();gysWx.post()">📷</span>` : ''}<div class="wx-mome"><b>${esc(nameOf(who))}</b>${wav(who, 64)}</div></div>${p.bio ? `<p class="wx-mosig">${esc(p.bio)}</p>` : ''}
-      ${L.map(m => `<div class="wx-mi">${wav(m.who, 42)}<div><b onclick="gysWx.card('${m.who}')">${esc(nameOf(m.who))}</b><p>${esc(m.text)}</p>${m.imgs && m.imgs.length ? `<div class="wx-moimg n${Math.min(3, m.imgs.length)}">${m.imgs.slice(0, 9).map(x => /^(data:|https?:|gylive:|blob:)/.test(x) ? `<span style="background-image:url('${x}')" onclick="GYS.imgView('${x}')"></span>` : `<span class="t" style="background:${bgOf(x)}"><em>${esc(x)}</em></span>`).join('')}</div>` : ''}${m.loc ? `<small class="wx-moloc">${esc(m.loc)}</small>` : ''}<div class="wx-mot"><small>${G.ago(m.at)}${m.who === 'me' ? ` <a onclick="gysWx.moDel('${m.id}')">删除</a>` : ''}</small><span onclick="gysWx.moAct('${m.id}')">··</span></div>${(m.likes.length || m.cm.length) ? `<div class="wx-mofb">${m.likes.length ? `<div class="lk">♡ ${m.likes.map(w => esc(nameOf(w))).join('，')}</div>` : ''}${m.cm.map(c => `<p onclick="gysWx.moCmt('${m.id}','${c.by}')"><b>${esc(nameOf(c.by))}</b>${c.to ? '回复<b>' + esc(nameOf(c.to)) + '</b>' : ''}：${esc(c.t)}</p>`).join('')}</div>` : ''}</div></div>`).join('') || '<div class="gys-empty">朋友圈还没有内容</div>'}</div>`;
+      ${L.map(m => `<div class="wx-mi">${wav(m.who, 42)}<div><b onclick="gysWx.card('${m.who}')">${esc(nameOf(m.who))}</b><p>${esc(m.text)}</p>${m.imgs && m.imgs.length ? `<div class="wx-moimg n${Math.min(3, m.imgs.length)}">${m.imgs.slice(0, 9).map(x => /^(data:|https?:|gylive:|blob:)/.test(x) ? `<span style="background-image:url('${x}')" onclick="GYS.imgView('${x}')"></span>` : `<span class="t" style="background:${bgOf(x)}"><em>${esc(x)}</em></span>`).join('')}</div>` : ''}${m.loc ? `<small class="wx-moloc">${esc(m.loc)}</small>` : ''}<div class="wx-mot"><small>${G.ago(m.at)}${visTag(m)}${m.who === 'me' ? ` <a onclick="gysWx.moDel('${m.id}')">删除</a>` : ''}</small><span onclick="gysWx.moAct('${m.id}')">··</span></div>${(m.likes.length || m.cm.length) ? `<div class="wx-mofb">${m.likes.length ? `<div class="lk">♡ ${m.likes.map(w => esc(nameOf(w))).join('，')}</div>` : ''}${m.cm.map(c => `<p onclick="gysWx.moCmt('${m.id}','${c.by}')"><b>${esc(nameOf(c.by))}</b>${c.to ? '回复<b>' + esc(nameOf(c.to)) + '</b>' : ''}：${esc(c.t)}</p>`).join('')}</div>` : ''}</div></div>`).join('') || '<div class="gys-empty">朋友圈还没有内容</div>'}</div>`;
 }
 function momWrite(m) { if (m.src === 'me') { const x = D.my.find(y => y.id === m.id); if (x) { x.likes = m.likes; x.cm = m.cm; } } else { const e = m.ref; e.wx = e.wx || { likes: [], cm: [] }; e.wx.likes = m.likes; e.wx.cm = m.cm.filter(c => c.wx); try { if (typeof saveAllData === 'function') saveAllData(); } catch (er) {} } saveD(); }
 W.moAct = async id => { const m = momOf(id); if (!m) return; const lk = m.likes.includes('me'); const i = await G.sheet([lk ? '取消赞' : '♡ 赞', '💬 评论'], ''); if (i === 0) { if (lk) m.likes = m.likes.filter(x => x !== 'me'); else m.likes.push('me'); momWrite(m); G.repaint(APP); } else if (i === 1) W.moCmt(id, ''); };
@@ -313,9 +314,9 @@ W.post = async () => {
     const text = await G.input('这一刻的想法…', ''); if (text === null || text === undefined) return;
     const imgs = await new Promise(res => { G.sheet(['🖼️ 配几张图', '不配图'], '').then(i => { if (i === 0) G.pickImgs(9, L => res(L)); else res([]); }); });
     if (!String(text).trim() && !imgs.length) return;
-    const loc = await G.input('所在位置（可空）', ''); const m = { id: G.uid('mo'), who: 'me', text: X.plain(text).slice(0, 500), imgs, loc: X.plain(loc || '').slice(0, 20), at: Date.now(), likes: [], cm: [] };
+    const loc = await G.input('所在位置（可空）', ''); const vis = (await pickVis()) || { mode: 'all', who: [] }; const m = { id: G.uid('mo'), who: 'me', text: X.plain(text).slice(0, 500), imgs, loc: X.plain(loc || '').slice(0, 20), at: Date.now(), likes: [], cm: [], vis };
     D.my.unshift(m); saveD(); G.repaint(APP); X.toast(X.v('发表了', '发到朋友圈了'), '');
-    G.chars().forEach(c => { setTimeout(async () => { const mm = D.my.find(x => x.id === m.id); if (!mm) return; if (!mm.likes.includes('c:' + c.id)) mm.likes.push('c:' + c.id); if (Math.random() < 0.7) { const r = X.plain(await X.ask(`${X.who(c)}\n她发了一条微信朋友圈：「${m.text}」${m.imgs.length ? '（配了 ' + m.imgs.length + ' 张图）' : ''}${m.loc ? '，定位：' + m.loc : ''}。你点了赞，在下面评论一句（共同好友都看得到，按你们的关系）。只写那一句。`) || '').slice(0, 120); if (r) mm.cm.push({ by: 'c:' + c.id, t: r, to: '', wx: 1 }); } saveD(); G.repaint(APP); G.notify(APP, c, `💚 <b>${X.esc(c.name)}</b> ${mm.cm.some(x => x.by === 'c:' + c.id) ? '评论' : '赞'}了你的朋友圈`, (mm.cm.filter(x => x.by === 'c:' + c.id).slice(-1)[0] || {}).t || '♡', X.go('gysWechatOpenMoments', '')); }, G.rnd(8, 90) * 1000); });
+    G.chars().filter(c => canSee(m, 'c:' + c.id)).forEach(c => { setTimeout(async () => { const mm = D.my.find(x => x.id === m.id); if (!mm || !canSee(mm, 'c:' + c.id)) return; if (!mm.likes.includes('c:' + c.id)) mm.likes.push('c:' + c.id); if (Math.random() < 0.7) { const r = X.plain(await X.ask(`${X.who(c)}\n她发了一条微信朋友圈：「${m.text}」${m.imgs.length ? '（配了 ' + m.imgs.length + ' 张图）' : ''}${m.loc ? '，定位：' + m.loc : ''}。你点了赞，在下面评论一句（共同好友都看得到，按你们的关系）。只写那一句。`) || '').slice(0, 120); if (r) mm.cm.push({ by: 'c:' + c.id, t: r, to: '', wx: 1 }); } saveD(); G.repaint(APP); G.notify(APP, c, `💚 <b>${X.esc(c.name)}</b> ${mm.cm.some(x => x.by === 'c:' + c.id) ? '评论' : '赞'}了你的朋友圈`, (mm.cm.filter(x => x.by === 'c:' + c.id).slice(-1)[0] || {}).t || '♡', X.go('gysWechatOpenMoments', '')); }, G.rnd(8, 90) * 1000); });
 };
 async function taMoment(c) {
     const o = X.json(await X.ask(P('wx.moment', DEF_MOMENT, { 我是谁: X.who(c), 最近: X.recent(c, 8) || '（最近没怎么聊）' }))); if (!o || !o.text) return null;
@@ -343,8 +344,76 @@ W.settings = () => G.push(APP, { title: '设置', html: () => `<label class="gys
 W.__keep = v => { D.cfg.keep = +v; saveD(); };
 W.export = () => { const L = ['💚 微信聊天记录 ' + new Date().toLocaleString()]; Object.values(D.th).forEach(t => { L.push('', '【' + thName(t) + '】'); t.msgs.forEach(m => L.push(`${new Date(m.at).toLocaleString()} ${m.from === 'me' ? '我' : m.from === 'sys' ? '' : nameOf(m.from)}：${preview(t, m)}`)); }); const s = L.join('\n'); try { if (typeof saveTextFileForApp === 'function') return saveTextFileForApp(s, '微信聊天记录.txt'); } catch (e) {} const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([s], { type: 'text/plain' })); a.download = '微信聊天记录.txt'; a.click(); };
 
+/* ---------------- 微信运动（258）：好友步数排行榜、点赞、占领封面；你的步数 = 陪你散步数到的 + 你自己填的 ---------------- */
+X.feat('gysWxRun', { n: '🏃 微信运动', desc: '微信里的步数排行榜：你和 TA 们今天各走了多少，能互相点赞，第一名占领封面；你的步数从「陪你散步」数的来，也能自己填' });
+const runOn = () => X.on('gysWxRun');
+const dk = (t) => { const d = new Date(t || Date.now()); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+function runDay(k) { D.run = D.run || {}; k = k || dk(); if (!D.run[k]) { D.run[k] = { me: null, s: {}, lk: {}, lkMe: {}, at: Date.now() }; runTrim(); } return D.run[k]; }
+function runTrim() { const ks = Object.keys(D.run || {}); const keep = Math.max(7, Number(D.cfg.runKeep) || 30); if (ks.length > keep) ks.sort((a, b) => D.run[a].at - D.run[b].at).slice(0, ks.length - keep).forEach(k => delete D.run[k]); }
+function walkSteps(k) { try { const wd = typeof window.gyxWalkData === 'function' ? window.gyxWalkData() : null; return wd ? (wd.walks || []).filter(w => dk(w.start) === k).reduce((n, w) => n + (Number(w.steps) || 0), 0) : 0; } catch (e) { return 0; } }
+function mySteps(k) { k = k || dk(); const d = runDay(k); return d.me != null ? d.me : walkSteps(k); }
+// TA 的步数：每人每天一个目标（按名字 + 日期定下来，不会每次刷新都变），白天慢慢涨上去；改过就用改的
+const hsh = s => { let h = 7; for (const ch of String(s)) h = (h * 131 + ch.charCodeAt(0)) % 1000003; return h; };
+function taSteps(w, k) {
+    k = k || dk(); const d = runDay(k); if (d.s[w] != null) return d.s[w];
+    const goal = 1800 + hsh(w + '|' + k) % 16200; if (k !== dk()) return goal;
+    const n = new Date(), h = n.getHours() + n.getMinutes() / 60; const f = h < 7 ? h / 7 * 0.04 : Math.min(1, 0.04 + Math.pow((h - 7) / 15, 1.1) * 0.96);
+    return Math.round(goal * f);
+}
+function runList(k) { k = k || dk(); const L = G.chars().map(c => 'c:' + c.id).concat(G.npcs().slice(0, 12).map(n => 'n:' + n.id)).map(w => ({ w, n: taSteps(w, k) })); L.push({ w: 'me', n: mySteps(k) }); return L.sort((a, b) => b.n - a.n); }
+const fmtN = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+W.run = (k) => { k = k || dk(); runDay(k); D.runSeen = Date.now(); saveD(); G.push(APP, { id: 'run', title: '', cls: 'wx-runb', html: () => runHtml(k) }); };
+function runHtml(k) {
+    const L = runList(k), d = runDay(k), top = L[0], me = L.findIndex(x => x.w === 'me'), tp = top ? G.prof(APP, top.w) : {};
+    const lkn = w => (w === 'me' ? Object.keys(d.lkMe).length : (d.lk[w] ? 1 : 0) + (hsh(w + k) % 4));
+    const row = (x, i) => `<div class="wx-rr${x.w === 'me' ? ' me' : ''}"><em>${i + 1}</em>${wav(x.w, 40)}<b onclick="${x.w === 'me' ? '' : `gysWx.card('${x.w}')`}">${esc(nameOf(x.w))}</b><span class="n${x.n >= 10000 ? ' hi' : ''}" onclick="gysWx.runEdit('${x.w}','${k}')">${fmtN(x.n)}</span><i class="${x.w === 'me' ? (Object.keys(d.lkMe).length ? 'on' : '') : (d.lk[x.w] ? 'on' : '')}" onclick="gysWx.runLike('${x.w}','${k}')">${d.lk[x.w] || (x.w === 'me' && Object.keys(d.lkMe).length) ? '♥' : '♡'}<small>${lkn(x.w) || ''}</small></i></div>`;
+    const days = Object.keys(D.run || {}).sort((a, b) => D.run[b].at - D.run[a].at).slice(0, 7);
+    return `<div class="wx-run"><div class="wx-runcv" style="${tp.bg ? `background-image:url('${tp.bg}')` : ''}"><span class="wx-mob-b" onclick="GYS.back('wechat')">‹</span><div><b>${top ? esc(nameOf(top.w)) : ''}</b> 夺得${k === dk() ? '今日' : k.replace(/^\d+-/, '').replace('-', '月') + '日'}排行榜冠军</div>${top ? wav(top.w, 56) : ''}</div>
+      ${me >= 0 ? `<div class="wx-rmine">${row(L[me], me)}<p>${mySteps(k) ? (runDay(k).me != null ? '自己填的步数 · 点数字改' : '「陪你散步」数到的步数 · 点数字可以自己填') : '还没有步数 · 点 0 自己填，或者开「陪你散步」出门走走'}</p></div>` : ''}
+      <div class="wx-rlist">${L.map(row).join('')}</div>
+      ${days.length > 1 ? `<div class="wx-sec">往日排行</div><div class="wx-cells">${days.filter(x => x !== k).map(x => `<div onclick="GYS.back('wechat');gysWx.run('${x}')">${x.replace(/^\d+-/, '').replace('-', '月')}日<em>我 ${fmtN(mySteps(x))} 步</em></div>`).join('')}</div>` : ''}
+      <div class="wx-cells"><div onclick="gysWx.runKeep()">排行记录留几天<em>${D.cfg.runKeep || 30} 天</em></div></div></div>`;
+}
+W.runEdit = async (w, k) => { const d = runDay(k); const cur = w === 'me' ? mySteps(k) : taSteps(w, k); const v = await G.input(`${w === 'me' ? '你' : nameOf(w)}${k === dk() ? '今天' : '那天'}走了多少步？（空着 = 恢复自动）`, String(cur)); if (v === null || v === undefined) return; const n = parseInt(String(v).replace(/\D/g, ''), 10); if (w === 'me') d.me = isNaN(n) ? null : Math.min(99999, n); else { if (isNaN(n)) delete d.s[w]; else d.s[w] = Math.min(99999, n); } saveD(); G.repaint(APP); };
+W.runLike = (w, k) => { const d = runDay(k); if (w === 'me') return X.toast(X.v('自己不能给自己点赞', '这是你自己呀'), ''); if (d.lk[w]) delete d.lk[w]; else { d.lk[w] = Date.now(); X.toast(X.v('赞了', '♥ 点了', '点赞成功'), ''); const c = charOfW(w); if (c && Math.random() < 0.35) setTimeout(() => { const t = dmOf(w); taReply(t, `她刚在微信运动里给你点了个赞（你今天 ${taSteps(w)} 步，她 ${mySteps()} 步）`); }, G.rnd(4, 20) * 1000); } saveD(); G.repaint(APP); };
+W.runKeep = async () => { const i = await G.sheet(['7 天', '30 天', '90 天', '365 天'], '排行记录留几天'); if (i == null) return; D.cfg.runKeep = [7, 30, 90, 365][i]; runTrim(); saveD(); G.repaint(APP); };
+window.gysWechatOpenRun = () => { G.open(APP, 'chats'); W.run(); };
+
+/* ---------------- 聊天背景（258）：每个聊天单独设，也能设一张全部聊天共用的 ---------------- */
+W.bgSet = (id) => {
+    const set = v => { if (id) { const t = thOf(id); if (!t) return; t.bg = v; } else D.cfg.bg = v; saveD(); G.repaint(APP); X.toast(v ? X.v('背景换好了', '换上了') : X.v('背景恢复默认', '换回默认了'), ''); };
+    G.sheet(['🖼️ 从相册选一张（可以裁）', '🎨 纯色', '恢复默认'], id ? '设置当前聊天背景' : '选择所有聊天的背景').then(async i => {
+        if (i === 0) G.pickImg(9 / 19.5, src => set(src));
+        else if (i === 1) { const C = ['#ededed', '#dfe8e0', '#e5e1f2', '#f3e3e3', '#e1ecf4', '#f5efe1', '#2b2b2b']; const k = await G.sheet(['浅灰（默认）', '薄荷', '淡紫', '浅粉', '浅蓝', '米色', '深色'], '纯色'); if (k != null) set(k === 0 ? '' : C[k]); }
+        else if (i === 2) set('');
+    });
+};
+const bgOfTh = t => (t && t.bg) || D.cfg.bg || '';
+function applyBg(r, t) { const b = r.querySelector('.gys-body'); if (!b) return; const v = bgOfTh(t); if (!v) { b.style.removeProperty('background'); return; } b.style.setProperty('background', /^#|^rgb|^hsl/.test(v) ? v : `url('${v}') center/cover no-repeat`, 'important'); }
+// 单聊的「聊天信息」：照真微信 —— 头像 + 「＋」，查找聊天记录，免打扰 / 置顶 / 提醒，设置当前聊天背景，清空聊天记录
+W.dmInfo = id => { const t = thOf(id); if (!t) return; G.push(APP, { title: '聊天信息', html: () => `<div class="wx-gm"><span onclick="gysWx.card('${t.who}')">${wav(t.who, 50)}<i>${esc(nameOf(t.who))}</i></span><span onclick="gysWx.newGroup()"><b>＋</b><i></i></span></div>
+  <div class="wx-cells"><div onclick="gysWx.searchIn('${id}')">查找聊天记录</div></div>
+  <div class="wx-cells"><div onclick="gysWx.toggle('${id}','mute')">消息免打扰<em>${t.mute ? '开' : '关'}</em></div><div onclick="gysWx.toggle('${id}','pin')">置顶聊天<em>${t.pin ? '开' : '关'}</em></div></div>
+  <div class="wx-cells"><div onclick="gysWx.bgSet('${id}')">设置当前聊天背景<em>${t.bg ? '已设置' : ''}</em></div></div>
+  <div class="wx-cells"><div class="red" onclick="gysWx.clearTh('${id}')">清空聊天记录</div></div>` }); };
+W.searchIn = async id => { const t = thOf(id); const q = await G.input('搜索这个聊天里的内容', ''); if (!q) return; const L = t.msgs.filter(m => (m.text || m.desc || '').includes(q)); G.push(APP, { title: '“' + esc(q) + '”', html: () => `<div class="wx-cells">${L.map(m => `<div onclick="GYS.back('wechat');GYS.back('wechat')"><span class="wx-cn">${esc(m.text || m.desc || '')}<small>${esc(m.from === 'me' ? G.meName() : nameOf(m.from))} · ${new Date(m.at).toLocaleString()}</small></span></div>`).join('') || '<div>没有找到</div>'}</div>` }); };
+W.clearTh = async id => { if (!(await G.confirm('清空和 TA 的微信聊天记录？（清了就没了）'))) return; const t = thOf(id); if (t) { t.msgs = []; t.unread = 0; } saveD(); G.back(APP); G.repaint(APP); };
+
+/* ---------------- 朋友圈可见范围（258）：公开 / 私密 / 部分可见 / 不给谁看 ---------------- */
+const VIS_N = { all: '公开', self: '私密', only: '部分可见', except: '不给谁看' };
+const canSee = (m, w) => { const v = m && m.vis; if (!v || v.mode === 'all') return true; if (v.mode === 'self') return false; if (v.mode === 'only') return (v.who || []).includes(w); if (v.mode === 'except') return !(v.who || []).includes(w); return true; };
+async function pickVis() {
+    const i = await G.sheet(['公开（所有朋友可见）', '私密（仅自己可见）', '部分可见（选中的朋友可见）', '不给谁看（选中的朋友不可见）'], '谁可以看'); if (i == null) return null;
+    const mode = ['all', 'self', 'only', 'except'][i]; if (mode === 'all' || mode === 'self') return { mode, who: [] };
+    const L = G.chars().map(c => 'c:' + c.id).concat(G.npcs().map(n => 'n:' + n.id)); const sel = [];
+    for (;;) { const k = await G.sheet(L.map(w => (sel.includes(w) ? '✅ ' : '⬜ ') + nameOf(w)).concat(['完成（' + sel.length + '）']), mode === 'only' ? '给谁看' : '不给谁看'); if (k == null) return null; if (k === L.length) break; const j = sel.indexOf(L[k]); if (j >= 0) sel.splice(j, 1); else sel.push(L[k]); }
+    return { mode, who: sel };
+}
+W.moVis = async id => { const m = D.my.find(x => x.id === id); if (!m) return; const v = await pickVis(); if (!v) return; m.vis = v; saveD(); G.repaint(APP); X.toast(X.v('改好了', '可见范围改了'), VIS_N[v.mode]); };
+const visTag = m => m.who === 'me' && m.vis && m.vis.mode !== 'all' ? ` <a class="wx-movis" onclick="gysWx.moVis('${m.id}')">${m.vis.mode === 'self' ? '🔒' : '👥'}${m.vis.mode === 'self' ? '' : ' ' + VIS_N[m.vis.mode]}</a>` : (m.who === 'me' ? ` <a class="wx-movis" onclick="gysWx.moVis('${m.id}')">👁</a>` : '');
+
 G.app(APP, {
-    tabs: [['chats', '💬', '微信', () => unreadAll() || ''], ['contacts', '👥', '通讯录'], ['discover', '🧭', '发现', () => newMoments() ? '•' : ''], ['me', '👤', '我']],
+    tabs: [['chats', 'i:chat', '微信', () => unreadAll() || ''], ['contacts', 'i:people', '通讯录'], ['discover', 'i:compass', '发现', () => newMoments() ? '•' : ''], ['me', 'i:person', '我']],
     head, render: t => t === 'contacts' ? contactsTab() : t === 'discover' ? discoverTab() : t === 'me' ? meTab() : chatsTab()
 });
 window.gysWechatOpen = tab => G.open(APP, tab);
@@ -367,8 +436,8 @@ X.action({ key: 'gys_wx_text', label: '在微信上给她发几条', hint: '随�
 } }, 'gysWechat');
 X.action({ key: 'gys_wx_reply', label: '回她在微信上发的消息', hint: '刚才没顾上，现在回', need: c => { const t = D.th['c:' + c.id]; if (!t || BUSY[t.id]) return false; const l = t.msgs.filter(m => m.from !== 'sys').slice(-1)[0]; return !!(l && l.from === 'me' && Date.now() - l.at > 5 * 60e3); }, run: async c => { const t = D.th['c:' + c.id]; await taReply(t, '你刚才在忙，过了一会儿才看到她的消息'); return { text: '回了她的微信', selfNotified: true }; } }, 'gysWechat');
 X.action({ key: 'gys_wx_moment', label: '发一条微信朋友圈', hint: '只有微信好友看得到', need: c => rare(c, 'm', 30), run: async c => { mark(c, 'm'); const e = await taMoment(c); if (!e) return null; G.notify(APP, c, `🌀 <b>${X.esc(c.name)}</b> 发了朋友圈`, e.moment.slice(0, 40), X.go('gysWechatOpenMoments', 'c:' + c.id)); return { text: '发了条微信朋友圈：' + e.moment.slice(0, 30), selfNotified: true, jump: X.go('gysWechatOpenMoments', 'c:' + c.id) }; } }, 'gysWechat');
-X.action({ key: 'gys_wx_like', label: '去她的微信朋友圈点赞评论', hint: '她发的朋友圈', need: c => D.my.some(m => Date.now() - m.at < 3 * 864e5 && !m.cm.some(x => x.by === 'c:' + c.id)), run: async c => {
-    const m = D.my.find(m => Date.now() - m.at < 3 * 864e5 && !m.cm.some(x => x.by === 'c:' + c.id)); if (!m) return null;
+X.action({ key: 'gys_wx_like', label: '去她的微信朋友圈点赞评论', hint: '她发的朋友圈', need: c => D.my.some(m => canSee(m, 'c:' + c.id) && Date.now() - m.at < 3 * 864e5 && !m.cm.some(x => x.by === 'c:' + c.id)), run: async c => {
+    const m = D.my.find(m => canSee(m, 'c:' + c.id) && Date.now() - m.at < 3 * 864e5 && !m.cm.some(x => x.by === 'c:' + c.id)); if (!m) return null;
     const r = X.plain(await X.ask(`${X.who(c)}\n她发了一条微信朋友圈：「${m.text}」。你点了赞，在下面评论一句（共同好友都看得到）。只写那一句。`) || '').slice(0, 120); if (!r) return null;
     if (!m.likes.includes('c:' + c.id)) m.likes.push('c:' + c.id); m.cm.push({ by: 'c:' + c.id, t: r, to: '', wx: 1 }); saveD();
     G.notify(APP, c, `💚 <b>${X.esc(c.name)}</b> 评论了你的朋友圈`, r, X.go('gysWechatOpenMoments', '')); return { text: '在她的朋友圈下面评论：' + r, selfNotified: true };
@@ -385,7 +454,8 @@ X.ctx(id => {
     const c = X.char(id); if (!c) return ''; const t = D.th['c:' + c.id], L = [];
     if (t && t.msgs.length) L.push('微信里最近：\n' + t.msgs.filter(m => m.from !== 'sys').slice(-6).map(m => lineOf(t, m, 'c:' + c.id).slice(0, 80)).join('\n'));
     const st = statusOf('me'); if (st) L.push(`她的微信状态：${st.ico} ${st.t}`);
-    const mo = D.my[0]; if (mo && Date.now() - mo.at < 2 * 864e5) L.push('她最近发的朋友圈：' + mo.text.slice(0, 40));
+    const mo = D.my.find(m => canSee(m, 'c:' + c.id)); if (mo && Date.now() - mo.at < 2 * 864e5) L.push('她最近发的朋友圈：' + mo.text.slice(0, 40));
+    if (runOn()) { const ms = mySteps(); if (ms) L.push(`微信运动：她今天 ${ms} 步，你 ${taSteps('c:' + c.id)} 步`); }
     return L.length ? `【微信（另一个软件，你记得）】${L.join('\n')}` : '';
 }, 'gysWechat');
 X.inj('gysWechat', [['微信', '微信：你们在微信上最近聊的、她的状态、她的朋友圈', '让 TA 在别处聊天时也记得微信里说过什么']]);
@@ -393,7 +463,7 @@ G.feedReg('wechat', () => D.subs.flatMap(s => s.arts.slice(0, 1).map(a => ({ app
 
 X.css('gys-wechat-css', `
 .gys-wechat{--gys-accent:#07c160;background:#ededed;color:#191919;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}body.dark-theme .gys-wechat{background:#111;color:#d5d5d5}
-.gys-wechat .gys-tabs{background:#f7f7f7!important}body.dark-theme .gys-wechat .gys-tabs{background:#191919!important}.gys-wechat .gys-tb i{font-size:22px;filter:grayscale(1);opacity:.7}.gys-wechat .gys-tb.on i{filter:none;opacity:1}.gys-wechat .gys-tb.on{color:#07c160}
+.gys-wechat .gys-tabs{background:#f7f7f7!important}body.dark-theme .gys-wechat .gys-tabs{background:#191919!important}.gys-wechat .gys-tb{color:#191919}.gys-wechat .gys-tb.on{color:#07c160}body.dark-theme .gys-wechat .gys-tb{color:#d5d5d5}.gys-wechat .gys-tb.on{color:#07c160}
 .wx-hd{background:#ededed!important;border:none!important}body.dark-theme .wx-hd{background:#111!important}
 .wx-av{display:inline-flex;border-radius:5px;overflow:hidden;flex-shrink:0}.wx-av .gys-av{border-radius:5px!important;width:100%!important;height:100%!important}
 .wx-srch{margin:4px 10px 8px;background:#fff;border-radius:6px;text-align:center;color:#b2b2b2;padding:8px;font-size:14px;cursor:pointer}body.dark-theme .wx-srch{background:#222}
@@ -443,4 +513,27 @@ X.css('gys-wechat-css', `
 (async () => { await G.ready(); D = Object.assign(D, await ST.get('d', {}) || {}); ['th', 'status', 'remark', 'pat', 'last', 'cfg'].forEach(k => { if (!D[k] || typeof D[k] !== 'object' || Array.isArray(D[k])) D[k] = {}; }); ['my', 'favs', 'subs'].forEach(k => { if (!Array.isArray(D[k])) D[k] = []; }); D.cfg.keep = D.cfg.keep || 800; })();
 window.gysWxState = () => D;
 // 💬 互通（256）
-try { G.chatReg(APP, { lines: c => { const t = D.th['c:' + c.id]; return t ? t.msgs.filter(m => m.from !== 'sys').slice(-6).map(m => ({ at: m.at, t: lineOf(t, m, 'c:' + c.id).replace(/^你：/, '你（' + c.name + '）：') })) : []; }, lastMe: c => { const t = D.th['c:' + c.id]; const m = t && t.msgs.filter(x => x.from === 'me').slice(-1)[0]; return m ? m.at : 0; }, proactive: async c => { const a = typeof GY_AUTONOMY_ACTIONS !== 'undefined' && GY_AUTONOMY_ACTIONS.find(x => x.key === 'gys_wx_text'); return !!(a && await a.run(c)); } }); } catch (e) {}
+try { G.chatReg(APP, { all: c => { const t = D.th['c:' + c.id]; return t ? t.msgs.filter(m => m.from !== 'sys').map(m => ({ at: m.at, t: lineOf(t, m, 'c:' + c.id) })) : []; }, lines: c => { const t = D.th['c:' + c.id]; return t ? t.msgs.filter(m => m.from !== 'sys').slice(-6).map(m => ({ at: m.at, t: lineOf(t, m, 'c:' + c.id).replace(/^你：/, '你（' + c.name + '）：') })) : []; }, lastMe: c => { const t = D.th['c:' + c.id]; const m = t && t.msgs.filter(x => x.from === 'me').slice(-1)[0]; return m ? m.at : 0; }, proactive: async c => { const a = typeof GY_AUTONOMY_ACTIONS !== 'undefined' && GY_AUTONOMY_ACTIONS.find(x => x.key === 'gys_wx_text'); return !!(a && await a.run(c)); } }); } catch (e) {}
+// 🏃 微信运动（258）：TA 会去给你点赞；今天面板、小组件、记忆总览
+X.action({ key: 'gys_wx_run_like', label: '在微信运动里给她点赞', hint: '看到她今天走了多少步', need: c => runOn() && mySteps() > 0 && !runDay().lkMe['c:' + c.id], run: async c => {
+    const d = runDay(); d.lkMe['c:' + c.id] = Date.now(); saveD(); G.repaint(APP);
+    const ms = mySteps(), ts = taSteps('c:' + c.id);
+    G.notify(APP, c, `🏃 <b>${X.esc(nameOf('c:' + c.id))}</b> 赞了你`, X.v(`你今天 ${fmtN(ms)} 步`, `微信运动 · 你今天 ${fmtN(ms)} 步`, `TA 今天 ${fmtN(ts)} 步，你 ${fmtN(ms)} 步`), X.go('gysWechatOpenRun'));
+    return { text: `在微信运动里给她点了个赞（她今天 ${ms} 步，你 ${ts} 步）`, selfNotified: true, jump: X.go('gysWechatOpenRun') };
+} }, 'gysWxRun');
+X.today(() => { if (!runOn() || !G.chars().length) return null; const L = runList(), me = L.findIndex(x => x.w === 'me'); const lk = Object.keys(runDay().lkMe); return { title: '🏃 微信运动', rows: [{ t: '我', x: `${fmtN(mySteps())} 步 · 第 ${me + 1} 名${lk.length ? ' · ' + lk.map(nameOf).join('、') + ' 赞了你' : ''}`, go: X.go('gysWechatOpenRun') }].concat(L.filter(x => x.w !== 'me' && x.w.startsWith('c:')).slice(0, 2).map(x => ({ t: nameOf(x.w), x: fmtN(x.n) + ' 步', go: X.go('gysWechatOpenRun') }))) }; }, 'gysWxRun');
+X.widget('gysWxRunW', { n: '微信运动', sizes: ['s', 'm'], tap: () => window.gysWechatOpenRun(), r: () => { const L = runList(), me = L.findIndex(x => x.w === 'me'); return `<div style="padding:10px;font-size:12px;line-height:1.6"><b style="color:#07c160">🏃 微信运动</b><br><span style="font-size:20px;font-weight:600">${fmtN(mySteps())}</span> 步<br>第 ${me + 1} 名${L[0] && L[0].w !== 'me' ? ` · 冠军 ${esc(nameOf(L[0].w))}` : ' · 你是冠军'}</div>`; } }, 'gysWxRun');
+X.mem({ k: 'gysWxRun', ico: '🏃', n: 'TA 的微信运动步数', d: '每天 TA 走了多少步（改了就是改步数，删了就恢复成自动的）', items: c => Object.keys(D.run || {}).sort((a, b) => D.run[b].at - D.run[a].at).map(k => ({ k, w: 'c:' + c.id })), text: o => `${o.k}：${taSteps(o.w, o.k)} 步${runDay(o.k).lkMe[o.w] ? '（给她点了赞）' : ''}`, edit: (o, v) => { const n = parseInt(String(v).replace(/^[^：]*：/, '').replace(/\D/g, ''), 10); if (!isNaN(n)) runDay(o.k).s[o.w] = Math.min(99999, n); }, del: (c, i) => { const ks = Object.keys(D.run || {}).sort((a, b) => D.run[b].at - D.run[a].at); const k = ks[i]; if (k) { delete runDay(k).s['c:' + c.id]; delete runDay(k).lkMe['c:' + c.id]; } }, meta: o => o.k, save: () => saveD() }, 'gysWxRun');
+X.css('gys-wechat-run-css', `
+.gys-root.gys-wechat .wx-runb{background:#ededed!important}body.dark-theme .gys-root.gys-wechat .wx-runb{background:#111!important}
+.wx-runcv{position:relative;height:260px;background:linear-gradient(160deg,#5b8c6f,#2f5d46) center/cover;color:#fff;display:flex;align-items:flex-end;justify-content:space-between;padding:0 16px 14px;box-sizing:border-box;margin-bottom:36px}
+.wx-runcv>div{font-size:15px;text-shadow:0 1px 3px rgba(0,0,0,.45);margin-bottom:-26px}.wx-runcv>.wx-av{margin-bottom:-30px;border:2px solid #fff}
+.wx-runav{background:#07c160;color:#fff;font-size:26px;align-items:center;justify-content:center}
+.wx-rmine{background:#fff;margin-bottom:8px}body.dark-theme .wx-rmine{background:#191919}.wx-rmine p{margin:0;padding:0 16px 10px 62px;color:#999;font-size:12px}
+.wx-rlist{background:#fff;margin-bottom:8px}body.dark-theme .wx-rlist{background:#191919}
+.wx-rr{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:.5px solid #eee}body.dark-theme .wx-rr{border-color:#222}
+.wx-rr>em{width:22px;font-style:normal;color:#999;font-size:16px;text-align:center}.wx-rr>b{flex:1;font-weight:400;font-size:16px;cursor:pointer;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.wx-rr .n{font-size:22px;color:#191919;cursor:pointer;font-variant-numeric:tabular-nums}body.dark-theme .wx-rr .n{color:#ddd}.wx-rr .n.hi{color:#fa9d3b}
+.wx-rr i{font-style:normal;display:flex;flex-direction:column;align-items:center;width:30px;color:#b2b2b2;font-size:19px;cursor:pointer;line-height:1}.wx-rr i.on{color:#fa5151}.wx-rr i small{font-size:11px;color:#999;margin-top:2px}
+.wx-movis{color:#576b95;margin-left:4px;cursor:pointer}
+`);

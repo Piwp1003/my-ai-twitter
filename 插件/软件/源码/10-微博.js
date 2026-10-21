@@ -491,8 +491,8 @@ function feed() {
 W.refresh = () => genFeed(8);
 function head(tab) {
     if (tab === 'home') return `<div class="gys-hd wb-hd0"><span class="gys-bk" onclick="GYS.close('weibo')">${G.ic('back', 22)}</span><div class="wb-ft">${[['follow', '关注'], ['hot', '推荐'], ['near', '同城']].map(([k, n]) => `<span class="${FT === k ? 'on' : ''}" onclick="gysWb.ft('${k}')">${n}</span>`).join('')}</div><span class="gys-hr"><span onclick="gysWb.refresh()">${G.ic('flame', 22)}</span><span onclick="gysWb.compose()">${G.ic('compose', 22)}</span></span></div>`;
-    const T = { find: '发现', msg: '消息', me: '我' };
-    return `<div class="gys-hd"><span class="gys-bk" onclick="GYS.close('weibo')">${G.ic('back', 22)}</span><b>${T[tab] || '微博'}</b><span class="gys-hr">${tab === 'msg' ? '' : tab === 'find' ? '<span onclick="gysWb.hotRefresh()">' + G.ic('flame', 22) + '</span>' : ''}</span></div>`;
+    const T = { video: '视频', find: '发现', msg: '消息', me: '我' };
+    return `<div class="gys-hd"><span class="gys-bk" onclick="GYS.close('weibo')">${G.ic('back', 22)}</span><b>${T[tab] || '微博'}</b><span class="gys-hr">${tab === 'msg' ? '' : tab === 'video' ? '<span onclick="gysWb.videoGen()">' + G.ic('film', 22) + '</span>' : tab === 'find' ? '<span onclick="gysWb.hotRefresh()">' + G.ic('flame', 22) + '</span>' : ''}</span></div>`;
 }
 function find() {
     const H = D.hot.list.slice(0, 10);
@@ -598,7 +598,8 @@ function videoTop() {
     return L.length ? L.map(v => `<div class="wb-row" onclick="gysWb.videoOpen('${v.id}')">${vThumb(v)}<div><b>${esc(v.title)}</b><em>@${esc(nameOf(v.by))} · ❤️ ${G.fmtN(v.likes)}</em></div></div>`).join('')
         : `<div class="gys-empty" style="padding:12px">还没有视频 ${BUSY.vid ? '<span class="gys-busy">⏳ 刷新中…</span>' : '<span class="gys-btn sm" onclick="gysWb.videoGen()">刷一批</span>'}</div>`;
 }
-W.videoAll = () => G.push(APP, { title: '视频号', right: '<span onclick="gysWb.videoGen()">' + G.ic('film', 22) + '</span>', html: () => `${BUSY.vid ? '<div class="gys-busy">⏳ 正在刷新…</div>' : ''}<div class="wb-vgrid">${(D.videos || []).map(v => `<div class="wb-vcard" onclick="gysWb.videoOpen('${v.id}')">${vThumb(v)}<b>${esc(v.title)}</b><em>@${esc(nameOf(v.by))}</em></div>`).join('') || '<div class="gys-empty">还没有视频</div>'}</div><div class="gys-acts"><span class="gys-btn" onclick="gysWb.videoGen()">🔄 刷一批</span><span class="gys-btn ghost" onclick="gysWb.videoPost()">＋ 发个视频</span></div>` });
+function videoTab() { if (!(D.videos || []).length && !BUSY.vid) setTimeout(() => W.videoGen(), 50); return `${BUSY.vid ? '<div class="gys-busy">⏳ 正在刷新…</div>' : ''}<div class="wb-vgrid">${(D.videos || []).map(v => `<div class="wb-vcard" onclick="gysWb.videoOpen('${v.id}')">${vThumb(v)}<b>${esc(v.title)}</b><em>@${esc(nameOf(v.by))}</em></div>`).join('') || '<div class="gys-empty">还没有视频</div>'}</div><div class="gys-acts"><span class="gys-btn" onclick="gysWb.videoGen()">🔄 刷一批</span><span class="gys-btn ghost" onclick="gysWb.videoPost()">＋ 发个视频</span></div>`; }
+W.videoAll = () => G.tab(APP, 'video');
 W.videoOpen = id => { const v = (D.videos || []).find(x => x.id === id); if (!v) return; G.push(APP, { title: '视频号', html: () => `<div class="wb-vplay">${esc(v.cover || '🎬')}<b class="wb-vdur">${esc(v.dur || '0:15')}</b></div>
     <div class="wb-vmeta">${G.av(APP, v.by, 42)}<div><b>@${esc(nameOf(v.by))}</b><small>${G.ago(v.at)}</small></div><span class="gys-btn sm ${v.liked ? '' : 'ghost'}" onclick="gysWb.videoLike('${v.id}')">❤️ ${G.fmtN(v.likes)}</span></div>
     <div class="wb-vdesc"><b>${esc(v.title)}</b><p>${esc(v.desc || '')}</p></div>
@@ -816,8 +817,8 @@ function cmtBar(id) { return `<div class="wb-cin"><span class="wb-cin-who" oncli
 
 /* ---------------- 外壳 ---------------- */
 G.app(APP, {
-    tabs: [['home', 'i:home', '首页'], ['find', 'i:compass', '发现'], ['msg', 'i:mail', '消息', () => unread() || ''], ['me', 'i:person', '我']],
-    head, render: t => t === 'find' ? find() : t === 'msg' ? msg() : t === 'me' ? meTab() : feed(),
+    tabs: [['home', 'i:home', '首页'], ['video', 'i:video', '视频'], ['find', 'i:compass', '发现'], ['msg', 'i:mail', '消息', () => unread() || ''], ['me', 'i:person', '我']],
+    head, render: t => t === 'video' ? videoTab() : t === 'find' ? find() : t === 'msg' ? msg() : t === 'me' ? meTab() : feed(),
     onOpen: () => { ensureMkt(); ensureSupers(); if (!D.posts.length && !BUSY.feed) genFeed(8); else if (Date.now() - (D.lastFeed || 0) > 3 * 3600e3 && !BUSY.feed) genFeed(6); if (!D.hot.list.length || Date.now() - D.hot.at > 6 * 3600e3) genHot(); const L = cast().filter(w => !G.prof(APP, w).gen); if (L.length) G.genProfiles(APP, L.slice(0, 8)).then(() => G.repaint(APP)); }
 });
 
@@ -979,4 +980,4 @@ body.dark-theme .wb-dm span{background:#222}
 (async () => { await G.ready(); D = Object.assign(D, await ST.get('d', {})); ['posts', 'bots', 'notes', 'stories', 'fav', 'alts', 'videos'].forEach(k => { if (!Array.isArray(D[k])) D[k] = []; }); ['supers', 'dms', 'xacc', 'follow', 'seenDel'].forEach(k => { if (!D[k] || typeof D[k] !== 'object') D[k] = {}; }); D.hot = D.hot || { list: [], at: 0 }; D.cfg = Object.assign({ refresh: 6, keep: 600 }, D.cfg || {}); ensureMkt(); })();
 window.gysWbState = () => D;
 // 💬 互通（256）：微博私信别处也知道
-try { G.chatReg(APP, { lines: c => { const th = D.dms[thKey('me', 'c:' + c.id)]; return th ? th.msgs.slice(-6).map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你（' + c.name + '）') + '：' + m.t })) : []; }, lastMe: c => { const th = D.dms[thKey('me', 'c:' + c.id)]; const m = th && th.msgs.filter(x => x.from === 'me').slice(-1)[0]; return m ? m.at : 0; } }); } catch (e) {}
+try { G.chatReg(APP, { all: c => { const th = D.dms[thKey('me', 'c:' + c.id)]; return th ? th.msgs.map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你') + '：' + m.t })) : []; }, lines: c => { const th = D.dms[thKey('me', 'c:' + c.id)]; return th ? th.msgs.slice(-6).map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你（' + c.name + '）') + '：' + m.t })) : []; }, lastMe: c => { const th = D.dms[thKey('me', 'c:' + c.id)]; const m = th && th.msgs.filter(x => x.from === 'me').slice(-1)[0]; return m ? m.at : 0; } }); } catch (e) {}

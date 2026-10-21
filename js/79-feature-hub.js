@@ -133,6 +133,7 @@
     // v245：点进合集先是一列（竖着排，图标 + 名字 + 一句话）；点哪一行就直接打开那个功能——
     //       插件的面板画在合集里（顶上有「‹ 返回」回到这一列），谷雨自带的整页功能直接跳过去，不再多一张「打开 ›」卡片。
     //       gyHubOpen(合集id) ＝ 打开那一列；gyHubOpen(合集id, 成员id) ＝ 直接打开那一个（指南「去看看」、通知用）。
+    window.gyHubHiddenIds = () => on() ? hiddenIds() : new Set();
     window.gyHubOpen = function (fid, tab) {
         const F = FOLDERS.find(x => x.id === fid); if (!F) return;
         if (F.open && !tab) { try { if (F.open()) return; } catch (e) {} }   // 自己有一整页的合集（📱 软件 = 手机桌面）

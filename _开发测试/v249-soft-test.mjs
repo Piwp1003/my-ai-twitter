@@ -54,7 +54,7 @@ const r = await page.evaluate(async () => {
   // 🧣 微博：整页、首页刷出来、热搜
   gysWeiboOpen('home'); await s(600);
   const R = document.getElementById('gys_weibo'), rc = R.getBoundingClientRect();
-  o.wbFull = R.classList.contains('on') && rc.width >= 380 && rc.height >= 800 && R.querySelectorAll('.gys-tb').length === 4;
+  o.wbFull = R.classList.contains('on') && rc.width >= 380 && rc.height >= 800 && R.querySelectorAll('.gys-tb').length === 5;
   const W = gysWbState();
   o.wbFeed = W.posts.some(p => p.by === 'c:9991' && /江边夜景/.test(p.text) && p.cmts.length >= 1) && W.hot.list.some(h => /Leon/.test(h.title));
   // 发一条微博 → 角色来评论

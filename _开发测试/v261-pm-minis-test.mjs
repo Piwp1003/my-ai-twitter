@@ -1,0 +1,27 @@
+// 261：小手机桌面上，小功能页里的每一项都有图标，点了直接打开
+import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
+import path from 'path'; import fs from 'fs';
+const root = process.cwd();
+const ALL = JSON.parse(fs.readFileSync(path.join(root, '插件', '软件', '软件全家桶.json'), 'utf8'));
+const browser = await launchBrowser(chromium);
+const results = []; const check = (n, ok, e = '') => results.push({ n, ok: !!ok, e });
+const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+const errs = []; page.on('pageerror', e => errs.push(e.message));
+await page.route(/^https?:\/\//, r => r.abort());
+await page.goto(fileUrl(path.join(root, 'index.html')));
+await page.waitForFunction(() => window.__guyuBooted && window.gyPmSet && typeof executePluginOnLoad === 'function', { timeout: 20000 });
+await page.evaluate(({ ALL }) => { ALL.forEach(p => executePluginOnLoad(p)); }, { ALL });
+await page.waitForTimeout(1500);
+await page.evaluate(() => gyPmSet(true)); await page.waitForTimeout(800);
+const r = await page.evaluate(() => { const hid = gyHubHiddenIds(); const vis = GY_MINI_FEATURES.filter(f => !hid.has(f.id)).map(f => f.id); const icons = [...document.querySelectorAll('#gyPmHome .pm-app[data-pmapp^="mf_"]')].map(e => e.dataset.pmapp.slice(3)); return { vis, icons, miss: vis.filter(id => !icons.includes(id) && !['music','map','kit','days','relations','now','emoticon','reading_together','gossip'].includes(id)) }; });
+check('小功能页里看得到的都有桌面图标', r.icons.length >= 10 && r.miss.length === 0, JSON.stringify({ n: r.icons.length, miss: r.miss }));
+check('合集是一个图标（📱 软件）', r.icons.includes('hub_soft') && !r.icons.includes('gysWeibo'), r.icons.join(','));
+await page.evaluate(() => gyPmOpen('mf_hub_soft')); await page.waitForTimeout(500);
+check('点「软件」图标直接打开', await page.evaluate(() => !!document.getElementById('gyHubOv') && getComputedStyle(document.getElementById('gyHubOv')).display !== 'none'));
+await browser.close();
+const pass = results.filter(x => x.ok).length;
+console.log('\n===== 261 小手机小功能图标 =====');
+results.forEach(x => console.log(`${x.ok ? '✅' : '❌'} ${x.n}${x.ok ? '' : ' ' + x.e}`));
+if (errs.length) console.log('⚠️ ' + [...new Set(errs)].slice(0, 8).join('\n'));
+console.log(`\n${pass}/${results.length} 通过`);
