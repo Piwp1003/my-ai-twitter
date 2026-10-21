@@ -108,6 +108,7 @@ const GY_CALL_MAP = {
     '77-mood-stat|taLine': ['心情手账', 'TA 看你心情说一句'], '77-mood-stat|taWrite': ['心情手账', 'TA 写自己的手账'],
     '94-guide-help|askApi': ['客服', '客服答疑'],
     // 🔌 测试连接（js/97）
+    '62-phone-mode|xExGen': ['小手机', '推特搜索页刷新趋势'],
     gyApiTestChat: ['接口测试', '测试主 / 副 API'], gyApiTestVec: ['接口测试', '测试向量 API']
 };
 // 栈里没有认识的函数时，按文件归到哪个项目（细项写函数名）

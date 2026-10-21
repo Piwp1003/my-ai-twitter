@@ -908,26 +908,29 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
     let XPREV = null;   // 进推特前聊天列表是头像条还是列表（推特私信一律列表，出来还原）
     function xBar() {
         let b = document.getElementById('gyPmX'); const bd = document.body.classList;
-        const inX = xOn() && bd.contains('gyphm-app') && !S.native && (S.view === 'home' || S.view === 'chat') && (S.app === 'home' || S.app === 'chat' || S.app === 'x');
+        const inX = xOn() && bd.contains('gyphm-app') && !S.native && (S.view === 'home' || S.view === 'chat' || S.view === 'search') && (S.app === 'home' || S.app === 'chat' || S.app === 'x');
         const thread = inX && S.view === 'chat' && chatOpen();
         const show = inX && !thread;
-        bd.toggle('gyphm-xa', inX); bd.toggle('gyphm-xt', thread); bd.toggle('gyphm-x', show); bd.toggle('gyphm-xdm', inX && S.view === 'chat'); const inXP = xOn() && bd.contains('gyphm-app') && !S.native && (S.view === 'profile' || S.view === 'postDetail') && (S.app === 'home' || S.app === 'chat' || S.app === 'x'); bd.toggle('gyphm-xp', inXP); bd.toggle('gyphm-xk', (inX || inXP) && typeof window.gyPmXTheme === 'function' && window.gyPmXTheme() === 'black'); if (inX || inXP) { try { xBmButtons(); } catch (e) {} }
+        bd.toggle('gyphm-xa', inX); bd.toggle('gyphm-xs', inX && S.view === 'search'); bd.toggle('gyphm-xt', thread); bd.toggle('gyphm-x', show); bd.toggle('gyphm-xdm', inX && S.view === 'chat'); const inXP = xOn() && bd.contains('gyphm-app') && !S.native && (S.view === 'profile' || S.view === 'postDetail') && (S.app === 'home' || S.app === 'chat' || S.app === 'x'); bd.toggle('gyphm-xp', inXP); bd.toggle('gyphm-xk', (inX || inXP) && typeof window.gyPmXTheme === 'function' && window.gyPmXTheme() === 'black'); if (inX || inXP) { try { xBmButtons(); } catch (e) {} }
         if (!inX && XPREV != null) { try { chatListViewMode = XPREV; renderChatCharList(); } catch (e) {} XPREV = null; }
-        if (!show) { if (b) b.style.display = 'none'; xHead(false); return; }
+        if (!show) { if (b) b.style.display = 'none'; xHead(thread ? 'thread' : false); return; }
         if (!b) { b = document.createElement('div'); b.id = 'gyPmX'; document.body.appendChild(b); }
         const n = unread ? unread() : 0;
-        const tab = S.view === 'chat' ? 'dm' : 'home';
+        const tab = S.view === 'chat' ? 'dm' : S.view === 'search' ? 'search' : 'home'; if (tab === 'search') { try { xExPaint(); } catch (e) {} }
         let nn = 0; try { nn = unreadNotifs || 0; } catch (e) {}
-        const html = `<span class="${tab === 'home' ? 'on' : ''}" onclick="gyPmXGo('home')">${xs(tab === 'home' ? 'home' : 'homeO')}</span><span onclick="gyPmXGo('search')">${xs('search')}</span><span onclick="gyPmXGo('notif')">${xs('bell')}${nn ? `<b>${nn > 99 ? '99+' : nn}</b>` : ''}</span><span class="${tab === 'dm' ? 'on' : ''}" onclick="gyPmXGo('dm')">${xs(tab === 'dm' ? 'mailF' : 'mail')}${n ? `<b>${n > 99 ? '99+' : n}</b>` : ''}</span>`;
+        const html = `<span class="${tab === 'home' ? 'on' : ''}" onclick="gyPmXGo('home')">${xs(tab === 'home' ? 'home' : 'homeO')}</span><span class="${tab === 'search' ? 'on' : ''}" onclick="gyPmXGo('search')">${xs('search')}</span><span onclick="gyPmXGo('notif')">${xs('bell')}${nn ? `<b>${nn > 99 ? '99+' : nn}</b>` : ''}</span><span class="${tab === 'dm' ? 'on' : ''}" onclick="gyPmXGo('dm')">${xs(tab === 'dm' ? 'mailF' : 'mail')}${n ? `<b>${n > 99 ? '99+' : n}</b>` : ''}</span>`;
         if (b.__h !== html) { b.innerHTML = html; b.__h = html; }
         b.style.display = 'flex'; xHead(tab);
     }
-    function xHead(tab) {
+    function xHead(tab, force) {
         const nav = document.querySelector('#gyPmBar .nav'); if (!nav) return;
         let h = document.getElementById('gyPmXHead');
         if (!tab) { if (h) h.remove(); return; }
         if (!h) { h = document.createElement('div'); h.id = 'gyPmXHead'; nav.appendChild(h); }
+        h.className = 'x-' + tab;
         let me = ''; try { me = getAvatarHTML(currentUser, 32); } catch (e) {}
+        if (tab === 'search') { const key = 'search|' + me.length; if (h.__h === key && !force) return; if (h.__h !== key) { h.innerHTML = `<span class="xa" onclick="gyPmXDrawer()">${me}</span><label class="xq">${xs('search', 18)}<input id="gyPmXQ" placeholder="搜索" autocomplete="off" enterkeyhint="search" onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();gyPmXSearch(this.value);this.blur()}"><i onclick="event.preventDefault();gyPmXSearch('')" style="${XQ ? '' : 'display:none'}">${xs('close', 14)}</i></label><span class="xr"><i onclick="typeof openSettingsPanel==='function'&&openSettingsPanel()">${xs('gear', 22)}</i></span>`; h.__h = key; } const i = h.querySelector('#gyPmXQ'); if (i && document.activeElement !== i) i.value = XQ; const c = h.querySelector('.xq>i'); if (c) c.style.display = XQ ? '' : 'none'; return; }
+        if (tab === 'thread') { let id = null; try { id = currentChatSessionId; } catch (e) {} const ss = sessOf(id) || {}; let av = ''; try { av = getAvatarHTML(ss, 26); } catch (e) {} const html = `<span class="xb" onclick="gyPmBack()">${xs('back', 22)}</span><span class="xm" onclick="switchMainView('profile', ${JSON.stringify(id).replace(/"/g, '&quot;')})">${av}<b>${xEsc(ss.remark || ss.name || '')}</b></span><span class="xr"><i onclick="switchMainView('profile', ${JSON.stringify(id).replace(/"/g, '&quot;')})">${xs('info', 22)}</i></span>`; if (h.__h !== html) { h.innerHTML = html; h.__h = html; } return; }
         const html = tab === 'dm' ? `<span class="xa" onclick="gyPmXDrawer()">${me}</span><b class="xt">私信</b><span class="xr"><i onclick="openSettingsPanel && openSettingsPanel('notify')">${xs('gear', 22)}</i><i onclick="gyPmXNew()">${xs('newmsg', 22)}</i></span>`
             : `<span class="xa" onclick="gyPmXDrawer()">${me}</span><span class="xl">${xs('logo', 26)}</span><span class="xr"></span>`;
         if (h.__h !== html) { h.innerHTML = html; h.__h = html; }
@@ -937,7 +940,7 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         if (k === 'notif') { window.gyPmOpen('notif'); return; }
         S.nav = true;
         try {
-            if (k === 'search') { switchMainView(document.getElementById('view-search') ? 'search' : 'home'); }
+            if (k === 'search') { XQ = ''; switchMainView(document.getElementById('view-search') ? 'search' : 'home', ''); }
             else if (k === 'dm') {
                 switchMainView('chat');
                 if (XPREV == null) { try { XPREV = chatListViewMode; chatListViewMode = 'list'; } catch (e) {} }
@@ -946,7 +949,7 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
             } else switchMainView('home');
         } catch (e) {}
         S.nav = false; S.app = 'home';
-        const t = k === 'dm' ? '私信' : k === 'search' ? '搜索' : '推特'; setTitle(t); S.stack = [{ v: k === 'dm' ? 'chat' : k === 'search' ? 'search' : 'home', t }]; syncNav(); xBar();
+        const t = k === 'dm' ? '私信' : k === 'search' ? '搜索' : '推特'; setTitle(t); S.stack = [{ v: k === 'dm' ? 'chat' : k === 'search' ? 'search' : 'home', t }]; syncNav(); xBar(); if (k === 'search') { xExPaint(); if (!(XEX.L[XEX.tab] || []).length) xExGen(XEX.tab, 'refresh'); }
         try { document.querySelector('.main-content').scrollTop = 0; } catch (e) {}
     };
     setInterval(() => { try { if (document.body.classList.contains('gyphm')) xBar(); } catch (e) {} }, 400);
@@ -1040,6 +1043,71 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         try { memoryAlbum = memoryAlbum.filter(m => m.type !== 'post'); saveAllData(); } catch (e) {}
         xToast(['书签清空了', '全部拿掉了']); xBmPage(true);
     };
+    /* ---------- 推特「搜索」页（照真 X 的探索页）：顶上 头像 + 搜索框 + ⚙；为你推荐 / 趋势 / 新闻 / 体育 / 娱乐；下拉刷新、滑到底加载更多 ---------- */
+    XI.close = '<path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z"/>';
+    XI.info = '<path d="M13.5 8.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5S11.17 7 12 7s1.5.67 1.5 1.5zM13 17v-5h-2v5h2zm-1 5.25c5.66 0 10.25-4.59 10.25-10.25S17.66 1.75 12 1.75 1.75 6.34 1.75 12 6.34 22.25 12 22.25zM20.25 12c0 4.56-3.69 8.25-8.25 8.25S3.75 16.56 3.75 12 7.44 3.75 12 3.75s8.25 3.69 8.25 8.25z"/>';
+    const XEX_TABS = [['rec', '为你推荐'], ['trend', '趋势'], ['news', '新闻'], ['sport', '体育'], ['ent', '娱乐']];
+    const XEX_CAT = { rec: '为你推荐（什么都有：生活、网上热点、这些人身边的事）', trend: '趋势（此刻最多人在说的）', news: '新闻', sport: '体育', ent: '娱乐' };
+    const XEX_DEF = `你在模拟推特（X）「搜索 / 探索」页的「{{分类}}」栏，现在是 {{时间}}。这个世界里的人：
+{{人}}
+写 {{条数}} 条此刻的趋势（像真推特：话题标签或短语；可以跟这些人的生活、他们最近发的推有关，也要有普通的网上热点；不要编造真实名人的负面新闻）。
+只输出 JSON 数组：[{"cat":"上面那行灰色小字，比如「娱乐 · 趋势」「在中国的趋势」「体育 · 趋势」","t":"话题（可以带 #）","n":帖子数（数字）}]`;
+    try { if (typeof gyPL === 'function') gyPL('x.explore', XEX_DEF); if (typeof window.gyPLGroupAdd === 'function') window.gyPLGroupAdd({ g: '🐦 推特搜索页', items: [['x.explore', '搜索页的趋势', '推特搜索页下拉刷新 / 滑到底时', '{{分类}}：哪一栏；{{时间}}：现在；{{人}}：角色和最近的推；{{条数}}']] }); } catch (e) {}
+    const XEX_K = 'gyXEx';
+    let XEX = (() => { try { return JSON.parse(localStorage.getItem(XEX_K) || '{}') || {}; } catch (e) { return {}; } })();
+    XEX.tab = XEX.tab || 'rec'; XEX.L = XEX.L || {}; XEX.hide = XEX.hide || [];
+    const xexSave = () => { try { Object.keys(XEX.L).forEach(k => { XEX.L[k] = (XEX.L[k] || []).slice(0, 120); }); localStorage.setItem(XEX_K, JSON.stringify(XEX)); } catch (e) {} };
+    let XQ = '', XBUSY = 0, XPULL = 0;
+    const fmtN = n => { n = Number(n) || 0; return n >= 1e4 ? (n / 1e4).toFixed(n >= 1e5 ? 0 : 1).replace(/\.0$/, '') + '万' : String(n); };
+    function xJson(t) { try { t = String(t || '').replace(/<think>[\s\S]*?<\/think>/g, ''); const a = t.indexOf('['), b = t.lastIndexOf(']'); return a >= 0 && b > a ? JSON.parse(t.slice(a, b + 1)) : null; } catch (e) { return null; } }
+    async function xExGen(tab, mode) {
+        if (XBUSY) return; XBUSY = mode === 'more' ? 2 : 1; xExPaint();
+        try {
+            const api = typeof getApiConfig === 'function' ? (getApiConfig(true) || getApiConfig()) : null;
+            if (!api || !api.url || typeof sendChatRequest !== 'function') { xToast(['还没设 API，刷不出新的', '先去设置里填 API 才能刷新']); return; }
+            let ppl = ''; try { ppl = chars().slice(0, 8).map(c => `· ${c.name}${c.handle ? '（' + c.handle + '）' : ''}：${String(c.persona || '').slice(0, 60)}`).join('\n'); const ps = (globalPosts || []).slice(0, 8).map(p => `· ${p.char && p.char.name}：${String(p.text || '').slice(0, 40)}`).join('\n'); if (ps) ppl += '\n最近的推：\n' + ps; } catch (e) {}
+            const n = new Date(); const old = (XEX.L[tab] || []).slice(0, 30).map(x => x.t).join('、');
+            const prompt = (typeof gyPL === 'function' ? gyPL('x.explore', XEX_DEF, { 分类: XEX_CAT[tab], 时间: `${n.getMonth() + 1}月${n.getDate()}日 ${n.getHours()}点`, 人: ppl || '（还没有人）', 条数: 10 }) : XEX_DEF) + (old ? `\n（这些已经有了，别重复：${old}）` : '');
+            const d = await sendChatRequest(api, prompt);
+            const o = xJson(d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content);
+            if (!Array.isArray(o) || !o.length) { xToast(['没刷出来，再拉一下试试', '这次没生成出来']); return; }
+            const got = o.filter(x => x && x.t).map(x => ({ id: 'xe' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), cat: String(x.cat || '趋势').slice(0, 20), t: String(x.t).slice(0, 40), n: Math.max(100, Math.round(Number(x.n) || (1000 + Math.random() * 90000))), at: Date.now() }));
+            XEX.L[tab] = mode === 'more' ? (XEX.L[tab] || []).concat(got) : got.concat(XEX.L[tab] || []); xexSave();
+        } catch (e) {} finally { XBUSY = 0; xExPaint(); }
+    }
+    function xExHtml() {
+        const tab = XEX.tab; let L = (XEX.L[tab] || []).filter(x => !XEX.hide.includes(x.t));
+        let local = []; if (tab === 'rec' || tab === 'trend') { try { local = (trendingTags || []).filter(t => !XEX.hide.includes(t)).slice(0, tab === 'rec' ? 4 : 10).map((t, i) => ({ id: 'tg' + i, cat: '在你的世界 · 趋势', t, n: 0, local: 1 })); } catch (e) {} }
+        L = local.concat(L.filter(x => !local.some(y => y.t === x.t)));
+        const row = (x, i) => `<div class="xr" onclick="gyPmXSearch(${JSON.stringify(x.t).replace(/"/g, '&quot;')})"><div><small>${tab === 'trend' ? (i + 1) + ' · ' : ''}${xEsc(x.cat)}</small><b>${xEsc(x.t)}</b>${x.n ? `<small>${fmtN(x.n)} 帖子</small>` : ''}</div><i onclick="event.stopPropagation();gyPmXExHide(${JSON.stringify(x.t).replace(/"/g, '&quot;')})">${xs('more', 18)}</i></div>`;
+        let who = ''; if (tab === 'rec') { try { const cs = chars().slice().sort((a, b) => (a.isFollowing ? 1 : 0) - (b.isFollowing ? 1 : 0)).slice(0, 3); if (cs.length) who = `<div class="xh">推荐关注</div>${cs.map(c => { let av = ''; try { av = getAvatarHTML(c, 40); } catch (e) {} return `<div class="xw" onclick="switchMainView('profile', ${JSON.stringify(c.id).replace(/"/g, '&quot;')})"><span class="av">${av}</span><div><b>${xEsc(c.name)}</b><small>${xEsc(c.handle || '')}</small></div><a class="${c.isFollowing ? 'on' : ''}" onclick="event.stopPropagation();toggleFollow(${JSON.stringify(c.id).replace(/"/g, '&quot;')});gyPmXExPaint()">${c.isFollowing ? '正在关注' : '关注'}</a></div>`; }).join('')}`; } catch (e) {} }
+        const rows = L.map(row); if (who && rows.length > 4) rows.splice(4, 0, who); else if (who) rows.push(who);
+        return `<div class="xt">${XEX_TABS.map(([k, n]) => `<span class="${tab === k ? 'on' : ''}" onclick="gyPmXExTab('${k}')">${n}</span>`).join('')}</div>
+          <div class="xp" style="height:${XBUSY === 1 ? 48 : XPULL}px">${XBUSY === 1 || XPULL > 0 ? `<i class="${XBUSY === 1 ? 'spin' : ''}" style="transform:rotate(${XPULL * 4}deg)"></i>` : ''}</div>
+          ${rows.join('') || (XBUSY ? '' : '<div class="xe"><b>下拉刷新看看大家在聊什么</b><p>往下拉（电脑上在最上面往上滚轮）就会刷出新的趋势，滑到底会接着加载。</p></div>')}
+          ${XBUSY === 2 ? '<div class="xp" style="height:48px"><i class="spin"></i></div>' : (L.length ? '<div class="xend"></div>' : '')}`;
+    }
+    function xExPaint() {
+        const v = document.getElementById('view-search'); if (!v || !document.body.classList.contains('gyphm-xs')) return;
+        let ex = document.getElementById('gyPmXEx'); if (!ex) { ex = document.createElement('div'); ex.id = 'gyPmXEx'; v.insertBefore(ex, v.firstChild); xExBind(ex); }
+        ex.style.display = XQ ? 'none' : ''; const f = document.getElementById('searchFeedSection'); if (f) f.style.display = XQ ? '' : 'none';
+        if (!XQ) ex.innerHTML = xExHtml();
+    }
+    window.gyPmXExPaint = xExPaint;
+    window.gyPmXExTab = k => { XEX.tab = k; xexSave(); xExPaint(); if (!(XEX.L[k] || []).length) xExGen(k, 'refresh'); try { document.querySelector('.main-content').scrollTop = 0; } catch (e) {} };
+    window.gyPmXExHide = t => { XEX.hide.push(t); XEX.hide = XEX.hide.slice(-200); xexSave(); xExPaint(); xToast(['好的，以后少给你看这种', '不感兴趣，已隐藏', '收到，不看这个了']); };
+    window.gyPmXSearch = q => { XQ = String(q || '').trim(); const i = document.getElementById('gyPmXQ'); if (i) i.value = XQ; xHead('search', true); if (XQ) { try { document.getElementById('currentSearchTitle').innerText = XQ; } catch (e) {} try { renderSearchPosts(XQ); } catch (e) {} try { if (window.gyFeatSearchRender) window.gyFeatSearchRender(XQ); } catch (e) {} } xExPaint(); try { document.querySelector('.main-content').scrollTop = 0; } catch (e) {} };
+    function xExBind(ex) {
+        const sc = () => document.querySelector('.main-content');
+        let y0 = null;
+        ex.addEventListener('touchstart', e => { const s = sc(); y0 = s && s.scrollTop <= 0 ? e.touches[0].clientY : null; }, { passive: true });
+        ex.addEventListener('touchmove', e => { if (y0 == null || XBUSY) return; const dy = e.touches[0].clientY - y0; XPULL = Math.max(0, Math.min(80, dy / 2)); const p = ex.querySelector('.xp'); if (p) { p.style.height = XPULL + 'px'; p.innerHTML = XPULL > 0 ? `<i style="transform:rotate(${XPULL * 4}deg)"></i>` : ''; } }, { passive: true });
+        ex.addEventListener('touchend', () => { if (y0 == null) return; y0 = null; const go = XPULL >= 60; XPULL = 0; if (go) xExGen(XEX.tab, 'refresh'); else xExPaint(); });
+        let wh = 0, wt = 0; ex.addEventListener('wheel', e => { const s = sc(); if (!s || s.scrollTop > 0 || e.deltaY >= 0 || XBUSY) { wh = 0; return; } if (Date.now() - wt > 600) wh = 0; wt = Date.now(); wh += -e.deltaY; if (wh > 260) { wh = 0; xExGen(XEX.tab, 'refresh'); } }, { passive: true });
+    }
+    // 滑到底：加载更多
+    document.addEventListener('scroll', e => { try { if (!document.body.classList.contains('gyphm-xs') || XQ || XBUSY) return; const s = e.target; if (!s || !s.classList || !s.classList.contains('main-content')) return; if (s.scrollHeight - s.scrollTop - s.clientHeight < 80 && (XEX.L[XEX.tab] || []).length) xExGen(XEX.tab, 'more'); } catch (er) {} }, true);
+    window.__gyPmXEx = { gen: xExGen, st: () => XEX };
     (function () {
         const st = document.createElement('style'); st.id = 'gyPmXCss';
         st.textContent = `
@@ -1160,6 +1228,34 @@ body.gyphm.gyphm-xp .post-handle,body.gyphm.gyphm-xp .post-time,body.gyphm.gyphm
 body.gyphm.gyphm-xp .post-body{color:var(--xf)!important;font-size:15px!important;line-height:20px!important}
 body.gyphm.gyphm-xp .fab-btn,body.gyphm.gyphm-xp #fabPost{background:var(--xa)!important;color:var(--xaf)!important}
 body.gyphm.gyphm-xp #gyPmBar{background:var(--xbar)!important;color:var(--xf)!important;border-bottom:1px solid var(--xl)}
+`;
+        st.textContent += `
+/* 推特里顶上原来的 ‹ 标题 小窗 都藏起来，换成推特自己的顶栏（修：头像压在返回键上） */
+body.gyphm.gyphm-xa #gyPmBar .nav .l,body.gyphm.gyphm-xa #gyPmBar .nav .t,body.gyphm.gyphm-xa #gyPmBar .nav .r{visibility:hidden!important;pointer-events:none}
+#gyPmXHead.x-thread{justify-content:center}#gyPmXHead .xb{position:absolute;left:10px;line-height:0;cursor:pointer;padding:6px}
+#gyPmXHead .xm{display:flex;align-items:center;gap:8px;cursor:pointer;max-width:62%}#gyPmXHead .xm .avatar{width:26px!important;height:26px!important;font-size:11px!important;border:none!important;flex-shrink:0}#gyPmXHead .xm b{font-size:16px;font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#gyPmXHead.x-search{gap:12px;justify-content:flex-start}#gyPmXHead.x-search .xa{position:static}#gyPmXHead.x-search .xr{position:static}
+#gyPmXHead .xq{flex:1;display:flex;align-items:center;gap:8px;height:36px;border-radius:9999px;background:var(--xbub);padding:0 12px;color:var(--xs);box-sizing:border-box;border:1px solid transparent}
+#gyPmXHead .xq:focus-within{background:var(--xb);border-color:#1d9bf0;color:#1d9bf0}
+#gyPmXHead .xq input{flex:1;min-width:0;border:none!important;outline:none;background:transparent!important;font-size:15px;color:var(--xf);box-shadow:none!important;padding:0}
+#gyPmXHead .xq i{line-height:0;cursor:pointer;background:#1d9bf0;color:#fff;border-radius:50%;padding:3px}
+body.gyphm.gyphm-xs #view-search>.header-title{display:none!important}
+body.gyphm.gyphm-xs #view-search{background:var(--xb)!important;color:var(--xf)}
+#gyPmXEx{color:var(--xf);font-size:15px;padding-bottom:20px}
+#gyPmXEx .xt{display:flex;overflow-x:auto;border-bottom:1px solid var(--xl);scrollbar-width:none;position:sticky;top:0;background:var(--xbar);z-index:3;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}#gyPmXEx .xt::-webkit-scrollbar{display:none}
+#gyPmXEx .xt span{flex:1 0 auto;text-align:center;padding:15px 16px;color:var(--xs);font-weight:500;cursor:pointer;position:relative;white-space:nowrap}
+#gyPmXEx .xt span.on{color:var(--xf);font-weight:700}#gyPmXEx .xt span.on::after{content:"";position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:56px;height:4px;border-radius:9999px;background:var(--xa)}
+#gyPmXEx .xp{display:flex;align-items:center;justify-content:center;overflow:hidden;transition:height .15s}
+#gyPmXEx .xp i{width:22px;height:22px;border-radius:50%;border:3px solid var(--xl);border-top-color:#1d9bf0;box-sizing:border-box}#gyPmXEx .xp i.spin{animation:gyXspin .8s linear infinite}@keyframes gyXspin{to{transform:rotate(360deg)}}
+#gyPmXEx .xr{display:flex;align-items:flex-start;gap:8px;padding:12px 16px;cursor:pointer}#gyPmXEx .xr:active{background:var(--xhov)}
+#gyPmXEx .xr>div{flex:1;min-width:0}#gyPmXEx .xr small{display:block;color:var(--xs);font-size:13px;line-height:16px}#gyPmXEx .xr b{display:block;font-weight:700;font-size:15px;line-height:20px;margin:2px 0;word-break:break-word}
+#gyPmXEx .xr>i{color:var(--xs);line-height:0;padding:2px;border-radius:50%}
+#gyPmXEx .xh{font-size:20px;font-weight:800;padding:16px 16px 8px;border-top:1px solid var(--xl)}
+#gyPmXEx .xw{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer}#gyPmXEx .xw .av{width:40px;height:40px;flex:0 0 40px;display:flex;overflow:hidden;border-radius:50%}#gyPmXEx .xw .av>*{width:40px!important;height:40px!important;min-width:0!important;max-width:40px!important;border:none!important;margin:0!important;box-shadow:none!important}
+#gyPmXEx .xw>div{flex:1;min-width:0}#gyPmXEx .xw b{display:block;font-weight:700}#gyPmXEx .xw small{color:var(--xs)}
+#gyPmXEx .xw a{background:var(--xf);color:var(--xb);border-radius:9999px;padding:7px 16px;font-weight:700;font-size:14px;cursor:pointer}#gyPmXEx .xw a.on{background:transparent;color:var(--xf);border:1px solid #cfd9de}
+#gyPmXEx .xe{padding:40px 32px}#gyPmXEx .xe b{display:block;font-size:24px;line-height:30px;font-weight:800}#gyPmXEx .xe p{color:var(--xs);margin-top:8px}
+#gyPmXEx .xend{height:60px}
 `;
         document.head.appendChild(st);
     })();
