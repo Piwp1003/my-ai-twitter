@@ -326,6 +326,24 @@
         try { if (typeof saveTextFileForApp === 'function' && window.plus) return saveTextFileForApp(name, t); } catch (e) {}
         const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain;charset=utf-8' })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     };
+    // 📱 接上这台手机：连 Termux 里跑的 phone-mcp/guyu_phone_mcp.py，不用原生插件、不用重新打包
+    const PHONE_URL = 'http://127.0.0.1:8765/mcp';
+    const PHONE_INSTALL = 'curl -fsSL https://cdn.jsdelivr.net/gh/Piwp1003/my-ai-twitter@main/phone-mcp/install.sh | bash';
+    window.gyMcpPhoneCopy = function () {
+        try { navigator.clipboard.writeText(PHONE_INSTALL).then(() => toast('📋 复制好了', '去 Termux 里粘贴回车')); } catch (e) { prompt('复制这行到 Termux', PHONE_INSTALL); }
+    };
+    window.gyMcpPhone = async function () {
+        let s = C.servers.find(x => x.kind !== 'local' && /\/\/(127\.0\.0\.1|localhost):8765\//.test(x.url || ''));
+        const tip = '先在手机的 Termux 里敲 guyu-phone 把它开起来，再把它显示的「口令」粘进来。\n还没装的话：去「🧰 我的 MCP」点「📋 复制安装命令」，在 Termux 里粘贴回车。';
+        const old = s ? ((/Bearer\s+(\S+)/.exec(s.headers || '') || [])[1] || '') : '';
+        const tok = typeof appPrompt === 'function' ? await appPrompt(tip, old) : prompt(tip, old);
+        if (tok == null) return;
+        const headers = String(tok).trim() ? 'Authorization: Bearer ' + String(tok).trim().replace(/^Bearer\s+/i, '') : '';
+        if (!s) { s = { id: uid(), name: '📱 这台手机', kind: 'http', url: PHONE_URL, headers, on: true, tools: [] }; C.servers.push(s); }
+        else s.headers = headers;
+        save(); go('edit', s.id);
+        await window.gyMcpTestBtn(s.id, document.querySelector('#gyMcpBody .gy-apitest-main'));
+    };
     // 粘贴 Claude 桌面版 / Cursor 那种 JSON 配置：{"mcpServers": {...}}
     window.gyMcpImport = async function () {
         const raw = typeof appPrompt === 'function' ? await appPrompt('把 MCP 配置粘进来（{"mcpServers": {…}} 那种，Claude 桌面版、Cursor 的都行）', '') : prompt('粘贴 MCP 配置');
@@ -353,6 +371,8 @@
           <div class="gymcp-note">MCP 是给 AI 用的「工具箱」：查天气、搜网页、读写你的笔记、记忆库……接上以后，你给 TA 发消息，TA 回你之前会先想想要不要用工具，用了就把结果带进回复里。<br>
           <b>网址形式</b>的网页、App、桌面版都能用（网页版要对面允许跨域）；<b>本地形式</b>（command + args）只有桌面版能用。${isDesk() ? '<br>✅ 你现在用的是桌面版，两种都能用。' : ''}<br><span style="opacity:.75">每次判断要不要用工具会多调一次模型；只在私聊里用。</span></div>
           <div class="gymcp-acts"><button class="gymcp-btn" onclick="gyMcpNew('http')">＋ 网址形式</button><button class="gymcp-btn ghost" onclick="gyMcpNew('local')">＋ 本地形式${isDesk() ? '' : '（桌面版）'}</button><button class="gymcp-btn ghost" onclick="gyMcpImport()">📋 粘贴 JSON 配置</button><button class="gymcp-btn ghost" onclick="gyMcpGo('log')">📜 调用记录（${L.length}）</button></div>
+          <div class="gymcp-note"><b>📱 让 TA 用你的手机</b>（看电量、读通知、弹提醒、震动、手电筒、念出来、剪贴板、位置……）：不用插件、不用重新打包。手机装 Termux + Termux:API（F-Droid），在 Termux 里跑一行安装命令，再敲 <code>guyu-phone</code> 开起来。
+            <div class="gymcp-acts" style="margin:6px 0 0;"><button class="gymcp-btn" onclick="gyMcpPhone()">📱 接上这台手机</button><button class="gymcp-btn ghost" onclick="gyMcpPhoneCopy()">📋 复制安装命令</button></div></div>
           ${C.servers.length ? C.servers.map(s => `<div class="gymcp-row${s.on === false ? ' off' : ''}" onclick="gyMcpGo('edit','${s.id}')">
               <span class="gymcp-ico">${s.kind === 'local' ? '💻' : '🌐'}</span>
               <div class="gymcp-b"><b>${esc(s.name || '（没名字）')}</b><em>${esc(s.kind === 'local' ? s.command + ' ' + String(s.args || '').split('\n').join(' ') : s.url)}</em>
