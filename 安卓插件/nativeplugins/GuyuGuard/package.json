@@ -1,0 +1,27 @@
+{
+    "name": "谷雨守护",
+    "id": "GuyuGuard",
+    "version": "1.0.0",
+    "description": "谷雨里的 TA 看你的手机、管你的手机用的安卓插件（使用时长、在用什么、截屏读屏、锁软件、锁屏、通知、壁纸闹钟震动手电筒剪贴板）",
+    "_dp_type": "nativeplugin",
+    "_dp_nativeplugin": {
+        "android": {
+            "plugins": [
+                { "type": "module", "name": "GuyuGuard", "class": "com.guyu.guard.GuardModule" }
+            ],
+            "integrateType": "aar",
+            "minSdkVersion": "21",
+            "permissions": [
+                "android.permission.PACKAGE_USAGE_STATS",
+                "android.permission.QUERY_ALL_PACKAGES",
+                "android.permission.SYSTEM_ALERT_WINDOW",
+                "android.permission.WRITE_SETTINGS",
+                "android.permission.ACCESS_NOTIFICATION_POLICY",
+                "android.permission.SET_WALLPAPER",
+                "com.android.alarm.permission.SET_ALARM",
+                "android.permission.VIBRATE",
+                "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+            ]
+        }
+    }
+}

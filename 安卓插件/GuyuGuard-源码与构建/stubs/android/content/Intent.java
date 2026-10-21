@@ -1,0 +1,3 @@
+package android.content;
+public class Intent { public static final int FLAG_ACTIVITY_NEW_TASK=0x10000000, FLAG_ACTIVITY_REORDER_TO_FRONT=0x20000, FLAG_ACTIVITY_SINGLE_TOP=0x20000000, FLAG_ACTIVITY_CLEAR_TOP=0x4000000;
+ public Intent(String a){} public Intent(String a, android.net.Uri u){} public Intent addFlags(int f){return this;} public Intent addCategory(String c){return this;} public Intent putExtra(String k,int v){return this;} public Intent putExtra(String k,boolean v){return this;} public Intent putExtra(String k,String v){return this;} public int getIntExtra(String k,int d){return 0;} public Intent setPackage(String p){return this;} }

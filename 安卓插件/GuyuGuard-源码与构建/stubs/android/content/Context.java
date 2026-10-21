@@ -1,0 +1,2 @@
+package android.content;
+public abstract class Context { public static final String USAGE_STATS_SERVICE="usagestats"; public Object getSystemService(String n){return null;} public String getPackageName(){return null;} public android.content.pm.PackageManager getPackageManager(){return null;} public void startActivity(Intent i){} public ContentResolver getContentResolver(){return null;} public Intent registerReceiver(BroadcastReceiver r, IntentFilter f){return null;} public Context getApplicationContext(){return null;} }

@@ -791,8 +791,10 @@ const count = Math.floor(Math.random() * npcReplyMaxCount) + 1;
        底下能冒出 @fatui_watcher，跟这个世界一点关系都没有。 */
     let npcHint = '';
     try {
-        const ownerId = (post.char && post.char.id !== 'me' && post.char.id !== 'tabloid_admin') ? post.char.id : null;
-        if (ownerId && typeof window.gyNpcCommentHint === 'function') npcHint = window.gyNpcCommentHint(ownerId, count) || '';
+        // 👥 248：你自己发的帖子底下也能有绑给你的 NPC；匿名区 / 八卦网各自一个比例（NPC 列表 → ⚖️）
+        const ownerId = post.char && post.char.id === 'me' ? 'me' : (post.char && post.char.id !== 'tabloid_admin') ? post.char.id : null;
+        const scene = postType === 'anon' ? 'anon' : (postType === true || postType === 'tabloid' || (post.char && post.char.id === 'tabloid_admin')) ? 'tabloid' : 'tweet';
+        if (typeof window.gyNpcCommentHint === 'function') npcHint = window.gyNpcCommentHint(ownerId || 'me', count, scene) || '';
     } catch (e) {}
 
     const prompt = `你现在要模拟${count}个路人NPC网友进行网络评论。

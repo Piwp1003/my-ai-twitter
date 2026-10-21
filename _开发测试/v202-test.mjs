@@ -127,11 +127,7 @@ check('聊天栏上的 🧍 一点就藏起来 / 再点放出来', hid[0] === 'n
 const cut = await page.evaluate(async () => { const cv = document.createElement('canvas'); cv.width = 60; cv.height = 60; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 60, 60); g.fillStyle = '#c33'; g.fillRect(20, 10, 20, 40); const out = await gySpriteCutBg(cv.toDataURL()); const im = new Image(); await new Promise(r => { im.onload = r; im.src = out; }); const c2 = document.createElement('canvas'); c2.width = 60; c2.height = 60; const g2 = c2.getContext('2d'); g2.drawImage(im, 0, 0); return { corner: g2.getImageData(2, 2, 1, 1).data[3], mid: g2.getImageData(30, 30, 1, 1).data[3] }; });
 check('一键抠底：白底变透明，人物还在', cut.corner === 0 && cut.mid === 255, JSON.stringify(cut));
 
-// ---------- 微信模式滚动条 ----------
-const fs = await import('fs');
-const wcss = fs.readFileSync(path.join(root, 'wechat-mode.css'), 'utf8');
-const sb = /body\.gywx ::-webkit-scrollbar-thumb,\s*body\.gywx\.dark-theme ::-webkit-scrollbar-thumb \{ background-color: transparent/.test(wcss) && /body\.gywx \.gy-sb-on::-webkit-scrollbar-thumb/.test(wcss);
-check('微信模式：滚动条平时透明，鼠标放上去才出来', sb);
+// （微信模式 256 去掉了，换成 📱 软件里的 💚 微信，滚动条那条不测了）
 
 check('整个过程没有页面报错', errs.length === 0, errs.join(' | ').slice(0, 400));
 await browser.close();

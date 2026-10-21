@@ -98,7 +98,7 @@ const GY_CALL_MAP = {
     '35-dressup|sayNoticeInner': ['换装', 'TA 注意到你换了'], '35-dressup|gyDressAsk': ['换装', '问 TA 好不好看'],
     '35-dressup|sayBackInner': ['换装', 'TA 回一句'], '35-dressup|askKindInner': ['换装', 'TA 挑衣服'],
     '36-silence|reactInner': ['你很久没回', 'TA 的反应'],
-    '39-npcs|gyNpcMake': ['世界里的人', '从世界书抽 NPC'],
+    '39-npcs|gyNpcMake': ['NPC 列表', '从世界书抽 NPC'], '39-npcs|gyNpcGen': ['NPC 列表', '生成 NPC'], '99-mcp|gyMcpDecide': ['我的 MCP', 'TA 判断要不要用工具'], '99-mcp|callApi': ['我的 MCP', 'TA 判断要不要用工具'],
     '42-char-photo|askWhatInner': ['角色发图片', 'TA 想发什么图'], '42-char-photo|drawLookInner': ['角色发图片', '从人设抽形象'],
     '47-call|ask': ['打电话', '通话里 TA 说话'], '47-call|decideAnswer': ['打电话', 'TA 接不接'], '47-call|run': ['打电话', 'TA 主动打给你'],
     '50-skin-box|giftLine': ['皮肤', 'TA 送皮肤说一句'],
@@ -122,10 +122,11 @@ const GY_FILE_AREA = {
     '20-reading-together': '一起阅读', '21-watch-together': '一起看电影', '22-box-music': '音乐盒', '23-box-map': '行程与天气',
     '24-box-relations': '关系账本 / 八卦网', '25-box-life': '随身物', '26-box-mall': '商城', '28-invite-in-chat': '邀请卡片',
     '29-web-explore': '联网探索', '30-parcel-cards': '快递包裹', '31-wallet': '钱包', '32-takeout': '外卖', '33-phone': 'TA 的手机',
-    '35-dressup': '换装', '36-silence': '你很久没回', '39-npcs': '世界里的人', '42-char-photo': '角色发图片', '47-call': '打电话',
+    '35-dressup': '换装', '36-silence': '你很久没回', '39-npcs': 'NPC 列表', '42-char-photo': '角色发图片', '47-call': '打电话',
     '49-chat-plus': '聊天', '50-skin-box': '皮肤', '53-ta-decide': 'TA 定数字', '56-peer-life': '角色之间来往', '57-life-dice': '生活里的意外',
     '58-more-acts': 'TA自己决定', '64-post-regen': '发推文', '66-phone-widgets': '小手机', '71-phone-mystic': '小手机', '77-mood-stat': '心情手账',
-    '83-api-care': '聊天', '93-phone-sticker': '小手机', '94-guide-help': '客服'
+    '83-api-care': '聊天', '93-phone-sticker': '小手机', '94-guide-help': '客服',
+    '98-push-keepalive': '谷雨自己的通知', '99-mcp': '我的 MCP', '99b-sub-login': '会员 / 一键登录'
 };
 // 只是转手的那几层（包装、发请求本身），认的时候跳过
 const GY_CALL_SKIP = new Set(['sendChatRequestRaw', 'sendChatRequest', 'callChatCompletionAPI', 'streamCompletionText', 'gyDetectFeature', 'gyDetectCall',

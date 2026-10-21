@@ -1,0 +1,3 @@
+package android.accessibilityservice;
+public abstract class AccessibilityService extends android.app.Service { public static final int GLOBAL_ACTION_BACK=1, GLOBAL_ACTION_HOME=2, GLOBAL_ACTION_RECENTS=3, GLOBAL_ACTION_NOTIFICATIONS=4, GLOBAL_ACTION_LOCK_SCREEN=8;
+ public abstract void onAccessibilityEvent(android.view.accessibility.AccessibilityEvent e); public abstract void onInterrupt(); protected void onServiceConnected(){} public final boolean performGlobalAction(int a){return false;} public android.view.accessibility.AccessibilityNodeInfo getRootInActiveWindow(){return null;} }

@@ -23,7 +23,7 @@
     const noSlash = u => String(u || '').trim().replace(/\/+$/, '');
     const host = u => { try { return new URL(u).host; } catch (e) { return String(u || '').slice(0, 40); } };
     const sec = ms => ms >= 1000 ? (ms / 1000).toFixed(1) + ' 秒' : ms + ' 毫秒';
-    const NAMES = { main: '主 API', sub: '副 API', vec: '向量记忆 API', tts: 'TA 的声音', stt: '语音转文字', img: '画图接口', call: '打电话的朗读接口', cloud: '云端 Worker' };
+    const NAMES = { main: '主 API', sub: '副 API', vec: '向量记忆 API', tts: 'TA 的声音', stt: '语音转文字', img: '画图接口', call: '打电话的朗读接口', cloud: '云端 Worker', push: '谷雨自己的通知', mcp: 'MCP 服务器' };
 
     /* ---------- 弹窗 ---------- */
     function css() {
@@ -102,7 +102,8 @@ body.dark-theme #gyApiTestOv .box{background:#16181c;color:#e7e9ea}
             if (kind === 'tts' || kind === 'stt') { if (window.gyVoiceOpen) window.gyVoiceOpen(); return; }
             if (kind === 'img') { if (window.gyPhotoOpen) window.gyPhotoOpen(); return; }
             if (kind === 'call') { switchMainView('settings'); setTimeout(() => openSettingsPanel('interaction'), 40); return; }
-            if (kind === 'cloud') { switchMainView('settings'); setTimeout(() => openSettingsPanel('notify'), 40); return; }
+            if (kind === 'mcp') { if (window.gyMcpOpen) window.gyMcpOpen(); return; }
+            if (kind === 'cloud' || kind === 'push') { switchMainView('settings'); setTimeout(() => openSettingsPanel('notify'), 40); return; }
         } catch (e) {}
     };
 
@@ -242,11 +243,37 @@ body.dark-theme #gyApiTestOv .box{background:#16181c;color:#e7e9ea}
             let j = null; try { j = await res.json(); } catch (e) {}
             const n = j && (Array.isArray(j) ? j.length : Array.isArray(j.items) ? j.items.length : Array.isArray(j.pending) ? j.pending.length : null);
             if (n != null) rows.push(['云端攒着', n + ' 条还没拉回来']);
-            if (!val('ntfyTopicInput')) rows.push(['提醒', '还没填 ntfy topic，手机收不到推送']);
+            if (!val('ntfyTopicInput')) { const ps = typeof window.gyPushState === 'function' ? window.gyPushState() : {}; if (!ps.web && !(ps.getui && ps.getui.on)) rows.push(['提醒', '还没开「📲 谷雨自己的通知」，ntfy topic 也没填，手机不会响']); }
             return { ok: true, rows, ms, what: 'Worker 在线，密钥也对' };
         } catch (e) { return { ok: false, rows, ms: Date.now() - t0, err: String(e && e.message || e) }; }
     }
-    const RUN = { main: () => gyApiTestChat('main'), sub: () => gyApiTestChat('sub'), vec: gyApiTestVec, tts: gyApiTestTts, stt: gyApiTestStt, img: gyApiTestImg, call: gyApiTestCall, cloud: gyApiTestCloud };
+    // 📲 谷雨自己的通知（js/98）：让 Worker 真的推一条，ntfy / 网页 / App 每条路通没通都列出来
+    async function gyApiTestPush() {
+        const url = noSlash(val('cloudWorkerUrlInput')), tok = val('cloudAuthTokenInput');
+        const st = typeof window.gyPushState === 'function' ? window.gyPushState() : {};
+        const rows = [['在哪', st.isApp ? '安卓 App' : '网页 / 主屏幕']];
+        if (!url || !tok) return { ok: false, rows, hint: '先在上面填好 Worker 地址和共享密钥。' };
+        const body = typeof window.gyPushTestBody === 'function' ? window.gyPushTestBody() : {};
+        const nothing = !(body.webPushSubs && body.webPushSubs.length) && !body.getui && !body.ntfyTopic;
+        if (nothing) return { ok: false, rows, hint: st.isApp ? '还没开「🤖 安卓 App 通知」，或者 AppID / AppKey / MasterSecret / cid 缺了一样。' : (st.why ? st.why : '还没打开「🌐 这台设备接收推送」，ntfy topic 也没填。') };
+        try { if (typeof window.gyPushAvatarSync === 'function') await window.gyPushAvatarSync(); } catch (e) {}   // 🖼️ 先把头像传上去，测试通知就带着头像
+        const t0 = Date.now();
+        try {
+            const res = await fetch(url + '/test-push', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) });
+            const ms = Date.now() - t0; rows.push(['用时', sec(ms)]);
+            if (res.status === 401) return { ok: false, rows, ms, err: 'HTTP 401', explain: { n: '共享密钥对不上', what: 'Worker 不认这把密钥。', how: ['这里的「共享密钥」要和 Cloudflare 里 Worker 的 AUTH_TOKEN 一模一样', '改好再点一次测试'] } };
+            if (res.status === 404) return { ok: false, rows, ms, err: 'HTTP 404', explain: { n: 'Worker 是旧版的', what: 'Worker 里还没有「谷雨自己的通知」这部分代码。', how: ['打开谷雨文件夹里最新的 worker.js，全选复制', '去 Cloudflare → 你的 Worker →「编辑代码」，全部换成新的，点「部署」', '回来再点一次测试'] } };
+            if (!res.ok) return { ok: false, rows, ms, err: 'HTTP ' + res.status };
+            const j = await res.json();
+            const NM = { ntfy: '📱 ntfy', webpush: '🌐 网页推送', unipush: '🤖 App（uni-push）' };
+            (j.results || []).forEach(r => rows.push([NM[r.ch] || r.ch, r.ok ? '✅ 推出去了' + (r.label ? '（' + r.label + '）' : '') : '❌ ' + (r.text || '没推出去')]));
+            if (!(j.results || []).length) return { ok: false, rows, ms, hint: '一条路都没配好。' };
+            const bad = (j.results || []).filter(r => !r.ok);
+            if (!j.ok) return { ok: false, rows, ms, err: bad.map(r => r.text).join('；').slice(0, 200), hint: /个推/.test(JSON.stringify(bad)) ? 'AppID / AppKey / MasterSecret 再对一遍（DCloud 开发者中心 → uni-push → 1.0 → 消息推送 → 应用配置）。' : '' };
+            return { ok: true, rows, ms, what: bad.length ? '推出去了一部分，看下面哪条路没通' : '推出去了，看看手机有没有弹出来（锁屏试试更准）' };
+        } catch (e) { return { ok: false, rows, ms: Date.now() - t0, err: String(e && e.message || e) }; }
+    }
+    const RUN = { main: () => gyApiTestChat('main'), sub: () => gyApiTestChat('sub'), vec: gyApiTestVec, tts: gyApiTestTts, stt: gyApiTestStt, img: gyApiTestImg, call: gyApiTestCall, cloud: gyApiTestCloud, push: gyApiTestPush, mcp: sub => (window.gyMcpTest ? window.gyMcpTest(sub) : { ok: false, hint: 'MCP 没加载上，刷新一下' }) };
 
     // 主入口：按钮上 onclick="gyApiTest('main', '', this)"
     window.gyApiTest = async function (kind, sub, btn) {

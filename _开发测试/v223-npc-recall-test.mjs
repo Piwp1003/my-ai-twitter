@@ -30,8 +30,7 @@ const n = await page.evaluate(async () => {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const out = {};
   gyNpcOpen('9991');
-  document.getElementById('gynpName').value = '老周'; document.getElementById('gynpWho').value = '面馆老板'; document.getElementById('gynpTie').value = '老街坊';
-  await gyNpcAdd('9991');
+  await gyNpcAdd('9991', { name: '老周', who: '面馆老板', tie: '老街坊' });   // 248：NPC 列表改版后直接传
   const npc = gyNpcAll().find(x => x.name === '老周');
   gyNpcEdit(npc.id); out.form = !!document.getElementById('gynpE_name');
   document.getElementById('gynpE_who').value = '林记面馆老板'; document.getElementById('gynpE_tone').value = '嗓门大，心软';
@@ -40,13 +39,14 @@ const n = await page.evaluate(async () => {
   const c = await gyNpcPromote(npc.id); await sleep(200);
   out.promoted = !!c && !!myCharacters.find(x => x.name === '老周' && x.fromNpc === npc.id) && /林记面馆老板/.test(c.persona) && /谢云昭/.test(c.persona);
   out.rel = (typeof charRelationships !== 'undefined') && charRelationships.some(r => String(r.toId) === String(c.id) && String(r.fromId) === '9991');
+  gyNpcEdit(npc.id); await sleep(50);
   out.btn = /去聊天/.test(document.getElementById('gyNpcBody').innerText) && /已经是角色/.test(document.getElementById('gyNpcBody').innerText);
   gyNpcChat(npc.id); await sleep(300); out.chat = String(currentChatSessionId) === String(c.id);
   const again = await gyNpcPromote(npc.id); out.noDup = myCharacters.filter(x => x.name === '老周').length === 1;
   await sleep(3500);
   out.act = GY_AUTONOMY_ACTIONS.some(a => a.key === 'npc_gossip' && a.need(myCharacters.find(x => x.id === 9991)));
   out.widget = !!(window.__gyPmW && window.__gyPmW.WD && window.__gyPmW.WD.gyNpcW);
-  document.querySelectorAll('#gyNpcModal').forEach(m => m.classList.remove('on'));
+  document.querySelectorAll('#gyNpcModal,#gyNpcPage').forEach(m => m.classList.remove('on'));
   return out;
 });
 check(`${tag} 世界里的人：抽出来 / 自己加的人能改（名字、是谁、关系、说话调调）`, n.form && n.edited, JSON.stringify(n));

@@ -1,0 +1,126 @@
+/* 🧪 示例 这是一份「做个自己的软件」的空白模板，照着改就能加一个新 app。 */
+/*
+  —— 怎么用这份模板 ——
+  1. 把这个文件复制一份，改名成「70-你的软件名.js」（必须数字开头，build.py 才会打包它；
+     这份 .txt 不会被打包，是给你照着抄的）。
+  2. 把下面所有写着「改这里」的地方换成你自己的。
+  3. 在 插件/软件/源码/ 目录跑：python3 build.py
+  4. 在 js/79-feature-hub.js 里：
+     · hub_soft 的 kids 数组加上你的开关 id（比如 'gysDemo'）
+     · BUN 里「📱 软件全家桶」那一行加上 ["🧪 示例", ["gysDemo"]]
+  5. 导入「软件全家桶.json」就能在 小功能 → 📱 软件 里看到它了。
+
+  —— 你能用的两套工具 ——
+  · X.*  ：谷雨给每个插件的公用工具（开关、自主行动、今天、小组件、记忆、提示词、问模型…）
+  · GYS.*：软件专用的外壳（整页界面、底栏、推页返回、每个人的主页、苹果外观、弹窗、通知横幅…）
+  这两个变量在每个软件文件里直接就能用，不用自己声明。
+*/
+if (window.__gysDemo) return; window.__gysDemo = 1;          // 防止重复加载（改这里：换成你的名字）
+const G = window.GYS, APP = 'demo', esc = G.esc;             // 改这里：APP 是这个软件的短名，根 DOM 会是 #gys_demo
+
+/* ① 注册一个开关（小功能 → 📱 软件 里显示它，插件开关中心能单独关） */
+X.feat('gysDemo', { n: '🧪 示例', desc: '这是一个示例软件，照着改成你自己的', def: true });
+//      ↑改这里 id      ↑名字        ↑一句话说明                              ↑def:false = 默认关（费钱/费电的就设 false）
+
+/* ② 一块自己的存档（存在手机本地，刷新不丢） */
+const ST = X.store('gysdemo');                               // 改这里：换个不重名的 store 名
+let D = { posts: [], cfg: {} };                              // 改这里：你这个软件要存的东西
+const save = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => ST.set('d', D), 300); }; })();
+const P = window.gysDemo = {};                               // 改这里：把要给 onclick 用的函数都挂在这个对象上
+
+/* ③ 谁在用这个软件（当前角色 / 你自己） */
+const who = () => X.cur() || G.chars()[0] || null;
+
+/* ④ 页面：底栏两个标签，每个标签画一页 */
+function homeTab() {
+  // G.av(APP, 'c:角色id', 像素)  画头像；G.ic('名字')  画一个苹果线条图标
+  return `<div class="dm-wrap">
+    <div class="dm-card">
+      <b>首页</b>
+      <p>这里是你的内容。TA 发的东西、你发的东西都画在这儿。</p>
+      ${D.posts.length ? D.posts.map(p => `<div class="dm-post">${esc(p.text)}</div>`).join('') : '<p class="dm-sub">还没有内容，点下面的按钮发一条。</p>'}
+    </div>
+    <div class="gys-acts"><span class="gys-btn" onclick="gysDemo.post()">发一条</span></div>
+  </div>`;
+}
+function meTab() {
+  const c = who();
+  return `<div class="dm-wrap"><div class="dm-card">
+    ${c ? G.av(APP, 'c:' + c.id, 64) : ''}
+    <b>${c ? esc(c.name) : '还没有角色'}</b>
+    <p class="dm-sub">每个软件里，同一个人的主页都可以不一样。用 GYS.prof(APP, 'c:'+c.id) 取、GYS.editProf 改。</p>
+  </div></div>`;
+}
+
+/* ⑤ 把这个软件登记成一个整页界面 */
+G.app(APP, {
+  // 底栏：['标签key', 图标（'i:名字' 用苹果图标，或直接写 emoji）, '标签名', 可选()=>小红点数字]
+  tabs: [['home', 'i:home', '首页'], ['me', 'i:person', '我']],
+  head: tab => `<div class="gys-hd"><span class="gys-bk" onclick="GYS.close('${APP}')">${G.ic('back', 22)}</span><b>${tab === 'me' ? '我' : '示例'}</b></div>`,
+  render: tab => tab === 'me' ? meTab() : homeTab(),
+  onOpen: () => {}                                           // 每次打开时想干点啥（刷新数据之类）写这里
+});
+window.gysDemoOpen = tab => G.open(APP, tab);                // 外面用这个打开它
+
+/* ⑥ 一个按钮做的事（发一条） */
+P.post = async () => {
+  const t = await G.input('发点什么？', '');                 // G.input 是苹果样式的填字框
+  if (!t) return;
+  D.posts.unshift({ text: t, at: Date.now() }); save(); G.repaint(APP);
+  X.toast('发出去啦', '');                                    // 右下角小提示
+};
+
+/* ⑦ 让 TA 自己也会来用这个软件（自主行动）——每个新功能都该有一两件 */
+X.action({
+  key: 'gys_demo_say',                                       // 改这里：全局唯一
+  label: 'TA 在示例软件里发了一条，说给你听',                   // 盘点/开关里显示的话
+  hint: 'TA 主动用这个软件时',
+  need: c => native_ok(c),                                   // 什么时候轮得到它（返回 true 才可能触发）
+  run: async c => {                                          // 真的触发时做什么
+    const line = X.plain(await X.ask(`${X.who(c)}\n你在「示例软件」里随手发一条，像你平时会说的。只写那一句。`) || '').slice(0, 60);
+    if (!line) return null;
+    D.posts.unshift({ text: line, at: Date.now(), by: String(c.id) }); save();
+    // 通知一定要能点了跳过去：X.go('打开的函数名', 参数…)
+    X.notify(c, `🧪 <b>${esc(c.name)}</b> 发了一条`, line, X.go('gysDemoOpen', []));
+    return { text: 'TA 在示例软件里发了一条：' + line };       // 这句会进聊天上下文，让 TA 知道自己刚做了
+  }
+}, 'gysDemo');
+function native_ok(c) { return !!c; }                        // 示例：有角色就行；真功能里写你的触发条件
+
+/* ⑧ 「今天」面板里给一块 */
+X.today(() => D.posts.length ? { title: '🧪 示例', rows: [{ t: '发过', x: D.posts.length + ' 条' }] } : null, 'gysDemo');
+
+/* ⑨ 手机桌面小组件 */
+X.widget('gysDemoW', { n: '示例', sizes: ['s'], tap: () => G.open(APP),
+  r: () => `<div style="padding:10px"><b>🧪 示例</b><br>${D.posts.length} 条</div>` });
+
+/* ⑩ 记忆总览里能看、能改、能删（改了就是改 TA 记得的） */
+X.mem({
+  k: 'gysDemo', ico: '🧪', n: '示例软件里发过的', d: 'TA 在示例软件里发过的内容（改了就是改 TA 记得的）',
+  items: c => D.posts.filter(p => p.by === String(c.id)),   // c => 一个数组（这个角色相关的记录）
+  text: p => p.text,                                        // 每条显示的文字
+  meta: p => p.at ? new Date(p.at).toLocaleString() : '',   // 小字（时间之类，可不写）
+  edit: (p, v) => { p.text = String(v); },                  // 改一条
+  del: (c, i) => { const L = D.posts.filter(p => p.by === String(c.id)); const p = L[i]; if (p) D.posts = D.posts.filter(x => x !== p); }, // 删第 i 条
+  save: () => save()
+}, 'gysDemo');
+
+/* ⑪ 往聊天里塞一段上下文（让 TA 知道这个软件里现在什么情况），名字会出现在「注入内容管理」里 */
+X.inj('gysDemo', [['示例软件', '示例软件：最近发了什么', '让 TA 知道示例软件里的近况']]);
+X.ctx(id => { const c = X.char(id); if (!c) return ''; return D.posts.length ? `【示例软件】最近发了：${D.posts.slice(0, 2).map(p => p.text).join('；')}` : ''; }, 'gysDemo');
+
+/* ⑫ 要让模型写东西的提示词，统一登记进「内置提示词」（用户能改） */
+X.plGroup('🧪 示例', 'gysDemo', [['demo.say', 'TA 在示例里发一条', 'TA 主动发时']], { 'demo.say': '{{我是谁}}\n你在示例软件里随手发一条。只写那一句。' });
+
+/* ⑬ 样式（苹果风，自己调）。深色模式记得也写一份。 */
+X.css('gys-demo-css', `
+.gys-demo{background:#f2f2f7}body.dark-theme .gys-demo{background:#000}
+.dm-wrap{padding:12px 16px}
+.dm-card{background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:12px}body.dark-theme .dm-card{background:#1c1c1e}
+.dm-card b{font-size:17px}.dm-sub{color:#8e8e93;font-size:13px}
+.dm-post{border-top:.5px solid rgba(60,60,67,.15);padding:10px 0;font-size:15px}
+`);
+
+/* ⑭ 开机时把存档读回来 */
+(async () => { await G.ready(); D = Object.assign(D, await ST.get('d', {}) || {}); if (!Array.isArray(D.posts)) D.posts = []; })();
+window.gysDemoState = () => D;                               // 测试 / 调试用

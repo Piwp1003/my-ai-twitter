@@ -269,11 +269,19 @@
             ]
         },
         {
-            key: 'npc', icon: '👥', title: '世界里的人（NPC）', box: '__gyNpcCtxFor',
-            note: '从角色卡世界书里抽出来、绑给这个角色的那批 NPC。',
+            key: 'npc', icon: '👥', title: 'NPC 列表', box: '__gyNpcCtxFor',
+            note: 'NPC 列表里绑给这个角色的（和「通用」的）那批 NPC。',
             items: [
                 { k: 'npc.around', label: '你身边的这些人（名字 / 是谁 / 什么关系）', box: '__gyNpcCtxFor', head: '你身边的这些人',
-                  desc: '让 TA 提起"我师父"的时候前后对得上。条数在「小功能 → 世界里的人」里调。关掉之后 NPC 照样存着，手机通讯录和推文评论照用，只是聊天时不提。' }
+                  desc: '让 TA 提起"我师父"的时候前后对得上。条数在「👥 NPC 列表 → ⚖️ 评论里的比例」里调。关掉之后 NPC 照样存着，手机通讯录和推文评论照用，只是聊天时不提。' }
+            ]
+        },
+        {
+            key: 'mcp', icon: '🧰', title: '我的 MCP（工具结果）', box: '__gyMcpCtxFor',
+            note: 'TA 回你之前用 MCP 工具查到 / 做了的事（248）。只在那一轮回复里带上，过几分钟就不带了。',
+            items: [
+                { k: 'mcp.result', label: '刚才用工具查到的结果', box: '__gyMcpCtxFor', head: '你刚才用工具',
+                  desc: '关掉之后 TA 照样会调用工具（调用记录照样有），只是回你的时候看不到结果。想连调用都不要，去「🧰 我的 MCP」把总开关关掉。' }
             ]
         },
         {

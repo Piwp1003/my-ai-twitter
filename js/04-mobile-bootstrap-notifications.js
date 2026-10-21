@@ -510,25 +510,34 @@ function saveCloudSyncSettings() {
     }
 }
 
-function sendBrowserNotification(title, body) {
+// 🖼️ 248：第三个参数 opt = { charId, avatarHtml }——系统通知左边/右边显示那个角色的头像（跟微信、QQ 一样）。
+//    头像现画成一张小圆图（js/98 的 gyNotifIcon），没拿到就用谷雨的图标，不耽误弹。
+function sendBrowserNotification(title, body, opt) {
     if (!enableBrowserNotifications) return;
     if (document.visibilityState === 'visible' && document.hasFocus()) return; // 用户正盯着看呢，不用再弹系统通知
     const plainTitle = (title || '').replace(/<[^>]+>/g, '').trim() || '新消息';
     const plainBody = (body || '').replace(/<[^>]+>/g, '').trim().slice(0, 200);
+    if (typeof window.gyNotifIcon === 'function' && !(opt && opt.__icon)) {
+        const go = ic => sendBrowserNotification(title, body, Object.assign({}, opt || {}, { __icon: ic || { none: 1 } }));
+        Promise.race([window.gyNotifIcon(opt || {}, plainTitle), new Promise(r => setTimeout(() => r(null), 1500))]).then(go, () => go(null));
+        return;
+    }
+    const icon = (opt && opt.__icon && opt.__icon.dataUrl) || siteLogoImg || undefined;
+    const appIcon = opt && opt.__icon && opt.__icon.appPath;
 
     // HBuilderX 打包的 APK（5+ Runtime）环境：先试一次原生本地推送。
     // 注意：这里不再 return——plus.push.createMessage 如果因为manifest里push渠道没配对（uni-push/个推没弄好）
     // 而"静默不生效"（不报错，就是不显示），我们没法从JS里检测到，所以下面继续尝试 Service Worker 通知
     // 作为并行兜底，两条路都试一遍，只要有一条成功就能收到提醒。
     if (window.plus && plus.push) {
-        try { plus.push.createMessage(plainBody, {}, { title: plainTitle, cover: false }); } catch (e) { /* 静默失败，继续往下试其它方式 */ }
+        try { plus.push.createMessage(plainBody, {}, Object.assign({ title: plainTitle, cover: false }, appIcon ? { icon: appIcon } : {})); } catch (e) { /* 静默失败，继续往下试其它方式 */ }
     }
     // 普通浏览器环境 / APK内置WebView：走标准 Web Notification API
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
     const fallbackDirectNotification = () => {
         try {
-            new Notification(plainTitle, { body: plainBody, icon: siteLogoImg || undefined });
+            new Notification(plainTitle, { body: plainBody, icon });
         } catch (e) {
             // 安卓Chrome等移动浏览器会在这里直接抛"Illegal constructor"——
             // 这就是"开关开了但从来没弹过"的真正原因。打个log方便排查，而不是彻底静默。
@@ -550,7 +559,7 @@ function sendBrowserNotification(title, body) {
             new Promise((_, reject) => setTimeout(() => reject(new Error('service worker ready超时')), 3000)),
         ]);
         readyOrTimeout.then(reg => {
-            reg.showNotification(plainTitle, { body: plainBody, icon: siteLogoImg || undefined }).catch(fallbackDirectNotification);
+            reg.showNotification(plainTitle, { body: plainBody, icon, badge: './icons/icon-192.png' }).catch(fallbackDirectNotification);
         }).catch(fallbackDirectNotification);
     } else {
         fallbackDirectNotification();

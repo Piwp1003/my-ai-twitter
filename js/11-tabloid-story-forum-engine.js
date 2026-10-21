@@ -801,7 +801,7 @@ async function generateNpcForumReplies(thread, targetFloor, userText, opt) {
 ${recentReplies || '（还没有人回）'}
 
 ${focus}
-
+${(() => { try { return typeof window.gyNpcCommentHint === 'function' ? (window.gyNpcCommentHint(thread.authorCharId != null ? thread.authorCharId : 'me', 3, 'forum') || '') : ''; } catch (e) { return ''; } })()}
 ${wbContext || txtContext ? `【世界观参考（只用来让说话符合这个世界，不是讨论话题）】：\n${wbContext}\n${txtContext}` : ''}
 
 要求：

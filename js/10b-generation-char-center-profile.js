@@ -307,6 +307,7 @@ function openFormForEdit(charId) {
     const actModeEl = document.getElementById('charActMode');
     if (actModeEl) {
         actModeEl.value = (char.actMode === 'auto') ? 'auto' : 'fixed';
+        try { const ca = document.getElementById('charChatApp'); if (ca) { window.gyChatAppFill(ca, char.chatApp || 'gy'); } } catch (e) {}
         // 自主模式的节奏是 TA 自己定的，这两个框只是给那个随机数划范围
         const amin = document.getElementById('autonomyMinMinutes'); if (amin) amin.value = char.autonomyMinMinutes || 30;
         const amax = document.getElementById('autonomyMaxHours'); if (amax) amax.value = char.autonomyMaxHours || 8;
@@ -621,6 +622,7 @@ async function saveCharacter() {
             char.forumPostFreq = { interval: forumFreqInterval, unit: forumFreqUnit };
             char.anonPostFreq = { interval: anonFreqInterval, unit: anonFreqUnit };
             char.actMode = (document.getElementById('charActMode')?.value === 'auto') ? 'auto' : 'fixed';
+            char.chatApp = document.getElementById('charChatApp')?.value || 'gy';
             char.autonomyMinMinutes = gyNum(document.getElementById('autonomyMinMinutes')?.value, 30);
             char.autonomyMaxHours = gyNum(document.getElementById('autonomyMaxHours')?.value, 8);
             char.webMode = document.getElementById('charWebMode')?.value || 'default';
@@ -658,6 +660,7 @@ async function saveCharacter() {
             forumPostFreq: { interval: forumFreqInterval, unit: forumFreqUnit }, lastForumPostTime: Date.now(),
             anonPostFreq: { interval: anonFreqInterval, unit: anonFreqUnit }, lastAnonPostTime: Date.now(),
             actMode: (document.getElementById('charActMode')?.value === 'auto') ? 'auto' : 'fixed',
+            chatApp: document.getElementById('charChatApp')?.value || 'gy',
             autonomyMinMinutes: gyNum(document.getElementById('autonomyMinMinutes')?.value, 30),
             autonomyMaxHours: gyNum(document.getElementById('autonomyMaxHours')?.value, 8),
             webMode: document.getElementById('charWebMode')?.value || 'default',
@@ -707,3 +710,12 @@ async function saveCharacter() {
     }
     showRoleList();
 }
+
+// 💬 角色设置里「TA 喜欢用哪个软件找你」的选项：只列装着、开着的聊天软件（📱 软件合集登记的）；没装就只有「平时聊天」
+window.gyChatAppFill = function (sel, val) {
+    if (!sel) return; const cur = val != null ? val : sel.value;
+    const L = typeof window.gyChatApps === 'function' ? window.gyChatApps() : [['gy', '平时聊天（谷雨）']];
+    if (cur && !L.some(x => x[0] === cur)) L.push([cur, cur + '（现在没装 / 关着，先用平时聊天）']);
+    sel.innerHTML = L.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
+    sel.value = cur || 'gy';
+};

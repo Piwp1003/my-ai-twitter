@@ -16,6 +16,7 @@
 (function () {
     if (window.__gyPlgUpd) return; window.__gyPlgUpd = 1;
     const URL_ = './插件/新玩法/新玩法全家桶.json';
+    const URLS = [URL_, './插件/软件/软件全家桶.json'];   // 📱 软件合集也一起查（装过才会提示新增）
     const K_AUTO = 'gyPlgAutoUpd', K_SKIP = 'gyPlgUpdSkip';
     const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
     const autoOn = () => ls(K_AUTO) !== '0';
@@ -24,19 +25,27 @@
     const key = s => String(s || '').trim();
     const hash = s => { let h = 0; s = String(s || ''); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h.toString(36); };
 
-    async function fetchRemote() {
-        const r = await fetch(URL_ + '?fresh=' + Date.now(), { cache: 'no-store' });
+    async function fetchOne(u) {
+        const r = await fetch(u + '?fresh=' + Date.now(), { cache: 'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();
         return (Array.isArray(j) ? j : [j]).filter(p => p && p.name && p.type);
     }
-    function diff(remote) {
+    // 返回一组一组的：每个全家桶一组（装过这组里的东西，这组多出来的才算"新增"）
+    async function fetchRemote() {
+        const out = [await fetchOne(URLS[0])];
+        for (const u of URLS.slice(1)) { try { out.push(await fetchOne(u)); } catch (e) {} }
+        return out;
+    }
+    function diff(groups) {
         const mine = P(), upd = [], add = [];
-        const haveAny = remote.some(p => mine.some(m => key(m.name) === key(p.name)));
-        remote.forEach(p => {
-            const old = mine.find(m => key(m.name) === key(p.name));
-            if (old) { if ((old.onLoad || '') !== (p.onLoad || '') || (old.code || '') !== (p.code || '')) upd.push(p); }
-            else if (haveAny) add.push(p);
+        groups.forEach(remote => {
+            const haveAny = remote.some(p => mine.some(m => key(m.name) === key(p.name)));
+            remote.forEach(p => {
+                const old = mine.find(m => key(m.name) === key(p.name));
+                if (old) { if ((old.onLoad || '') !== (p.onLoad || '') || (old.code || '') !== (p.code || '')) upd.push(p); }
+                else if (haveAny) add.push(p);
+            });
         });
         return { upd, add, sig: hash(upd.concat(add).map(p => p.name + (p.onLoad || '').length + hash(p.onLoad)).join('|')) };
     }

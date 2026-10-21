@@ -51,15 +51,15 @@ await page.evaluate(({ PLUG }) => {
 }, { PLUG });
 await page.waitForTimeout(3500);
 
-const ALL = ['gyxLive', 'gyxTrpg', 'gyxWoo', 'gyxDive', 'gyxHot', 'gyxCare', 'gyxCallPlus', 'gyxMoodSkin', 'gyxBubble', 'gyxStTheme', 'gyxDayNight', 'gyxSwipe'];
+const ALL = ['gyxTrpg', 'gyxWoo', 'gyxDive', 'gyxHot', 'gyxCare', 'gyxCallPlus', 'gyxMoodSkin', 'gyxBubble', 'gyxStTheme', 'gyxDayNight', 'gyxSwipe'];
 const base = await page.evaluate(ALL => {
   const o = {};
   o.feats = ALL.filter(id => !(window.__gyxFeats || []).some(f => f.id === id));
   o.minis = ALL.filter(id => !GY_MINI_FEATURES.some(f => f.id === id));
-  const acts = { gyxLive: 'gyx_live', gyxTrpg: 'gyx_trpg', gyxWoo: 'gyx_woo', gyxDive: 'gyx_dive', gyxHot: 'gyx_hot', gyxCare: 'gyx_care', gyxCallPlus: 'gyx_call_check', gyxMoodSkin: 'gyx_mood_skin', gyxBubble: 'gyx_bubble', gyxStTheme: 'gyx_st_theme', gyxDayNight: 'gyx_daynight' };
+  const acts = { gyxTrpg: 'gyx_trpg', gyxWoo: 'gyx_woo', gyxDive: 'gyx_dive', gyxHot: 'gyx_hot', gyxCare: 'gyx_care', gyxCallPlus: 'gyx_call_check', gyxMoodSkin: 'gyx_mood_skin', gyxBubble: 'gyx_bubble', gyxStTheme: 'gyx_st_theme', gyxDayNight: 'gyx_daynight' };
   o.acts = Object.values(acts).filter(k => !GY_AUTONOMY_ACTIONS.some(a => a.key === k));
-  const W = window.__gyPmW.WD; o.wd = ['gyxLiveW', 'gyxTrpgW', 'gyxWooW', 'gyxDiveW', 'gyxHotW', 'gyxCareW', 'gyxCallPlusW', 'gyxMoodSkinW', 'gyxBubbleW', 'gyxStThemeW', 'gyxDayNightW'].filter(k => !W[k]);
-  o.mem = ['gyxLive', 'gyxTrpg', 'gyxWoo', 'gyxDive', 'gyxHot', 'gyxCare', 'gyxCallSum', 'gyxCallVm', 'gyxMoodSkin', 'gyxBubble', 'gyxStTheme', 'gyxDayNight'].filter(k => !gyMemExList().includes(k));
+  const W = window.__gyPmW.WD; o.wd = ['gyxTrpgW', 'gyxWooW', 'gyxDiveW', 'gyxHotW', 'gyxCareW', 'gyxCallPlusW', 'gyxMoodSkinW', 'gyxBubbleW', 'gyxStThemeW', 'gyxDayNightW'].filter(k => !W[k]);
+  o.mem = ['gyxTrpg', 'gyxWoo', 'gyxDive', 'gyxHot', 'gyxCare', 'gyxCallSum', 'gyxCallVm', 'gyxMoodSkin', 'gyxBubble', 'gyxStTheme', 'gyxDayNight'].filter(k => !gyMemExList().includes(k));
   o.fair = (window.__gyxFeats.find(f => f.id === 'gyxFair') || {}).n;
   o.hubs = ['hub_look'].every(id => GY_MINI_FEATURES.some(f => f.id === id)) || !!document.querySelector('#setIndex [data-gyhub]');
   return o;
@@ -69,12 +69,7 @@ check('「别把她写弱」改名叫「🛡️ 平视」', base.fair === '🛡�
 
 const r1 = await page.evaluate(async () => {
   const s = ms => new Promise(r => setTimeout(r, ms)); const o = {}; const c = myCharacters.find(x => x.id === 9991);
-  // 直播
-  const L = await gyxLiveStart('9991'); await s(100);
-  o.live = !!document.getElementById('gyxLvLines') && /深夜弹琴/.test(L.title) && L.lines.some(x => x.who === '路过的猫');
-  document.getElementById('gyxLvIn').value = '弹那首我们的歌'; await gyxLiveSend(); await s(50);
-  o.liveMe = L.lines.some(x => x.me && /我们的歌/.test(x.t)) && /她刚发了弹幕/.test(__asks[__asks.length - 1]);
-  await gyxLiveGift(4); o.gift = L.gifts === 50; await gyxLiveEnd(); o.end = !!L.end && !!L.sum; document.getElementById('gyxLvOv')?.remove();
+  // 直播：256 起并进了 📱 软件 → 🎶 抖音（v257 测）
   // 跑团
   gyxTrpgOpen(null, '9991'); await s(50); await gyxTrpgNew('9991'); await s(50);
   const R = gyxTrpgData().runs[0]; o.trpg = R.title === '雾港来信' && R.need === 'd20' && R.stat === '敏捷' && R.me.hp === R.me.max - 2;
@@ -94,7 +89,6 @@ const r1 = await page.evaluate(async () => {
   document.getElementById('gyxDvOv')?.remove();
   return o;
 });
-check('📺 直播间：开播（标题、弹幕）→ 你发弹幕 TA 优先回 → 送礼物 → 下播留一句', r1.live && r1.liveMe && r1.gift && r1.end, JSON.stringify(r1));
 check('🎲 跑团：开团（属性、血量、要掷 d20 敏捷）→ 掷骰判定带上修正 → 也进了聊天 🎮', r1.trpg && r1.roll && r1.game, JSON.stringify(r1));
 check('🎯 反向攻略：TA 出一招 → 你接招，进度 +18、计划往下走、TA 有反应', r1.woo && r1.wooYes, JSON.stringify(r1));
 check('🕹️ 记忆潜行：从聊天里挑出碎片铺到像素地图上，走过去捡起来，上屏放出那句话和 TA 的感受', r1.dive && r1.frag, JSON.stringify(r1));

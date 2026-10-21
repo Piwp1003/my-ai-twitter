@@ -1,0 +1,2 @@
+int string guyu_guard_desc 0x7f0f0001
+int xml guyu_guard_access 0x7f120001

@@ -39,7 +39,7 @@ function checkAuth(request, env) {
 
 async function getState(env) {
   const raw = await env.PROACTIVE_KV.get('state');
-  return raw ? JSON.parse(raw) : { characters: [], apiUrl: '', apiKey: '', model: '', ntfyTopic: '' };
+  return raw ? JSON.parse(raw) : { characters: [], apiUrl: '', apiKey: '', model: '', ntfyTopic: '', webPushSubs: [], getui: null };
 }
 
 async function setState(env, state) {
@@ -172,7 +172,7 @@ ${charB.name} 的人设：${charB.persona || '(无详细设定)'}
 
 // ---------- Cron：检查所有角色，到点了就生成+推送 ----------
 
-async function pushNtfy(state, title, body) {
+async function pushNtfy(state, title, body, icon) {
   if (!state.ntfyTopic) return;
   try {
     // 注意：不能把中文之类的非ASCII字符直接放进HTTP请求头（Title/Tags这种），
@@ -182,7 +182,7 @@ async function pushNtfy(state, title, body) {
     const res = await fetch('https://ntfy.sh/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({ topic: state.ntfyTopic, title, message: body, tags: ['speech_balloon'] }),
+      body: JSON.stringify(Object.assign({ topic: state.ntfyTopic, title, message: body, tags: ['speech_balloon'] }, icon ? { icon } : {})),
     });
     if (!res.ok) {
       console.error('ntfy推送失败，状态码：', res.status, await res.text());
@@ -190,6 +190,152 @@ async function pushNtfy(state, title, body) {
   } catch (e) {
     console.error('ntfy推送失败：', e.message || e);
   }
+}
+
+// =====================================================================
+//  📲 谷雨自己的通知（247 加）：除了 ntfy，还能直接推到
+//   ① 网页 / 加到主屏幕的谷雨（Web Push，标准做法，浏览器自己弹）
+//   ② 安卓 App（uni-push 1.0 = 个推，在 DCloud 开发者中心开通后拿 AppID / AppKey / MasterSecret）
+//  三条路各自独立，哪条配了就走哪条，一条失败不影响别的。
+// =====================================================================
+
+const b64u = {
+  enc(buf) {
+    const b = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+    let s = ''; for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  },
+  dec(str) {
+    str = String(str || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    const bin = atob(str); const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  },
+};
+const enc8 = (s) => new TextEncoder().encode(s);
+function cat(...arrs) { let n = 0; arrs.forEach((a) => (n += a.length)); const o = new Uint8Array(n); let i = 0; arrs.forEach((a) => { o.set(a, i); i += a.length; }); return o; }
+
+// VAPID 密钥：第一次用的时候自己生成一对，存进 KV（不用你去 Cloudflare 里另外填）
+async function getVapid(env) {
+  const raw = await env.PROACTIVE_KV.get('vapid');
+  if (raw) { try { const v = JSON.parse(raw); if (v && v.pub && v.jwk) return v; } catch (e) {} }
+  const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const jwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+  const pubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey));
+  const v = { pub: b64u.enc(pubRaw), jwk };
+  await env.PROACTIVE_KV.put('vapid', JSON.stringify(v));
+  return v;
+}
+
+async function vapidAuth(env, endpoint) {
+  const v = await getVapid(env);
+  const aud = new URL(endpoint).origin;
+  const head = b64u.enc(enc8(JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
+  const body = b64u.enc(enc8(JSON.stringify({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: 'mailto:guyu@example.com' })));
+  const key = await crypto.subtle.importKey('jwk', v.jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, enc8(head + '.' + body)));
+  return `vapid t=${head}.${body}.${b64u.enc(sig)}, k=${v.pub}`;
+}
+
+async function hkdf(salt, ikm, info, len) {
+  const k = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, k, len * 8));
+}
+
+// RFC 8291（aes128gcm）加密：浏览器推送服务只认加密过的内容
+async function encryptWebPush(sub, payloadStr) {
+  const uaPub = b64u.dec(sub.keys.p256dh), auth = b64u.dec(sub.keys.auth);
+  const as = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const asPub = new Uint8Array(await crypto.subtle.exportKey('raw', as.publicKey));
+  const uaKey = await crypto.subtle.importKey('raw', uaPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const ecdh = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: uaKey }, as.privateKey, 256));
+  const ikm = await hkdf(auth, ecdh, cat(enc8('WebPush: info\0'), uaPub, asPub), 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdf(salt, ikm, enc8('Content-Encoding: aes128gcm\0'), 16);
+  const nonce = await hkdf(salt, ikm, enc8('Content-Encoding: nonce\0'), 12);
+  const key = await crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['encrypt']);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, cat(enc8(payloadStr), new Uint8Array([2]))));
+  const rs = new Uint8Array([0, 0, 16, 0]); // 4096
+  return cat(salt, rs, new Uint8Array([asPub.length]), asPub, ct);
+}
+
+async function sendWebPush(env, sub, msg) {
+  const body = await encryptWebPush(sub, JSON.stringify(msg));
+  const res = await fetch(sub.endpoint, {
+    method: 'POST',
+    headers: { 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400', Urgency: 'high', Authorization: await vapidAuth(env, sub.endpoint) },
+    body,
+  });
+  return { ok: res.ok, status: res.status, text: res.ok ? '' : (await res.text().catch(() => '')).slice(0, 200) };
+}
+
+// 个推 REST API v2（uni-push 1.0）：token 存 KV，过期前复用
+async function getuiToken(env, g, force) {
+  const ck = 'getuiToken:' + g.appId;
+  if (!force) { const c = await env.PROACTIVE_KV.get(ck); if (c) { try { const t = JSON.parse(c); if (t.exp > Date.now() + 60000) return t.token; } catch (e) {} } }
+  const ts = String(Date.now());
+  const sign = [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc8(g.appKey + ts + g.masterSecret)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const res = await fetch(`https://restapi.getui.com/v2/${encodeURIComponent(g.appId)}/auth`, { method: 'POST', headers: { 'Content-Type': 'application/json;charset=utf-8' }, body: JSON.stringify({ sign, timestamp: ts, appkey: g.appKey }) });
+  const j = await res.json().catch(() => ({}));
+  if (!j || j.code !== 0 || !j.data || !j.data.token) throw new Error('个推鉴权失败：' + (j && j.msg ? j.msg : 'HTTP ' + res.status) + '（AppID / AppKey / MasterSecret 对一下）');
+  await env.PROACTIVE_KV.put(ck, JSON.stringify({ token: j.data.token, exp: Number(j.data.expire_time) || Date.now() + 3600000 }));
+  return j.data.token;
+}
+
+async function sendGetui(env, g, title, body, jump, icon) {
+  const payload = JSON.stringify({ gy: 1, jump: jump || null });
+  const msg = {
+    request_id: ('gy' + Date.now() + Math.random().toString(36).slice(2)).slice(0, 32),
+    settings: { ttl: 86400000 },
+    audience: { cid: [g.cid] },
+    push_message: { notification: Object.assign({ title: String(title).slice(0, 50), body: String(body).slice(0, 200), click_type: 'payload', payload }, icon ? { logo_url: icon } : {}) },
+    // App 被杀掉以后，走手机厂商通道（华为 / 小米 / OPPO……需要在 DCloud 后台配好厂商参数）
+    push_channel: {
+      android: { ups: { notification: { title: String(title).slice(0, 50), body: String(body).slice(0, 200), click_type: 'payload', payload } } },
+      ios: { type: 'notify', payload, aps: { alert: { title: String(title).slice(0, 50), body: String(body).slice(0, 200) }, 'content-available': 0 } },
+    },
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await getuiToken(env, g, attempt > 0);
+    const res = await fetch(`https://restapi.getui.com/v2/${encodeURIComponent(g.appId)}/push/single/cid`, { method: 'POST', headers: { 'Content-Type': 'application/json;charset=utf-8', token }, body: JSON.stringify(msg) });
+    const j = await res.json().catch(() => ({}));
+    if (j && j.code === 0) return { ok: true };
+    if (attempt === 0 && j && (j.code === 10001 || /token/i.test(j.msg || ''))) continue; // token 过期，重新拿一次
+    return { ok: false, text: (j && j.msg) || 'HTTP ' + res.status };
+  }
+  return { ok: false, text: '个推没回成功' };
+}
+
+// 一条消息，所有配了的路都推一遍；返回每条路的结果（测试推送用）
+// 🖼️ 248：角色头像。手机端把 96px 的小 jpg 传上来存进 KV，这里给出一个公开的图片地址（带头像的指纹，换了头像地址就变）
+function avatarUrl(state, id) {
+  const h = state.avatars && state.avatars[String(id)];
+  const base = String(state.selfUrl || '').replace(/\/+$/, '');
+  return h && /^https:\/\//.test(base) ? `${base}/a/${encodeURIComponent(String(id))}/${h}.jpg` : '';
+}
+
+async function notifyAll(env, state, title, body, jump, icon) {
+  const out = [];
+  if (state.ntfyTopic) { await pushNtfy(state, title, body, icon); out.push({ ch: 'ntfy', ok: true }); }
+  const subs = Array.isArray(state.webPushSubs) ? state.webPushSubs : [];
+  if (subs.length) {
+    const keep = [];
+    for (const sub of subs) {
+      try {
+        const r = await sendWebPush(env, sub, { title, body, jump: jump || null, tag: 'gy-' + Date.now(), icon: icon || '' });
+        out.push({ ch: 'webpush', ok: r.ok, text: r.ok ? '' : 'HTTP ' + r.status + ' ' + r.text, label: sub.label || '' });
+        if (r.status !== 404 && r.status !== 410) keep.push(sub); // 404/410＝那台设备已经退订了，删掉
+      } catch (e) { keep.push(sub); out.push({ ch: 'webpush', ok: false, text: String(e && e.message || e), label: sub.label || '' }); }
+    }
+    if (keep.length !== subs.length) { state.webPushSubs = keep; await setState(env, state); }
+  }
+  const g = state.getui;
+  if (g && g.appId && g.appKey && g.masterSecret && g.cid) {
+    try { const r = await sendGetui(env, g, title, body, jump, icon); out.push({ ch: 'unipush', ok: r.ok, text: r.text || '' }); }
+    catch (e) { out.push({ ch: 'unipush', ok: false, text: String(e && e.message || e) }); }
+  }
+  return out;
 }
 
 // 休息时间段判断：跟手机端 isInQuietHours() 逻辑保持一致。
@@ -248,7 +394,7 @@ async function runProactiveCheck(env) {
 
     // 更新该角色的历史记录，供下一轮判断使用
     char.recentHistory = (char.recentHistory || []).concat([{ sender: 'char', text, timestamp: now }]).slice(-12);
-    await pushNtfy(state, `${char.name} 发来消息`, text);
+    await notifyAll(env, state, `${char.name} 发来消息`, text, { chat: char.id }, avatarUrl(state, char.id));
     pending.push({ id: crypto.randomUUID(), type: 'chat', charId: char.id, text, timestamp: now });
   }
 
@@ -278,7 +424,7 @@ async function runProactiveCheck(env) {
     if (!text) continue;
 
     char.recentPosts = (char.recentPosts || []).concat([{ text, timestamp: now }]).slice(-6);
-    await pushNtfy(state, `${char.name} 发布了新推文`, text);
+    await notifyAll(env, state, `${char.name} 发布了新推文`, text, { view: 'home' }, avatarUrl(state, char.id));
     const postPendingId = crypto.randomUUID();
     pending.push({ id: postPendingId, type: 'post', charId: char.id, text, timestamp: now });
 
@@ -318,7 +464,7 @@ async function runProactiveCheck(env) {
           const parsed = JSON.parse(cleaned);
           if (parsed.charA_status && parsed.charB_status) {
             if (state.charInteractionNotify) {
-              await pushNtfy(state, '👀 发现私下互动', `${pair.charA.name} 和 ${pair.charB.name} ${parsed.event_summary || '正在互动'}！`);
+              await notifyAll(env, state, '👀 发现私下互动', `${pair.charA.name} 和 ${pair.charB.name} ${parsed.event_summary || '正在互动'}！`, { view: 'home' }, avatarUrl(state, pair.charA.id));
             }
             pending.push({
               id: crypto.randomUUID(),
@@ -367,7 +513,34 @@ export default {
       });
     }
 
+    // 🖼️ 头像图片：通知里要用，所以不要密钥（地址里带着头像指纹，猜不到）
+    const am = /^\/a\/([^/]+)\/([a-z0-9]+)\.jpg$/.exec(url.pathname);
+    if (am && request.method === 'GET') {
+      const raw = await env.PROACTIVE_KV.get('av:' + decodeURIComponent(am[1]));
+      let v = null; try { v = raw ? JSON.parse(raw) : null; } catch (e) {}
+      if (!v || v.h !== am[2] || !/^data:image\/(jpeg|png);base64,/.test(v.d || '')) return new Response('not found', { status: 404 });
+      const b64 = v.d.split(',')[1], bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Response(bytes, { headers: { 'Content-Type': /png/.test(v.d.slice(0, 20)) ? 'image/png' : 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*' } });
+    }
+
     if (!checkAuth(request, env)) return unauthorized();
+
+    // 🖼️ 手机端传上来的角色小头像（只传变了的）
+    if (url.pathname === '/avatars' && request.method === 'POST') {
+      const body = await request.json();
+      const state = await getState(env);
+      state.avatars = state.avatars || {};
+      let n = 0;
+      for (const it of (Array.isArray(body.items) ? body.items : []).slice(0, 20)) {
+        if (!it || !it.id || !/^[a-z0-9]+$/.test(String(it.h || '')) || !/^data:image\/(jpeg|png);base64,/.test(it.d || '') || it.d.length > 60000) continue;
+        await env.PROACTIVE_KV.put('av:' + String(it.id), JSON.stringify({ h: it.h, d: it.d }));
+        state.avatars[String(it.id)] = it.h; n++;
+      }
+      if (typeof body.base === 'string' && /^https:\/\//.test(body.base)) state.selfUrl = body.base.replace(/\/+$/, '');
+      await setState(env, state);
+      return jsonResponse({ ok: true, saved: n });
+    }
 
     if (url.pathname === '/sync' && request.method === 'POST') {
       const body = await request.json();
@@ -384,6 +557,15 @@ export default {
       state.quietHoursEnd = body.quietHoursEnd || '';
       state.tzOffsetMin = typeof body.tzOffsetMin === 'number' ? body.tzOffsetMin : 0; // 手机端 Date.getTimezoneOffset()，UTC-本地，分钟
       state.updatedAt = Date.now();
+      if (typeof body.selfUrl === 'string' && /^https:\/\//.test(body.selfUrl)) state.selfUrl = body.selfUrl.replace(/\/+$/, '');
+      // 📲 247：谷雨自己的通知。这台设备的订阅合并进去（按 endpoint 去重，最多留 8 台设备）
+      if (Array.isArray(body.webPushSubs)) {
+        const all = (Array.isArray(state.webPushSubs) ? state.webPushSubs : []).filter((s) => s && s.endpoint);
+        body.webPushSubs.forEach((s) => { if (s && s.endpoint && s.keys && s.keys.p256dh && s.keys.auth) { const i = all.findIndex((x) => x.endpoint === s.endpoint); if (i >= 0) all[i] = s; else all.push(s); } });
+        state.webPushSubs = all.slice(-8);
+      }
+      if (Array.isArray(body.webPushDrop) && body.webPushDrop.length) state.webPushSubs = (state.webPushSubs || []).filter((s) => !body.webPushDrop.includes(s.endpoint));
+      if (body.getui !== undefined) state.getui = body.getui && body.getui.appId ? { appId: String(body.getui.appId).trim(), appKey: String(body.getui.appKey || '').trim(), masterSecret: String(body.getui.masterSecret || '').trim(), cid: String(body.getui.cid || '').trim() } : null;
 
       // 合并角色：保留云端已经推进过的 lastChatProactiveTime/lastPostTime（避免手机端旧数据把云端进度覆盖回去）
       const prevById = {};
@@ -419,6 +601,26 @@ export default {
       const remaining = ids.size > 0 ? pending.filter((p) => !ids.has(p.id)) : [];
       await setPending(env, remaining);
       return jsonResponse({ ok: true });
+    }
+
+    // 📲 网页订阅推送要用的公钥（第一次请求时自动生成）
+    if (url.pathname === '/vapid' && request.method === 'GET') {
+      const v = await getVapid(env);
+      return jsonResponse({ publicKey: v.pub });
+    }
+
+    // 📲 发一条测试通知：所有配好的路都推一遍，告诉你每条路通没通
+    if (url.pathname === '/test-push' && request.method === 'POST') {
+      let body = {}; try { body = await request.json(); } catch (e) {}
+      const state = await getState(env);
+      if (body.webPushSubs || body.getui !== undefined) {
+        if (Array.isArray(body.webPushSubs)) { const all = (state.webPushSubs || []).filter((s) => s && s.endpoint); body.webPushSubs.forEach((s) => { if (s && s.endpoint && s.keys) { const i = all.findIndex((x) => x.endpoint === s.endpoint); if (i >= 0) all[i] = s; else all.push(s); } }); state.webPushSubs = all.slice(-8); }
+        if (body.getui !== undefined) state.getui = body.getui && body.getui.appId ? body.getui : null;
+        if (body.ntfyTopic !== undefined) state.ntfyTopic = body.ntfyTopic || '';
+        await setState(env, state);
+      }
+      const results = await notifyAll(env, state, body.title || '🔔 谷雨测试通知', body.body || '能看到这条，就说明关了网页也能收到 TA 的消息啦', body.jump || { view: 'notifications' }, body.iconId != null ? avatarUrl(state, body.iconId) : '');
+      return jsonResponse({ ok: results.some((r) => r.ok), results });
     }
 
     // 手动触发一次检查，方便部署后测试

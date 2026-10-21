@@ -1,0 +1,1 @@
+package android.app; public class AppOpsManager { public int checkOpNoThrow(String op,int uid,String pkg){ return 0; } }

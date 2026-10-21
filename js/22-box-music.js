@@ -709,7 +709,7 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         if (S.pos) { root.style.left = S.pos.x + 'px'; root.style.top = S.pos.y + 'px'; root.style.right = 'auto'; root.style.bottom = 'auto'; }
         if (S.hidden) root.style.display = 'none';
         // 💬 微信模式里播放条默认收着（只是这次不露出来，不改你在谷雨里的设置）；一放歌就自己出来
-        try { if (localStorage.getItem('gyWxMode') === '1') window.gymWxCollapse(); } catch (e) {}
+        try { if (localStorage.getItem('gyWxMode') === '1' && typeof window.gyWxIsOn === 'function') window.gymWxCollapse(); } catch (e) {}
         bindDrag(root);
         paint();
     }
@@ -1095,9 +1095,10 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         if (charsIn().length && LS().sayOnSwitch) setTimeout(() => someoneSay('switch'), 1200);
     };
     // 只读：现在放的是哪首（小手机的「音乐」小组件用）
+    window.gymState = () => S;   // 📱 软件里的网易云要读曲库 / 歌单 / 听歌统计（只读）
     window.gymNowInfo = function () {
         const t = cur(); if (!t) return null;
-        return { title: t.title || '未命名', artist: t.artist || '', cover: t.cover || '', playing: !!(audio && !audio.paused),
+        return { id: t.id, title: t.title || '未命名', artist: t.artist || '', cover: t.cover || '', playing: !!(audio && !audio.paused),
                  t: audio ? audio.currentTime || 0 : 0, d: audio && isFinite(audio.duration) ? audio.duration : (t.dur || 0) };
     };
     window.gymNext = function () {

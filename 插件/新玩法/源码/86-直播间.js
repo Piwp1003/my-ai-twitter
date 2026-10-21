@@ -12,7 +12,7 @@ const saveD = () => S.set('d', D);
 async function gen(c, L, ask) {
     if (X.bailu()) { const t = X.cards(['聊天', '情话'], c, 3); return { ta: t.slice(0, 2), dm: NICK.slice(0, 3).map(n => ({ who: n, t: X.pick(['主播好帅', '来了来了', '哈哈哈哈', '前排', '这是什么神仙直播']) })) }; }
     const hist = L.lines.slice(-14).map(x => (x.ta ? X.name(c) + '（主播）' : x.me ? X.me(c) + '（就是她）' : x.who) + '：' + x.t).join('\n');
-    const r = X.json(await X.ask(`${X.who(c)}\n你正在开直播，标题《${L.title}》，画面：${L.scene}。直播间里有一群陌生观众，她（${X.me(c)}）也在里面看，用户名就是「${X.me(c)}」——你认得出她。\n刚才的弹幕和你说的话：\n${hist || '（刚开播）'}\n${ask || '接着往下播。'}\n输出 JSON：{"ta":["你接下来说的 1~3 句（口语，像真主播，可以念弹幕、回弹幕，她的弹幕优先回，可以当着观众偷偷对她好）"],"dm":[{"who":"观众昵称","t":"弹幕（15 字以内，像真弹幕，可以起哄、刷梗、发现你在偏心某个观众）"}]}，dm 给 3~6 条。`));
+    const r = X.json(await X.ask(`${X.who(c)}\n你正在开直播，标题《${L.title}》，画面：${L.scene}。直播间里有一群陌生观众${(() => { try { return window.gyNpcCommentHint ? String(window.gyNpcCommentHint(c.id, 6, 'live') || '').replace(/条/g, '条弹幕') : ''; } catch (e) { return ''; } })()}，她（${X.me(c)}）也在里面看，用户名就是「${X.me(c)}」——你认得出她。\n刚才的弹幕和你说的话：\n${hist || '（刚开播）'}\n${ask || '接着往下播。'}\n输出 JSON：{"ta":["你接下来说的 1~3 句（口语，像真主播，可以念弹幕、回弹幕，她的弹幕优先回，可以当着观众偷偷对她好）"],"dm":[{"who":"观众昵称","t":"弹幕（15 字以内，像真弹幕，可以起哄、刷梗、发现你在偏心某个观众）"}]}，dm 给 3~6 条。`));
     return r && (r.ta || r.dm) ? { ta: [].concat(r.ta || []).map(X.plain).filter(Boolean).slice(0, 3), dm: [].concat(r.dm || []).filter(x => x && x.t).slice(0, 6).map(x => ({ who: X.plain(x.who || X.pick(NICK)).slice(0, 10), t: X.plain(x.t).slice(0, 30) })) } : null;
 }
 async function start(c, why) {

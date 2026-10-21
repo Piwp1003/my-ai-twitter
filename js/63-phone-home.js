@@ -36,7 +36,7 @@
         ],
         dock: ['chat', 'notif', 'home', 'set'],
         names: {}, colors: {}, imgs: {},
-        style: 'white', font: 'sys', labels: true, lock: true, dark: false,
+        style: 'white', font: 'sys', labels: true, lock: true, dark: false, xMerge: true,
         wall: null, wallColor: null
     });
     let C = DEF();
@@ -45,6 +45,7 @@
     let q = '';                  // 资源库搜索
     const store = () => G().store;
     async function save() { try { if (store()) await store().setItem('cfg', C); } catch (e) {} }
+    window.gyPmXOn = () => C.xMerge !== false;
     window.gyPmHomeLoad = async function () {
         try {
             const s = store(); if (!s) return;
@@ -174,7 +175,9 @@
         const a = appDef(k); if (!a) return '';
         const svg = G().svg;
         let badge = '';
-        if (k === 'chat') { const n = G().unread ? G().unread() : 0; if (n) badge = `<span class="pm-badge">${n > 99 ? '99+' : n}</span>`; }
+        // 🐦 聊天并进推特（256）：开着时「聊天」图标不单独出现，未读挂在「推特」上
+        if (k === 'chat' && C.xMerge !== false && where !== 'lib') return '';
+        if (k === 'chat' || (k === 'home' && C.xMerge !== false)) { const n = G().unread ? G().unread() : 0; if (n) badge = `<span class="pm-badge">${n > 99 ? '99+' : n}</span>`; }
         if (k === 'notif') { let n = 0; try { n = unreadNotifs || 0; } catch (e) {} if (n) badge = `<span class="pm-badge">${n > 99 ? '99+' : n}</span>`; }
         const img = C.imgs[k];
         const bg = C.colors[k] || (C.style === 'hand' ? a[3] : '');
@@ -1075,6 +1078,7 @@
             <div class="lbl">字体</div><div class="seg">${opt('font', 'sys', '系统')}${opt('font', 'serif', '衬线')}${opt('font', 'hand', '手写')}</div>
             <div class="lbl">图标名字</div><div class="seg">${opt('labels', true, '显示')}${opt('labels', false, '不显示')}</div>
             <div class="lbl">锁屏</div><div class="seg">${opt('lock', true, '进来先锁屏')}${opt('lock', false, '不要锁屏')}</div>
+            <div class="lbl">聊天和推特</div><div class="seg">${opt('xMerge', true, '合成一个「推特」（私信就是聊天）')}${opt('xMerge', false, '分开两个图标')}</div>
             <button class="it" onclick="gyPmAddWidget()">小组件</button>
             <button class="it" onclick="gyPmLibrary()">App 资源库</button>
             <button class="it pri" onclick="gyPmCloseSheet();gyPmEdit(true)">编辑桌面</button>

@@ -1,0 +1,1 @@
+package android.app; public abstract class Service extends android.content.Context { public void onDestroy(){} public boolean onUnbind(android.content.Intent i){return false;} public void onCreate(){} }

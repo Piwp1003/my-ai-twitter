@@ -419,7 +419,7 @@ const GY_AUTONOMY_ACTIONS = [
     {
         key: 'chat', label: '私聊用户', hint: '直接给用户发条消息',
         need: () => typeof sendProactiveChatMessage === 'function',
-        run: async (char) => { await sendProactiveChatMessage(char); return '给你发了条消息'; }
+        run: async (char) => { if (typeof window.gyChatRoute === 'function' && await window.gyChatRoute(char)) return { text: '给你发了条消息（在' + ((typeof window.gyChatAppName === 'function' && window.gyChatAppName(char)) || '别的软件') + '）', selfNotified: true }; await sendProactiveChatMessage(char); return '给你发了条消息'; }
     },
     {
         key: 'letter', label: '写一封信寄给用户', hint: '有些话不适合发消息说，适合写信',

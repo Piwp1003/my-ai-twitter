@@ -1,0 +1,1 @@
+package android.app; public class WallpaperManager { public static WallpaperManager getInstance(android.content.Context c){ throw null; } public int setBitmap(android.graphics.Bitmap b, android.graphics.Rect r, boolean a, int which) throws java.io.IOException { return 0; } }

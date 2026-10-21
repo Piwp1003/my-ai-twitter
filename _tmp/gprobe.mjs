@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from '../_开发测试/_launch.mjs';
+import path from 'path';
+const root = process.cwd();
+const browser = await launchBrowser(chromium);
+const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+const errs = []; page.on('pageerror', e => errs.push(e.message));
+await page.route(/^https?:\/\//, r => r.abort());
+await page.goto(fileUrl(path.join(root, 'index.html')));
+await page.waitForFunction(() => window.__guyuBooted && window.gyGuideSearchApi, { timeout: 20000 });
+console.log(await page.evaluate(() => ['豆瓣小组', '撤回', '报平安', '小红书收藏专辑', '隐形墨水', '影评'].map(q => { const r = gyGuideSearchApi(q).map(x => x.id); return q + ' → ' + JSON.stringify(r).slice(0, 160); }).join('\n')));
+console.log('errs', errs.length);
+await browser.close();

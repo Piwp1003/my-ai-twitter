@@ -1,0 +1,15 @@
+import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
+import path from 'path'; import fs from 'fs';
+const root = process.cwd();
+const ALL = JSON.parse(fs.readFileSync(path.join(root,'插件','软件','真手机.json'),'utf8'));
+const b = await launchBrowser(chromium);
+const page = await (await b.newContext({viewport:{width:390,height:844}})).newPage();
+await page.route(/^https?:\/\//, r=>r.abort());
+await page.goto(fileUrl(path.join(root,'index.html')));
+await page.waitForFunction(()=>window.__guyuBooted && typeof executePluginOnLoad==='function',{timeout:20000});
+await page.evaluate(({plugs})=>{ window.getApiConfig=()=>({url:'u',key:'k',model:'m'}); window.plus={android:{runtimeMainActivity:()=>({}),importClass:n=>({version:()=>'1.0.0',perms:()=>'{}'})},io:{convertLocalFileSystemURL:p=>p},nativeObj:{},runtime:{appid:'g'}}; plugs.forEach(p=>executePluginOnLoad(p)); },{plugs:ALL});
+await page.waitForTimeout(800);
+const o = await page.evaluate(()=>({ phKeys:Object.keys(window.GY_PL_DEFS||{}).filter(k=>/ph\.|ph_/.test(k)), allPh:Object.keys(window.GY_PL_DEFS||{}).filter(k=>/ph/.test(k)), has:!!(window.GY_PL_DEFS&&window.GY_PL_DEFS['ph.see']), plFn:typeof window.gyPL, xpl:typeof (window.GYX&&window.GYX.plGroup) }));
+console.log(JSON.stringify(o));
+await b.close();

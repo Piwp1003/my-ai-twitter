@@ -1,0 +1,3 @@
+package android.provider;
+public class Settings { public static boolean canDrawOverlays(android.content.Context c){return false;}
+ public static class System { public static boolean canWrite(android.content.Context c){return false;} public static int getInt(android.content.ContentResolver r,String k,int d){return 0;} public static boolean putInt(android.content.ContentResolver r,String k,int v){return false;} } }

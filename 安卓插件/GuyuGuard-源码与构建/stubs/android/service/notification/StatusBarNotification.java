@@ -1,0 +1,1 @@
+package android.service.notification; public class StatusBarNotification { public String getPackageName(){return null;} public android.app.Notification getNotification(){return null;} public long getPostTime(){return 0;} public boolean isOngoing(){return false;} }

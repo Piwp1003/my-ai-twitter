@@ -18,14 +18,12 @@ const TESTS = [
   ['today-mobile-test.mjs',  '手机上的「今天」'],
   ['online-notify-test.mjs', '在线找资源 + 第二批动作 + 通知能跳'],
   ['peek-bio-test.mjs',      '偷翻日记 + 过往签名 + 论坛/匿名回帖 + 朋友圈'],
-  ['wechat-mode-test.mjs',   '微信模式切换'],
   ['phone-mode-test.mjs',    '小手机模式'],
   ['phone-widgets-test.mjs', '小手机：更多小组件/款式/颜色/裁剪/锁屏'],
   ['phone-extra-test.mjs',   '小手机：灵动岛/随意摆+拉边调大小/字能改/一行5个/打开方式/小窗/景深3D/实况'],
   ['notif-jump-test.mjs',   '点通知 / 弹窗 / 小手机通知中心 / 灵动岛：都能跳到对应页面'],
   ['chat-acts-route-test.mjs', '让 TA 写日记 / 去匿名论坛 / 论坛 / 朋友圈：做的是对的那件事；今天面板跟着更新'],
   ['v197-batch-test.mjs',    '事后反应 / 谁打给谁 / 邀请带上东西 / 塔罗 / 字体 / 弹窗拖大小 / 20个问题收藏'],
-  ['v199-test.mjs',         '微信模式通讯录字母索引/资料页/相册；气泡尖尖；空的重新生成；自主模式写信写日记习惯'],
   ['v202-test.mjs',         '小手机神秘学 + 新小组件 + 今日运势再摇 + 角色立绘差分 + 微信滚动条透明'],
   ['v203-test.mjs',         '返回（系统返回键/左边缘右滑/鼠标侧键）+ 经期记录（预测/日历/小组件/提醒/角色记得和照顾）'],
   ['v204-test.mjs',         '一起听 · 一起看（网易云/QQ音乐/B站……放进来，TA 知道在放什么）'],
@@ -83,6 +81,10 @@ const TESTS = [
   ['scrollbar-test.mjs',     '浮层式滚动条'],
   ['tavern-bridge-test.mjs', '助手脚本兼容层'],
   ['run.mjs',                '续写工作台全链路'],
+  ['v249-soft-test.mjs', '软件：微博 / 泡泡'], ['v250-soft2-test.mjs', '软件：小红书 / 豆瓣 / iMessage'], ['v251-ios-test.mjs', '软件：苹果外观 / iMessage 全功能'],
+  ['v252-phone-test.mjs', '真手机'], ['v254-soft3-test.mjs', '软件补包'], ['v255-soft4-test.mjs', '软件之间分享 / 草稿箱 / 微博抽奖'],
+  ['v256-music-test.mjs', '软件桌面 + 网易云'], ['v257-douyin-test.mjs', '抖音（含直播间）'], ['v258-wechat-test.mjs', '微信'],
+  ['v259-phone-x-test.mjs', '小手机推特（主页 + 私信）'], ['v260-chat-route-test.mjs', '聊天互通 + TA 喜欢用哪个软件找你'],
 ];
 // 需要额外素材的：有素材才跑
 if (fs.existsSync(path.join(root, '_test', 'card-闻述-状态栏.json'))) TESTS.push(['card-test.mjs', '角色卡状态栏']);

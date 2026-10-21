@@ -36,7 +36,7 @@ await page.evaluate(({ PLUG }) => {
 await page.waitForTimeout(3500);
 const r = await page.evaluate(async () => {
   const s = ms => new Promise(r => setTimeout(r, ms)); const o = {};
-  o.base = ['gyxScoop', 'gyxHotList', 'gyxRed'].every(id => GYX.FEATS.some(f => f.id === id)) && ['gyx_scoop_tip', 'gyx_hotlist', 'gyx_red_post', 'gyx_red_fav'].every(k => GY_AUTONOMY_ACTIONS.some(a => a.key === k)) && ['gyxScoopW', 'gyxHotListW', 'gyxRedW'].every(k => window.__gyPmW.WD[k]) && ['gyxScoop', 'gyxHotList', 'gyxRed'].every(k => gyMemExList().includes(k));
+  o.base = ['gyxScoop', 'gyxHotList'].every(id => GYX.FEATS.some(f => f.id === id)) && ['gyx_scoop_tip', 'gyx_hotlist'].every(k => GY_AUTONOMY_ACTIONS.some(a => a.key === k)) && ['gyxScoopW', 'gyxHotListW'].every(k => window.__gyPmW.WD[k]) && ['gyxScoop', 'gyxHotList'].every(k => gyMemExList().includes(k));
   // 📰 模式与人数
   const D = gyxScoopData(); const cnt = { user: new Set(), char: new Set() };
   for (let i = 0; i < 30; i++) { const a = gyxScoopPick('user'); cnt.user.add(a.me + ':' + a.chars.length); const b = gyxScoopPick('char'); cnt.char.add(b.me + ':' + b.chars.length); }
@@ -53,7 +53,7 @@ const r = await page.evaluate(async () => {
   // 手动爆料的提示词能改
   const ov = JSON.parse(localStorage.getItem('gyPromptLib') || '{}'); ov.on = true; ov.ov = Object.assign(ov.ov || {}, { 'scoop.post': '自定义爆料：{{人物}}' }); localStorage.setItem('gyPromptLib', JSON.stringify(ov)); window.__gyPLOv = ov;
   window.__prompts = []; await gyxScoopNow(); o.plEdit = window.__prompts.some(t => /^自定义爆料：/.test(t));
-  gyPLOpen(); await s(200); const pt = document.getElementById('gyPLOv').innerText; o.plList = /营销号自动爆料/.test(pt) && /📕 小红书/.test(pt) && /营销号（手动爆料）/.test(pt) && /营销号写爆料的要求/.test(pt); document.getElementById('gyPLOv').remove();
+  gyPLOpen(); await s(200); const pt = document.getElementById('gyPLOv').innerText; o.plList = /营销号自动爆料/.test(pt) && /营销号（手动爆料）/.test(pt) && /营销号写爆料的要求/.test(pt); document.getElementById('gyPLOv').remove();
   document.getElementById('gyxScoopOv')?.remove();
   // 📰 人数自己定 + 爆什么自己定
   gyxScoopCfg('cnt', 'fix'); gyxScoopCfg('num', 3);
@@ -68,7 +68,7 @@ const r = await page.evaluate(async () => {
   gyxScoopOpen(); const st = document.getElementById('gyxScoopOv').innerText; o.ui = /每次爆几个人/.test(st) && /爆什么/.test(st) && /今天的行程/.test(st); gyxScoopCfg('want', '');
   document.getElementById('gyxScoopOv')?.remove();
   // 🧾 注入内容管理：新玩法插件那一组，新插件的几段有名字，老插件自动标出处，能单独关
-  const gg = gyInjectGroups().find(g => g.key === 'gyx'); o.injGroup = !!gg && gg.items.some(i => /营销号刚爆了 TA 的料/.test(i.label)) && gg.items.some(i => /站内热搜前三/.test(i.label)) && gg.items.some(i => /小红书/.test(i.label));
+  const gg = gyInjectGroups().find(g => g.key === 'gyx'); o.injGroup = !!gg && gg.items.some(i => /营销号刚爆了 TA 的料/.test(i.label)) && gg.items.some(i => /站内热搜前三/.test(i.label));
   await gyxDilemmaAsk('9992'); __gyxCtxFor('9992'); o.injSrc = __gyxHeadOf('你在等她的意见') === 'TA的人生选择题';
   const sid = String(gyxScoopData().list[0].who.find(x => x !== 'me'));
   gyInjectSet('gyx.gyxScoop.0', false); o.injOff = !/营销号刚在主页爆了你的料/.test(__gyxCtxFor(sid)); gyInjectSet('gyx.gyxScoop.0', true); o.injOn = /营销号刚在主页爆了你的料/.test(__gyxCtxFor(sid));
@@ -78,15 +78,7 @@ const r = await page.evaluate(async () => {
   await gyxHotListName(true); await s(100); renderTrends(); o.hlTitle = /Leon深夜现身江边/.test(document.getElementById('trendListContainer').innerText) && gyxHotListTitle('Leon夜会神秘人') === 'Leon深夜现身江边' && window.__prompts.some(t => /你是微博热搜的编辑/.test(t));
   o.hlRank = gyxHotListBoard()[0] && /Leon/.test(gyxHotListBoard()[0].t); GYX.set('gyxHotList', false); renderTrends(); o.hlBack = !/微博热搜/.test(tc.innerText);
   o.hlEntry = GY_MINI_FEATURES.some(f => f.id === 'gyxHotList');
-  // 📕 小红书
-  gyxRedOpen(); await s(100); await gyxRedRefresh(); o.feed = gyxRedData().notes.length === 4 && document.querySelectorAll('#gyxRedOv .rn-c').length === 4;
-  gyxRedWho('9991'); await gyxRedTaPost(); o.taNote = gyxRedData().notes.some(n => n.by === '9991' && /夜景/.test(n.title));
-  gyxRedTab('mine'); document.getElementById('gyxRnT').value = '男朋友总说忙怎么办'; document.getElementById('gyxRnB').value = '姐妹们帮我看看'; document.getElementById('gyxRnG').value = '情感 求问'; await gyxRedPost();
-  const mine = gyxRedData().notes.find(n => n.by === 'me'); o.mine = mine && mine.cmts.some(c => c.who === '9991' && /你吗/.test(c.t));
-  await GY_AUTONOMY_ACTIONS.find(a => a.key === 'gyx_red_fav').run(myCharacters.find(c => c.id === 9991)); gyxRedTab('tafav'); o.fav = /周末带她去看/.test(document.getElementById('gyxRedOv').innerText) || gyxRedData().notes.some(n => n.favBy && n.favBy['9991']);
-  gyxRedTab('real'); document.getElementById('gyxRnPaste').value = '超好吃的面馆\n就在学校后门 https://xhslink.com/abc #美食'; await gyxRedPaste(); o.paste = gyxRedData().notes[0].by === 'real' && gyxRedData().notes[0].url === 'https://xhslink.com/abc';
-  o.realBtn = typeof gyxRedReal === 'function';
-  document.getElementById('gyxRedOv')?.remove();
+  // 📕 小红书挪进了 📱 软件（v250），在 v249-soft-test 里测
   return o;
 });
 check('三个新插件都有开关、自主行动、小组件、记忆总览', r.base, JSON.stringify(r));
@@ -99,7 +91,6 @@ check('🔥 热搜榜用微博的口吻起标题（副 API，起过记住）', r
 check('🧾 注入内容管理里有「新玩法插件」一组：新插件的几段有名字、老插件标出处、单独关掉就不带', r.injGroup && r.injSrc && r.injOff && r.injOn, JSON.stringify(r));
 check('📜 内置提示词：营销号自动爆料、小红书、营销号手动爆料都能看能改，改了就用改的', r.plEdit && r.plList, JSON.stringify(r));
 check('🔥 微博热搜榜：开关默认关、入口一直在；打开后标签排行变热搜样式（按真实帖子算热度），关掉恢复', r.hlOff && r.hl && r.hlRank && r.hlBack && r.hlEntry, JSON.stringify(r));
-check('📕 小红书：刷新出笔记、TA 发笔记、你发求问贴 TA 认出你、TA 偷偷收藏、贴现实笔记进来', r.feed && r.taNote && r.mine && r.fav && r.paste && r.realBtn, JSON.stringify(r));
 const bad = errs.filter(e => !/x\.test|Failed to fetch/.test(e));
 check('没有页面报错', !bad.length, bad.join(' | ').slice(0, 600));
 await browser.close();

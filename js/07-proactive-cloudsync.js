@@ -59,7 +59,8 @@ async function checkAndTriggerProactiveChats() {
         for (let char of due.slice(0, 2)) {
             // 触发前，更新一下时间记录
             char.lastChatProactiveTime = now;
-            await sendProactiveChatMessage(char);
+            // 💬 TA 喜欢用哪个软件找你（256）：角色设置里选了微信 / iMessage……就去那里发；没装 / 没选就照旧
+            if (!(typeof window.gyChatRoute === 'function' && await window.gyChatRoute(char))) await sendProactiveChatMessage(char);
             if (typeof gyTaAfter === 'function') gyTaAfter(char, 'chat');
         }
     } catch (e) {
@@ -217,7 +218,7 @@ async function syncStateToCloud(force = false) {
             method: 'POST',
             keepalive: true, // 允许在页面切后台/关闭的瞬间也能把请求发出去
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cloudAuthToken}` },
-            body: JSON.stringify({ apiUrl: api.url, apiKey: api.key, model: api.model, ntfyTopic, characters, relationships, charInteractionEnabled, charInteractionNotify, quietHoursEnabled, quietHoursStart, quietHoursEnd, tzOffsetMin: new Date().getTimezoneOffset() }),
+            body: JSON.stringify({ apiUrl: api.url, apiKey: api.key, model: api.model, ntfyTopic, characters, relationships, charInteractionEnabled, charInteractionNotify, quietHoursEnabled, quietHoursStart, quietHoursEnd, tzOffsetMin: new Date().getTimezoneOffset(), ...(typeof window.gyPushSyncExtra === 'function' ? window.gyPushSyncExtra() : {}) }),   // 📲 247：这台设备的推送订阅（js/98）
         });
     } catch (e) {
         // ⚠️ 别用 console.error：云同步是**每次切页都会跑**的后台任务，Worker 没起来/地址填错时

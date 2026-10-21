@@ -12,7 +12,7 @@ const DST = path.join(__dirname, 'app');     // 打进 exe 的那份
 
 // 要带进桌面版的东西。没列进来的（备份文件、控制台脚本、开发测试、.git 等）一律不打包。
 const FILES = ['index.html', 'style.css'];
-const DIRS = ['js', 'icons'];
+const DIRS = ['js', 'icons', 'media'];   // media：247 后台保活的声音
 // 有就带上，没有也不影响桌面版跑起来：
 //   pwa-manifest.json —— PWA 用的，index.html 只在 http/https 下才挂它，file:// 下根本不会加载
 //   liquid-glass-cat-theme.css —— 备用主题，index.html 没引用，留着方便你手动换皮

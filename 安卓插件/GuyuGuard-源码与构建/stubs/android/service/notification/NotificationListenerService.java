@@ -1,0 +1,1 @@
+package android.service.notification; public abstract class NotificationListenerService extends android.app.Service { public void onListenerConnected(){} public void onListenerDisconnected(){} public void onNotificationPosted(StatusBarNotification s){} }

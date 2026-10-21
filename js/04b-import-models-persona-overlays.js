@@ -469,7 +469,7 @@ function __gyToastSummary(n) {
 // 带了它，点弹窗就跟点通知页里那条走同一套跳转（js/60 gyOpenNotif）——信件、商城、地图、群聊……都能跳；
 // 不带的老调用照旧按 postId / chatCharId 跳。
 function showToast(avatarHtml, titleText, contentText, postId, chatCharId, isAnon = false, notif = null) {
-    sendBrowserNotification(titleText, contentText);
+    sendBrowserNotification(titleText, contentText, { charId: chatCharId, avatarHtml, notif });   // 🖼️ 248：带上是谁，系统通知显示 TA 的头像
     const container = document.getElementById('toastContainer');
     if(!container) return;
 

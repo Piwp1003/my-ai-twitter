@@ -19,7 +19,6 @@ const CORE_ASSETS = [
     './',
     './index.html',
     './style.css?v=' + V,   // ⚠️ 跟 index.html 里的 ?v= 必须完全一致，改一处就要改两处
-    './wechat-mode.css?v=' + V,
     './pwa-manifest.json', // 注意是 pwa-manifest.json，不是 manifest.json（后者是HBuilderX打包APK用的应用配置，见index.html开头的注释）
     './icons/icon-192.png',
     './icons/icon-512.png',
@@ -98,7 +97,6 @@ const CORE_ASSETS = [
     './js/58-more-acts.js?v=' + V,
     './js/59-online-res.js?v=' + V,
     './js/60-act-notify.js?v=' + V,
-    './js/61-wechat-mode.js?v=' + V,
     './js/62-phone-mode.js?v=' + V,
     './js/63-phone-home.js?v=' + V,
     './js/64-post-regen.js?v=' + V,
@@ -130,7 +128,10 @@ const CORE_ASSETS = [
     './js/94-guide-help.js?v=' + V,
     './js/95-plugin-update.js?v=' + V,
     './js/96-game-hall.js?v=' + V,
-    './js/97-api-test.js?v=' + V
+    './js/97-api-test.js?v=' + V,
+    './js/98-push-keepalive.js?v=' + V,
+    './js/99-mcp.js?v=' + V,
+    './js/99b-sub-login.js?v=' + V
 ];
 
 self.addEventListener('install', (event) => {
@@ -216,15 +217,37 @@ self.addEventListener('fetch', (event) => {
     );
 });
 
+// 📲 247：云端 Worker 推来的通知（Web Push）。谷雨正开着、你正看着，就不弹了，只让页面去拉一下新消息。
+self.addEventListener('push', (event) => {
+    let d = {};
+    try { d = event.data ? event.data.json() : {}; } catch (e) { d = { title: '谷雨', body: event.data ? event.data.text() : '' }; }
+    event.waitUntil((async () => {
+        const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        const seen = list.find((c) => c.visibilityState === 'visible' && c.focused);
+        if (seen) { seen.postMessage({ gyPush: d }); return; }
+        list.forEach((c) => { try { c.postMessage({ gyPush: d }); } catch (e) {} });
+        await self.registration.showNotification(d.title || '谷雨', {
+            body: d.body || '', icon: d.icon || './icons/icon-192.png', badge: './icons/icon-192.png',   // 🖼️ 248：角色头像（Worker 上的小图）
+            tag: d.tag || undefined, renotify: !!d.tag, data: { gyJump: d.jump || null, gy: 1 },
+        });
+    })());
+});
+
 // 用户点击系统通知时，尝试把已经打开的页面聚焦到前台；没有已打开的页面就新开一个
+// 📲 247：云端推来的那种通知带着「去哪」，点了跳过去（已开着的页面发消息让它跳；没开就带着 ?gyjump= 打开）
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
+    const nd = event.notification.data || {};
+    const jump = nd.gy ? (nd.gyJump || null) : undefined;
     event.waitUntil(
         self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
             for (const client of clientList) {
-                if ('focus' in client) return client.focus();
+                if ('focus' in client) {
+                    if (jump !== undefined) { try { client.postMessage({ gyPushClick: jump }); } catch (e) {} }
+                    return client.focus();
+                }
             }
-            if (self.clients.openWindow) return self.clients.openWindow('./');
+            if (self.clients.openWindow) return self.clients.openWindow(jump !== undefined ? './?gyjump=' + encodeURIComponent(JSON.stringify(jump)) : './');
         })
     );
 });

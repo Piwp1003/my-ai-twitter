@@ -8,10 +8,17 @@ import { pathToFileURL } from 'url';
 export async function launchBrowser(chromium, extra = {}) {
   const tries = [];
   if (fs.existsSync('/opt/pw-browsers/chromium')) tries.push({ executablePath: '/opt/pw-browsers/chromium' });
+  // 她电脑的 Linux 壳（Claude 桌面版里）：下不了 Playwright 自带的浏览器，用 npm 装的 @sparticuz/chromium
+  if (process.platform === 'linux') {
+    try {
+      const sp = (await import('@sparticuz/chromium')).default;
+      tries.push({ executablePath: await sp.executablePath(), args: sp.args.filter(a => !/^--(single-process|no-zygote|enable-logging|v=|log-level)/.test(a)) });   // single-process 开不了第二个窗口
+    } catch (e) { /* 没装就跳过 */ }
+  }
   tries.push({ channel: 'msedge' }, { channel: 'chrome' }, {});
   let last;
   for (const t of tries) {
-    try { return await chromium.launch(Object.assign({}, t, extra)); } catch (e) { last = e; }
+    try { return await chromium.launch(Object.assign({}, t, extra, (t.args || extra.args) ? { args: [...(t.args || []), ...(extra.args || [])] } : {})); } catch (e) { last = e; }
   }
   throw last;
 }

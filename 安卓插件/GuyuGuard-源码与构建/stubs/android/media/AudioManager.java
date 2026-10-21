@@ -1,0 +1,1 @@
+package android.media; public class AudioManager { public int getStreamVolume(int s){return 0;} public int getStreamMaxVolume(int s){return 0;} public void setStreamVolume(int s,int v,int f){} public boolean isWiredHeadsetOn(){return false;} public boolean isBluetoothA2dpOn(){return false;} public int getRingerMode(){return 0;} }

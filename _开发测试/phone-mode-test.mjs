@@ -25,15 +25,13 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
     globalChats['9102'] = [{ sender: 'me', text: '下班了吗', timestamp: Date.now() - 3600000 }];
     groupChats.length = 0;
   });
-  // 先开微信模式，再开小手机：应该把微信关掉
-  await page.evaluate(() => gyWxSet(true, true));
   await page.evaluate(() => switchMainView('settings'));
   await page.waitForTimeout(200);
   check(`[${tag}] 设置首页有「小手机模式」一条（带开关）`, await vis(page, '#gyPmSetEntry'));
   await page.evaluate(() => document.getElementById('gyPmSetEntry').click());
   await page.waitForTimeout(400);
   const st = await page.evaluate(() => ({ pm: document.body.classList.contains('gyphm'), wx: document.body.classList.contains('gywx'), wxLs: localStorage.getItem('gyWxMode') }));
-  check(`[${tag}] 切到小手机，微信模式自动关掉`, st.pm && !st.wx && st.wxLs === '0', JSON.stringify(st));
+  check(`[${tag}] 切到小手机`, st.pm && !st.wx, JSON.stringify(st));
   check(`[${tag}] 进来先是锁屏：时间 + 上滑解锁`, await vis(page, '#gyPmHome .pm-lock') && /上滑解锁/.test(await page.evaluate(() => document.querySelector('#gyPmHome .pm-lock').innerText)));
   if (shots) await page.screenshot({ path: `${shots}/pm-${tag}-lock.png` });
   const lr = await page.evaluate(() => { const r = document.querySelector('#gyPmHome .pm-lock').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height - 60 }; });
@@ -60,8 +58,8 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
   const home = await page.evaluate(() => document.getElementById('gyPmHome').innerText);
   check(`[${tag}] 状态栏时间 + 时钟小组件`, /\d\d:\d\d/.test(home) && /周/.test(home), home.slice(0, 100));
   check(`[${tag}] 「最近在聊」小组件：最后一句，状态栏不露出来`, home.includes('沈之遥') && home.includes('今天店里来了只猫') && !home.includes('jsy_status') && !home.includes('Location'), home.slice(0, 300));
-  check(`[${tag}] 图标：聊天/推特/信件日记/TA们/今天/日历/音乐/电影/阅读/购物/设置…`, await page.evaluate(() => ['chat', 'home', 'diary', 'theater', 'today', 'calendar', 'music', 'film', 'book', 'mall', 'forum', 'anon', 'beauty', 'set'].every(k => document.querySelector(`#gyPmHome [data-pmapp="${k}"]`))));
-  check(`[${tag}] 聊天图标上有未读数`, await page.evaluate(() => { const b = document.querySelector('.pm-app[data-pmapp="chat"] .pm-badge'); return b && +b.innerText >= 1; }));
+  check(`[${tag}] 图标：推特（聊天并进来了）/信件日记/TA们/今天/日历/音乐/电影/阅读/购物/设置…`, await page.evaluate(() => !document.querySelector('#gyPmHome [data-pmapp="chat"]:not([data-where="lib"])') && ['home', 'diary', 'theater', 'today', 'calendar', 'music', 'film', 'book', 'mall', 'forum', 'anon', 'beauty', 'set'].every(k => document.querySelector(`#gyPmHome [data-pmapp="${k}"]`))));
+  check(`[${tag}] 推特图标上有未读数（私信）`, await page.evaluate(() => { const b = document.querySelector('.pm-app[data-pmapp="home"] .pm-badge'); return b && +b.innerText >= 1; }));
   if (shots) await page.screenshot({ path: `${shots}/pm-${tag}-home.png` });
 
   await page.evaluate(() => document.querySelector('.pm-grid .pm-app[data-pmapp="diary"]').click());

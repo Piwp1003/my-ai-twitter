@@ -4,7 +4,7 @@ import { launchBrowser, fileUrl } from './_launch.mjs';
 import path from 'path'; import fs from 'fs';
 const root = process.cwd();
 const PLUG = JSON.parse(fs.readFileSync(path.join(root, '插件', '新玩法', '新玩法全家桶.json'), 'utf8'));
-const SRC = path.join(root, '..', 'plugins', 'src');
+const SRC = fs.existsSync(path.join(root, '..', 'plugins', 'src')) ? path.join(root, '..', 'plugins', 'src') : path.join(root, '插件', '新玩法', '源码');   // 云端那边 / 你电脑上
 const browser = await launchBrowser(chromium);
 const results = []; const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });
 const page = await (await browser.newContext({ viewport: { width: 1280, height: 860 } })).newPage();
@@ -17,7 +17,7 @@ await page.evaluate(({ PLUG }) => { PLUG.forEach(p => executePluginOnLoad(p)); }
 await page.waitForTimeout(3500);
 // 所有插件里通知写的去处
 const targets = new Set();
-let s = ''; try { for (const f of fs.readdirSync(SRC)) if (/^\d/.test(f)) s += fs.readFileSync(path.join(SRC, f), 'utf8'); } catch (e) {}
+let s = ''; try { for (const f of fs.readdirSync(SRC)) if (/^\d/.test(f) && !/直播间/.test(f)) s += fs.readFileSync(path.join(SRC, f), 'utf8'); } catch (e) {}
 for (const m of s.matchAll(/X\.go\('(\w+)'/g)) targets.add(m[1]);
 for (const m of s.matchAll(/X\.notify\([^;]*?, '(gyx\w+)'\)/g)) targets.add(m[1]);
 const r = await page.evaluate(async T => {

@@ -872,6 +872,30 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
     }
 
     // 给 js/63（桌面）用的一些小工具
+    /* ---------- 🐦 推特（256）：小手机里「推特」= 谷雨的主页 + 私信（就是原来的聊天），底下一排推特那样的标签 ----------
+       美化 →「聊天和推特」能改回分开两个图标；不开小手机时谷雨还是原来的样子 */
+    const xOn = () => document.body.classList.contains('gyphm') && typeof window.gyPmXOn === 'function' && window.gyPmXOn();
+    function xBar() {
+        let b = document.getElementById('gyPmX');
+        const show = xOn() && document.body.classList.contains('gyphm-app') && !S.native && (S.view === 'home' || (S.view === 'chat' && !chatOpen())) && (S.app === 'home' || S.app === 'chat' || S.app === 'x');
+        if (!show) { if (b) b.style.display = 'none'; document.body.classList.remove('gyphm-x'); return; }
+        if (!b) { b = document.createElement('div'); b.id = 'gyPmX'; document.body.appendChild(b); }
+        const n = unread ? unread() : 0;
+        const tab = S.view === 'chat' ? 'dm' : 'home';
+        const html = `<span class="${tab === 'home' ? 'on' : ''}" onclick="gyPmXGo('home')"><i>${svg('home', tab === 'home' ? 2.4 : 1.6)}</i></span><span onclick="gyPmXGo('notif')"><i>${svg('bell', 1.6)}</i></span><span class="${tab === 'dm' ? 'on' : ''}" onclick="gyPmXGo('dm')"><i>${svg('chat', tab === 'dm' ? 2.4 : 1.6)}</i>${n ? `<b>${n > 99 ? '99+' : n}</b>` : ''}</span>`;
+        if (b.__h !== html) { b.innerHTML = html; b.__h = html; }
+        b.style.display = 'flex'; document.body.classList.add('gyphm-x');
+    }
+    window.gyPmXGo = function (k) {
+        if (k === 'notif') { window.gyPmOpen('notif'); return; }
+        S.nav = true;
+        try { if (k === 'dm') { switchMainView('chat'); if (chatOpen() && typeof window.gyChatBack === 'function') window.gyChatBack(); } else switchMainView('home'); } catch (e) {}
+        S.nav = false; S.app = 'home';
+        const t = k === 'dm' ? '私信' : '推特'; setTitle(t); S.stack = [{ v: k === 'dm' ? 'chat' : 'home', t }]; syncNav(); xBar();
+        try { document.querySelector('.main-content').scrollTop = 0; } catch (e) {}
+    };
+    setInterval(() => { try { if (document.body.classList.contains('gyphm')) xBar(); } catch (e) {} }, 400);
+    (function () { const st = document.createElement('style'); st.textContent = `#gyPmX{position:fixed;left:var(--pm-sl);width:var(--pm-sw);top:calc(var(--pm-st) + var(--pm-sh) - 58px);height:58px;z-index:2004;display:none;align-items:flex-start;justify-content:space-around;padding-top:8px;box-sizing:border-box;background:var(--pm-glass,rgba(255,255,255,.92));backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:.5px solid var(--pm-hair,rgba(0,0,0,.1));border-radius:0 0 var(--pm-sr) var(--pm-sr)}#gyPmX span{position:relative;cursor:pointer;opacity:.6;padding:2px 14px}#gyPmX span.on{opacity:1}#gyPmX i{display:block;width:26px;height:26px}#gyPmX i svg{width:26px;height:26px}#gyPmX b{position:absolute;top:-4px;right:4px;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:#1d9bf0;color:#fff;font-size:11px;text-align:center;padding:0 5px;box-sizing:border-box}body.gyphm-x .main-content{padding-bottom:64px!important}body.gyphm-x .fab-btn{bottom:calc(100vh - var(--pm-st) - var(--pm-sh) + 74px)!important}`; document.head.appendChild(st); })();
     window.__gyPm = { S, APPS, svg, tickSb: () => tickSb(), esc, av, chars, groups, sessOf, unread, lastChat, plain, sbHtml, pad, store, isDesk, closeSheet, enterApp: () => enterApp(), setTitle: t => setTitle(t) };
 
     /* ---------------- 开关 ---------------- */

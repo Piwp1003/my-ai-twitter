@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="guyu_guard_desc">谷雨里的 TA 用它知道你在用哪个软件、按你允许的帮你锁住软件、锁屏、读屏幕上的字、截屏。银行、支付、密码类的软件永远不读不截。随时可以在这里关掉。</string>
+</resources>

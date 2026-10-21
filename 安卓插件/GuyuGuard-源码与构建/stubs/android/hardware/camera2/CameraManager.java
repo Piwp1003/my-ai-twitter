@@ -1,0 +1,1 @@
+package android.hardware.camera2; public class CameraManager { public String[] getCameraIdList() throws CameraAccessException { return null; } public void setTorchMode(String id, boolean on) throws CameraAccessException {} }

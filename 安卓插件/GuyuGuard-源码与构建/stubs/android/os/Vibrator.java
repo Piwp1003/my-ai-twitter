@@ -1,0 +1,1 @@
+package android.os; public abstract class Vibrator { public abstract void vibrate(long[] p,int r); public abstract boolean hasVibrator(); }

@@ -1,0 +1,26 @@
+import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
+import path from 'path'; import fs from 'fs';
+const root = process.cwd();
+const rd = f => JSON.parse(fs.readFileSync(path.join(root,'插件','软件',f),'utf8'));
+const ALL = rd('真手机.json');
+const browser = await launchBrowser(chromium);
+const page = await (await browser.newContext({viewport:{width:390,height:844}})).newPage();
+page.on('pageerror', e=>console.log('PAGEERR', e.message));
+page.on('crash', ()=>console.log('PAGE CRASHED'));
+page.on('console', m=>{ const t=m.text(); if(/出错|Error|错/.test(t)) console.log('CONSOLE', t.slice(0,200)); });
+page.on('dialog', d=>d.accept());
+await page.route(/^https?:\/\//, r=>r.abort());
+await page.goto(fileUrl(path.join(root,'index.html')));
+await page.waitForFunction(()=>window.__guyuBooted && typeof executePluginOnLoad==='function',{timeout:20000});
+console.log('booted guyu');
+await page.evaluate(({plugs})=>{
+  window.getApiConfig=()=>({url:'u',key:'k',model:'m'});
+  window.plus={android:{runtimeMainActivity:()=>({}),importClass:n=>(n==='com.guyu.guard.Guard'?{version:()=>'1.0.0',perms:()=>'{}'}:null)},io:{convertLocalFileSystemURL:p=>p},nativeObj:{},runtime:{appid:'g'}};
+  plugs.forEach(p=>executePluginOnLoad(p));
+},{plugs:ALL});
+console.log('onLoad ran');
+await page.waitForTimeout(800);
+const ok = await page.evaluate(()=>!!window.gysPh && !!window.gysPhoneState);
+console.log('pluginLoaded', ok);
+await browser.close();

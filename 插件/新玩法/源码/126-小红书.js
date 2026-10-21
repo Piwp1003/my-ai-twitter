@@ -44,9 +44,11 @@ async function charPost(c) {
     D.notes.unshift(n); await save(); return n;
 }
 async function comments(n, people) {
-    const list = people.map(p => p === 'npc' ? '路人（起一个小红书昵称）' : p === 'me' ? meName() : `${X.name(X.char(p))}（${X.persona(X.char(p)).slice(0, 60)}）`);
+    // 👥 NPC 列表（248）：按「小红书」那一档的比例，把几个「路人」换成绑给作者的熟人
+    try { if (window.gyNpcPick) { const pk = window.gyNpcPick('xhs', n.by === 'npc' ? null : n.by, people.filter(p => p === 'npc').length); let k = 0; people = people.map(p => p === 'npc' && k < pk.n ? { npc: pk.npcs[k++] } : p); } } catch (e) {}
+    const list = people.map(p => p && p.npc ? `${p.npc.name}（认识作者的人：${[p.npc.who, p.npc.tie].filter(Boolean).join('，')}${p.npc.tone ? '；说话' + p.npc.tone : ''}；名字一字不差）` : p === 'npc' ? '路人（起一个小红书昵称）' : p === 'me' ? meName() : `${X.name(X.char(p))}（${X.persona(X.char(p)).slice(0, 60)}）`);
     const o = X.bailu() ? null : X.json(await X.ask(P('red.cmt', DEF_CMT, { 标题: n.title, 正文: n.body, 作者: authorName(n) + (n.by === 'me' ? '（就是她本人）' : ''), 评论的人: list.map(x => '· ' + x).join('\n') })));
-    const arr = Array.isArray(o) ? o : people.map(p => ({ name: p === 'npc' ? '路过的小红薯' : X.name(X.char(p)), t: X.v('马住！', '姐妹说得好', '蹲一个后续') }));
+    const arr = Array.isArray(o) ? o : people.map(p => ({ name: p && p.npc ? p.npc.name : p === 'npc' ? '路过的小红薯' : X.name(X.char(p)), t: X.v('马住！', '姐妹说得好', '蹲一个后续') }));
     arr.forEach(x => { if (!x || !x.t) return; const c = X.chars().find(c => X.name(c) === x.name || c.name === x.name); n.cmts.push({ who: c ? String(c.id) : 'npc:' + X.plain(x.name || '小红薯').slice(0, 12), t: X.plain(x.t).slice(0, 120), at: Date.now() }); });
     await save();
 }
