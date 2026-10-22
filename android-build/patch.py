@@ -36,3 +36,26 @@ edit(d / 'build.gradle', gradle)
 # strings.xml：应用名
 edit(d / 'src/main/res/values/strings.xml',
      lambda s: re.sub(r'(<string name="app_name">)[^<]*(</string>)', rf'\g<1>{m["name"]}\2', s))
+
+# 权限：离线工程默认一条都没有（云打包时 HBuilderX 按模块自动加）。补上谷雨用得到的
+PERMS = ['INTERNET', 'ACCESS_NETWORK_STATE', 'ACCESS_WIFI_STATE', 'CHANGE_NETWORK_STATE', 'WAKE_LOCK', 'VIBRATE', 'FLASHLIGHT',
+         'CAMERA', 'RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION',
+         'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'READ_MEDIA_AUDIO',
+         'POST_NOTIFICATIONS', 'FOREGROUND_SERVICE', 'WRITE_SETTINGS']
+def perms(s):
+    add = ''.join(f'\n    <uses-permission android:name="android.permission.{p}"/>' for p in PERMS if f'permission.{p}"' not in s)
+    return re.sub(r'(<manifest[^>]*>)', rf'\1{add}', s, count=1) if add else s
+edit(d / 'src/main/AndroidManifest.xml', perms)
+
+# 推送模块（plus.push.createMessage 本地通知要用）：注册 Push 功能，aar 由工作流从 SDK/libs 拷进来
+def props(s):
+    if 'name="Push"' not in s:
+        s = s.replace('<features>', '<features>\n\t\t<feature name="Push" value="io.dcloud.feature.aps.APSFeatureImpl"/>', 1)
+    return s.replace('<feature name="plugintest" value="com.example.H5PlusPlugin.PGPlugintest"/>', '')
+edit(d / 'src/main/assets/data/dcloud_properties.xml', props)
+
+# 图标：换成谷雨的
+import shutil
+src = pathlib.Path(__file__).resolve().parent.parent / 'icons' / 'icon-192.png'
+for ic in d.glob('src/main/res/drawable*/icon.png'):
+    shutil.copyfile(src, ic); print('换了图标', ic)

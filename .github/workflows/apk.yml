@@ -58,6 +58,9 @@ jobs:
           python3 android-build/patch.py "$D" "$APPID" "$PKG" "$APPKEY"
           # 3) 谷雨守护：aar 丢进 libs（里面的服务和权限编译时自动合并进 APK）
           cp 安卓插件/nativeplugins/GuyuGuard/android/GuyuGuard.aar "$D/libs/"
+          # 4) 谷雨用到、但示例工程没带的模块：本地通知（推送）、系统定位
+          L="$(dirname "$AS")/SDK/libs"; echo "----- SDK/libs 全部："; ls "$L"
+          for f in aps-release.aar geolocation-system-release.aar; do if [ -f "$L/$f" ]; then cp "$L/$f" "$D/libs/"; echo "加了 $f"; else echo "::warning::SDK/libs 里没有 $f"; fi; done
           ls -la "$D/libs"
       - name: 证书
         if: steps.sdk.outputs.skip != '1'
