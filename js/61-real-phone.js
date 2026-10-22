@@ -827,7 +827,17 @@ const N = (() => {
             try { const pm = inv(ctxOf(), 'getPackageManager'); const ai = inv(pm, 'getApplicationInfo', pkg, 0); const s = inv(pm, 'getApplicationLabel', ai); labelCache[pkg] = s ? String(s) : pkg; } catch (e) { labelCache[pkg] = pkg; }
             return labelCache[pkg];
         };
+        // 直接读系统设置里「开了哪些无障碍 / 通知服务」——比靠插件服务自己的静态字段靠谱（有些 ROM（OPPO/ColorOS）开了却绑得慢，字段一直是 null，就会"开了也显示没开"）
+        const secureFlags = () => {
+            const o = {}; try {
+                const c = ctxOf(); if (!c) return o; const r = inv(c, 'getContentResolver');
+                const SE = imp('android.provider.Settings$Secure');
+                o.access = /com\.guyu\.guard\.GuardAccess/i.test(String(SE.getString(r, 'enabled_accessibility_services') || ''));
+                o.notify = /com\.guyu\.guard\.GuardNotify/i.test(String(SE.getString(r, 'enabled_notification_listeners') || ''));
+            } catch (e) {} return o;
+        };
         return {
+            secureFlags,
             mode: () => hasPlus() ? 'js' : 'none',
             label,
             perms() {
@@ -837,6 +847,7 @@ const N = (() => {
                 try { const S = imp('android.provider.Settings'); o.overlay = o.sdk < 23 ? true : S.canDrawOverlays(c); } catch (e) {}
                 try { const SS = imp('android.provider.Settings$System'); o.write = o.sdk < 23 ? true : SS.canWrite(c); } catch (e) {}
                 try { o.dnd = inv(svc('notification'), 'isNotificationPolicyAccessGranted'); } catch (e) {}
+                try { const sf = secureFlags(); if (sf.access) o.access = true; if (sf.notify) o.notify = true; } catch (e) {}
                 return o;
             },
             openSettings(what) {
@@ -924,7 +935,12 @@ const N = (() => {
         ok: () => havePlugin() || hasPlus(),
         plus: hasPlus,
         ver: () => { const r = cP('version'); return r !== MISS ? r : ''; },
-        perms: () => { const r = cP('perms', ctx); return r !== MISS ? (j(r) || {}) : JS.perms(); },
+        perms: () => {
+            const r = cP('perms', ctx); const o = r !== MISS ? (j(r) || {}) : JS.perms();
+            // 插件自己报的 access/notify 在某些 ROM 上会慢半拍甚至一直是 false——用系统设置兜底，开了就算开
+            try { const sf = JS.secureFlags(); if (sf.access) o.access = true; if (sf.notify) o.notify = true; } catch (e) {}
+            return o;
+        },
         open: w => { const r = cP('openSettings', ctx, w); return r !== MISS ? r : JS.openSettings(w); },
         usage: (a, b) => { const r = cP('usage', ctx, a, b || 0); return r !== MISS ? j(r) : JS.usage(a, b || 0); },
         fg: () => { const r = cP('foreground', ctx); return r !== MISS ? (r || '') : JS.foreground(); },

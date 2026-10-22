@@ -508,7 +508,20 @@
             ${s.__new ? '' : `<button class="gymcp-btn bad" onclick="gyMcpDel('${s.id}')">删掉</button>`}
           </div>
           ${s.err ? `<div class="gymcp-note warn">上次没连上：${esc(s.err)}</div>` : ''}
-          ${(s.tools || []).length ? `<h4 class="gymcp-h">工具（关掉的 TA 就不会用）</h4>${s.tools.map(t => `<label class="gymcp-tool"><input type="checkbox" ${t.on === false ? '' : 'checked'} onchange="gyMcpToolToggle('${s.id}', ${esc(JSON.stringify(t.name))}, this.checked)"><div><b>${esc(t.title || t.name)}</b>${t.title ? `<em>${esc(t.name)}</em>` : ''}<span>${esc(t.description.slice(0, 160))}</span></div></label>`).join('')}` : '<div class="gymcp-hint">测试连接成功后，这里会列出它有哪些工具。</div>'}`;
+          ${(() => {
+              const tools = s.tools || [];
+              if (!tools.length) return '<div class="gymcp-hint">测试连接成功后，这里会列出它有哪些工具。</div>';
+              const row = t => `<label class="gymcp-tool"><input type="checkbox" ${t.on === false ? '' : 'checked'} onchange="gyMcpToolToggle('${s.id}', ${esc(JSON.stringify(t.name))}, this.checked)"><div><b>${esc(t.title || t.name)}</b>${t.title ? `<em>${esc(t.name)}</em>` : ''}<span>${esc(String(t.description || '').slice(0, 160))}</span></div></label>`;
+              // 内置版：要「谷雨守护」插件的（读屏 / 读通知 / 拉回 / 锁软件）单独分一组，其余不用插件
+              if (s.kind === 'builtin') {
+                  const NEED = { read_screen: 1, read_notifications: 1, pull_back: 1, lock_apps: 1 };
+                  const base = tools.filter(t => !NEED[t.name]), plug = tools.filter(t => NEED[t.name]);
+                  return `<h4 class="gymcp-h">工具（关掉的 TA 就不会用）</h4>`
+                      + `<div class="gymcp-hint" style="margin:2px 0 6px;">✅ 下面这些不用装插件，直接能用：</div>${base.map(row).join('')}`
+                      + (plug.length ? `<div class="gymcp-hint" style="margin:14px 0 6px;">🛡️ 下面这些要装了「谷雨守护」插件、并在真手机设置里开了对应权限才用得了：</div>${plug.map(row).join('')}` : '');
+              }
+              return `<h4 class="gymcp-h">工具（关掉的 TA 就不会用）</h4>${tools.map(row).join('')}`;
+          })()}`;
     }
     function paintLog() {
         const b = document.getElementById('gyMcpBody'); if (!b) return;
