@@ -1,0 +1,40 @@
+# 用 DCloud 离线 SDK 在 GitHub 上打谷雨 APK（不用自己下 SDK、不用配 Android Studio）
+name: 打包 APK
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/apk.yml', 'android-build/**']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 找 SDK 下载地址
+        run: |
+          curl -sSL -A 'Mozilla/5.0' https://nativesupport.dcloud.net.cn/AppDocs/download/android.html -o page.html
+          ls -la page.html
+          grep -oE 'https?://[^"'"'"' <>]+\.zip' page.html | sort -u | tee links.txt
+      - name: 下 SDK
+        run: |
+          URL=$(grep -iE 'android' links.txt | grep -viE 'ios|uniapp-x|uts' | head -1)
+          echo "URL=$URL"
+          curl -sSL -o sdk.zip "$URL"
+          ls -la sdk.zip
+          mkdir sdk && cd sdk && unzip -q ../sdk.zip
+      - name: 看结构
+        run: |
+          cd sdk
+          find . -maxdepth 3 -type d | head -80
+          echo ----- AS 工程
+          AS=$(find . -type d -name 'HBuilder-Integrate-AS' | head -1); echo "AS=$AS"
+          find "$AS" -maxdepth 3 | grep -v '/build/' | head -80
+          echo ----- gradle
+          for f in $(find "$AS" -name '*.gradle' -maxdepth 3) $(find "$AS" -name 'settings.gradle*' -maxdepth 2); do echo "=== $f"; cat "$f"; done
+          echo ----- manifest / data
+          M=$(find "$AS" -path '*simpleDemo/src/main/AndroidManifest.xml' | head -1); echo "=== $M"; cat "$M"
+          for f in $(find "$AS" -path '*simpleDemo/src/main/assets/data/*' -type f); do echo "=== $f"; head -c 4000 "$f"; echo; done
+          find "$AS" -path '*simpleDemo/src/main/assets/apps*' | head -20
+          echo ----- libs
+          ls -la "$AS"/simpleDemo/libs 2>/dev/null | head -40
+          find . -name '*.aar' | head -80
