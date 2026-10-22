@@ -1,0 +1,63 @@
+{
+  "@platforms": [
+    "android"
+  ],
+  "id": "H5C498173",
+  "name": "谷雨",
+  "version": {
+    "name": "1.38",
+    "code": 138
+  },
+  "description": "谷雨",
+  "launch_path": "index.html",
+  "developer": {
+    "name": "",
+    "email": "",
+    "url": ""
+  },
+  "permissions": {
+    "Accelerometer": {},
+    "Audio": {},
+    "Messaging": {},
+    "Cache": {},
+    "Camera": {},
+    "Console": {},
+    "Contacts": {},
+    "Device": {},
+    "Downloader": {},
+    "Events": {},
+    "File": {},
+    "Gallery": {},
+    "Geolocation": {},
+    "Invocation": {},
+    "Orientation": {},
+    "Proximity": {},
+    "Storage": {},
+    "Uploader": {},
+    "Runtime": {},
+    "XMLHttpRequest": {},
+    "Zip": {},
+    "Barcode": {},
+    "Webview": {},
+    "NativeUI": {},
+    "Navigator": {},
+    "NativeObj": {},
+    "Push": {},
+    "Speech": {},
+    "Share": {}
+  },
+  "plus": {
+    "splashscreen": {
+      "autoclose": true,
+      "waiting": false
+    },
+    "popGesture": "close",
+    "runmode": "normal",
+    "signature": "Sk9JTiBVUyBtYWlsdG86aHIyMDEzQGRjbG91ZC5pbw==",
+    "distribute": {
+      "orientation": [
+        "portrait-primary"
+      ]
+    }
+  }
+}

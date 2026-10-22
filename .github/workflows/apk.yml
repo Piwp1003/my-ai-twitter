@@ -1,7 +1,11 @@
-# 用 DCloud 离线 SDK 在 GitHub 上打谷雨 APK（不用自己下 SDK、不用配 Android Studio）
+# 用 DCloud 离线 SDK 在 GitHub 上打谷雨 APK（不用自己配 Android Studio）
+# SDK 只在网盘里，GitHub 下不到：先把 SDK 压缩包上传到本仓库标签为 sdk 的 Release，这里再去取。
+# 还没上传的时候自动跳过，不报错。
 name: 打包 APK
 on:
   workflow_dispatch:
+  release:
+    types: [published, edited]
   push:
     branches: ['claude/**']
     paths: ['.github/workflows/apk.yml', 'android-build/**']
@@ -10,32 +14,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: 找 SDK 下载地址
+      - name: 取 SDK（Release 标签 sdk）
+        id: sdk
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          curl -sSL -A 'Mozilla/5.0' https://gitee.com/dcloud/native-docs/raw/master/docs/AppDocs/download/android.md -o android.md
-          ls -la android.md; head -c 6000 android.md; echo
-          echo ----- 所有链接; grep -oE 'https?://[^ )"<>]+' android.md | sort -u | head -80
-          grep -oE 'https?://[^ )"<>]+' android.md | grep -iE '\.(zip|rar|7z)' | tee links.txt
-      - name: 下 SDK
-        run: |
-          URL=$(grep -iE 'android' links.txt | grep -viE 'ios|uniapp-x|uts' | head -1)
-          echo "URL=$URL"
-          curl -sSL -o sdk.zip "$URL"
+          URL=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/releases/tags/sdk" \
+            | python3 -c "import sys,json;a=json.load(sys.stdin).get('assets',[]);print(next((x['url'] for x in a if x['name'].lower().endswith(('.zip','.7z','.rar'))),''))")
+          if [ -z "$URL" ]; then echo "::notice::还没把离线 SDK 传到标签为 sdk 的 Release，先跳过"; echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+          curl -sSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/octet-stream' -o sdk.zip "$URL"
           ls -la sdk.zip
-          mkdir sdk && cd sdk && unzip -q ../sdk.zip
-      - name: 看结构
+          mkdir sdk && cd sdk && (unzip -q ../sdk.zip || 7z x -y ../sdk.zip >/dev/null)
+      - name: 看 SDK 结构
+        if: steps.sdk.outputs.skip != '1'
         run: |
           cd sdk
           find . -maxdepth 3 -type d | head -80
-          echo ----- AS 工程
           AS=$(find . -type d -name 'HBuilder-Integrate-AS' | head -1); echo "AS=$AS"
           find "$AS" -maxdepth 3 | grep -v '/build/' | head -80
-          echo ----- gradle
-          for f in $(find "$AS" -name '*.gradle' -maxdepth 3) $(find "$AS" -name 'settings.gradle*' -maxdepth 2); do echo "=== $f"; cat "$f"; done
-          echo ----- manifest / data
+          for f in $(find "$AS" -maxdepth 3 -name '*.gradle'); do echo "=== $f"; cat "$f"; done
           M=$(find "$AS" -path '*simpleDemo/src/main/AndroidManifest.xml' | head -1); echo "=== $M"; cat "$M"
           for f in $(find "$AS" -path '*simpleDemo/src/main/assets/data/*' -type f); do echo "=== $f"; head -c 4000 "$f"; echo; done
           find "$AS" -path '*simpleDemo/src/main/assets/apps*' | head -20
-          echo ----- libs
           ls -la "$AS"/simpleDemo/libs 2>/dev/null | head -40
           find . -name '*.aar' | head -80
