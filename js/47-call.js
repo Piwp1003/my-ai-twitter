@@ -393,6 +393,8 @@ ${last ? '\n【电话里已经说过的】\n' + last + '\n' : ''}`;
 <label class="gycall-ck"><input type="checkbox" ${S.invite ? 'checked' : ''} onchange="gyCallSet('invite', this.checked)"> 允许 TA 主动打给我（挂在自主模式里）</label>
 <button type="button" class="gycall-try" onclick="gyCallTry()">试听一句</button>`;
     };
+    // 「允许 TA 主动打给我」这个开关，给聊天里的 [ACT:打电话] 用：关着的时候 TA 不会自己拨，只有你开口让打才打
+    window.gyCallInviteOn = () => !!S.invite;
     window.gyCallSet = function (k, v) {
         S[k] = v; save();
         if (k === 'mode') {

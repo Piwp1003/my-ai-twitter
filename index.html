@@ -122,7 +122,7 @@
     <!-- 📌 版本号：**只改下面这一个数字**。样式、所有 js、离线缓存（service-worker）、设置页最底下显示的版本号，全都跟着它走。
          浏览器是按"完整URL字符串"缓存的，改完不 +1 就会一直用旧文件——以前要改六十多处，漏一处就出事（版本号卡在 151 就是这么来的）。 -->
     <script>
-    var GY_VERSION = 263;
+    var GY_VERSION = 264;
     // 按顺序把文件挂上（document.write 跟直接写 <script src> 效果一样：按顺序、同步执行）
     function gyLoad(list) {
         list.forEach(function (p) {
@@ -2133,6 +2133,11 @@
         <div id="memoryHubEmptyState" style="display:none; text-align:center; color:#536471; padding:40px 0;">还没有角色，先去「角色中心」创建一个吧～</div>
 
         <div id="memoryHubContent" style="display:none;">
+
+            <div style="margin-top:14px; text-align:right;">
+                <button type="button" class="btn-edit-small" style="color:#f4212e; border-color:#f4212e;" onclick="gyMemHubClearAll()">🧹 一键清空这个人的记忆</button>
+                <div style="font-size:11px; color:#8b98a5; margin-top:4px;">清掉聊天总结 / 推文记忆 / 召回库 / 向量标记；不动聊天记录和你上传的资料库</div>
+            </div>
 
             <div class="input-group" style="margin-top:20px; border-top:1px dashed #1d9bf0; padding-top:15px;">
                 <label style="font-size:15px;">🧵 聊天总结</label>

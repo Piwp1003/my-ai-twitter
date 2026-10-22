@@ -59,3 +59,14 @@ import shutil
 src = pathlib.Path(__file__).resolve().parent.parent / 'icons' / 'icon-192.png'
 for ic in d.glob('src/main/res/drawable*/icon.png'):
     shutil.copyfile(src, ic); print('换了图标', ic)
+
+# 启动图：用 启动页/ 里那套（跟以前 HBuilderX 云打包时一样），按屏幕密度放进去，盖掉 DCloud 默认的 splash
+SPLASH = {'drawable': 'xhdpi_720x1242.png', 'drawable-ldpi': 'ldpi_320x442.png', 'drawable-mdpi': 'mdpi_240x282.png',
+          'drawable-hdpi': 'hdpi_480x762.png', 'drawable-xhdpi': 'xhdpi_720x1242.png',
+          'drawable-xxhdpi': 'xxhdpi_1080x1882.png', 'drawable-xxxhdpi': 'xxxhdpi_1440x2560.png'}
+sp = pathlib.Path(__file__).resolve().parent.parent / '启动页'
+for folder, img in SPLASH.items():
+    if (sp / img).exists():
+        (d / 'src/main/res' / folder).mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(sp / img, d / 'src/main/res' / folder / 'splash.png')
+        print('启动图', folder, '←', img)

@@ -53,11 +53,12 @@ window.gyxShopWear = async (id, who) => {
     if (it && it.k === 'bubble') { try { window.gyxBubbleOpen && window.gyxBubbleOpen(); } catch (e) {} return; }
     await saveD(); lastCss = null; apply(); window.gyxShopOpen();
 };
+window.gyxShopWho = who => { window.__gyxShopWho = who; window.gyxShopOpen(); };
 window.gyxShopOpen = function (tab) {
-    const T = tab || window.__gyxShopTab || 'frame'; window.__gyxShopTab = T; const c = X.cur(), w = wallet();
+    const T = tab || window.__gyxShopTab || 'frame'; window.__gyxShopTab = T; const c = (window.__gyxShopWho && X.char(window.__gyxShopWho)) || X.cur() || X.chars()[0], w = wallet();
     let bal = ''; try { if (w) bal = '钱包余额 ¥' + (w.total('me') || 0); } catch (e) {}
     const L = ITEMS.filter(x => x.k === T);
-    X.panel('gyxShopOv', '🛍️ 装扮商店', `<div class="gyx-row">${[['frame', '头像框'], ['bg', '聊天背景'], ['bubble', '气泡套装']].map(([k, n]) => `<span class="gyx-chip ${T === k ? 'on' : ''}" onclick="gyxShopOpen('${k}')">${n}</span>`).join('')}<span class="gyx-tip" style="margin-left:auto">${bal || '钱包没开：免费拿'}</span></div>
+    X.panel('gyxShopOv', '🛍️ 装扮商店', `${c && X.chars().length > 1 ? `<div class="gyx-row">给谁戴：${X.whoSel(String(c.id), 'gyxShopWho')}</div>` : ''}<div class="gyx-row">${[['frame', '头像框'], ['bg', '聊天背景'], ['bubble', '气泡套装']].map(([k, n]) => `<span class="gyx-chip ${T === k ? 'on' : ''}" onclick="gyxShopOpen('${k}')">${n}</span>`).join('')}<span class="gyx-tip" style="margin-left:auto">${bal || '钱包没开：免费拿'}</span></div>
         <div class="sh-grid">${L.map(it => { const own = D.own.includes(it.id), wm = D.wear.me === it.id, wt = c && D.wear.ta[String(c.id)] === it.id, wb = D.wear.bg === it.id; return `<div class="sh-it${own ? ' own' : ''}"><div class="sh-pv ${it.k}" style="${it.k === 'frame' ? '' : it.k === 'bg' ? it.css.replace(/!important/g, '') : `background:${it.cfg.me.bg}`}">${it.k === 'frame' ? `<i style="${it.css}">${it.pair ? it.pair[0] : it.badge || ''}</i>` : it.k === 'bubble' ? `<i style="background:${it.cfg.ta.bg};color:${it.cfg.ta.fg};border-radius:${it.cfg.ta.r}px">在吗</i>` : ''}</div><b>${it.ico} ${X.esc(it.n)}</b>
             ${own ? (it.k === 'frame' ? (it.pair ? `<span class="gyx-chip ${wm && wt ? 'on' : ''}" onclick="gyxShopWear('${it.id}','pair')">${wm && wt ? '摘下' : '一起戴'}</span>` : `<span class="gyx-chip ${wm ? 'on' : ''}" onclick="gyxShopWear('${it.id}','me')">${wm ? '摘下' : '我戴'}</span>${c ? `<span class="gyx-chip ${wt ? 'on' : ''}" onclick="gyxShopWear('${it.id}','${c.id}')">${wt ? '摘下' : '给 ' + X.esc(X.name(c))}</span>` : ''}`) : it.k === 'bg' ? `<span class="gyx-chip ${wb ? 'on' : ''}" onclick="gyxShopWear('${it.id}','bg')">${wb ? '换回去' : '用上'}</span>` : `<span class="gyx-chip" onclick="gyxShopWear('${it.id}','bubble')">去气泡工坊用</span>`)
             : `<button class="gyx-btn" onclick="gyxShopBuy('${it.id}')">¥${it.p}</button>`}</div>`; }).join('')}</div>

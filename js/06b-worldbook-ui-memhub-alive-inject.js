@@ -459,6 +459,27 @@ function saveMemoryHubSummaries(quiet) {
     if (!quiet) gyMemHubSaved('记忆已保存');
 }
 
+// 🧹 一键清空这个人的记忆：聊天总结、推文记忆总结、召回库、向量记忆的标记，一次清掉。
+// 不动聊天记录本身、也不动你上传的「资料库」文件。
+async function gyMemHubClearAll() {
+    const id = currentMemoryHubTargetId;
+    if (!id) { try { showToast('', '🧠 记忆总览', '先选一个角色', null, null, false); } catch (e) {} return; }
+    const isGroup = id.toString().startsWith('g_');
+    const who = isGroup ? (groupChats.find(g => g.id === id) || {}) : (myCharacters.find(c => c.id == id) || {});
+    const name = who.name || '这个';
+    const ask = typeof appConfirm === 'function' ? appConfirm : (m => Promise.resolve(confirm(m)));
+    if (!(await ask(`清空「${name}」的记忆？\n\n会清掉：聊天总结、推文记忆总结、记忆召回库、向量记忆的标记。\n不动：聊天记录本身、你上传的资料库。\n\n这一步不能撤销。`))) return;
+    if (isGroup) { const g = groupChats.find(x => x.id === id); if (g) g.summary = ''; }
+    else { const c = myCharacters.find(x => x.id == id); if (c) { c.chatSummary = ''; c.memorySummary = ''; } }
+    try { if (typeof memoryEntries === 'object' && memoryEntries) memoryEntries[id] = []; } catch (e) {}
+    try { (globalChats[id] || []).forEach(m => { if (m && m.embVec) delete m.embVec; }); } catch (e) {}
+    try { ((window.__memHubCharVectorCandidatesCache || {})[id] || []).forEach(it => { if (it && it.ref && it.ref.embVec) delete it.ref.embVec; }); } catch (e) {}
+    if (typeof saveAllData === 'function') saveAllData();
+    try { renderMemoryHubContent(); } catch (e) {}
+    gyMemHubSaved(`「${name}」的记忆清空了`);
+}
+window.gyMemHubClearAll = gyMemHubClearAll;
+
 function saveMemoryHubIntervals(quiet) {
     chatSummaryInterval = gyNum(document.getElementById('memHubChatSummaryInterval')?.value, 20);
     groupSummaryInterval = gyNum(document.getElementById('memHubGroupSummaryInterval')?.value, 50);

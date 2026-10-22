@@ -88,7 +88,11 @@
         { key: 'call', short: '给你打电话', names: ['打电话', '电话', '语音', '视频', 'call'], once: true,
           syntax: '[ACT:打电话|这会儿想打的理由]', label: '给对方打个电话（对方那边会弹来电页面）',
           need: () => typeof window.gyCallRing === 'function',
-          run: async (c, args) => window.gyCallRing(c, args[0] || '') ? '打来了电话' : null },
+          run: async (c, args) => {
+              // 「允许 TA 主动打给我」关着时，TA 自己不会在聊天里拨电话；但你在聊天里让 TA 打，还是会打
+              const byUser = window.__gyActBy && String(window.__gyActBy.charId) === String(c.id) && window.__gyActBy.by === 'user';
+              if (!byUser && typeof window.gyCallInviteOn === 'function' && !window.gyCallInviteOn()) return null;
+              return window.gyCallRing(c, args[0] || '') ? '打来了电话' : null; } },
         { key: 'money', short: '给你转账', names: ['转账', '转钱', 'transfer', 'money'], once: true,
           syntax: '[ACT:转账|金额|留言]', label: '给对方转账（私聊里一张转账单，对方点收）',
           need: walletOn,
