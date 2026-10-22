@@ -25,9 +25,11 @@ jobs:
           curl -sSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/octet-stream' -o sdk.zip "$URL"
           ls -la sdk.zip
           mkdir sdk && cd sdk && (unzip -q ../sdk.zip || 7z x -y ../sdk.zip >/dev/null)
+          rm -rf __MACOSX; find . -name '._*' -delete; find . -name '.DS_Store' -delete
       - name: 看 SDK 结构
         if: steps.sdk.outputs.skip != '1'
         run: |
+          set +e
           cd sdk
           find . -maxdepth 3 -type d | head -80
           AS=$(find . -type d -name 'HBuilder-Integrate-AS' | head -1); echo "AS=$AS"
