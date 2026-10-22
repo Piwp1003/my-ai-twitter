@@ -372,7 +372,10 @@
 
     /* ---------------- 页面（整页） ---------------- */
     const V = { view: 'list', id: null, draft: null };
-    function go(v, id) { V.view = v; V.id = id || null; mount(); document.getElementById('gyMcpPage').classList.add('on'); paint(); }
+    function go(v, id) { V.view = v; V.id = id || null; mount();
+        // 从「合集」里打开时，底下那层合集页会留着（MCP 自己是一整页），顺手关掉，免得露出半截
+        try { if (typeof window.gyHubClose === 'function' && document.getElementById('gyHubOv')) window.gyHubClose(); } catch (e) {}
+        document.getElementById('gyMcpPage').classList.add('on'); paint(); }
     window.gyMcpOpen = v => go(v === 'log' ? 'log' : 'list');
     window.gyMcpClose = function () { if (V.view !== 'list') { V.draft = null; return go('list'); } const m = document.getElementById('gyMcpPage'); if (m) m.classList.remove('on'); };
     window.gyMcpGo = (v, id) => go(v, id);
@@ -522,12 +525,12 @@
     }
     window.gyMcpPaint = paint;
     const CSS = `
-    #gyMcpPage{position:fixed;inset:0;z-index:2600;background:var(--gy-bg,#fff);display:none;flex-direction:column;color:inherit;}
+    #gyMcpPage{position:fixed;inset:0;z-index:2147482000;background:var(--gy-bg,#fff);display:none;flex-direction:column;color:inherit;}
     body.dark-theme #gyMcpPage{background:#15202b;}
     #gyMcpPage.on{display:flex;}
     .gymcp-hd{padding:12px 14px;padding-top:calc(12px + env(safe-area-inset-top,0px));font-size:17px;font-weight:700;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--gy-line,#cfd9de);}
     .gymcp-hd .bk{cursor:pointer;font-size:22px;line-height:1;color:var(--gy-accent,#1d9bf0);padding:0 6px;}
-    .gymcp-bd{padding:12px 16px 40px;overflow-y:auto;flex:1 1 auto;max-width:720px;width:100%;margin:0 auto;box-sizing:border-box;}
+    .gymcp-bd{padding:12px 16px calc(40px + env(safe-area-inset-bottom,0px));overflow-y:auto;flex:1 1 auto;min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;max-width:720px;width:100%;margin:0 auto;box-sizing:border-box;}
     .gymcp-note{font-size:12.5px;color:#8b98a5;line-height:1.85;padding:10px 12px;margin-bottom:12px;border-radius:10px;background:rgba(var(--gy-accent-rgb),.06);border:1px dashed rgba(var(--gy-accent-rgb),.3);}
     .gymcp-note.warn{border-color:#f5a623;color:inherit;}
     .gymcp-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0;}
