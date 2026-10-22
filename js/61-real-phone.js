@@ -1151,6 +1151,42 @@ const DO = {
 };
 P.do = async (k, ...a) => { const c = who(); if (!c) return X.toast('还没有角色', ''); if (!native()) return X.toast('要在安卓 App 里用', '还要装「谷雨守护」插件'); if (needPlugin(k)) return X.toast('这一项要装「谷雨守护」插件', '免插件版做不了截屏 / 读屏 / 读通知 / 锁屏'); if (perm(k) === 'no') return X.toast('这一项设成了「不许」', '去设置里改'); const r = await DO[k](c, ...a); if (r) X.toast('✓ 好了', ''); G.repaint(APP); return r; };
 
+/* ---------------- 给「🧰 我的 MCP」用的口子：严格照用户在上面定的档（不许 = 碰不到） ----------------
+   读类（看屏幕的字、读通知）要插件才有；动作类（锁软件、拉回、锁屏）只在用户把那项设成「TA 直接做」时才执行，
+   设成「先问我」的，MCP 这边不弹窗、不替用户点头，只告诉 TA 需要用户先授权。不走这里的 X.reach，省得和 MCP 的回复重复。 */
+P.mcp = {
+    on: () => X.on('gysPhone') && native(),
+    // 能力清单：给 TA 的工具描述用
+    caps: () => CAPS.map(([k, ico, n, , grp]) => ({ k, n, grp, mode: perm(k), needPlugin: !!needPlugin(k) })),
+    usingNow: () => P.mcp.on() ? labelOf(N.fg()) : null,
+    readScreen() {
+        if (!P.mcp.on()) return { err: '只有安卓 App 里能用' };
+        if (needPlugin('read')) return { err: '要装「谷雨守护」插件才能读屏幕上的字' };
+        if (perm('read') === 'no') return { err: '她把「读屏幕上的字」设成了不许' };
+        const fg = N.fg(), t = N.text(1500);
+        log('read', `（MCP）「${labelOf(fg)}」上：${String(t || '').slice(0, 200)}`, { app: labelOf(fg), cid: String(who() && who().id) });
+        return t ? { app: labelOf(fg), text: String(t).slice(0, 1500) } : { err: '没读到（可能是不许读的软件）' };
+    },
+    notifications(n) {
+        if (!P.mcp.on()) return { err: '只有安卓 App 里能用' };
+        if (needPlugin('notif')) return { err: '要装「谷雨守护」插件才能读通知' };
+        if (perm('notif') === 'no') return { err: '她把「读通知」设成了不许' };
+        try { notifTick(); } catch (e) {}
+        const arr = (D.notifs || []).filter(x => !D.never.includes(x.pkg)).slice(0, Math.max(1, Math.min(40, n || 15)));
+        return arr.length ? { list: arr.map(x => ({ app: x.label || x.pkg, title: x.title || '', text: String(x.text || '').slice(0, 200), at: x.at })) } : { list: [], note: '现在没有存着的通知' };
+    },
+    // 动作：只在「TA 直接做」时真做；「先问我」只提示需要授权，不自作主张
+    async act(k, ...a) {
+        if (!P.mcp.on()) return { err: '只有安卓 App 里能用' };
+        if (needPlugin(k)) return { err: '这一项要装「谷雨守护」插件' };
+        const m = perm(k);
+        if (m === 'no') return { err: '她把这一项设成了不许' };
+        if (m !== 'auto') return { err: '她把这一项设成了「先问我」，MCP 不替她点头；要让 TA 直接做，去真手机设置里改成「TA 直接做」' };
+        const c = who(); if (!c) return { err: '还没有角色' };
+        try { const r = await DO[k](c, ...a); return r ? { ok: true } : { err: '没做成' }; } catch (e) { return { err: String(e && e.message || e).slice(0, 120) }; }
+    }
+};
+
 /* ---------------- 睡觉时间 ---------------- */
 function bedTime() { if (D.bed.time) return D.bed.time; try { const n = window.gyxNightData && window.gyxNightData(); if (n && n.cfg && n.cfg.bed) return n.cfg.bed; } catch (e) {} return '00:30'; }
 function applyBed(on, c) {

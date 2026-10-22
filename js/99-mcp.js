@@ -175,7 +175,26 @@
         location: ['看她手机现在大概在哪（要给谷雨定位权限）', O(), () => new Promise((res, rej) => {
             if (!(window.plus && plus.geolocation)) return rej(new Error('只有 App 里能定位'));
             plus.geolocation.getCurrentPosition(p => { const c = p.coords, ad = p.address || {}; res([ad.province, ad.city, ad.district, ad.street].filter(Boolean).join('') || p.addresses || `纬度 ${c.latitude.toFixed(4)}，经度 ${c.longitude.toFixed(4)}`); }, e => rej(new Error('定位失败：' + (e && e.message || '没权限或没信号'))), { timeout: 15000, maximumAge: 120000, geocode: true });
-        })]
+        })],
+        // 下面几样要装了「谷雨守护」插件才有，而且照她在「📲 真手机 → 设置」里定的档来（设成「不许」的就用不了）
+        read_notifications: ['看她手机上别的软件发来的通知（谁给她发了消息）。要装谷雨守护插件 + 她允许「读通知」', O({ limit: { type: 'integer' } }), a => {
+            const r = (window.gysPh && gysPh.mcp) ? gysPh.mcp.notifications(a.limit) : { err: '真手机没加载上' };
+            if (r.err) throw new Error(r.err);
+            return r.list.length ? r.list.map(x => `${x.app}：${x.title || ''} ${x.text || ''}`.trim()).join('\n') : (r.note || '现在没有通知');
+        }],
+        read_screen: ['看她手机屏幕上现在显示的字（她正在看什么）。要装谷雨守护插件 + 她允许「读屏幕上的字」', O(), () => {
+            const r = (window.gysPh && gysPh.mcp) ? gysPh.mcp.readScreen() : { err: '真手机没加载上' };
+            if (r.err) throw new Error(r.err);
+            return `她在用「${r.app}」，屏幕上：${r.text}`;
+        }],
+        pull_back: ['把她从别的软件拉回谷雨（想她了 / 催她别玩了）。要装谷雨守护插件 + 她把「把你拉回谷雨」设成了「TA 直接做」', O(), async () => {
+            const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('pull') : { err: '真手机没加载上' };
+            if (r.err) throw new Error(r.err); return '把她拉回谷雨了';
+        }],
+        lock_apps: ['临时锁住她常用的那几个娱乐软件一会儿（她答应让你管的时候）。要装谷雨守护插件 + 她把「锁你的软件」设成了「TA 直接做」', O({ minutes: { type: 'integer', description: '锁多少分钟，默认 30' } }), async a => {
+            const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('lock', '', { min: Math.max(1, Math.min(180, +a.minutes || 30)) }) : { err: '真手机没加载上' };
+            if (r.err) throw new Error(r.err); return '锁上了';
+        }]
     };
     async function builtinConn() {
         if (!isApp()) throw new Error('只有安卓 App 里能用（网页 / 电脑上调不了手机）');
