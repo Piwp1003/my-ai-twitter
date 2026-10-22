@@ -38,3 +38,50 @@ jobs:
           find "$AS" -path '*simpleDemo/src/main/assets/apps*' | head -20
           ls -la "$AS"/simpleDemo/libs 2>/dev/null | head -40
           find . -name '*.aar' | head -80
+      - name: 装进离线工程（谷雨网页 + 谷雨守护 + Key + 包名）
+        if: steps.sdk.outputs.skip != '1'
+        env:
+          APPID: H5C498173
+          PKG: plus.H5C498173
+          APPKEY: 7b797d144d2ac02852152ed82c1f2bf0
+        run: |
+          AS=$(find "$PWD/sdk" -type d -name 'HBuilder-Integrate-AS' | head -1)
+          D="$AS/simpleDemo"; echo "AS=$AS"
+          echo "AS=$AS" >> "$GITHUB_ENV"
+          # 1) 网页：跟 HBuilderX 项目里那几样一致
+          rm -rf "$D/src/main/assets/apps"; W="$D/src/main/assets/apps/$APPID/www"; mkdir -p "$W"
+          cp -r index.html style.css js icons img media "$W/"
+          cp android-build/www-manifest.json "$W/manifest.json"
+          # 2) appid / Key / 包名 / 版本 / 应用名
+          python3 android-build/patch.py "$D" "$APPID" "$PKG" "$APPKEY"
+          # 3) 谷雨守护：aar 丢进 libs（里面的服务和权限编译时自动合并进 APK）
+          cp 安卓插件/nativeplugins/GuyuGuard/android/GuyuGuard.aar "$D/libs/"
+          ls -la "$D/libs"
+      - name: 证书
+        if: steps.sdk.outputs.skip != '1'
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "::warning::还没在仓库保密设置里放证书（KEYSTORE_B64、KEYSTORE_PASS），先用 SDK 自带的测试证书签名——这样的包 Key 会对不上、也不能覆盖安装"; exit 0; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$AS/simpleDemo/guyu.keystore"
+          python3 android-build/sign.py "$AS/simpleDemo/build.gradle"
+      - uses: actions/setup-java@v4
+        if: steps.sdk.outputs.skip != '1'
+        with: { distribution: temurin, java-version: '17' }
+      - name: 编译
+        if: steps.sdk.outputs.skip != '1'
+        env:
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASS }}
+        run: |
+          cd "$AS"
+          if [ -f gradlew ]; then chmod +x gradlew; ./gradlew --no-daemon :simpleDemo:assembleRelease; else gradle --no-daemon :simpleDemo:assembleRelease; fi
+          find . -name '*.apk' -path '*outputs*' | tee ../apks.txt
+          mkdir -p "$GITHUB_WORKSPACE/out" && cp $(cat ../apks.txt) "$GITHUB_WORKSPACE/out/"
+      - uses: actions/upload-artifact@v4
+        if: steps.sdk.outputs.skip != '1'
+        with: { name: guyu-apk, path: out/*.apk }
