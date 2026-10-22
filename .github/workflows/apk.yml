@@ -12,9 +12,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: 找 SDK 下载地址
         run: |
-          curl -sSL -A 'Mozilla/5.0' https://nativesupport.dcloud.net.cn/AppDocs/download/android.html -o page.html
-          ls -la page.html
-          grep -oE 'https?://[^"'"'"' <>]+\.zip' page.html | sort -u | tee links.txt
+          B=https://nativesupport.dcloud.net.cn
+          curl -sSL -A 'Mozilla/5.0' $B/AppDocs/download/android.html -o page.html
+          echo ----- 页面里的链接; grep -oE 'https?://[^"'"'"' <>)]+' page.html | sort -u | head -60
+          echo ----- 脚本; grep -oE '(src|href)="[^"]+\.js"' page.html | head -30
+          : > all.txt; cat page.html >> all.txt
+          for js in $(grep -oE '(src|href)="[^"]+\.js"' page.html | sed -E 's/^(src|href)="//; s/"$//'); do
+            case "$js" in http*) u=$js;; /*) u=$B$js;; *) u=$B/AppDocs/download/$js;; esac
+            curl -sSL -A 'Mozilla/5.0' "$u" >> all.txt || true
+          done
+          echo ----- 找到的压缩包
+          grep -oE 'https?://[^"'"'"' <>)\\]+\.(zip|rar|7z)[^"'"'"' <>)\\]*' all.txt | sort -u | tee links.txt
       - name: 下 SDK
         run: |
           URL=$(grep -iE 'android' links.txt | grep -viE 'ios|uniapp-x|uts' | head -1)
