@@ -12,17 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: 找 SDK 下载地址
         run: |
-          B=https://nativesupport.dcloud.net.cn
-          curl -sSL -A 'Mozilla/5.0' $B/AppDocs/download/android.html -o page.html
-          echo ----- 页面里的链接; grep -oE 'https?://[^"'"'"' <>)]+' page.html | sort -u | head -60
-          echo ----- 脚本; grep -oE '(src|href)="[^"]+\.js"' page.html | head -30
-          : > all.txt; cat page.html >> all.txt
-          for js in $(grep -oE '(src|href)="[^"]+\.js"' page.html | sed -E 's/^(src|href)="//; s/"$//'); do
-            case "$js" in http*) u=$js;; /*) u=$B$js;; *) u=$B/AppDocs/download/$js;; esac
-            curl -sSL -A 'Mozilla/5.0' "$u" >> all.txt || true
-          done
-          echo ----- 找到的压缩包
-          grep -oE 'https?://[^"'"'"' <>)\\]+\.(zip|rar|7z)[^"'"'"' <>)\\]*' all.txt | sort -u | tee links.txt
+          curl -sSL -A 'Mozilla/5.0' https://gitee.com/dcloud/native-docs/raw/master/docs/AppDocs/download/android.md -o android.md
+          ls -la android.md; head -c 6000 android.md; echo
+          echo ----- 所有链接; grep -oE 'https?://[^ )"<>]+' android.md | sort -u | head -80
+          grep -oE 'https?://[^ )"<>]+' android.md | grep -iE '\.(zip|rar|7z)' | tee links.txt
       - name: 下 SDK
         run: |
           URL=$(grep -iE 'android' links.txt | grep -viE 'ios|uniapp-x|uts' | head -1)
