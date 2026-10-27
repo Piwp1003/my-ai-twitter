@@ -35,7 +35,9 @@ async function checkCall(c) {
     try { if (typeof window.gyCallRing === 'function') window.gyCallRing(c, why); } catch (e) {}
     return why;
 }
-function tickCheck() { if (!on('check') || !X.on('gyxCallPlus.auto')) return; if (document.getElementById('gyCallIncoming') && document.getElementById('gyCallIncoming').classList.contains('on')) return; const c = X.chars().filter(canCheck).sort((a, b) => lastAny(b) - lastAny(a))[0]; if (c) checkCall(c); }
+// 统一受「📞 打电话」里的「允许 TA 主动打给我」管：那个关了，这里的「查岗电话」也不会自己打（你在面板上点的那次不受限）
+const inviteOff = () => typeof window.gyCallInviteOn === 'function' && !window.gyCallInviteOn();
+function tickCheck() { if (!on('check') || !X.on('gyxCallPlus.auto') || inviteOff()) return; if (document.getElementById('gyCallIncoming') && document.getElementById('gyCallIncoming').classList.contains('on')) return; const c = X.chars().filter(canCheck).sort((a, b) => lastAny(b) - lastAny(a))[0]; if (c) checkCall(c); }
 /* ③ 没接：语音留言 */
 async function scanMissed() {
     if (!on('vm') || typeof globalChats === 'undefined') return;
@@ -82,14 +84,14 @@ window.gyxCallPlusOpen = function (tab) {
         ${sw('why', '拒接时可以挑理由')}<textarea class="gyx-in" rows="2" onchange="gyxCallPlusReasons(this.value)">${X.esc(D.reasons.join('，'))}</textarea>
         ${sw('check', '很久没说话，TA 打电话来问')}<div class="gyx-row">超过 <input class="gyx-who" type="number" min="2" max="72" style="width:70px" value="${D.o.gap}" onchange="gyxCallPlusSet('gap',+this.value)"> 小时没说话（只在白天 9 点到晚上 10 点打，每人一天最多一次）</div>
         ${sw('vm', 'TA 打来你没接：留一段语音留言')}${sw('sum', '每通电话挂了以后留一行小结')}
-        <div class="gyx-tip">「TA 打来问」也受插件开关中心里「TA 会自己做」管。</div>` : T === 'vm' ? (D.vm.map(v => `<div class="gyx-card"><b>${X.esc(X.name(X.char(v.cid)))}</b> <span class="gyx-tip">${new Date(v.at).toLocaleString()} · ${v.sec}″${v.heard ? '' : ' · 没听'}</span><div>${X.esc(v.t)}</div><div class="gyx-row"><button class="gyx-btn lite" onclick="gyxCallVmPlay('${v.id}')">▶ 播放</button></div></div>`).join('') || '<div class="gyx-tip">还没有语音留言</div>')
+        <div class="gyx-tip">「TA 打来问」也受插件开关中心里「TA 会自己做」管；另外，「📞 打电话」里关掉「允许 TA 主动打给我」的话，这里也不会自己打来。</div>` : T === 'vm' ? (D.vm.map(v => `<div class="gyx-card"><b>${X.esc(X.name(X.char(v.cid)))}</b> <span class="gyx-tip">${new Date(v.at).toLocaleString()} · ${v.sec}″${v.heard ? '' : ' · 没听'}</span><div>${X.esc(v.t)}</div><div class="gyx-row"><button class="gyx-btn lite" onclick="gyxCallVmPlay('${v.id}')">▶ 播放</button></div></div>`).join('') || '<div class="gyx-tip">还没有语音留言</div>')
         : (D.sums.map(s => `<div class="gyx-tip">📞 ${new Date(s.at).toLocaleString()} · ${X.esc(X.name(X.char(s.cid)))}：${X.esc(s.sum)}</div>`).join('') || '<div class="gyx-tip">还没有通话小结</div>')));
 };
 window.gyxCallPlusData = () => D;
 window.gyxCallPlusScan = scanMissed;
 window.gyxCallPlusCheck = id => checkCall(X.char(id) || X.cur());
 X.ctx(id => { const s = D.sums.filter(x => x.cid === String(id)).slice(0, 3), v = D.vm.find(x => x.cid === String(id) && Date.now() - x.at < 864e5); return (s.length ? `【最近几通电话】${s.map(x => x.sum).join('；')}` : '') + (v ? `${s.length ? '\n' : ''}【你给她留过语音留言】${v.heard ? '她听了' : '她还没听'}` : ''); }, 'gyxCallPlus');
-X.action({ key: 'gyx_call_check', label: '她很久没说话了，打个电话确认她没事', hint: '来电增强', need: c => on('check') && canCheck(c), run: async c => (await checkCall(c)) ? '打电话来问你还好吗' : null }, 'gyxCallPlus');
+X.action({ key: 'gyx_call_check', label: '她很久没说话了，打个电话确认她没事', hint: '来电增强', need: c => on('check') && !inviteOff() && canCheck(c), run: async c => (await checkCall(c)) ? '打电话来问你还好吗' : null }, 'gyxCallPlus');
 X.today(() => ({ title: '📞 电话', rows: D.sums.filter(x => X.day(new Date(x.at)) === X.day()).slice(0, 3).map(x => ({ t: X.esc(X.name(X.char(x.cid))), x: X.esc(x.sum), go: "gyxCallPlusOpen('sum')" })).concat(D.vm.filter(x => X.day(new Date(x.at)) === X.day()).slice(0, 2).map(x => ({ t: X.esc(X.name(X.char(x.cid))), x: '📼 留了言' + (x.heard ? '' : '（没听）'), go: "gyxCallPlusOpen('vm')" }))) }), 'gyxCallPlus');
 X.widget('gyxCallPlusW', { n: '语音信箱', sizes: ['s', 'm'], tap: () => window.gyxCallPlusOpen('vm'), r: w => { const un = D.vm.filter(v => !v.heard), s = D.sums[0]; return X.gw(w, '📼', '语音信箱', [un.length ? un.length + ' 条没听' : '没有新留言', s ? '上一通：' + X.esc(s.sum) : '']); } }, 'gyxCallPlus');
 X.memArr({ k: 'gyxCallSum', ico: '📞', n: '通话小结', d: '每通电话的一句话备注', arr: () => D.sums, field: 'sum', text: x => x.sum, save: saveD }, 'gyxCallPlus');
