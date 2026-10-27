@@ -350,6 +350,12 @@ function recordTokenUsage(data, fallbackChars, call, meta) {
         let estimated = 0;
         if (inTok == null && outTok == null) {
             if (!fallbackChars) return;   // 报错的请求既没 usage 也没内容，不记
+            // 🩹 修 token 统计虚高：服务商没回 usage 时才按字数估算。但「请求失败 / 返回空 /
+            //    中转返回错误页 / 流中断」这些情况也会走到这里，而且 outChars 是 0——
+            //    这时若仍把整条 prompt 估成几万输入 token 记上去，就是那几万~十几万虚高的来源。
+            //    所以：非向量调用，只有真的拿到了回复（outChars>0）才估算；一个字都没回来就当没发生，不记。
+            const isEmbed = meta && meta.kind === 'embed';
+            if (!isEmbed && !(fallbackChars.outChars > 0)) return;
             inTok = Math.ceil((fallbackChars.inChars || 0) / 1.8);
             outTok = Math.ceil((fallbackChars.outChars || 0) / 1.8);
             estimated = 1;

@@ -650,8 +650,14 @@ async function runScheduleGeneration(charId, silent) {
     // 按钮看起来完全没反应，没有任何报错，A 的日程也没存上。
     if (!silent) pendingScheduleCharId = charId;
     const char = myCharacters.find(c => c.id == charId); if (!char) return;
+    // 🛡️ 同一个角色「正在生成」时不再并发开第二份：日程请求很长，generatedAt 要等生成完才写，
+    //    之前后台 15 分钟的定时器 + 云同步那条路（js/07）会在上一份还没落地时又把它当「过期」挑中，
+    //    于是一天给同一个人生成了两次、总共四次。用这个在途标记挡住重复（手动 / 自动都算）。
+    const SCHED_RUNNING = (window.__gySchedInFlight = window.__gySchedInFlight || {});
+    if (SCHED_RUNNING[charId]) { if (silent) return; }
+    SCHED_RUNNING[charId] = Date.now();
     const api = getApiConfig(true);
-    if (!api.key) { if (silent) return; closeModal('schedulePreviewModal'); return alert('请先在设置中配置 API 密钥！'); }
+    if (!api.key) { delete SCHED_RUNNING[charId]; if (silent) return; closeModal('schedulePreviewModal'); return alert('请先在设置中配置 API 密钥！'); }
 
     if (!silent) {
         closeModal('schedulePreviewModal');
@@ -726,6 +732,9 @@ ${recentChat || '（暂无）'}
         if (silent) { console.warn('[日程自动更新] 生成失败（下一轮再试）：', msg); return; }
         closeModal('scheduleLoadingModal');
         alert('生成日程失败：' + msg);
+    } finally {
+        // 无论成功 / 失败 / 中途 return，都把在途标记清掉，下次该续时才续得上
+        try { delete window.__gySchedInFlight[charId]; } catch (e) {}
     }
 }
 
@@ -735,6 +744,11 @@ ${recentChat || '（暂无）'}
 // 一轮最多续 3 个角色：角色多的时候一次性全生成会瞬间打出十几个长请求，又慢又贵，分几轮慢慢来完全够用。
 // 排序按"上次生成时间"从早到晚，保证每个角色都轮得上（以前固定取前两个，后面的人永远排不到）。
 async function checkAndRenewStaleSchedules() {
+    // 🛡️ 不重入：这函数挂在 15 分钟的定时器上，又会被云同步那条路（js/07）另外触发一次。
+    //    上一轮还在等模型返回（日程请求很长）时，下一轮不能再进来——否则同一个人会被挑中两次。
+    if (window.__gySchedRenewBusy) return;
+    window.__gySchedRenewBusy = true;
+    try {
     // 🔌 v232：开关没开就什么都不做（以前这个开关默认是开的，没碰过它的人也会被自动更新）
     const sw = (typeof autoFeatureSwitches !== 'undefined' && autoFeatureSwitches) ? autoFeatureSwitches : null;
     if (typeof isAutoOn === 'function' && !isAutoOn('scheduleAutoRenew')) { if (sw && sw.__schedRenewSince) delete sw.__schedRenewSince; return; }
@@ -747,12 +761,16 @@ async function checkAndRenewStaleSchedules() {
     if (typeof isScheduleStale !== 'function') return;
     // 没日程的也算"该写"，按"上次生成时间"从早到晚排，谁最久没更新谁先来。
     // ⚠️ 只写"今天"这一份：几天没上线回来，不会把错过的那几天挨个补——想补齐用下面的 gyScheduleFillNow 按钮。
-    const cand = (myCharacters || []).filter(c => c && (!c.schedule || !c.schedule.text || isScheduleStale(c)));
+    const running = window.__gySchedInFlight || {};
+    const cand = (myCharacters || []).filter(c => c && !running[c.id] && (!c.schedule || !c.schedule.text || isScheduleStale(c)));
     cand.sort((a, b) => ((a.schedule && a.schedule.generatedAt) || 0) - ((b.schedule && b.schedule.generatedAt) || 0));
     const due = cand.slice(0, 3);
     for (const char of due) {
         try { await runScheduleGeneration(char.id, true); }
         catch (e) { console.warn('[日程自动更新] 出错，跳过这个角色：', char && char.name, e); }
+    }
+    } finally {
+        window.__gySchedRenewBusy = false;
     }
 }
 
