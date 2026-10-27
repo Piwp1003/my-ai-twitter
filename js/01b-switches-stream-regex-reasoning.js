@@ -367,6 +367,7 @@ function recordTokenUsage(data, fallbackChars, call, meta) {
         const bump = (o) => { o.calls++; o.in += (inTok || 0); o.out += (outTok || 0); o.cached += cached; o.estimated += estimated; };
         const blank = () => ({ calls: 0, in: 0, out: 0, cached: 0, estimated: 0 });
         bump(gyTokenStats.total);
+        try { if (window.gyApiGuardNote) window.gyApiGuardNote((inTok || 0) + (outTok || 0)); } catch (e) {}
         if (!gyTokenStats.byFeature[feature]) gyTokenStats.byFeature[feature] = blank();
         bump(gyTokenStats.byFeature[feature]);
         const bd = gyTokenStats.byDetail[feature] || (gyTokenStats.byDetail[feature] = {});

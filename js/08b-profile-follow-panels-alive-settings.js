@@ -994,6 +994,7 @@ function gyTokRender(el, id) {
     const S = gyTokState(id);
     const tabs = [['items', '📋 按项目'], ['log', '🧾 每次调用'], ['days', '📅 按天'], ['save', '💾 保存与导出']];
     el.innerHTML = `<div class="gytk" data-gytk="${id}">
+        ${typeof gyApiGuardBar === 'function' ? gyApiGuardBar() : ''}
         <div class="gytk-tabs">${tabs.map(([k, n]) => `<button class="gytk-tab${S.tab === k ? ' on' : ''}" onclick="gyTokSet('${id}','tab','${k}')">${n}</button>`).join('')}</div>
         ${S.tab === 'log' ? gyTokLogView(id, S) : S.tab === 'days' ? gyTokDays(id) : S.tab === 'save' ? gyTokSave(id, S) : gyTokItems(id, S)}</div>`;
 }

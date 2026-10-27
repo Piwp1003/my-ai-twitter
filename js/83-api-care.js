@@ -118,3 +118,81 @@
     function hookAll() { hookEnhance(); hookNotice(); }
     hookAll(); setInterval(hookAll, 4000);
 })();
+
+/* ============================================================
+   🔒 API 保护（v271）：怀疑 key 泄露 / 被盗刷时保护你
+   ① 一键紧急停用：本地拦下所有模型调用 + 关云同步 + 尽力擦掉云端 Worker KV 里存的 key；
+      并提醒你去模型服务商后台把 key 删掉重置（那才是根治）。
+   ② 用量异常自动暂停：盯最近一段时间的 token 用量，短时间内超过你设的阈值就自动停掉并弹提醒
+      （key 被别人刷的典型症状就是用量突然暴涨）。
+   入口在「设置 → 📊 Token 用量」页最上面那条。停用后所有调用返回一句「已紧急停用」，解除后恢复。
+   ============================================================ */
+(function () {
+    if (window.__gyApiGuard) return; window.__gyApiGuard = 1;
+    const LS = 'gyApiGuard';
+    let G = { killed: false, reason: '', watch: true, winMin: 10, maxTok: 200000 };
+    try { G = Object.assign(G, JSON.parse(localStorage.getItem(LS) || '{}')); } catch (e) {}
+    const save = () => { try { localStorage.setItem(LS, JSON.stringify(G)); } catch (e) {} };
+    const toast = (t, d) => { try { showToast('', t, d || '', null, null, false); } catch (e) {} };
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    window.gyApiGuardState = () => G;
+    const blockMsg = () => '🔒 已紧急停用 API：' + (G.reason || '你手动停的') + '。处理好后在「设置 → 📊 Token 用量」页顶上点「解除」就恢复。';
+    window.gyApiBlocked = () => G.killed ? blockMsg() : '';
+
+    /* —— 总闸门：停用时拦下所有模型调用 —— */
+    function wrapObj(name) { const f = window[name]; if (typeof f !== 'function' || f.__guard) return; const w = async function () { if (G.killed) return { error: { message: blockMsg() } }; return f.apply(this, arguments); }; try { Object.keys(f).forEach(k => { w[k] = f[k]; }); } catch (e) {} w.__guard = 1; window[name] = w; }
+    function wrapNull(name) { const f = window[name]; if (typeof f !== 'function' || f.__guard) return; const w = async function () { if (G.killed) return null; return f.apply(this, arguments); }; try { Object.keys(f).forEach(k => { w[k] = f[k]; }); } catch (e) {} w.__guard = 1; window[name] = w; }
+    function wrapThrow(name) { const f = window[name]; if (typeof f !== 'function' || f.__guard) return; const w = async function () { if (G.killed) throw new Error(blockMsg()); return f.apply(this, arguments); }; try { Object.keys(f).forEach(k => { w[k] = f[k]; }); } catch (e) {} w.__guard = 1; window[name] = w; }
+    function hookAll() { ['sendChatRequestRaw', 'sendChatRequest', 'callChatCompletionAPI'].forEach(wrapObj); wrapNull('getEmbedding'); wrapThrow('streamCompletionText'); }
+    hookAll(); setTimeout(hookAll, 1500); setTimeout(hookAll, 5000);
+
+    /* —— 紧急停用 / 解除 —— */
+    window.gyApiKill = async function (reason, quiet) {
+        G.killed = true; G.reason = reason || '手动紧急停用'; save(); hookAll();
+        try { if (typeof cloudSyncEnabled !== 'undefined') cloudSyncEnabled = false; } catch (e) {}
+        try { localStorage.setItem('cloudSyncEnabled', 'false'); } catch (e) {}
+        let wiped = false;
+        try {
+            const url = (typeof cloudWorkerUrl !== 'undefined' && cloudWorkerUrl) || localStorage.getItem('cloudWorkerUrl') || '';
+            const tok = (typeof cloudAuthToken !== 'undefined' && cloudAuthToken) || localStorage.getItem('cloudAuthToken') || '';
+            if (url && tok) { const r = await fetch(url.replace(/\/+$/, '') + '/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok }, body: JSON.stringify({ apiUrl: '', apiKey: '', model: '', characters: [] }) }); wiped = !!(r && r.ok); }
+        } catch (e) {}
+        try { gyApiGuardRepaint(); } catch (e) {}
+        const msg = '🔒 已紧急停用：\n· 本地所有模型调用已拦下\n· 云同步已关闭' + (wiped ? '\n· 云端存的 key 已擦掉' : '') + '\n\n⚠️ 这不能撤销泄露本身——请务必去你的模型服务商后台把这个 key 删掉 / 重置，再填新的 key。';
+        if (!quiet) { try { appAlert(msg); } catch (e) { toast('🔒 已紧急停用', '去服务商重置 key'); } } else toast('🔒 用量异常，已自动停用', G.reason);
+    };
+    window.gyApiUnkill = async function () {
+        const ask = typeof appConfirm === 'function' ? appConfirm : m => Promise.resolve(confirm(m));
+        if (!(await ask('确认已经去服务商重置过 key（或确认是误报）了吗？解除后模型调用会恢复。'))) return;
+        G.killed = false; G.reason = ''; save(); try { gyApiGuardRepaint(); } catch (e) {} toast('✅ 已解除', 'API 恢复可用');
+    };
+    window.gyApiGuardSet = (k, v) => { if (k === 'watch') G.watch = !!v; else G[k] = Math.max(0, parseInt(v, 10) || 0); save(); };
+
+    /* —— 用量异常自动暂停 —— */
+    let win = [];
+    window.gyApiGuardNote = function (tok) {
+        if (!G.watch || G.killed || !(tok > 0)) return;
+        const now = Date.now(), ms = (+G.winMin || 10) * 60000;
+        win.push({ t: now, k: tok }); win = win.filter(x => now - x.t < ms);
+        const sum = win.reduce((a, x) => a + x.k, 0);
+        if (G.maxTok > 0 && sum > G.maxTok) { win = []; window.gyApiKill('最近 ' + G.winMin + ' 分钟用了约 ' + sum + ' token，超过阈值 ' + G.maxTok + '（怀疑被盗刷）', true); }
+    };
+
+    /* —— Token 用量页顶上的那条 —— */
+    window.gyApiGuardBar = function () {
+        if (G.killed) return `<div class="gyag gyag-off"><b>🔒 API 已紧急停用</b><div class="gyag-sub">${esc(G.reason)}</div><div class="gyag-sub">所有模型调用都被拦着。去服务商重置 key、填好新 key 后点下面解除。</div><button class="gyag-btn danger" onclick="gyApiUnkill()">解除停用</button></div>`;
+        return `<div class="gyag"><div class="gyag-row"><b>🔒 API 保护</b><button class="gyag-btn danger" onclick="if(confirm('确定紧急停用？会拦下所有模型调用、关云同步、并尽力擦掉云端存的 key。'))gyApiKill()">🚨 一键紧急停用</button></div>
+        <label class="gyag-ck"><input type="checkbox" ${G.watch ? 'checked' : ''} onchange="gyApiGuardSet('watch',this.checked);gyApiGuardRepaint()"> 用量异常自动暂停</label>
+        ${G.watch ? `<div class="gyag-sub">最近 <input class="gyag-in" type="number" min="1" max="120" value="${G.winMin}" onchange="gyApiGuardSet('winMin',this.value)"> 分钟内，用量超过 <input class="gyag-in w" type="number" min="0" step="10000" value="${G.maxTok}" onchange="gyApiGuardSet('maxTok',this.value)"> token 就自动停（0 = 不限）。怀疑 key 泄露 / 被盗刷时能兜住。</div>` : ''}</div>`;
+    };
+    window.gyApiGuardRepaint = function () { try { if (typeof gyTokRepaint === 'function') gyTokRepaint('m'); } catch (e) {} try { if (typeof gyTokRepaint === 'function') gyTokRepaint('now'); } catch (e) {} };
+    if (!document.getElementById('gyagCss')) { const st = document.createElement('style'); st.id = 'gyagCss'; st.textContent = `
+        .gyag{border:1px solid rgba(249,24,128,.3);background:rgba(249,24,128,.06);border-radius:12px;padding:12px 14px;margin:4px 0 14px}
+        .gyag-off{border-color:#e0245e;background:rgba(224,36,94,.1)}
+        .gyag-row{display:flex;align-items:center;justify-content:space-between;gap:10px}.gyag-row b{font-size:15px}
+        .gyag b{font-weight:700}.gyag-sub{font-size:12.5px;color:#8b98a5;margin-top:6px;line-height:1.7}
+        .gyag-ck{display:flex;align-items:center;gap:6px;font-size:13.5px;margin-top:10px;cursor:pointer}
+        .gyag-in{width:64px;border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:2px 6px;font:inherit;background:transparent;color:inherit}.gyag-in.w{width:96px}
+        .gyag-btn{border:0;border-radius:8px;padding:7px 12px;font:inherit;font-weight:600;cursor:pointer;background:rgba(128,128,128,.15);color:inherit}
+        .gyag-btn.danger{background:#e0245e;color:#fff}`; document.head.appendChild(st); }
+})();
