@@ -30,6 +30,15 @@ def gradle(s):
     s = re.sub(r'applicationId\s+["\'][^"\']*["\']', f'applicationId "{pkg}"', s)
     s = re.sub(r'versionCode\s+\d+', f'versionCode {ver_code}', s)
     s = re.sub(r'versionName\s+["\'][^"\']*["\']', f'versionName "{ver_name}"', s)
+    # 谷雨守护：把 aar 声明成具名 flatDir 依赖——只有这样它的无障碍/通知服务和权限才会被合并进清单；
+    # 光把 aar 丢进 libs、靠 fileTree(include:['*.jar']) 是不会被编进去的（旧 bug：锁软件/读屏一直没反应就是这个）。
+    if 'GuyuGuard' not in s:
+        if 'flatDir' not in s:
+            s = re.sub(r'(^|\n)(\s*android\s*\{)', r"\1repositories { flatDir { dirs 'libs' } }\n\2", s, count=1)
+        if re.search(r'dependencies\s*\{', s):
+            s = re.sub(r'(dependencies\s*\{)', r"\1\n    implementation(name: 'GuyuGuard', ext: 'aar')", s, count=1)
+        else:
+            s += "\ndependencies {\n    implementation(name: 'GuyuGuard', ext: 'aar')\n}\n"
     return s
 edit(d / 'build.gradle', gradle)
 
@@ -41,7 +50,10 @@ edit(d / 'src/main/res/values/strings.xml',
 PERMS = ['INTERNET', 'ACCESS_NETWORK_STATE', 'ACCESS_WIFI_STATE', 'CHANGE_NETWORK_STATE', 'WAKE_LOCK', 'VIBRATE', 'FLASHLIGHT',
          'CAMERA', 'RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION',
          'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'READ_MEDIA_AUDIO',
-         'POST_NOTIFICATIONS', 'FOREGROUND_SERVICE', 'WRITE_SETTINGS']
+         'POST_NOTIFICATIONS', 'FOREGROUND_SERVICE', 'WRITE_SETTINGS',
+         # 谷雨守护用到的（aar 清单里也有，这里在主清单再声明一遍，防止合并漏掉）
+         'PACKAGE_USAGE_STATS', 'QUERY_ALL_PACKAGES', 'SYSTEM_ALERT_WINDOW', 'ACCESS_NOTIFICATION_POLICY',
+         'SET_WALLPAPER', 'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS']
 def perms(s):
     add = ''.join(f'\n    <uses-permission android:name="android.permission.{p}"/>' for p in PERMS if f'permission.{p}"' not in s)
     return re.sub(r'(<manifest[^>]*>)', rf'\1{add}', s, count=1) if add else s
