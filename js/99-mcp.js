@@ -175,7 +175,26 @@
         location: ['看她手机现在大概在哪（要给谷雨定位权限）', O(), () => new Promise((res, rej) => {
             if (!(window.plus && plus.geolocation)) return rej(new Error('只有 App 里能定位'));
             plus.geolocation.getCurrentPosition(p => { const c = p.coords, ad = p.address || {}; res([ad.province, ad.city, ad.district, ad.street].filter(Boolean).join('') || p.addresses || `纬度 ${c.latitude.toFixed(4)}，经度 ${c.longitude.toFixed(4)}`); }, e => rej(new Error('定位失败：' + (e && e.message || '没权限或没信号'))), { timeout: 15000, maximumAge: 120000, geocode: true });
-        })]
+        })],
+        // 下面几样要装了「谷雨守护」插件才有，而且照她在「📲 真手机 → 设置」里定的档来（设成「不许」的就用不了）
+        read_notifications: ['看她手机上别的软件发来的通知（谁给她发了消息）。要装谷雨守护插件 + 她允许「读通知」', O({ limit: { type: 'integer' } }), a => {
+            const r = (window.gysPh && gysPh.mcp) ? gysPh.mcp.notifications(a.limit) : { err: '真手机没加载上' };
+            if (r.err) throw new Error(r.err);
+            return r.list.length ? r.list.map(x => `${x.app}：${x.title || ''} ${x.text || ''}`.trim()).join('\n') : (r.note || '现在没有通知');
+        }],
+        read_screen: ['看她手机屏幕上现在显示的字（她正在看什么）。要装谷雨守护插件 + 她允许「读屏幕上的字」', O(), () => {
+            const r = (window.gysPh && gysPh.mcp) ? gysPh.mcp.readScreen() : { err: '真手机没加载上' };
+            if (r.err) throw new Error(r.err);
+            return `她在用「${r.app}」，屏幕上：${r.text}`;
+        }],
+        pull_back: ['把她从别的软件拉回谷雨（想她了 / 催她别玩了）。要装谷雨守护插件 + 她把「把你拉回谷雨」设成了「TA 直接做」', O(), async () => {
+            const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('pull') : { err: '真手机没加载上' };
+            if (r.err) throw new Error(r.err); return '把她拉回谷雨了';
+        }],
+        lock_apps: ['临时锁住她常用的那几个娱乐软件一会儿（她答应让你管的时候）。要装谷雨守护插件 + 她把「锁你的软件」设成了「TA 直接做」', O({ minutes: { type: 'integer', description: '锁多少分钟，默认 30' } }), async a => {
+            const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('lock', '', { min: Math.max(1, Math.min(180, +a.minutes || 30)) }) : { err: '真手机没加载上' };
+            if (r.err) throw new Error(r.err); return '锁上了';
+        }]
     };
     async function builtinConn() {
         if (!isApp()) throw new Error('只有安卓 App 里能用（网页 / 电脑上调不了手机）');
@@ -353,7 +372,10 @@
 
     /* ---------------- 页面（整页） ---------------- */
     const V = { view: 'list', id: null, draft: null };
-    function go(v, id) { V.view = v; V.id = id || null; mount(); document.getElementById('gyMcpPage').classList.add('on'); paint(); }
+    function go(v, id) { V.view = v; V.id = id || null; mount();
+        // 从「合集」里打开时，底下那层合集页会留着（MCP 自己是一整页），顺手关掉，免得露出半截
+        try { if (typeof window.gyHubClose === 'function' && document.getElementById('gyHubOv')) window.gyHubClose(); } catch (e) {}
+        document.getElementById('gyMcpPage').classList.add('on'); paint(); }
     window.gyMcpOpen = v => go(v === 'log' ? 'log' : 'list');
     window.gyMcpClose = function () { if (V.view !== 'list') { V.draft = null; return go('list'); } const m = document.getElementById('gyMcpPage'); if (m) m.classList.remove('on'); };
     window.gyMcpGo = (v, id) => go(v, id);
@@ -486,7 +508,20 @@
             ${s.__new ? '' : `<button class="gymcp-btn bad" onclick="gyMcpDel('${s.id}')">删掉</button>`}
           </div>
           ${s.err ? `<div class="gymcp-note warn">上次没连上：${esc(s.err)}</div>` : ''}
-          ${(s.tools || []).length ? `<h4 class="gymcp-h">工具（关掉的 TA 就不会用）</h4>${s.tools.map(t => `<label class="gymcp-tool"><input type="checkbox" ${t.on === false ? '' : 'checked'} onchange="gyMcpToolToggle('${s.id}', ${esc(JSON.stringify(t.name))}, this.checked)"><div><b>${esc(t.title || t.name)}</b>${t.title ? `<em>${esc(t.name)}</em>` : ''}<span>${esc(t.description.slice(0, 160))}</span></div></label>`).join('')}` : '<div class="gymcp-hint">测试连接成功后，这里会列出它有哪些工具。</div>'}`;
+          ${(() => {
+              const tools = s.tools || [];
+              if (!tools.length) return '<div class="gymcp-hint">测试连接成功后，这里会列出它有哪些工具。</div>';
+              const row = t => `<label class="gymcp-tool"><input type="checkbox" ${t.on === false ? '' : 'checked'} onchange="gyMcpToolToggle('${s.id}', ${esc(JSON.stringify(t.name))}, this.checked)"><div><b>${esc(t.title || t.name)}</b>${t.title ? `<em>${esc(t.name)}</em>` : ''}<span>${esc(String(t.description || '').slice(0, 160))}</span></div></label>`;
+              // 内置版：要「谷雨守护」插件的（读屏 / 读通知 / 拉回 / 锁软件）单独分一组，其余不用插件
+              if (s.kind === 'builtin') {
+                  const NEED = { read_screen: 1, read_notifications: 1, pull_back: 1, lock_apps: 1 };
+                  const base = tools.filter(t => !NEED[t.name]), plug = tools.filter(t => NEED[t.name]);
+                  return `<h4 class="gymcp-h">工具（关掉的 TA 就不会用）</h4>`
+                      + `<div class="gymcp-hint" style="margin:2px 0 6px;">✅ 下面这些不用装插件，直接能用：</div>${base.map(row).join('')}`
+                      + (plug.length ? `<div class="gymcp-hint" style="margin:14px 0 6px;">🛡️ 下面这些要装了「谷雨守护」插件、并在真手机设置里开了对应权限才用得了：</div>${plug.map(row).join('')}` : '');
+              }
+              return `<h4 class="gymcp-h">工具（关掉的 TA 就不会用）</h4>${tools.map(row).join('')}`;
+          })()}`;
     }
     function paintLog() {
         const b = document.getElementById('gyMcpBody'); if (!b) return;
@@ -503,12 +538,12 @@
     }
     window.gyMcpPaint = paint;
     const CSS = `
-    #gyMcpPage{position:fixed;inset:0;z-index:2600;background:var(--gy-bg,#fff);display:none;flex-direction:column;color:inherit;}
+    #gyMcpPage{position:fixed;inset:0;z-index:2147482000;background:var(--gy-bg,#fff);display:none;flex-direction:column;color:inherit;}
     body.dark-theme #gyMcpPage{background:#15202b;}
     #gyMcpPage.on{display:flex;}
     .gymcp-hd{padding:12px 14px;padding-top:calc(12px + env(safe-area-inset-top,0px));font-size:17px;font-weight:700;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--gy-line,#cfd9de);}
     .gymcp-hd .bk{cursor:pointer;font-size:22px;line-height:1;color:var(--gy-accent,#1d9bf0);padding:0 6px;}
-    .gymcp-bd{padding:12px 16px 40px;overflow-y:auto;flex:1 1 auto;max-width:720px;width:100%;margin:0 auto;box-sizing:border-box;}
+    .gymcp-bd{padding:12px 16px calc(40px + env(safe-area-inset-bottom,0px));overflow-y:auto;flex:1 1 auto;min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;max-width:720px;width:100%;margin:0 auto;box-sizing:border-box;}
     .gymcp-note{font-size:12.5px;color:#8b98a5;line-height:1.85;padding:10px 12px;margin-bottom:12px;border-radius:10px;background:rgba(var(--gy-accent-rgb),.06);border:1px dashed rgba(var(--gy-accent-rgb),.3);}
     .gymcp-note.warn{border-color:#f5a623;color:inherit;}
     .gymcp-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0;}

@@ -1,0 +1,92 @@
+# 用 DCloud 离线 SDK 在 GitHub 上打谷雨 APK（不用自己配 Android Studio）
+# SDK 只在网盘里，GitHub 下不到：先把 SDK 压缩包上传到本仓库标签为 sdk 的 Release，这里再去取。
+# 还没上传的时候自动跳过，不报错。
+name: 打包 APK
+on:
+  workflow_dispatch:
+  release:
+    types: [published, edited]
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/apk.yml', 'android-build/**']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 取 SDK（Release 标签 sdk）
+        id: sdk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          URL=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/releases/tags/sdk" \
+            | python3 -c "import sys,json;a=json.load(sys.stdin).get('assets',[]);print(next((x['url'] for x in a if x['name'].lower().endswith(('.zip','.7z','.rar'))),''))")
+          if [ -z "$URL" ]; then echo "::notice::还没把离线 SDK 传到标签为 sdk 的 Release，先跳过"; echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+          curl -sSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/octet-stream' -o sdk.zip "$URL"
+          ls -la sdk.zip
+          mkdir sdk && cd sdk && (unzip -q ../sdk.zip || 7z x -y ../sdk.zip >/dev/null)
+          rm -rf __MACOSX; find . -name '._*' -delete; find . -name '.DS_Store' -delete
+      - name: 看 SDK 结构
+        if: steps.sdk.outputs.skip != '1'
+        run: |
+          set +e
+          cd sdk
+          find . -maxdepth 3 -type d | head -80
+          AS=$(find . -type d -name 'HBuilder-Integrate-AS' | head -1); echo "AS=$AS"
+          find "$AS" -maxdepth 3 | grep -v '/build/' | head -80
+          for f in $(find "$AS" -maxdepth 3 -name '*.gradle'); do echo "=== $f"; cat "$f"; done
+          M=$(find "$AS" -path '*simpleDemo/src/main/AndroidManifest.xml' | head -1); echo "=== $M"; cat "$M"
+          for f in $(find "$AS" -path '*simpleDemo/src/main/assets/data/*' -type f); do echo "=== $f"; head -c 4000 "$f"; echo; done
+          find "$AS" -path '*simpleDemo/src/main/assets/apps*' | head -20
+          ls -la "$AS"/simpleDemo/libs 2>/dev/null | head -40
+          find . -name '*.aar' | head -80
+      - name: 装进离线工程（谷雨网页 + 谷雨守护 + Key + 包名）
+        if: steps.sdk.outputs.skip != '1'
+        env:
+          APPID: H5C498173
+          PKG: plus.H5C498173
+          APPKEY: 7b797d144d2ac02852152ed82c1f2bf0
+        run: |
+          AS=$(find "$PWD/sdk" -type d -name 'HBuilder-Integrate-AS' | head -1)
+          D="$AS/simpleDemo"; echo "AS=$AS"
+          echo "AS=$AS" >> "$GITHUB_ENV"
+          # 1) 网页：跟 HBuilderX 项目里那几样一致
+          rm -rf "$D/src/main/assets/apps"; W="$D/src/main/assets/apps/$APPID/www"; mkdir -p "$W"
+          cp -r index.html style.css js icons img media "$W/"
+          cp android-build/www-manifest.json "$W/manifest.json"
+          # 2) appid / Key / 包名 / 版本 / 应用名
+          python3 android-build/patch.py "$D" "$APPID" "$PKG" "$APPKEY"
+          # 3) 谷雨守护：aar 丢进 libs（里面的服务和权限编译时自动合并进 APK）
+          cp 安卓插件/nativeplugins/GuyuGuard/android/GuyuGuard.aar "$D/libs/"
+          # 4) 谷雨用到、但示例工程没带的模块：本地通知（推送）、系统定位
+          L="$(dirname "$AS")/SDK/libs"; echo "----- SDK/libs 全部："; ls "$L"
+          for f in aps-release.aar geolocation-system-release.aar; do if [ -f "$L/$f" ]; then cp "$L/$f" "$D/libs/"; echo "加了 $f"; else echo "::warning::SDK/libs 里没有 $f"; fi; done
+          ls -la "$D/libs"
+      - name: 证书
+        if: steps.sdk.outputs.skip != '1'
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "::warning::还没在仓库保密设置里放证书（KEYSTORE_B64、KEYSTORE_PASS），先用 SDK 自带的测试证书签名——这样的包 Key 会对不上、也不能覆盖安装"; exit 0; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$AS/simpleDemo/guyu.keystore"
+          python3 android-build/sign.py "$AS/simpleDemo/build.gradle"
+      - uses: actions/setup-java@v4
+        if: steps.sdk.outputs.skip != '1'
+        with: { distribution: temurin, java-version: '17' }
+      - name: 编译
+        if: steps.sdk.outputs.skip != '1'
+        env:
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASS }}
+        run: |
+          cd "$AS"
+          if [ -f gradlew ]; then chmod +x gradlew; ./gradlew --no-daemon :simpleDemo:assembleRelease; else gradle --no-daemon :simpleDemo:assembleRelease; fi
+          find . -name '*.apk' -path '*outputs*' | tee ../apks.txt
+          mkdir -p "$GITHUB_WORKSPACE/out" && cp $(cat ../apks.txt) "$GITHUB_WORKSPACE/out/"
+      - uses: actions/upload-artifact@v4
+        if: steps.sdk.outputs.skip != '1'
+        with: { name: guyu-apk, path: out/*.apk }
