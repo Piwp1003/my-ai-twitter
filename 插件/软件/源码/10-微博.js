@@ -311,13 +311,14 @@ W.repost = async (id, direct) => {
 };
 W.menu = async id => {
     const p = postOf(id); if (!p) return; const mine = isMine(p.by);
-    const opts = (mine ? ['置顶 / 取消置顶', '编辑', '改可见范围', p.cmtOff ? '打开评论' : '关闭评论', '删除', '收藏'] : ['收藏', '复制正文', '不看 TA 的微博']).concat(G.shareOn() ? ['↗ 分享给 TA'] : []);
+    const opts = (mine ? ['置顶 / 取消置顶', '编辑', '🖼️ 改配图', '改可见范围', p.cmtOff ? '打开评论' : '关闭评论', '删除', '收藏'] : ['🖼️ 改配图', '收藏', '复制正文', '不看 TA 的微博']).concat(G.shareOn() ? ['↗ 分享给 TA'] : []);
     const pick = await chooser(opts); if (pick == null) return;
     const o = opts[pick];
     if (o === '收藏') W.fav(id);
     else if (o === '复制正文') { try { navigator.clipboard.writeText(p.text); X.toast('复制了', ''); } catch (e) {} }
     else if (o.startsWith('置顶')) { D.posts.forEach(x => { if (x.by === p.by && x !== p) x.pin = false; }); p.pin = !p.pin; }
     else if (o === '编辑') { const t = await G.input('改成：', p.text); if (t && t !== p.text) { p.edits.push({ at: Date.now(), text: p.text }); p.text = t; } }
+    else if (o === '🖼️ 改配图') return W.editPics(id);
     else if (o === '改可见范围') { const v = await chooser(['公开', '仅粉丝可见', '好友圈（互相关注的人）', '仅自己可见']); if (v != null) p.vis = ['public', 'fans', 'friends', 'self'][v]; }
     else if (o.endsWith('评论')) p.cmtOff = !p.cmtOff;
     else if (o === '删除') { if (await G.confirm('删掉这条微博？')) { D.posts = D.posts.filter(x => x !== p); G.back(APP); } }
@@ -333,6 +334,17 @@ async function chooser(opts) {
         document.body.appendChild(d);
     });
 }
+// 🖼️ 改配图：给这条微博换 / 加真实图片，或改图片的文字描述（评论、后续对话读到的就是这个描述），也能清空
+W.editPics = async id => {
+    const p = postOf(id); if (!p) return;
+    const n = (p.imgs || []).length + (p.pics || []).length;
+    const acts = ['🖼️ 加 / 换真实图片', '✏️ 改图片文字描述', n ? '🗑️ 清空配图' : null].filter(Boolean);
+    const i = await chooser(acts); if (i == null) return;
+    const a = acts[i];
+    if (a.startsWith('🖼️')) G.pickImgs(9, urls => { if (!urls || !urls.length) return; p.imgs = (p.imgs || []).concat(urls).slice(0, 9); saveD(); G.repaint(APP); X.toast('🖼️ 加好了', ''); });
+    else if (a.startsWith('✏️')) { const v = await G.input('图片的文字描述（多张用逗号隔开；评论和后续对话读到的就是这个）：', (p.pics || []).join('，')); if (v == null) return; p.pics = X.plain(v).split(/[，,]/).map(s => s.trim()).filter(Boolean).slice(0, 9); saveD(); G.repaint(APP); X.toast('✏️ 改好了', ''); }
+    else if (a.startsWith('🗑️')) { if (await G.confirm('清空这条的所有配图（真实图片和文字描述都清）？')) { p.imgs = []; p.pics = []; saveD(); G.repaint(APP); } }
+};
 W.edits = id => { const p = postOf(id); if (!p) return; G.push(APP, { title: '编辑记录', html: () => `<div class="wb-list">${p.edits.concat([{ at: p.at, text: p.text, now: 1 }]).reverse().map(e => `<div class="wb-edit"><em>${e.now ? '现在' : G.ago(e.at)}</em>${richText(e.text)}</div>`).join('')}</div>` }); };
 W.atName = n => { const w = whoByName(n); if (w) W.prof(w); };
 W.cmtLike = (pid, cid) => { const p = postOf(pid); const c = p && findC(p.cmts, cid); if (!c) return; const me = myAcc(), i = c.likes.indexOf(me); if (i >= 0) c.likes.splice(i, 1); else c.likes.push(me); saveD(); G.repaint(APP); };

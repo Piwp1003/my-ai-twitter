@@ -265,7 +265,11 @@ B.reply = w => {
 };
 B.poke = w => genMsgs(w, G.rnd(1, 3));
 B.fav = (w, id) => { const k = w + '|' + id, i = D.fav.indexOf(k); if (i >= 0) D.fav.splice(i, 1); else D.fav.push(k); saveD(); G.repaint(APP); };
-B.big = (w, id) => { const m = msgOf(w, id); if (!m) return; G.push(APP, { title: m.t === 'video' ? '视频' : '照片', cls: 'bb-dark', html: () => `<div class="bb-bigph" style="background:${picBg(m.desc)}">${m.t === 'video' ? '<b>▶</b>' : ''}<em>${esc(m.desc)}</em></div>${m.text ? `<p class="bb-cap">${esc(nickFill(m.text, w))}</p>` : ''}<p class="bb-cap dim">${esc(nameOf(w))} · ${new Date(m.at).toLocaleString()}</p>` }); };
+B.big = (w, id) => { const m = msgOf(w, id); if (!m) return; G.push(APP, { id: 'big_' + id, title: m.t === 'video' ? '视频' : '照片', cls: 'bb-dark', html: () => `<div class="bb-bigph" style="${m.img ? `background-image:url('${m.img}');background-size:cover;background-position:center` : `background:${picBg(m.desc)}`}">${m.t === 'video' ? '<b>▶</b>' : ''}${m.img ? '' : `<em>${esc(m.desc)}</em>`}</div>${m.text ? `<p class="bb-cap">${esc(nickFill(m.text, w))}</p>` : ''}<p class="bb-cap dim">${esc(nameOf(w))} · ${new Date(m.at).toLocaleString()}</p><div class="gys-acts"><span class="gys-btn sm ghost" onclick="gysBb.editPic('${w}','${id}')">🖼️ 换图片</span><span class="gys-btn sm ghost" onclick="gysBb.editDesc('${w}','${id}')">✏️ 改画面描述</span>${m.img ? `<span class="gys-btn sm ghost" onclick="gysBb.rmPic('${w}','${id}')">去掉图片</span>` : ''}</div>` }); };
+// 🖼️ 换这张卡片的真实图片 / ✏️ 改画面描述（后续对话读到的是描述）/ 去掉图片换回占位
+B.editPic = (w, id) => { const m = msgOf(w, id); if (!m) return; G.pickImg(m.t === 'video' ? 16 / 9 : 1, url => { if (!url) return; m.img = url; saveD(); G.repaint(APP); X.toast('🖼️ 换好了', ''); }); };
+B.editDesc = async (w, id) => { const m = msgOf(w, id); if (!m) return; const v = await G.input('改画面描述（后面对话读到的就是这个）：', m.desc || ''); if (v == null) return; m.desc = X.plain(v).slice(0, 80); saveD(); G.repaint(APP); X.toast('✏️ 改好了', ''); };
+B.rmPic = async (w, id) => { const m = msgOf(w, id); if (!m) return; if (!(await G.confirm('去掉这张真实图片？（换回用文字描述的占位图）'))) return; delete m.img; saveD(); G.repaint(APP); };
 B.letter = (w, id) => { const m = msgOf(w, id); if (!m) return; G.push(APP, { title: '泡泡信', html: () => `<div class="bb-paper p${m.paper || 0}"><pre>${esc(nickFill(m.text, w))}</pre><small>${new Date(m.at).toLocaleDateString()}</small></div>` }); };
 B.wall = w => {
     const R = roomOf(w).filter(m => m.by !== 'sys'), m = R[R.length - 1];
