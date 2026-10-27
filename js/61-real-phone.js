@@ -532,7 +532,7 @@ ${list}
           ${row('anim', '翻页动画', '进下一页的时候从右边推进来', [['true', '开'], ['false', '关']])}</div>`;
     };
     S.app('ui', { head: () => `<div class="gys-hd"><span class="gys-bk" onclick="GYS.close('ui')">${S.ic('back', 22)}</span><b>🍎 软件外观</b></div>`, render: () => `<div class="gys-tip2">微博、泡泡、小红书、豆瓣、iMessage 都按这里来</div>${S.uiHtml()}` });
-    try { X.mini({ id: 'gysUi', icon: '🍎', title: '软件外观', desc: '软件里的苹果样子：手机外框、状态栏、通知横幅、锁屏、左滑返回', cat: '软件', onOpen: () => S.open('ui') }); } catch (e) {}
+    try { X.mini({ id: 'gysUi', icon: '🍎', title: '软件外观', desc: '软件里的苹果样子：状态栏、通知横幅、锁屏、左滑返回', cat: '软件', onOpen: () => S.open('ui') }); } catch (e) {}
     S.input = async (title, def) => { if (!mine(window.appPrompt)) return window.appPrompt(title, def || ''); const lines = String(title).split('\n'); return S.dialog({ title: lines[0], text: lines.slice(1).join('\n'), input: true, def: def || '', ok: '好' }); };
     S.confirm = async t => { if (!mine(window.appConfirm)) return window.appConfirm(t); const lines = String(t).split('\n'); return S.dialog({ title: lines[0], text: lines.slice(1).join('\n'), ok: '好' }); };
     S.imgView = src => { const d = document.createElement('div'); d.className = 'gys-imgv'; d.innerHTML = `<img src="${src}">`; d.onclick = () => d.remove(); document.body.appendChild(d); };

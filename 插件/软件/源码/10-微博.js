@@ -404,7 +404,7 @@ function profile(w) {
     </div>`;
 }
 function superList(w) {
-    const L = Object.entries(D.supers).filter(([k, s]) => (s.members || {})[w]);
+    const L = Object.entries(D.supers).filter(([k, s]) => !s.deleted && (s.members || {})[w]);
     return L.length ? L.map(([k, s]) => `<div class="wb-row" onclick="gysWb.superOpen('${k}')"><span class="wb-sico">💎</span><div><b>${esc(s.name)}超话</b><em>Lv.${lvOf(s.members[w].exp)} · 已签到 ${s.members[w].days || 0} 天</em></div></div>`).join('') : '<div class="gys-empty">没加入超话</div>';
 }
 
@@ -451,7 +451,7 @@ W.__emo = async () => { const E = ['[笑哭]', '[允悲]', '[心]', '[哭]', '[�
 W.__loc = async () => { const v = await G.input('在哪儿？（空着就是不显示位置）', DRAFT.loc); if (v !== null && v !== undefined) { DRAFT.loc = v.trim(); G.repaint(APP); } };
 W.__vis = async () => { const v = await chooser(['🌐 公开', '👥 仅粉丝可见', '🤝 好友圈（互相关注的人）', '🔒 仅自己可见']); if (v != null) { DRAFT.vis = ['public', 'fans', 'friends', 'self'][v]; G.repaint(APP); } };
 W.__poll = async () => { const q = await G.input('投票问题：', ''); if (!q) return; const o = await G.input('选项，用空格隔开：', '是 否'); if (!o) return; DRAFT.poll = { q, opts: o.split(/\s+/).filter(Boolean).slice(0, 6).map(t => ({ t, n: 0 })), mine: null }; G.repaint(APP); };
-W.__st = async () => { ensureSupers(); const K = Object.keys(D.supers); const i = await chooser(['不发到超话'].concat(K.map(k => D.supers[k].name + '超话'))); if (i != null) { DRAFT.st = i ? K[i - 1] : ''; G.repaint(APP); } };
+W.__st = async () => { ensureSupers(); const K = liveSupers().map(([k]) => k); const i = await chooser(['不发到超话'].concat(K.map(k => D.supers[k].name + '超话'))); if (i != null) { DRAFT.st = i ? K[i - 1] : ''; G.repaint(APP); } };
 W.send = async () => {
     const d = DRAFT; const t = (document.getElementById('wbCmpT') || {}).value || d.text;
     if (!t.trim() && !d.imgs.length) return X.toast('写点什么吧', '');
@@ -560,10 +560,12 @@ W.genPeople = async () => {
 };
 
 /* ---------------- 超话 ---------------- */
-function ensureSupers() { allChars().forEach(c => { const k = 'c' + c.id; if (!D.supers[k]) D.supers[k] = { name: nameOf('c:' + c.id), owner: 'c:' + c.id, members: {}, intro: '' }; else D.supers[k].name = nameOf('c:' + c.id); }); }
+function ensureSupers() { allChars().forEach(c => { const k = 'c' + c.id; const ex = D.supers[k]; if (ex && ex.deleted) return; /* 用户删掉的不再自动建回 */ if (!ex) D.supers[k] = { name: nameOf('c:' + c.id), owner: 'c:' + c.id, members: {}, intro: '' }; else if (!ex.nameLock) ex.name = nameOf('c:' + c.id); /* 改过名的不再被自动覆盖 */ }); }
+// 没被删的超话（删除是给它打 deleted 标记，不真删——角色超话每次都会按角色自动建，真删了下次又回来）
+function liveSupers() { return Object.entries(D.supers).filter(([, s]) => s && !s.deleted); }
 const lvOf = exp => exp >= 300 ? 10 : exp >= 200 ? 8 : exp >= 120 ? 6 : exp >= 60 ? 4 : exp >= 20 ? 2 : 1;
 function joinSuper(k, w, exp) { const s = D.supers[k]; if (!s) return; const m = s.members[w] = s.members[w] || { exp: 0, days: 0, last: '' }; m.exp += exp || 0; saveD(); }
-function superTop() { ensureSupers(); return Object.entries(D.supers).slice(0, 4).map(([k, s]) => `<div class="wb-row" onclick="gysWb.superOpen('${k}')"><span class="wb-sico">💎</span><div><b>${esc(s.name)}超话</b><em>${Object.keys(s.members).length + G.rnd(0, 0)} 位粉丝 · ${D.posts.filter(p => p.st === k).length} 条帖子</em></div></div>`).join('') || '<div class="gys-empty">还没有超话</div>'; }
+function superTop() { ensureSupers(); return liveSupers().slice(0, 4).map(([k, s]) => `<div class="wb-row" onclick="gysWb.superOpen('${k}')"><span class="wb-sico">💎</span><div><b>${esc(s.name)}超话</b><em>${Object.keys(s.members).length + G.rnd(0, 0)} 位粉丝 · ${D.posts.filter(p => p.st === k).length} 条帖子</em></div></div>`).join('') || '<div class="gys-empty">还没有超话</div>'; }
 W.superAll = () => G.push(APP, { title: '超话社区', html: () => `${superTop()}<div class="gys-acts"><span class="gys-btn sm ghost" onclick="gysWb.superNew()">＋ 建一个超话</span></div>` });
 W.superNew = async () => { const n = await G.input('超话叫什么？（不用写「超话」两个字）', ''); if (!n) return; const k = 's' + Date.now().toString(36); D.supers[k] = { name: X.plain(n).slice(0, 20), owner: 'me', members: {}, intro: '' }; joinSuper(k, 'me', 0); saveD(); W.superOpen(k); };
 W.superOpen = k => {
@@ -573,10 +575,24 @@ W.superOpen = k => {
         const day = X.day();
         return `<div class="wb-sup" style="${s.owner && G.avSrc(APP, s.owner) ? `--bgi:url('${G.avSrc(APP, s.owner)}')` : ''}"><b>💎 ${esc(s.name)}超话</b><em>${Object.keys(s.members).length} 位成员 · ${L.length} 条帖子</em>
           ${me ? `<div class="wb-lv">Lv.${lvOf(me.exp)} · 经验 ${me.exp} · 连续签到 ${me.days} 天</div>` : ''}
-          <div class="gys-acts"><span class="gys-btn sm" onclick="gysWb.sign('${k}')">${me && me.last === day ? '✅ 今天签过了' : '签到'}</span><span class="gys-btn sm ghost" onclick="gysWb.compose({st:'${k}'})">发帖</span><span class="gys-btn sm ghost" onclick="gysWb.superGen('${k}')">看看粉丝在聊什么</span></div></div>
+          <div class="gys-acts"><span class="gys-btn sm" onclick="gysWb.sign('${k}')">${me && me.last === day ? '✅ 今天签过了' : '签到'}</span><span class="gys-btn sm ghost" onclick="gysWb.compose({st:'${k}'})">发帖</span><span class="gys-btn sm ghost" onclick="gysWb.superGen('${k}')">看看粉丝在聊什么</span><span class="gys-btn sm ghost" onclick="gysWb.superRename('${k}')">✏️ 改名</span><span class="gys-btn sm ghost" onclick="gysWb.superDel('${k}')">🗑️ 删除</span></div></div>
           ${BUSY['s' + k] ? '<div class="gys-busy">⏳ 正在加载…</div>' : ''}${L.map(p => card(p)).join('') || '<div class="gys-empty">还没人发帖</div>'}`;
     } });
     if (!D.posts.some(p => p.st === k)) W.superGen(k);
+};
+// ✏️ 改超话名字（手误输错了能改回来）。角色的粉丝超话改完会上锁，不再被自动覆盖成角色名
+W.superRename = async k => {
+    const s = D.supers[k]; if (!s) return;
+    const n = await G.input('改成什么名字？（不用写「超话」两个字）', s.name || '');
+    if (n == null) return; const nn = X.plain(n).slice(0, 20).trim(); if (!nn) return X.toast('名字不能为空', '');
+    s.name = nn; s.nameLock = 1; saveD(); G.repaint(APP); X.toast('✅ 改好了', '改成了「' + nn + '超话」');
+};
+// 🗑️ 删除超话。角色的粉丝超话是按角色自动建的，真删下次又回来，所以打个 deleted 标记把它藏起来（帖子还在）
+W.superDel = async k => {
+    const s = D.supers[k]; if (!s) return;
+    if (!(await G.confirm(`删掉「${s.name}超话」？\n里面的帖子不会被删，只是不再出现在超话列表里。`))) return;
+    if (String(k).startsWith('c')) { s.deleted = 1; } else { delete D.supers[k]; }
+    saveD(); G.back(APP); try { G.repaint(APP); } catch (e) {} X.toast('🗑️ 删掉了', '');
 };
 W.sign = k => { const s = D.supers[k]; if (!s) return; const w = myAcc(); const m = s.members[w] = s.members[w] || { exp: 0, days: 0, last: '' }; const day = X.day(); if (m.last === day) return X.toast('今天签过了', ''); const y = new Date(Date.now() - 86400e3); const yd = X.day(y); m.days = m.last === yd ? m.days + 1 : 1; m.last = day; m.exp += 4 + Math.min(10, m.days); saveD(); G.repaint(APP); X.toast('💎 签到成功', `经验 +${4 + Math.min(10, m.days)}，连续 ${m.days} 天`); };
 W.superGen = async k => {

@@ -283,7 +283,7 @@ B.album = w => {
 };
 B.more = async w => {
     const s = subOf(w);
-    const ops = s ? ['👤 TA 的泡泡主页', '🫧 催更（让 TA 发一条）', '💌 让 TA 写一封泡泡信', '✍️ 给 TA 写信', '🏷️ 改我的昵称（现在：' + s.nick + '）', '⭐ 收藏的消息', '💔 取消订阅'] : ['👤 TA 的泡泡主页', '💜 订阅'];
+    const ops = s ? ['👤 TA 的泡泡主页', '🫧 催更（让 TA 发一条）', '💌 让 TA 写一封泡泡信', '✍️ 给 TA 写信', '🏷️ 改我的昵称（现在：' + s.nick + '）', '⭐ 收藏的消息', '💔 取消订阅', '🗑️ 删除这个艺人'] : ['👤 TA 的泡泡主页', '💜 订阅', '🗑️ 删除这个艺人'];
     const i = await chooser(ops); if (i == null) return;
     const op = ops[i];
     if (op.startsWith('👤')) B.prof(w);
@@ -294,6 +294,17 @@ B.more = async w => {
     else if (op.startsWith('⭐')) B.favs(w);
     else if (op.startsWith('💔')) B.unsub(w);
     else if (op.startsWith('💜')) B.sub(w);
+    else if (op.startsWith('🗑️')) B.delStar(w);
+};
+// 🗑️ 删除这个艺人：把 TA 的泡泡频道整个清掉（订阅、所有消息、粉丝墙截图一起删）。
+//    之后在「发现」里重新订阅还能再来；角色本人不受影响（只是不再有泡泡频道）。
+B.delStar = async w => {
+    const nm = nameOf(w);
+    if (!(await G.confirm(`删掉「${nm}」的泡泡艺人频道？\n会一起删掉：你的订阅、TA 发过的所有泡泡消息、粉丝墙截图。\n这一步删了就没了（之后可以重新订阅）。`))) return;
+    delete D.stars[w]; delete D.subs[w]; delete D.rooms[w];
+    Object.keys(D.wall).forEach(k => { if (k === w || k.indexOf(w + '|') === 0) delete D.wall[k]; });
+    D.fav = (D.fav || []).filter(k => k.indexOf(w + '|') !== 0);
+    saveD(); try { G.back(APP); } catch (e) {} G.repaint(APP); X.toast('🗑️ 删掉了', nm + ' 的泡泡频道没了');
 };
 B.setNick = async w => { const s = subOf(w); if (!s) return; const n = await G.input('TA 在消息里叫你什么？（就是「(昵称)」那里显示的）', s.nick); if (!n) return; s.nick = X.plain(n).slice(0, 12); saveD(); G.repaint(APP); };
 B.writeLetter = async w => { const s = subOf(w); if (!s) return; const t = await G.input('给 ' + nameOf(w) + ' 写信（TA 下次发泡泡时可能会看到）', ''); if (!t) return; (s.sent = s.sent || []).push({ text: X.plain(t).slice(0, 600), at: Date.now() }); saveD(); X.toast('💌 寄出去了', X.v('TA 会看到的', '等 TA 看信吧')); };
@@ -418,8 +429,16 @@ B.mine = id => {
 function fanRow(m, r) {
     const known = r.who && (!r.alt || r.found);
     const av = known ? G.av(APP, r.who, 38) : `<span class="gys-av e" style="width:38px;height:38px;font-size:15px;background:${picBg(r.nick)}">${esc(r.nick[0] || '粉')}</span>`;
-    return `<div class="bb-fan${known ? ' known' : ''}">${av}<div><b>${esc(r.nick)} <i class="bb-day">D+${r.days}</i>${known ? ` <i class="bb-kn">${r.alt ? '🕵️ 小号 · ' : '💜 '}${esc((G.base(r.who) || {}).name || '')}</i>` : ''}</b><p>${esc(r.text)}</p><small>${G.hm(r.at)}${r.alt && !r.found ? ` · <a onclick="gysBb.guess('${m.id}','${r.id}')">🕵️ 这是谁？</a>` : ''}</small></div></div>`;
+    const rep = r.reply ? `<div class="bb-fanrep">↩ 我回复：${esc(r.reply)} <a onclick="gysBb.fanReply('${m.id}','${r.id}')">改</a></div>` : '';
+    return `<div class="bb-fan${known ? ' known' : ''}">${av}<div><b>${esc(r.nick)} <i class="bb-day">D+${r.days}</i>${known ? ` <i class="bb-kn">${r.alt ? '🕵️ 小号 · ' : '💜 '}${esc((G.base(r.who) || {}).name || '')}</i>` : ''}</b><p>${esc(r.text)}</p>${rep}<small>${G.hm(r.at)}${r.reply ? '' : ` · <a onclick="gysBb.fanReply('${m.id}','${r.id}')">↩ 回复</a>`}${r.alt && !r.found ? ` · <a onclick="gysBb.guess('${m.id}','${r.id}')">🕵️ 这是谁？</a>` : ''}</small></div></div>`;
 }
+// ↩ 艺人回复粉丝的评论。回给认识的人（角色），TA 会收到你在泡泡上回了 TA 这条
+B.fanReply = async (mid, rid) => {
+    const m = myMsg(mid), r = m && (m.fan || []).find(x => x.id === rid); if (!r) return;
+    const t = await G.input(`回复「${r.nick}」：${String(r.text).slice(0, 20)}…`, r.reply || '');
+    if (t == null) return; r.reply = X.plain(t).slice(0, 120); saveD(); G.repaint(APP);
+    if (r.reply) { X.toast('↩ 回复了', ''); const c = r.who && charOfW(r.who); if (c) X.reach(c, `你（艺人）在泡泡频道里公开回复了 TA 的留言「${r.text}」，你回的是：「${r.reply}」`); }
+};
 B.moreFans = id => { const m = myMsg(id); if (m) genFans(m, Math.max(6, Math.round((D.cfg.flood || 12) / 2))); };
 B.delMine = async id => { if (!(await G.confirm('删掉这条？'))) return; D.my.msgs = D.my.msgs.filter(m => m.id !== id); saveD(); G.back(APP); };
 B.guess = async (mid, rid) => {
@@ -559,6 +578,7 @@ body.dark-theme .bb-day{background:#2a2140}
 .bb-walltip{margin:10px 14px;font-size:12.5px;color:#8e8a99;background:#fff;border-radius:10px;padding:8px 12px}body.dark-theme .bb-walltip{background:#16131f}
 .bb-quote{margin:0 14px 8px;padding:10px 12px;border-left:3px solid #8b5cf6;background:#fff;border-radius:6px;font-size:14px}body.dark-theme .bb-quote{background:#16131f}
 .bb-wall,.bb-fan{display:flex;gap:10px;padding:10px 14px;background:#fff;border-bottom:.5px solid #f0edf7}body.dark-theme .bb-wall,body.dark-theme .bb-fan{background:#16131f;border-color:#221d30}
+.bb-fanrep{margin:4px 0 2px;padding:5px 9px;background:#f3eefb;border-radius:9px;font-size:12.5px;color:#7a4fd0}body.dark-theme .bb-fanrep{background:#241a33;color:#c0a4f5}.bb-fanrep a{color:#9b7fe0;cursor:pointer;margin-left:4px}
 .bb-wall>div,.bb-fan>div{flex:1;min-width:0}.bb-wall b,.bb-fan b{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:5px;flex-wrap:wrap}.bb-wall p,.bb-fan p{margin:3px 0;font-size:14.5px;line-height:1.5}.bb-fan small{font-size:11.5px;color:#aaa6b5}.bb-fan small a{color:#8b5cf6;cursor:pointer}
 .bb-fan.known{background:#faf7ff}body.dark-theme .bb-fan.known{background:#1d1829}
 .bb-kn{font-style:normal;font-size:11px;color:#7c3aed;background:#ede4ff;border-radius:4px;padding:0 5px}

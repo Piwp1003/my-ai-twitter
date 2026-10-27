@@ -29,12 +29,33 @@ window.gyxQuestPick = async i => {
     if (s.end) { r.end = s.end; r.title = s.title; r.done = Date.now(); D.log.unshift(r); D.run = null; await S.set('d', D); window.gyxQuestOpen(r.cid, r.id); return r; }
     r.steps.push(s); await S.set('d', D); window.gyxQuestOpen(); return r;
 };
+// ✏️ 改这一幕的文字（出错 / 跑偏了能改回来；改完后面每一步都读改过的）
+window.gyxQuestEditStep = async k => {
+    const r = D.run; if (!r || !r.steps[k]) return;
+    const ask = typeof appPrompt === 'function' ? appPrompt : (m, d) => Promise.resolve(prompt(m, d));
+    const v = await ask('改这一幕的文字：', r.steps[k].t);
+    if (v == null) return; const nv = String(v).trim(); if (!nv) return;
+    r.steps[k].t = nv.slice(0, 600); await S.set('d', D); window.gyxQuestOpen();
+};
+// 🗑️ 删掉这一幕（只能删不是当前那一幕的）：当前那一幕带着现在的选项，删了就没得选了
+window.gyxQuestDelStep = async k => {
+    const r = D.run; if (!r || !r.steps[k] || k === r.steps.length - 1) return;
+    const ask = typeof appConfirm === 'function' ? appConfirm : m => Promise.resolve(confirm(m));
+    if (!(await ask('删掉这一幕？后面接下来的几步会接着剩下的内容走。'))) return;
+    r.steps.splice(k, 1); await S.set('d', D); window.gyxQuestOpen();
+};
 window.gyxQuestQuit = async () => { D.run = null; await S.set('d', D); window.gyxQuestOpen(); };
 window.gyxQuestData = () => D;
 window.gyxQuestOpen = function (who, showId) {
     const r = D.run, c = r ? X.char(r.cid) : (X.char(who) || X.cur()); if (!c) return; const cid = String(c.id), done = showId && D.log.find(x => x.id === showId);
-    const story = x => `<div class="qs-intro">${X.esc(WORLDS[x.w].intro)}</div>` + x.steps.map((s, k) => `<div class="qs-sc">${X.esc(s.t).replace(/\n/g, '<br>')}</div>${s.pick ? `<div class="qs-pick">→ ${X.esc(s.pick)}</div>` : ''}`).join('');
-    X.panel('gyxQsOv', r ? `${WORLDS[r.w].ico} ${r.w}` : done ? `${WORLDS[done.w].ico} ${X.esc(done.title)}` : '🧭 文字冒险', r ? `<div id="gyxQsBox" class="qs-box">${story(r)}<div class="qs-ch">${r.steps[r.steps.length - 1].ch.map((t, i) => `<button class="gyx-btn lite" onclick="this.parentNode.querySelectorAll('button').forEach(b=>b.disabled=true);gyxQuestPick(${i})">${X.esc(t)}</button>`).join('')}<div class="gyx-row"><input id="gyxQsOwn" class="gyx-who" style="flex:1" placeholder="或者自己写怎么做"><button class="gyx-btn" onclick="gyxQuestPick(-1)">就这么做</button></div></div></div><div class="gyx-row"><span class="gyx-tip">第 ${r.steps.length} 步 · 大约 7 步一个结局</span><span class="gyx-chip" onclick="gyxQuestQuit()">不玩了</span></div>`
+    // editable=true（正在玩的那局）时，每一幕右上角给「✏️ 改 / 🗑️ 删」——
+    // 这一幕的文字会被后面每一步的 prompt 和聊天上下文读到，出错了能当场改掉 / 删掉，免得后续对话一直读到错的内容。
+    const story = (x, editable) => `<div class="qs-intro">${X.esc(WORLDS[x.w].intro)}</div>` + x.steps.map((s, k) => {
+        const last = k === x.steps.length - 1;
+        const ctrl = editable ? `<span class="qs-ed"><a onclick="event.stopPropagation();gyxQuestEditStep(${k})">✏️</a>${last ? '' : `<a onclick="event.stopPropagation();gyxQuestDelStep(${k})">🗑️</a>`}</span>` : '';
+        return `<div class="qs-sc">${ctrl}${X.esc(s.t).replace(/\n/g, '<br>')}</div>${s.pick ? `<div class="qs-pick">→ ${X.esc(s.pick)}</div>` : ''}`;
+    }).join('');
+    X.panel('gyxQsOv', r ? `${WORLDS[r.w].ico} ${r.w}` : done ? `${WORLDS[done.w].ico} ${X.esc(done.title)}` : '🧭 文字冒险', r ? `<div id="gyxQsBox" class="qs-box">${story(r, true)}<div class="qs-ch">${r.steps[r.steps.length - 1].ch.map((t, i) => `<button class="gyx-btn lite" onclick="this.parentNode.querySelectorAll('button').forEach(b=>b.disabled=true);gyxQuestPick(${i})">${X.esc(t)}</button>`).join('')}<div class="gyx-row"><input id="gyxQsOwn" class="gyx-who" style="flex:1" placeholder="或者自己写怎么做"><button class="gyx-btn" onclick="gyxQuestPick(-1)">就这么做</button></div></div></div><div class="gyx-row"><span class="gyx-tip">第 ${r.steps.length} 步 · 大约 7 步一个结局</span><span class="gyx-chip" onclick="gyxQuestQuit()">不玩了</span></div>`
         : done ? `<div class="qs-box">${story(done)}<div class="qs-end"><b>— ${X.esc(done.title)} —</b><div>${X.esc(done.end)}</div></div></div><div class="gyx-row"><button class="gyx-btn lite" onclick="gyxQuestOpen('${cid}')">‹ 冒险手账</button></div>`
         : `<div class="gyx-row">${X.whoSel(cid, 'gyxQuestOpen')}</div><div class="gyx-tip">${X.v('选一个世界，TA 带你去。', '今天想去哪儿冒险？', 'TA 已经准备好当旁白了。')}</div><div class="qs-worlds">${Object.keys(WORLDS).map(w => `<div onclick="this.style.opacity=.5;gyxQuestStart('${cid}','${w}')"><span>${WORLDS[w].ico}</span><b>${w}</b></div>`).join('')}</div>
         <div style="font-weight:700;margin:12px 0 4px">冒险手账（打通 ${D.log.filter(x => x.cid === cid).length} 次）</div>${D.log.filter(x => x.cid === cid).map(x => `<div class="qs-it" onclick="gyxQuestOpen('${cid}','${x.id}')"><span>${WORLDS[x.w].ico}</span><div><b>${X.esc(x.title)}</b><em>${x.w} · ${x.steps.length} 步 · ${new Date(x.done).toLocaleDateString()}</em></div></div>`).join('') || '<div class="gyx-tip">还没打通过</div>'}`);
@@ -46,7 +67,7 @@ X.action({ key: 'gyx_quest', label: '邀她一起玩一场文字冒险', hint: '
 X.today(() => ({ title: '🧭 文字冒险', rows: (D.run ? [{ t: '进行中', x: D.run.w + ' · 第 ' + D.run.steps.length + ' 步', go: 'gyxQuestOpen()' }] : []).concat(D.log.filter(x => X.day(new Date(x.done)) === X.day()).map(x => ({ t: '打通', x: X.esc(x.title), go: `gyxQuestOpen('${x.cid}','${x.id}')` }))) }), 'gyxQuest');
 X.widget('gyxQuestW', { n: '文字冒险', sizes: ['s', 'm'], tap: () => window.gyxQuestOpen(), r: w => D.run ? X.gw(w, WORLDS[D.run.w].ico, D.run.w, ['第 ' + D.run.steps.length + ' 步', '等你选']) : X.gw(w, '🧭', '文字冒险', [D.log.length ? '打通 ' + D.log.length + ' 次' : '去冒险？', D.log[0] ? X.esc(D.log[0].title) : '']) }, 'gyxQuest');
 X.memArr({ k: 'gyxQuest', ico: '🧭', n: '文字冒险', d: '打通过的冒险和结局', arr: () => D.log, text: x => x.title + '：' + x.end, edit: (x, v) => { const i = v.indexOf('：'); if (i > 0) { x.title = v.slice(0, i); x.end = v.slice(i + 1); } else x.end = v; }, meta: x => x.w + ' · ' + new Date(x.done).toLocaleDateString(), save: () => S.set('d', D) }, 'gyxQuest');
-X.css('gyxQsCss', `.qs-box{max-height:60vh;overflow:auto;padding:4px 2px}.qs-intro{font-style:italic;color:#7a6a55;margin:6px 0 10px}.qs-sc{background:#f7f4ee;border-radius:14px;padding:10px 13px;margin:8px 0;line-height:1.8;font-size:14.5px}.qs-pick{text-align:right;color:#c0567a;font-size:13.5px;margin:4px 6px}.qs-ch{display:flex;flex-direction:column;gap:6px;margin-top:10px}.qs-ch>button{text-align:left}.qs-end{text-align:center;padding:16px 8px;background:linear-gradient(#fff,#fff3e0);border-radius:16px;margin-top:10px;line-height:1.8}.qs-end b{display:block;color:#b0703a;margin-bottom:6px}.qs-worlds{display:grid;grid-template-columns:1fr 1fr;gap:8px}.qs-worlds div{border-radius:16px;background:#f7f7f9;padding:16px;text-align:center;cursor:pointer}.qs-worlds span{font-size:36px;display:block}.qs-it{display:flex;gap:10px;align-items:center;padding:8px 2px;border-bottom:1px solid #f2f2f2;cursor:pointer}.qs-it span{font-size:24px}.qs-it em{display:block;font-style:normal;font-size:11.5px;color:#999}`);
+X.css('gyxQsCss', `.qs-box{max-height:60vh;overflow:auto;padding:4px 2px}.qs-intro{font-style:italic;color:#7a6a55;margin:6px 0 10px}.qs-sc{position:relative;background:#f7f4ee;border-radius:14px;padding:10px 13px;margin:8px 0;line-height:1.8;font-size:14.5px}.qs-ed{position:absolute;top:4px;right:6px;display:flex;gap:6px}.qs-ed a{cursor:pointer;font-size:13px;opacity:.55}.qs-ed a:hover{opacity:1}.qs-pick{text-align:right;color:#c0567a;font-size:13.5px;margin:4px 6px}.qs-ch{display:flex;flex-direction:column;gap:6px;margin-top:10px}.qs-ch>button{text-align:left}.qs-end{text-align:center;padding:16px 8px;background:linear-gradient(#fff,#fff3e0);border-radius:16px;margin-top:10px;line-height:1.8}.qs-end b{display:block;color:#b0703a;margin-bottom:6px}.qs-worlds{display:grid;grid-template-columns:1fr 1fr;gap:8px}.qs-worlds div{border-radius:16px;background:#f7f7f9;padding:16px;text-align:center;cursor:pointer}.qs-worlds span{font-size:36px;display:block}.qs-it{display:flex;gap:10px;align-items:center;padding:8px 2px;border-bottom:1px solid #f2f2f2;cursor:pointer}.qs-it span{font-size:24px}.qs-it em{display:block;font-style:normal;font-size:11.5px;color:#999}`);
 X.mini({ id: 'gyxQuest', icon: '🧭', title: '文字冒险', desc: 'TA 当旁白，你来选怎么走', cat: '一起做', onOpen: () => window.gyxQuestOpen() });
 (async () => { D = Object.assign(D, await S.get('d', {})); D.log = D.log || []; })();
 
