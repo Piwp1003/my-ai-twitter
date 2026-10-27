@@ -716,7 +716,7 @@ ${persona}`;
     };
 
     /* ---------- 聊天里长什么样 ---------- */
-    window.gyPhotoCardHtml = function (msg) {
+    window.gyPhotoCardHtml = function (msg, idx) {
         const ph = msg.photo || {};
         const c = charOf(msg.sender);
         const av = (typeof getAvatarHTML === 'function' && c) ? getAvatarHTML(c, 40) : '';
@@ -730,12 +730,35 @@ ${persona}`;
             <div>${av}</div>
             <div class="chat-bubble-wrapper" style="align-items:flex-start;">
                 <div class="gypic-card">
+                    ${(idx != null && !ph.loading) ? `<div class="gypic-ed"><a onclick="gyPhotoEditCard(${idx})">✏️ 改描述</a><a onclick="gyPhotoSwapImg(${idx})">🖼️ 换真图</a>${ph.src ? `<a onclick="gyPhotoRmImg(${idx})">去掉图</a>` : ''}</div>` : ''}
                     ${body}
                     <div class="gypic-desc">${esc(ph.desc || '（没说这是什么）')}</div>
                     ${ph.why ? `<div class="gypic-why">${esc(ph.why)}</div>` : ''}
                 </div>
             </div>
         </div>`;
+    };
+    // ✏️ 改这张「描述图片的卡片」：描述会被后面每一轮对话读到，出错了能当场改掉；也能换成真实图片 / 去掉图回到纯描述卡
+    window.gyPhotoEditCard = async function (idx) {
+        const sid = currentChatSessionId, msg = (globalChats[sid] || [])[idx];
+        if (!msg || !msg.photo) return;
+        const v = await appPrompt('改这张图的描述（后面对话读到的就是这句）：', msg.photo.desc || '');
+        if (v === null) return;
+        msg.photo.desc = String(v).trim().slice(0, 200);
+        try { renderChatMessages(); } catch (e) {} try { saveAllData(); } catch (e) {}
+        try { showToast('', '✏️ 改好了', '', null, null, false); } catch (e) {}
+    };
+    window.gyPhotoSwapImg = function (idx) {
+        const sid = currentChatSessionId, msg = (globalChats[sid] || [])[idx];
+        if (!msg || !msg.photo) return;
+        const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+        inp.onchange = () => { const f = inp.files && inp.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { msg.photo.src = r.result; msg.photo.loading = false; try { renderChatMessages(); } catch (e) {} try { saveAllData(); } catch (e) {} }; r.readAsDataURL(f); };
+        inp.click();
+    };
+    window.gyPhotoRmImg = async function (idx) {
+        const sid = currentChatSessionId, msg = (globalChats[sid] || [])[idx];
+        if (!msg || !msg.photo) return;
+        msg.photo.src = ''; try { renderChatMessages(); } catch (e) {} try { saveAllData(); } catch (e) {}
     };
     window.gyPhotoBig = function (src) {
         if (!src) return;
@@ -979,6 +1002,7 @@ ${persona}`;
     .gypic-none{height:110px;display:flex;align-items:center;justify-content:center;font-size:34px;
         background:rgba(128,128,128,.10);border-radius:10px;}
     .gypic-desc{font-size:13.5px;line-height:1.6;margin:7px 2px 0;}
+    .gypic-ed{display:flex;gap:10px;justify-content:flex-end;margin:0 2px 4px}.gypic-ed a{font-size:12px;color:#8b98a5;cursor:pointer}.gypic-ed a:hover{color:#1d9bf0}
     .gypic-why{font-size:11px;color:#8b98a5;margin:3px 2px 0;}
     .gypic-wait{height:110px;display:flex;align-items:center;justify-content:center;gap:8px;
         font-size:12px;color:#8b98a5;background:rgba(128,128,128,.10);border-radius:10px;}
