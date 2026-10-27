@@ -2,7 +2,8 @@
 # =====================================================================
 #  📱 谷雨 · 手机 MCP（不用原生插件、不用重新打包）
 #  在手机的 Termux 里跑起来，谷雨「🧰 我的 MCP」连 http://127.0.0.1:8765/mcp 就能用手机的本事：
-#  看电量、读通知、发通知、震动、手电筒、念出来、音量、亮度、剪贴板、位置、Wi-Fi、通话记录、短信……
+#  看电量、读通知、发通知、震动、手电筒、念出来、音量、亮度、剪贴板、位置、Wi-Fi、通话记录、短信、
+#  媒体播放、问她一句（弹框）；--danger 下还能跑任意 shell 命令(run_command)、读通讯录（参考 termux-mcp）……
 #  底下靠的是 Termux:API（termux-xxx 命令），只用 Python 自带的库，不用 pip 装任何东西。
 #
 #  跑法：python guyu_phone_mcp.py            （默认只开安全的；发短信 / 打电话要加 --danger）
@@ -14,7 +15,7 @@ import argparse, json, os, secrets, shutil, subprocess, sys, threading, time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 PROTOS = ['2025-06-18', '2025-03-26', '2024-11-05']
 TOKEN_FILE = os.path.expanduser('~/.guyu_phone_mcp_token')
 
@@ -172,6 +173,43 @@ def t_call(a):
     return '拨出去了'
 
 
+def t_media(a):
+    act = str(a.get('action') or 'info')
+    if act == 'play' and a.get('file'):
+        return run(['termux-media-player', 'play', str(a['file'])]) or '放上了'
+    if act not in ('play', 'pause', 'stop', 'info'):
+        act = 'info'
+    return run(['termux-media-player', act]) or '好了'
+
+
+def t_dialog(a):
+    cmd = ['termux-dialog']
+    if a.get('title'):
+        cmd += ['-t', str(a['title'])]
+    if a.get('hint'):
+        cmd += ['-i', str(a['hint'])]
+    return pretty(run(cmd, timeout=180))
+
+
+def t_contacts(a):
+    return pretty(run(['termux-contact-list']))
+
+
+def t_run(a):
+    import subprocess as _sp
+    cmd = str(a.get('command') or '').strip()
+    if not cmd:
+        raise RuntimeError('没给命令')
+    p = _sp.run(['sh', '-c', cmd], capture_output=True, text=True, timeout=num(a, 'timeout', 30, 1, 120))
+    out = (p.stdout or '').strip()
+    if p.stderr:
+        out += ('\n[stderr] ' + p.stderr.strip())
+    out = out.strip()
+    if len(out) > 4000:
+        out = out[:4000] + '\n…(太长，截断了)'
+    return (out or '(没有输出)') + f'\n[退出码 {p.returncode}]'
+
+
 TOOLS = {
     'now': ('手机上现在几点、星期几', S(), t_now, False),
     'battery': ('看手机电量、在不在充电、温度', S(), t_battery, False),
@@ -193,6 +231,10 @@ TOOLS = {
     'remind_later': ('过几分钟在她手机上弹提醒（比如叫她喝水、睡觉、起床）', S({'minutes': {'type': 'number'}, 'title': {'type': 'string'}, 'content': {'type': 'string'}}, ['minutes', 'content']), t_remind, False),
     'sms_send': ('发短信（危险，要 --danger 才有）', S({'number': {'type': 'string'}, 'text': {'type': 'string'}}, ['number', 'text']), t_sms_send, True),
     'phone_call': ('打电话（危险，要 --danger 才有）', S({'number': {'type': 'string'}}, ['number']), t_call, True),
+    'media': ('控制正在放的媒体：play / pause / stop / info（play 可带 file 放一个文件）', S({'action': {'type': 'string', 'enum': ['play', 'pause', 'stop', 'info']}, 'file': {'type': 'string'}}), t_media, False),
+    'ask_her': ('在她手机上弹个框问她一句话，拿到她的回答（会等她答）', S({'title': {'type': 'string', 'description': '要问的话'}, 'hint': {'type': 'string'}}, ['title']), t_dialog, False),
+    'contacts': ('读她的通讯录（危险，要 --danger 才有）', S(), t_contacts, True),
+    'run_command': ('在她手机的 Termux 里跑一条 shell 命令，拿到输出（很强也很危险，要 --danger 才有；参考 termux-mcp）', S({'command': {'type': 'string'}, 'timeout': {'type': 'integer', 'description': '最多等几秒，默认 30'}}, ['command']), t_run, True),
 }
 
 
