@@ -215,6 +215,45 @@ ${have.length ? `【已经有这些 NPC，别重复】${have.slice(-60).join('�
         if (!n.name) return null;
         S.npcs.push(n); await save(); forget(); paint(); return n;
     };
+    // ➕ 把「已经出现过、但不在列表里」的人补成 NPC 并加入：报名字，模型照他们出现时的样子补全
+    window.gyNpcGrab = async function () {
+        if (busy) return;
+        const ask = typeof appPrompt === 'function' ? appPrompt : (m, d) => Promise.resolve(prompt(m, d));
+        const raw = await ask('把出现过的人加进来——报名字（多个用逗号隔开）：\n比如推文/评论里冒出来的人、剧情里提到的人', '');
+        if (raw == null) return;
+        const names = String(raw).split(/[，,、\n]/).map(x => x.trim()).filter(Boolean).slice(0, 10);
+        if (!names.length) return;
+        const api = (typeof getApiConfig === 'function') ? getApiConfig(true) : null;
+        if (!api || !api.key) { toast('还没配 API Key'); return; }
+        busy = true; paint();
+        try {
+            const want = names.filter(nm => !S.npcs.some(n => n.name === nm) && !chars().some(c => c.name === nm));
+            if (!want.length) { toast('这些人要么已经在列表里，要么本来就是角色'); return; }
+            const existing = chars().map(c => `${c.name}：${String(c.persona || '').slice(0, 200)}`).join('\n');
+            const askP = `下面这些人已经在剧情 / 推文 / 评论里出现过了，现在把他们补成 NPC 卡（照他们出现时的样子，别改设定、别换人）。
+【要补的人】${want.join('、')}
+${existing ? `【已有角色（参考他们之间的关系）】\n${existing}\n` : ''}每个人给：ico(一个emoji)、who(他是谁,12字内)、tie(跟谁什么关系,写名字,24字内)、persona(什么样,40字内)、tone(说话调调,12字内)、handle(网络账号名,没有就空)。
+只输出 JSON，不要解释：{"npcs":[{"name":"","ico":"","who":"","tie":"","persona":"","tone":"","handle":""}]}`;
+            const msgs = (typeof buildStructuredMessages === 'function') ? buildStructuredMessages('你在把剧情里出现过的人整理成 NPC 卡。', [], askP) : [{ role: 'user', content: askP }];
+            const d = await callChatCompletionAPI(api, msgs);
+            let t = (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content || '').trim();
+            if (typeof extractAfterFinalMarker === 'function') t = extractAfterFinalMarker(t).trim();
+            t = t.replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
+            const o = (typeof extractJsonObject === 'function') ? extractJsonObject(t) : JSON.parse(t);
+            const arr = (o && Array.isArray(o.npcs)) ? o.npcs : [];
+            const byName = {}; arr.forEach(x => { const nm = String(x.name || '').trim(); if (nm) byName[nm] = x; });
+            const add = [];
+            want.forEach(nm => {
+                const x = byName[nm] || {};
+                add.push({ id: uid(), name: nm.slice(0, 14), owners: [], all: true, ico: String(x.ico || '👤').slice(0, 4), who: String(x.who || '').slice(0, 20), tie: String(x.tie || '').slice(0, 40), persona: String(x.persona || '').slice(0, 80), tone: String(x.tone || '').slice(0, 20), handle: String(x.handle || '').replace(/^@/, '').slice(0, 20), wb: '', from: 'gen', at: Date.now(), on: true, avatarImg: '', bgImg: '' });
+            });
+            S.npcs = S.npcs.concat(add);
+            S.log.unshift({ at: Date.now(), t: '补进来 ' + add.map(x => x.name).join('、') }); S.log = S.log.slice(0, 60);
+            await save(); forget(); V.fresh = new Set(add.map(x => x.id));
+            toast('加好了 ' + add.length + ' 个：' + add.map(x => x.name).join('、') + '（默认绑「通用」，点进去能改绑定和设定）');
+        } catch (e) { toast('没加成：' + String(e.message || e).slice(0, 40)); }
+        finally { busy = false; paint(); }
+    };
     window.gyNpcDel = async function (id, quiet) {
         const n = S.npcs.find(x => x.id === id); if (!n) return;
         if (!quiet && typeof appConfirm === 'function' && !(await appConfirm(`删掉「${n.name}」？删了就找不回来了。`))) return;
@@ -436,6 +475,7 @@ ${have.length ? `【已经有这些 NPC，别重复】${have.slice(-60).join('�
           <div class="gynp-acts">
             <button class="gynp-btn" onclick="gyNpcGo('gen')" ${busy ? 'disabled' : ''}>${busy ? '⏳ 正在生成…' : '✨ 生成'}</button>
             <button class="gynp-btn ghost" onclick="gyNpcNew()">＋ 自己加</button>
+            <button class="gynp-btn ghost" onclick="gyNpcGrab()" ${busy ? 'disabled' : ''}>➕ 报名字加入</button>
             <button class="gynp-btn ghost" onclick="gyNpcGo('mix')">⚖️ 评论里的比例</button>
           </div>
           <div class="gynp-chips">${chips()}</div>
