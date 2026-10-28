@@ -30,15 +30,8 @@ def gradle(s):
     s = re.sub(r'applicationId\s+["\'][^"\']*["\']', f'applicationId "{pkg}"', s)
     s = re.sub(r'versionCode\s+\d+', f'versionCode {ver_code}', s)
     s = re.sub(r'versionName\s+["\'][^"\']*["\']', f'versionName "{ver_name}"', s)
-    # 谷雨守护：把 aar 声明成具名 flatDir 依赖——只有这样它的无障碍/通知服务和权限才会被合并进清单；
-    # 光把 aar 丢进 libs、靠 fileTree(include:['*.jar']) 是不会被编进去的（旧 bug：锁软件/读屏一直没反应就是这个）。
-    if 'GuyuGuard' not in s:
-        if 'flatDir' not in s:
-            s = re.sub(r'(^|\n)(\s*android\s*\{)', r"\1repositories { flatDir { dirs 'libs' } }\n\2", s, count=1)
-        if re.search(r'dependencies\s*\{', s):
-            s = re.sub(r'(dependencies\s*\{)', r"\1\n    implementation(name: 'GuyuGuard', ext: 'aar')", s, count=1)
-        else:
-            s += "\ndependencies {\n    implementation(name: 'GuyuGuard', ext: 'aar')\n}\n"
+    # 谷雨守护：示例工程本来就有 implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'])，
+    # aar 丢进 libs 就会编进去（服务和权限自动合并）。别再另外写 implementation(name:'GuyuGuard')——会重复，编译直接失败（279 那次就是）。
     return s
 edit(d / 'build.gradle', gradle)
 
