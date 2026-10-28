@@ -30,15 +30,10 @@ def gradle(s):
     s = re.sub(r'applicationId\s+["\'][^"\']*["\']', f'applicationId "{pkg}"', s)
     s = re.sub(r'versionCode\s+\d+', f'versionCode {ver_code}', s)
     s = re.sub(r'versionName\s+["\'][^"\']*["\']', f'versionName "{ver_name}"', s)
-    # 谷雨守护：把 aar 声明成具名 flatDir 依赖——只有这样它的无障碍/通知服务和权限才会被合并进清单；
-    # 光把 aar 丢进 libs、靠 fileTree(include:['*.jar']) 是不会被编进去的（旧 bug：锁软件/读屏一直没反应就是这个）。
-    if 'GuyuGuard' not in s:
-        if 'flatDir' not in s:
-            s = re.sub(r'(^|\n)(\s*android\s*\{)', r"\1repositories { flatDir { dirs 'libs' } }\n\2", s, count=1)
-        if re.search(r'dependencies\s*\{', s):
-            s = re.sub(r'(dependencies\s*\{)', r"\1\n    implementation(name: 'GuyuGuard', ext: 'aar')", s, count=1)
-        else:
-            s += "\ndependencies {\n    implementation(name: 'GuyuGuard', ext: 'aar')\n}\n"
+    # 谷雨守护：不用再显式声明依赖。SDK 的 build.gradle 里本来就有
+    # implementation fileTree(dir:'libs', include:['*.aar','*.jar'])，libs 里的 GuyuGuard.aar 会被自动编进去
+    # （服务、权限、res 都会合并）。再加一条 implementation(name:'GuyuGuard', ext:'aar') 会让同一个 aar 进两次，
+    # 编译报「Duplicate class com.guyu.guard.*」。所以这里什么都不加。
     return s
 edit(d / 'build.gradle', gradle)
 
