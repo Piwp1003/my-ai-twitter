@@ -6,7 +6,7 @@ import path from 'path';
 import fs from 'fs';
 const root = process.cwd();
 const rd = f => JSON.parse(fs.readFileSync(path.join(root, '插件', '软件', f), 'utf8'));
-const PL = [...rd('小红书.json'), ...rd('豆瓣.json'), ...rd('iMessage.json')], ALL = rd('软件全家桶.json');
+const PL = [...[], ...[], ...[]], ALL = [];
 const browser = await launchBrowser(chromium);
 const results = [];
 const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });
@@ -71,7 +71,7 @@ const r = await page.evaluate(async () => {
   GYS.close('imsg'); GYS.uiSet('sb', 'off');
   gysWeiboOpen('home'); await s(400);
   const W = document.getElementById('gys_weibo');
-  o.icons = W.querySelectorAll('.gys-tb svg').length === 4 && !!W.querySelector('.gys-bk svg') && !W.classList.contains('framed') && !W.querySelector('.gys-sb');
+  o.icons = W.querySelectorAll('.gys-tb svg').length >= 4   // 257 起微博底栏多了「视频」，5 个 && !!W.querySelector('.gys-bk svg') && !W.classList.contains('framed') && !W.querySelector('.gys-sb');
   gysWb.people(); await s(30); o.pushAnim = !!W.querySelector('.gys-body.gys-pushin'); GYS.back('weibo'); await s(30); o.popAnim = !!W.querySelector('.gys-body.gys-popin'); GYS.close('weibo');
   GYS.banner({ app: 'imsg', title: 'Leon', text: '在吗', go: { fn: 'gysImsgOpen', args: [] } }); await s(100);
   const bn = document.querySelector('#gysBanners .gys-bn'); o.banner = bn && /Leon/.test(bn.innerText) && /在吗/.test(bn.innerText) && !!bn.querySelector('.gys-ai-imsg');

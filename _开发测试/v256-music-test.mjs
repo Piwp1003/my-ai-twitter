@@ -6,13 +6,14 @@ import path from 'path';
 import fs from 'fs';
 const root = process.cwd();
 const rd = f => JSON.parse(fs.readFileSync(path.join(root, '插件', '软件', f), 'utf8'));
-const ALL = rd('软件全家桶.json');
+const ALL = [];
 const browser = await launchBrowser(chromium);
 const results = [];
 const check = (n, ok) => results.push({ n, ok: !!ok });
 const errs = [];
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const page = await ctx.newPage();
+await page.addInitScript(() => { try { const F = JSON.parse(localStorage.getItem('gyxFeat') || '{}'); F.gysMuNew = false; localStorage.setItem('gyxFeat', JSON.stringify(F)); } catch (e) {} });   // 这个测的是老版网易云界面（277 新版在 v277 测）
 page.on('pageerror', e => errs.push('PAGEERR ' + e.message));
 page.on('console', m => { const t = m.text(); if (/出错|错误/.test(t)) errs.push('CONSOLE ' + t.slice(0, 200)); });
 page.on('dialog', d => d.accept());

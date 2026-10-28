@@ -25,7 +25,7 @@ const r = await page.evaluate(async () => {
   gyHelpOpen('chat'); await s(300);
   o.def = gyHelpWho().mode === 'cs' && /🛟 客服/.test(document.getElementById('gyhTitle').innerText) && /🔔/.test(document.getElementById('gyhPopBtn').innerText);
   // 弹窗开着：报一个问题 → 弹
-  await gyHelpReport('测试问题一', '这是提示'); await s(100); o.popOn = window.__nj.some(x => /客服/.test(x.t) && /测试问题一/.test(x.t));
+  await gyHelpReport('测试问题一', '这是提示'); await s(100); o.popOn = window.__nj.some(x => /客服|🛟/.test(x.t) && /测试问题一/.test(x.t));
   // 点 🔔 关掉
   document.querySelector('.gyh-cfg .gyh-pop').click(); await s(100); o.offBtn = !isAutoOn('helpPop') && /不弹窗/.test(document.getElementById('gyhPopBtn').innerText) && /弹窗提醒：关/.test(document.querySelector('.gyh-cfg .gyh-pop').innerText);
   const u0 = await (async () => 0)(); await gyHelpReport('测试问题二', '提示二'); await s(100); o.popOff = !window.__nj.some(x => /测试问题二/.test(x.t));

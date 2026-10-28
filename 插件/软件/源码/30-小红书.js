@@ -4,6 +4,7 @@
    TA 发笔记、来评论你、偷偷收藏（附 TA 心里想的）、用小号发求问帖；现实小红书（一键去真的搜 / 粘真笔记进来）；TA 手机里的笔记也在这。
    以前「主页和社交」里的老小红书的数据会自动搬过来。 */
 if (window.__gysRed) return; window.__gysRed = 1;
+window.__gyxRed = 1;   // 278：挡住老「主页和社交」合集里的旧小红书（126）——它看到这个就不出来了
 const G = window.GYS, APP = 'red', esc = G.esc;
 X.feat('gysRed', { n: '📕 小红书', desc: '刷笔记、发笔记、收藏夹、搜索、私信；TA 发笔记、偷偷收藏、用小号发求问帖' });
 const ST = X.store('gysred');

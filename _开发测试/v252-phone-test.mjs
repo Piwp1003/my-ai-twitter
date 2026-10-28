@@ -6,7 +6,8 @@ import path from 'path';
 import fs from 'fs';
 const root = process.cwd();
 const rd = f => JSON.parse(fs.readFileSync(path.join(root, '插件', '软件', f), 'utf8'));
-const ALL = rd('真手机.json'); // 单个软件的 json 自带公用层，够测
+// 真手机现在是内置的（js/61-real-phone.js，build.py 生成，不再出 真手机.json），不用导入插件
+const ALL = fs.existsSync(path.join(root, '插件', '软件', '真手机.json')) ? rd('真手机.json') : [];
 const browser = await launchBrowser(chromium);
 const results = [];
 const check = (n, ok) => results.push({ n, ok: !!ok });

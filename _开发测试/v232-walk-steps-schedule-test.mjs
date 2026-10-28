@@ -104,7 +104,7 @@ check('🗺️ 「行程与天气 → 🤝 约出去」页里有「出去走走�
 
 const gd = await page.evaluate(async () => { const o = {}; gyGuideOpen(); await new Promise(r => setTimeout(r, 200)); const t = document.getElementById('gyGuideOv').innerText; document.getElementById('gyGuideOv').remove();
   o.has = ['计步', '一键补齐', '约 TA 去散步'].filter(w => !t.includes(w)); o.q = ['步数在哪看', '日程怎么补齐', '日程一口气全更新了'].map(q => (gyGuideSearchApi(q)[0] || {}).id); return o; });
-check('📘 指南和客服跟上：计步散步、日程一键补齐都写进去了，客服搜得到', !gd.has.length && JSON.stringify(gd.q) === '["walk","sched","sched"]', JSON.stringify(gd));
+check('📘 指南和客服跟上：计步散步、日程一键补齐都写进去了，客服搜得到', !gd.has.length && /^\["(walk|soft_wx)","sched","sched"\]$/.test(JSON.stringify(gd.q))   /* 258 起微信运动也显示步数（步数就是从陪你散步来的），两条都算对 */, JSON.stringify(gd));
 
 const bad = errs.filter(e => !/x\.test|Failed to fetch/.test(e));
 check('没有页面报错', !bad.length, bad.join(' | ').slice(0, 600));

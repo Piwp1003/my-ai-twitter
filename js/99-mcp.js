@@ -423,7 +423,7 @@
     const PHONE_URL = 'http://127.0.0.1:8765/mcp';
     const PHONE_INSTALL = 'curl -fsSL https://cdn.jsdelivr.net/gh/Piwp1003/my-ai-twitter@main/phone-mcp/install.sh | bash';
     window.gyMcpPhoneCopy = function () {
-        try { navigator.clipboard.writeText(PHONE_INSTALL).then(() => toast('📋 复制好了', '去 Termux 里粘贴回车')); } catch (e) { prompt('复制这行到 Termux', PHONE_INSTALL); }
+        try { navigator.clipboard.writeText(PHONE_INSTALL).then(() => toast('📋 复制好了', '去 Termux 里粘贴回车')); } catch (e) { try { (window.appPrompt || window.prompt)('复制这行到 Termux', PHONE_INSTALL); } catch (e2) {} }
     };
     window.gyMcpBuiltin = async function () {
         let s = C.servers.find(x => x.kind === 'builtin');

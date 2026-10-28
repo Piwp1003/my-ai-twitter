@@ -7,8 +7,10 @@ on:
   release:
     types: [published, edited]
   push:
-    branches: ['claude/**']
+    branches: ['claude/**', 'main']
     paths: ['.github/workflows/apk.yml', 'android-build/**']
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -90,3 +92,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: steps.sdk.outputs.skip != '1'
         with: { name: guyu-apk, path: out/*.apk }
+      # 也放进标签为 apk 的 Release（公开能直接下，不用登录）
+      - name: 放进 Release（apk）
+        if: steps.sdk.outputs.skip != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(python3 -c "import json;print(json.load(open('android-build/www-manifest.json'))['version']['name'])")
+          cp "$(ls out/*.apk | head -1)" "out/guyu-$V.apk"
+          gh release view apk >/dev/null 2>&1 || gh release create apk --title "谷雨 APK（最新）" --notes "Actions 自动打的包" --prerelease
+          gh release upload apk "out/guyu-$V.apk" --clobber

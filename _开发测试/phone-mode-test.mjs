@@ -13,6 +13,7 @@ const vis = (page, sel) => page.evaluate(s => { const e = document.querySelector
 for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390, height: 844 }, '手机']]) {
   const ctx = await browser.newContext({ viewport: vp });
   const page = await ctx.newPage();
+  await page.addInitScript(() => { try { if (!localStorage.getItem('gyIos')) localStorage.setItem('gyIos', JSON.stringify({ on: false })); } catch (e) {} });   // 这个测的是原来的小手机样子；iOS 外观（273）在 v273 里测
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   await page.route(/^https?:\/\//, r => r.abort());
   await page.goto(fileUrl(path.join(root, 'index.html')));
@@ -181,8 +182,8 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
   // 待办：点一下打勾
   await page.evaluate(() => gyPmPage(1));
   await page.waitForTimeout(300);
-  await page.evaluate(() => document.querySelector('.pm-page[data-page="1"] .wg-todo .ti').click());
-  check(`[${tag}] 待办：点一下打勾`, await page.evaluate(() => document.querySelector('.pm-page[data-page="1"] .wg-todo .ti').classList.contains('done')));
+  await page.evaluate(() => document.querySelector('.pm-page[data-page="1"] :is(.wg-todo,.gi-todo) .ti').click());
+  check(`[${tag}] 待办：点一下打勾`, await page.evaluate(() => document.querySelector('.pm-page[data-page="1"] :is(.wg-todo,.gi-todo) .ti').classList.contains('done')));
   await page.evaluate(() => gyPmPage(0));
   await page.waitForTimeout(300);
 

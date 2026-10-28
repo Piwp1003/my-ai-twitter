@@ -416,17 +416,27 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
 
     /* ---------------- 打开 App ---------------- */
     // 🧩 小功能都变成桌面图标（256）：小功能页里看得到的每一项（合集算一个）都有一个图标，点了直接打开
+    // 10/28：每个功能都能有自己的图标（她要的）——合集里的、软件里的（微博、小红书……）、挪进相册 / 设置 / 聊天 🎮 的，都单独一个图标；
+    //        「美化 → 小功能图标」能改回以前「合集算一个」
     window.gyPmMiniApps = function () {
         const L = typeof GY_MINI_FEATURES !== 'undefined' ? GY_MINI_FEATURES : [];
-        const hid = typeof window.gyHubHiddenIds === 'function' ? window.gyHubHiddenIds() : new Set();
+        const each = typeof window.gyPmMfEach === 'function' ? window.gyPmMfEach() : true;
+        const hid = each ? (typeof window.gyHubHideIds === 'function' ? window.gyHubHideIds() : new Set()) : (typeof window.gyHubHiddenIds === 'function' ? window.gyHubHiddenIds() : new Set());
         const fixed = new Set(APPS.map(a => a[4] && (a[4].feature || '')).filter(Boolean));
         const keys = [];
+        const put = (k, title, icon, open) => {
+            keys.push(k);
+            const def = [k, String(title || k).replace(/^\S+\s(?=\S)/u, m => /\p{Extended_Pictographic}/u.test(m) ? '' : m).slice(0, 8), 'e:' + (icon || '🧩'), '', open];
+            const i = APPS.findIndex(a => a[0] === k); if (i >= 0) APPS[i] = def; else APPS.push(def);
+        };
         L.forEach(f => {
             if (!f || !f.id || hid.has(f.id) || fixed.has(f.id)) return;
-            const k = 'mf_' + f.id; keys.push(k);
-            const def = [k, String(f.title || f.id).replace(/^\S+\s(?=\S)/u, m => /\p{Extended_Pictographic}/u.test(m) ? '' : m).slice(0, 8), 'e:' + (f.icon || '🧩'), '', { mini: f.id }];
-            const i = APPS.findIndex(a => a[0] === k); if (i >= 0) APPS[i] = def; else APPS.push(def);
+            put('mf_' + f.id, f.title || f.id, f.icon, { mini: f.id });
         });
+        // 合集里那几个不是「小功能」的内置东西（TA 的心声、信件与日记、TA 的手机、全部开关）
+        if (each && typeof window.gyHubPseudo === 'function') window.gyHubPseudo().forEach(p => { if (!fixed.has(p.id)) put('mf_' + p.id.replace('@', 'at_'), p.title, p.icon, { fn: 'gyHubOpen', args: [p.fid, p.id] }); });
+        // 改回「合集算一个」时，单独的那些图标先不画（摆的位置留着，改回来还在原地）
+        const ks = new Set(keys); for (let i = APPS.length - 1; i >= 0; i--) if (/^mf_/.test(APPS[i][0]) && !ks.has(APPS[i][0])) APPS.splice(i, 1);
         return keys;
     };
     const appOf = k => APPS.find(a => a[0] === k);

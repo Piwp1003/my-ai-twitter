@@ -45,7 +45,7 @@ const r = await page.evaluate(async () => {
   document.getElementById('gyxFsOv')?.remove();
   // 过节：农历自动算
   const U = gyxFestUpcoming(); const f = k => (U.find(x => x.k === k) || {}).date;
-  o.U = U.map(x => x.k + '=' + x.date).join(','); o.lunar = U.length >= 8 && f('chongyang') === '2026-10-18' && f('chunjie') === '2027-02-06' && f('chuxi') === '2027-02-05' && f('zhongqiu') === '2027-09-15' && f('qixi') === '2027-08-08';
+  o.U = U.map(x => x.k + '=' + x.date).join(','); o.lunar = U.length >= 8 && ['2026-10-18', '2027-10-08'].includes(f('chongyang'))   /* 过了今年重阳就算明年的 */ && f('chunjie') === '2027-02-06' && f('chuxi') === '2027-02-05' && f('zhongqiu') === '2027-09-15' && f('qixi') === '2027-08-08';
   o.ctx = typeof window.__gyxCtxFor === 'function';
   return o;
 });

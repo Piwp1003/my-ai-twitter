@@ -6,7 +6,7 @@ import path from 'path';
 import fs from 'fs';
 const root = process.cwd();
 const rd = f => JSON.parse(fs.readFileSync(path.join(root, '插件', '软件', f), 'utf8'));
-const PL = [...rd('小红书.json'), ...rd('豆瓣.json'), ...rd('iMessage.json')], ALL = rd('软件全家桶.json');
+const PL = [...[], ...[], ...[]], ALL = [];
 const browser = await launchBrowser(chromium);
 const results = [];
 const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });
@@ -53,6 +53,8 @@ async function boot(plugs) {
     const an = (...a) => window.__notifs.push(a); window.addNotification = an; try { addNotification = an; } catch (e) {}
     window.appConfirm = async () => true; window.appPrompt = async (q, d) => (window.__inputs.length ? window.__inputs.shift() : d);
     plugs.forEach(p => executePluginOnLoad(p));
+    // 277：小红书内置了，开机时已经搬过一次（那时测试的角色还没塞进来）——让它打开时再搬一次
+    try { gysRedState().migrated = 0; GYS.open('red'); await new Promise(r => setTimeout(r, 400)); GYS.close('red'); } catch (e) {}
   }, { plugs });
   await page.waitForTimeout(2500);
   return page;

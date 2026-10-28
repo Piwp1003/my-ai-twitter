@@ -95,7 +95,7 @@ await page.waitForTimeout(400);
 // ---------- 🧍 立绘（插件：不在项目里，导入「插件/角色立绘差分.json」才有） ----------
 check('立绘不在项目里（没装插件时没有）', await page.evaluate(() => !window.__gySpriteLoaded && !document.getElementById('gySpriteBtn')));
 const fsm = await import('fs');
-const plug = JSON.parse(fsm.readFileSync(path.join(root, '插件', '角色立绘差分.json'), 'utf8'));
+const plug = JSON.parse(fsm.readFileSync(path.join(root, '插件', '新玩法', '角色立绘差分.json'), 'utf8'));
 await page.evaluate(p => { const np = Object.assign({}, p[0], { id: 'plg_test' }); plugins.push(np); executePluginOnLoad(np); }, plug);
 await page.waitForFunction(() => window.__gySpriteLoaded && window.gySpriteOpen, { timeout: 5000 });
 check('导入插件后立绘功能就有了', await page.evaluate(() => typeof window.gySpriteOpen === 'function'));

@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><title>TA</title><style>
+html,body{margin:0;height:100%;background:transparent;overflow:hidden;user-select:none;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+#w{position:absolute;right:6px;bottom:4px;display:flex;flex-direction:column;align-items:flex-end}
+#b{max-width:230px;padding:8px 12px;margin-bottom:2px;border-radius:16px 16px 4px 16px;background:rgba(255,255,255,.95);color:#1d1d1f;font-size:13px;line-height:1.5;box-shadow:0 8px 24px rgba(0,0,0,.18);opacity:0;transform:translateY(6px) scale(.9);transform-origin:bottom right;transition:all .35s cubic-bezier(.2,1.2,.3,1)}
+#b.on{opacity:1;transform:none}
+#c{width:var(--w,120px);height:var(--h,150px);cursor:grab;display:block}
+#tip{position:absolute;left:4px;bottom:4px;font-size:11px;color:#999}
+</style></head><body><div id="w"><div id="b"></div><canvas id="c"></canvas></div><div id="tip"></div>
+<script src="gy3d.min.js"></script>
+<script>
+// 🧸 桌面版 exe 里的 3D 小 TA：主窗口把模型（和动作、台词）传过来，这里只管画
+const c = document.getElementById('c'), b = document.getElementById('b'); let d = null, mv = false, ht = null, st = null, av = null, opts = {};
+c.addEventListener('mouseenter', () => pet.hover(true)); document.getElementById('w').addEventListener('mouseleave', () => { if (!d) pet.hover(false); });
+c.addEventListener('pointerdown', e => { if (e.button === 2) return; d = { x: e.screenX, y: e.screenY }; mv = false; c.setPointerCapture(e.pointerId); });
+c.addEventListener('pointermove', e => { if (!d) return; const dx = e.screenX - d.x, dy = e.screenY - d.y; if (!mv && Math.abs(dx) + Math.abs(dy) < 4) return; mv = true; d = { x: e.screenX, y: e.screenY }; pet.moveBy(dx, dy); });
+c.addEventListener('pointerup', () => { if (!d) return; d = null; if (mv) pet.done(); else pet.click(); });
+c.addEventListener('contextmenu', e => { e.preventDefault(); pet.menu(); }); c.addEventListener('dblclick', () => pet.dbl());
+function size(s) { const w = Math.round((s || 120) * 1.0), h = Math.round((s || 120) * 1.25); document.body.style.setProperty('--w', w + 'px'); document.body.style.setProperty('--h', h + 'px'); }
+async function model(desc) {
+  try {
+    if (!st) st = new GY3D.Stage(c, { drag: false, always: true, fit: 1.12, shadow: true });
+    const a = await GY3D.build(desc); st.set(a); av = a; if (opts.state) a.setState(opts.state); a.holder.rotation.y = 0;
+  } catch (e) { document.getElementById('tip').textContent = '模型没加载出来：' + e.message; }
+}
+pet.on((k, v) => {
+  if (k === 'set') { opts = v || {}; size(v.size); if (v.model) model(v.model); }
+  if (k === 'model') model(v);
+  if (k === 'say') { b.textContent = v; b.classList.add('on'); clearTimeout(ht); ht = setTimeout(() => b.classList.remove('on'), Math.max(4000, v.length * 280)); if (av) { av.talk(true); setTimeout(() => av && av.talk(false), Math.min(6000, 600 + v.length * 140)); } }
+  if (k === 'act' && av) { if (v.act) av.play(v.act); if (v.face) av.lockFace(v.face, 6); if (v.state) av.setState(v.state); }
+});
+</script></body></html>

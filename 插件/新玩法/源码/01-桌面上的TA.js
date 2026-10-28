@@ -2,7 +2,7 @@
 if (window.__gyxPet) return; window.__gyxPet = 1;
 X.feat('gyxPet', { n: '🧸 桌面上的 TA', desc: '屏幕角落常驻一个小 TA，时不时冒个泡；点一下去聊天' });
 const S = X.store('pet');
-let C = { on: true, desk: false, who: '', x: null, y: null, size: 64, freq: 20, shape: 'round', img: '', per: {}, poke: true, pokeChat: true };
+let C = { on: true, desk: false, who: '', x: null, y: null, size: 64, freq: 20, shape: 'round', img: '', per: {}, poke: true, pokeChat: true, mode3d: true };
 const MOODS = ['默认', '开心', '难过', '生气', '害羞', '困', '想你', '惊讶', '撒娇', '认真'];
 const MOOD = {};   // 现在的情绪 MOOD[cid] = {m, at}
 const LINES_IDLE = ['在干嘛呀', '想你了', '累不累？', '喝口水', '我在这儿呢', '别太晚睡', '摸摸头', '今天有没有好好吃饭', '嘿', '陪着你呢'];
@@ -43,13 +43,19 @@ function imgOf(c) {
 function place() {
     const e = document.getElementById('gyxPet'); if (!e) return;
     if (C.x == null) { C.x = innerWidth - C.size - 14; C.y = Math.round(innerHeight * 0.42); }
-    C.x = Math.max(0, Math.min(innerWidth - C.size, C.x)); C.y = Math.max(0, Math.min(innerHeight - C.size, C.y));
+    const ph = e.classList.contains('td') ? Math.round(C.size * 1.25) : C.size;
+    C.x = Math.max(0, Math.min(innerWidth - C.size, C.x)); C.y = Math.max(0, Math.min(innerHeight - ph, C.y));
     Object.assign(e.style, { left: C.x + 'px', top: C.y + 'px', '--ps': C.size + 'px' });
     e.classList.toggle('left', C.x < innerWidth / 2);
 }
 function paint() {
     const e = el(); const on = C.on && X.on('gyxPet'); e.style.display = on && !(C.desk && window.gyDesk) ? '' : 'none'; if (!on) return;
     const c = who(); const a = document.getElementById('gyxPetA'), im = imgOf(c);
+    // 🧊 用 3D 小人（「🧊 3D 小人」里给这个角色捏好 / 导入了才会换）
+    const use3d = C.mode3d && typeof window.gyx3dHas === 'function' && window.gyx3dHas(c);
+    e.classList.toggle('td', !!use3d);
+    if (use3d) { a.className = 'pt-a td'; place(); window.gyx3dPetMount(a, c, C.size).then(ok => { if (!ok) { e.classList.remove('td'); a.className = 'pt-a'; } }); return; }
+    if (a.querySelector('.g3-petc') && window.gyx3dPetUnmount) window.gyx3dPetUnmount();
     a.className = 'pt-a ' + (shapeOf(c) === 'free' && im ? 'free' : '');
     if (im) a.innerHTML = `<img src="${X.esc(im)}" alt="">`;
     else { try { a.innerHTML = getAvatarHTML(c, C.size); } catch (er) { a.innerHTML = `<span>${X.esc((X.name(c) || 'T')[0])}</span>`; } }
@@ -58,6 +64,7 @@ function paint() {
 function bubble(t, ms) {
     const b = document.getElementById('gyxPetB'); if (!b || !t) return;
     b.textContent = t; b.classList.add('on');
+    try { if (C.mode3d && window.gyx3dPetOn && window.gyx3dPetOn()) window.gyx3dPetTalk(t); } catch (e) {}
     try { if (window.gyDesk && C.desk && C.on) window.gyDesk.petSay(t); } catch (e) {}
     clearTimeout(b.__t); b.__t = setTimeout(() => b.classList.remove('on'), ms || Math.max(4000, t.length * 280));
 }
@@ -76,13 +83,15 @@ async function poke() {
     if (pokeBusy) return; pokeBusy = true;
     pokeN = Date.now() - pokeAt < 60000 ? pokeN + 1 : 1; pokeAt = Date.now();
     try {
-        let say, mood;
+        let say, mood, act;
         if (X.bailu()) { say = X.cards(['拍一拍', '桌宠', '聊天'], c, 1)[0] || X.pick(['嗯？叫我？', '在呢', '干嘛戳我～', '我在这儿']); }
         else {
-            const j = X.json(await X.ask(`${X.who(c)}\n最近的聊天：\n${X.recent(c, 8) || '（还没聊）'}\n\n你是待在她屏幕角落里的小小的你。她刚刚伸手点了你一下（理了你一下）${pokeN > 1 ? `，一分钟里已经第 ${pokeN} 次了` : ''}。当场回她一句（口语，20 字以内，按你的性格和此刻的心情），再选一个你现在的情绪：${MOODS.join('/')}。\n只输出 JSON：{"say":"一句话","mood":"情绪"}`));
+            const j = X.json(await X.ask(`${X.who(c)}\n最近的聊天：\n${X.recent(c, 8) || '（还没聊）'}\n\n你是待在她屏幕角落里的小小的你。她刚刚伸手点了你一下（理了你一下）${pokeN > 1 ? `，一分钟里已经第 ${pokeN} 次了` : ''}。当场回她一句（口语，20 字以内，按你的性格和此刻的心情），再选一个你现在的情绪：${MOODS.join('/')}${is3d() ? `，再选一个动作（${window.gyx3dActList()}）` : ''}。\n只输出 JSON：{"say":"一句话","mood":"情绪"${is3d() ? ',"act":"动作"' : ''}}`));
+            act = j && j.act;
             say = j && j.say ? X.plain(String(j.say)).slice(0, 40) : X.pick(['嗯？叫我？', '在呢', '干嘛戳我～']); mood = j && MOODS.includes(j.mood) ? j.mood : null;
         }
         if (mood) MOOD[String(c.id)] = { m: mood, at: Date.now() };
+        try { if (is3d()) { if (act) window.gyx3dPetAct({ act, face: ({ 开心: 'happy', 难过: 'sad', 生气: 'angry', 害羞: 'shy', 困: 'closed', 惊讶: 'surprised', 撒娇: 'shy', 想你: 'happy' })[mood] }); else window.gyx3dMoodAct(mood || '默认'); } } catch (e) {}
         paint(); desk(); bubble(say); lastSay = Date.now();
         if (C.pokeChat) X.say(c, say, { gyxPoke: 1 });
         X.speak && C.voice && X.speak(c, say);
@@ -90,6 +99,7 @@ async function poke() {
     } finally { pokeBusy = false; }
 }
 window.gyxPetPoke = poke;
+const is3d = () => !!(C.mode3d && window.gyx3dPetOn && window.gyx3dPetOn());
 function tap() { poke(); }
 // 右键（手机长按）菜单
 function menu(x, y) {
@@ -143,6 +153,8 @@ window.gyxPetOpen = function () {
         <div class="gyx-row"><label><input type="checkbox" ${C.on ? 'checked' : ''} onchange="gyxPetSet('on',this.checked)"> 显示</label></div>
         <div class="gyx-row"><label><input type="checkbox" ${C.desk ? 'checked' : ''} ${window.gyDesk ? '' : 'disabled'} onchange="gyxPetSet('desk',this.checked)"> 放到电脑桌面上（关掉 / 最小化窗口也在）</label></div>
         <div class="gyx-tip">${window.gyDesk ? '桌面上的小 TA 能拖到任何地方；点一下回到聊天，右键打开这里。' : '「放到电脑桌面上」要用新版桌面版 exe（重新打包一次）。手机上小 TA 只能待在应用里。'}</div>
+        <div class="gyx-row"><label><input type="checkbox" ${C.mode3d ? 'checked' : ''} onchange="gyxPetSet('mode3d',this.checked)"> 🧊 用 3D 小人</label>${window.gyx3dOpen ? `<span class="gyx-btn lite" onclick="gyx3dOpen('mine')">去捏 / 导入 3D 小人</span>` : ''}</div>
+        <div class="gyx-tip">${window.gyx3dOpen ? (() => { const L = cs.filter(c => window.gyx3dHas && window.gyx3dHas(c)).map(c => X.name(c)); return L.length ? `有 3D 小人的：${X.esc(L.join('、'))}。勾上后小 TA 会动、会换表情、说话张嘴，你换页面、TA 发消息、你戳 TA，TA 都会做反应。` : '还没给谁捏 3D 小人。去「🧊 3D 小人」里捏一个 / 用图片做一个 / 导入模型，给 TA 用上就行。'; })() : '装上「🧊 3D 小人」插件（在「📱 小手机」合集里）就能换成 3D 的。'}</div>
         <div class="gyx-row">是谁：<select class="gyx-who" onchange="gyxPetSet('who',this.value)"><option value="">跟着最近聊天的人</option>${cs.map(c => `<option value="${X.esc(c.id)}"${String(c.id) === String(C.who) ? ' selected' : ''}>${X.esc(X.name(c))}</option>`).join('')}</select></div>
         <div class="gyx-row">大小 <input type="range" min="36" max="240" value="${C.size}" oninput="gyxPetSet('size',+this.value)"> </div>
         <div class="gyx-row">多久冒一次泡（分钟） <input class="gyx-who" type="number" min="1" value="${C.freq}" style="width:80px" onchange="gyxPetSet('freq',+this.value)"></div>
@@ -170,18 +182,24 @@ window.gyxPetTalk = async () => { const t = await line('busy'); bubble(t); lastS
 X.action({ key: 'gyx_pet', label: '在她屏幕角落冒个泡，说句话', hint: '她在忙别的时候', need: c => C.on && (!C.who || String(C.who) === String(c.id)) && Date.now() - lastSay > 10 * 60000, run: async c => { const t = await line('busy'); if (!t) return null; bubble(t); lastSay = Date.now(); if (window.gyDesk && C.desk) try { window.gyDesk.petSay(t); } catch (e) {} return '在你屏幕角落冒了个泡：' + t; } }, 'gyxPet');
 /* ---- 桌面版 exe：小 TA 真的待在电脑桌面上（关掉 / 最小化窗口也在） ---- */
 function avatarSrc(c) {
+    try { if (C.mode3d && window.gyx3dHas && window.gyx3dHas(c)) { const t = window.gyx3dThumb(c); if (t) return t; } } catch (e) {}
     const im = imgOf(c); if (im) return im;
     if (!c) return '';
     if (c.avatarImg && /^(data:|https?:|blob:|file:)/.test(c.avatarImg)) return c.avatarImg;
     try { const t = document.createElement('div'); t.style.cssText = 'position:fixed;left:-999px;top:0'; t.innerHTML = getAvatarHTML(c, 64); document.body.appendChild(t); const bg = getComputedStyle(t.firstElementChild).backgroundImage; t.remove(); const m = /url\(["']?(.*?)["']?\)/.exec(bg || ''); if (m) return m[1]; } catch (e) {}
     return '';
 }
+let deskKey = null;
 function desk() {
     const D2 = window.gyDesk; if (!D2 || !D2.petShow) return;
     const want = C.on && C.desk && X.on('gyxPet');
+    // 🧊 3D：新版桌面版（有 petDo）里，电脑桌面上的小 TA 也是会动的 3D 小人；旧版就用 3D 小人的截图
+    try { const c = who(); if (want && D2.petDo && C.mode3d && window.gyx3dHas && window.gyx3dHas(c)) { const key = window.gyx3dDeskKey(c) + '|' + c.id; window.__gyxPetDesk3d = 1; const o = { mode: '3d', name: X.name(c), size: Math.round(C.size * 1.6), x: C.dx, y: C.dy }; if (deskKey !== key) { deskKey = key; window.gyx3dDeskDesc(c).then(m => { o.model = m; D2.petShow(o); }); } else D2.petShow(o); return; } } catch (e) { console.warn(e); }
+    window.__gyxPetDesk3d = 0; deskKey = null;
     try { if (want) { const c = who(); D2.petShow({ img: avatarSrc(c), name: X.name(c), letter: (X.name(c) || 'T')[0], size: C.size, shape: shapeOf(c) === 'free' && imgOf(c) ? 'free' : 'round', x: C.dx, y: C.dy }); } else D2.petHide(); } catch (e) {}
 }
 window.gyxPetDesk = desk;
+window.gyxPetRefresh = () => { try { paint(); desk(); } catch (e) {} };
 if (window.gyDesk && window.gyDesk.onPet) window.gyDesk.onPet(ev => {
     if (!ev) return;
     if (ev.type === 'click') tap();
@@ -201,6 +219,7 @@ X.css('gyxPetCss', `
 #gyxPet .pt-b.on{opacity:1;transform:none}
 #gyxPet .pt-z{position:absolute;right:-4px;top:-10px;font-style:normal;font-weight:700;color:#8aa4d6;opacity:0}#gyxPet.zz .pt-z{animation:ptZ 2.4s infinite}#gyxPet.zz{animation:ptBob 5s ease-in-out infinite}
 #gyxPet.hop{animation:ptHop .5s}
+#gyxPet.td{height:calc(var(--ps,64px)*1.25);animation:none}#gyxPet .pt-a.td{border-radius:0;background:none;box-shadow:none;overflow:visible}#gyxPet.td.zz{animation:none}
 #gyxPetMenu{position:fixed;z-index:100012;min-width:150px;padding:6px;border-radius:14px;background:rgba(255,255,255,.96);backdrop-filter:blur(14px);box-shadow:0 12px 34px rgba(0,0,0,.2);font-size:14px;color:#1d1d1f}#gyxPetMenu div{padding:9px 12px;border-radius:10px;cursor:pointer}#gyxPetMenu div:hover{background:#f2f2f4}
 .pt-imgs{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.pt-im{width:92px;display:flex;flex-direction:column;gap:4px;align-items:center;padding:6px;border-radius:12px;background:#f7f7f9}.pt-im img{width:80px;height:80px;object-fit:contain}.pt-im select{width:100%;font-size:12px}.pt-im span{font-size:12px;color:#e0245e;cursor:pointer}
 @keyframes ptBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}

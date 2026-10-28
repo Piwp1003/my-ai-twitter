@@ -9,7 +9,9 @@ if (!window.GYS) (function () {
     let D = { prof: {}, seq: 1 };   // prof[app][who] = 主页
     let ready = false; const waits = [];
     (async () => { D = Object.assign(D, await store.get('d', {})); D.prof = D.prof || {}; ready = true; waits.splice(0).forEach(f => f()); })();
-    S.ready = () => ready ? Promise.resolve() : new Promise(r => waits.push(r));
+    // 277：软件内置进本体以后，js/61 比角色 / 聊天记录加载得早——等谷雨启动完（__guyuBooted）再算「准备好」，跟以前当插件时一样
+    const booted = new Promise(r => { const t = () => (window.__guyuBooted ? r() : setTimeout(t, 200)); t(); });
+    S.ready = () => (ready ? Promise.resolve() : new Promise(r => waits.push(r))).then(() => booted);
     let saveT = null;
     S.save = () => { clearTimeout(saveT); saveT = setTimeout(() => store.set('d', D), 300); };
     S.saveNow = () => store.set('d', D);
@@ -363,7 +365,7 @@ ${list}
         const ico = k => { const A = S.APPS[k], b = S.badge[k] ? (() => { try { return S.badge[k]() || 0; } catch (e) { return 0; } })() : 0; return `<div class="gys-hmi" onclick="GYS.open('${k}')"><span class="gys-hmic gys-ai-${k}">${A.ico}${b ? `<sup>${b > 99 ? '99+' : b}</sup>` : ''}</span><em>${S.esc(A.n)}</em></div>`; };
         return `<div class="gys-hm"><div class="gys-hmt"><b>${S.hm(n)}</b><em>${n.getMonth() + 1}月${n.getDate()}日 星期${'日一二三四五六'[n.getDay()]}</em></div>
           <div class="gys-hmg">${L.map(ico).join('')}<div class="gys-hmi" onclick="GYS.open('ui')"><span class="gys-hmic gys-ai-set">⚙️</span><em>外观</em></div></div>
-          ${L.length ? '' : '<div class="gys-empty" style="color:#fff">还没有装软件<br>去「插件」导入「软件全家桶.json」</div>'}</div>`;
+          ${L.length ? '' : '<div class="gys-empty" style="color:#fff">软件都关着<br>设置 → 全部开关 里打开</div>'}</div>`;
     };
     S.app('home', { head: () => `<div class="gys-hd gys-hmhd"><span class="gys-bk" onclick="GYS.close('home')">${S.ic('back', 22)}</span><b>软件</b></div>`, render: () => S.homeHtml() });
     window.gysSoftHome = () => S.open('home');

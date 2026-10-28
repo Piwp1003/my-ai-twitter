@@ -40,11 +40,11 @@
     };
     // ② 合集
     const FOLDERS = [
-        { id: 'hub_together', icon: '🎧', title: '一起听 · 看 · 读', desc: '音乐盒、一起听一起看、一起看电影、一起阅读、TA 的直播间——你在听什么看什么读什么，TA 都陪着', cat: '一起做', kids: ['music', 'webMedia', 'watch_together', 'reading_together', 'gyxLive'] },
+        { id: 'hub_together', icon: '🎧', title: '一起听 · 看 · 读', desc: '一起阅读（一起听在网易云、一起看在抖音；把它们关了会回到这里）', cat: '一起做', kids: ['music', 'webMedia', 'watch_together', 'reading_together', 'gyxLive'] },
         { id: 'hub_rel', icon: '💞', title: '我们的关系', desc: '关系账本、心里和面上两层好感、关系四条线、等级、成就、反向攻略、我们的小习惯、TA 被你影响、TA 的成长日志', cat: '回忆', kids: ['relations', 'gyxDual', 'gyxAxes', 'gyxLevel', 'gyxBadge', 'gyxWoo', 'gyxRitual', 'gyxInfl', 'gyxEvolve'] },
         { id: 'hub_recap', icon: '📚', title: '回顾', desc: '手帐时间线、我们的书、星图、周报、回忆放映、TA 眼中的你、时光机、记忆潜行；多久总结一次你来定', cat: '回忆', kids: ['gyxRecapCfg', 'gyxHandbook', 'gyxOurBook', 'gyxStar', 'gyxWeekly', 'gyxReel', 'gyxEye', 'gyxTime', 'gyxDive'] },
         { id: 'hub_promise', icon: '🤙', title: '我们的约定', desc: '小约定、兑换券、恋爱审批、愿望清单、一百件小事', cat: '陪伴', kids: ['gyxPromise', 'gyxCoupon', 'gyxOA', 'gyxWish', 'gyx100'] },
-        { id: 'hub_night', icon: '🌙', title: '早安晚安', desc: '早安简报、叫醒和哄睡、熬夜管家、睡前三件好事、深夜电台', cat: '陪伴', kids: ['gyxBrief', 'gyxWake', 'gyxNight', 'gyxGood', 'gyxRadio'] },
+        { id: 'hub_night', icon: '🌙', title: '早安晚安', desc: '早安简报、叫醒和哄睡、熬夜管家、睡前三件好事', cat: '陪伴', kids: ['gyxBrief', 'gyxWake', 'gyxNight', 'gyxGood'] },
         { id: 'hub_qa', icon: '💬', title: '问答', desc: '每日一问、默契问答、心电感应光谱、调查问卷、提问箱、TA 的人生选择题', cat: '一起做', kids: ['gyxDaily', 'gyxQuiz', 'gyxWave', 'gyxSurvey', 'gyxAskBox', 'gyxDilemma'] },
         { id: 'hub_letters', icon: '💌', title: '信', desc: '信件与日记、拆信、交换日记本、时间胶囊、有条件才能拆的信、明信片、漂流瓶', cat: '回忆', kids: ['@letters', 'gyxLetter', 'gyxJournal', 'gyxCapsule', 'gyxSeal', 'gyxPost', 'gyxBottle'] },
         { id: 'hub_home', icon: '🏠', title: '我们的小屋', desc: '小屋、随机掉落的收藏、一起养的小生命、存钱罐、TA 的旧物箱、窗台来客', cat: '回忆', kids: ['gyxHome', 'gyxDrop', 'gyxGrow', 'gyxJar', 'gyxBox', 'gyxSill'] },
@@ -53,10 +53,10 @@
         { id: 'hub_with', icon: '🚶', title: '陪你', desc: '散步、现实小任务、一起安静待着、做饭、自习、运动、旅行、TA 养你（反向养成）', cat: '一起做', kids: ['gyxWalk', 'gyxMis', 'gyxStill', 'gyxCook', 'gyxStudy', 'gyxCoach', 'gyxTrip', 'gyxCare'] },
         { id: 'hub_touch', icon: '💓', title: '贴贴', desc: '听心跳、摇一摇贴贴', cat: '陪伴', kids: ['gyxBeat', 'gyxShake'] },
         { id: 'hub_unsaid', icon: '🤐', title: 'TA 没说出口的', desc: '心声、TA 的往事、TA 的录像带、思维链收纳盒、草稿箱、情绪皮肤', cat: '陪伴', kids: ['@inner', 'gyxPast', 'gyxTapes', 'gyReasoningVault', 'gyxDraft', 'gyxMoodSkin'] },
-        { id: 'hub_phone', icon: '📱', title: '小手机', desc: 'TA 的手机、备忘录、AI 小程序、来电画面和铃声、来电增强、桌面小组件、桌面上的 TA、角标和分享', cat: '生活', kids: ['@phone', 'gyxMemo', 'gyxApps', 'gyxRing', 'gyxCallPlus', 'gyxPhoneW', 'gyxPet', 'gyxPing'] },
+        { id: 'hub_phone', icon: '📱', title: '小手机', desc: 'TA 的手机、备忘录、AI 小程序、来电（画面铃声、拒接理由、语音留言）、桌面小组件、桌面上的 TA、角标和分享', cat: '生活', kids: ['@phone', 'gyxMemo', 'gyxApps', 'gyxCall', 'gyxPhoneW', 'gyxPet', 'gyxPing'] },
         { id: 'hub_life', icon: '🧺', title: '生活', desc: '行程与天气、随身物、商城、装扮商店、经期记录、心情手账、生活小档案', cat: '生活', kids: ['map', 'kit', 'mall', 'gyxShop', 'period', 'moodbook', 'gyxNotes'] },
         { id: 'hub_people', icon: '👥', title: 'TA 身边的人', desc: '日常、关系网、NPC 列表、营销号自己爆料、准点群聊', cat: '生活', kids: ['grapevine', 'factionNetwork', 'npc', 'gyxScoop', 'gyxOnTime'] },
-        { id: 'hub_gift', icon: '🎁', title: 'TA 给你的', desc: 'TA 的秘密计划、TA 的梦、写给你的歌、留声机、涂鸦互传、占卜', cat: '陪伴', kids: ['gyxPlan', 'gyxDream', 'gyxSong', 'gyxTape', 'gyxDoodle', 'gyxMystic'] },
+        { id: 'hub_gift', icon: '🎁', title: 'TA 给你的', desc: 'TA 的秘密计划、TA 的梦、涂鸦互传、占卜', cat: '陪伴', kids: ['gyxPlan', 'gyxDream', 'gyxDoodle', 'gyxMystic'] },
         { id: 'hub_alt', icon: '🪐', title: '换个世界玩', desc: '平行世界、换个世界、互换身份一天、番外隔离', cat: '一起做', kids: ['gyxWorld', 'gyxTheater', 'gyxSwap', 'gyxSide'] },
         { id: 'hub_chat', icon: '💭', title: '聊天细节', desc: '时间感知、内置提示词、总结滚雪球、外语和翻译、气泡表情回应', cat: '陪伴', kids: ['timePlace', 'promptLib', 'gyxRoll', 'gyxLang', 'gyxReact'] },
         { id: 'hub_soft', icon: '📱', title: '软件', desc: '微信、iMessage、微博、泡泡、小红书、豆瓣、网易云、抖音——整页的真软件界面；同一个人在每个软件里的主页都可以不一样', cat: '生活', kids: ['gysWechat', 'gysWeibo', 'gysBubble', 'gysRed', 'gysDouban', 'gysImsg', 'gysMusic', 'gysDouyin', 'gysUi'] },
@@ -67,7 +67,15 @@
         { id: 'hub_custom', icon: '⚙️', title: '个性化', desc: '皮肤、手机文件夹、TA 的声音、聊天统计、开场动画、美化、开关和后台（设置 → 🧰 功能设置里也有）', cat: '生活', kids: ['gySkinBox', 'folder', 'voice', 'chatstat', 'intro', 'hub_look', 'hub_set'] }
     ];
     // 直接不在小功能里出现的：八卦网（「日常」里已经有）；进了聊天 🎮 的游戏
-    const HIDE = ['gossip'];
+    const HIDE0 = ['gossip'];
+    // 🎵 10/28：音乐类都塞进网易云了（音乐盒 = 网易云「本地」，深夜电台 / 共享歌单 / 留声机 / TA写给你的歌 都在网易云里）——网易云开着就不单独出图标；把网易云关了它们会回来
+    const MUSIC_IN = ['music', 'gyxRadio', 'gyxList', 'gyxSong', 'gyxTape'];
+    const muOn = () => { try { return !!(window.GYS && window.GYS.APPS && window.GYS.APPS.music) && (!window.GYX || !window.GYX.on || window.GYX.on('gysMusic')); } catch (e) { return false; } };
+    // 🎬 277：一起看（贴链接一起看、一起看电影）挪进了抖音首页顶上「一起看」——抖音和那一栏开着就不单独出图标
+    const WATCH_IN = ['webMedia', 'watch_together'];
+    const dyOn = () => { try { return !!(window.GYS && window.GYS.APPS && window.GYS.APPS.douyin) && (!window.GYX || !window.GYX.on || (window.GYX.on('gysDouyin') && window.GYX.on('gysDyWatch'))); } catch (e) { return false; } };
+    const hideNow = () => HIDE0.concat(muOn() ? MUSIC_IN : [], dyOn() ? WATCH_IN : []);
+    const HIDE = { forEach: f => hideNow().forEach(f), [Symbol.iterator]: function* () { yield* hideNow(); } };
     const GAME_IDS = ['gyxQuest', 'gyxHunt', 'gyxPick', 'gyxTrpg', 'gyxFish', 'gyxReal', 'gyxSeek', 'gyxLoop', 'gyxRoom', 'gyxFate', 'gyxSoup', 'gyxShow', 'gyxCase', 'gyxStuck', 'gyxWave'];
     // 设置类：从小功能挪到「设置 → 🧰 功能设置」
     const SET_IDS = ['voice', 'gySkinBox', 'chatstat', 'intro', 'folder', 'hub_look', 'hub_set'];
@@ -75,7 +83,7 @@
     const feats = () => (typeof GY_MINI_FEATURES !== 'undefined' ? GY_MINI_FEATURES : []);
     const featOf = id => feats().find(f => f.id === id);
     const memberOf = id => { if (id[0] === '@') { const p = PSEUDO[id]; try { return p && p.ok() ? Object.assign({ id }, p) : null; } catch (e) { return null; } } const f = featOf(id); return f ? { id, icon: f.icon, title: f.title, desc: f.desc, open: f.onOpen, plugin: /^gyx/.test(id) } : null; };
-    const membersOf = F => F.kids.map(memberOf).filter(Boolean);
+    const membersOf = F => { const h = new Set(HIDE); return F.kids.filter(k => !h.has(k)).map(memberOf).filter(Boolean); };
     const liveFolder = F => membersOf(F).length >= 2;     // 只剩一个的话就不套合集了，直接平铺
     const catOf = f => { const c = f.cat || CAT[f.id] || '生活'; return CATS.some(x => x[0] === c) ? c : '陪伴'; };
     const hiddenIds = () => {
@@ -134,6 +142,9 @@
     //       插件的面板画在合集里（顶上有「‹ 返回」回到这一列），谷雨自带的整页功能直接跳过去，不再多一张「打开 ›」卡片。
     //       gyHubOpen(合集id) ＝ 打开那一列；gyHubOpen(合集id, 成员id) ＝ 直接打开那一个（指南「去看看」、通知用）。
     window.gyHubHiddenIds = () => on() ? hiddenIds() : new Set();
+    // 小手机「每个功能一个图标」用：真的不要出现的（八卦网，「日常」里已经有）、合集里那几个 @ 开头的内置东西
+    window.gyHubHideIds = () => new Set(HIDE);
+    window.gyHubPseudo = () => { const out = []; FOLDERS.forEach(F => F.kids.forEach(k => { if (k[0] !== '@' || out.some(o => o.id === k)) return; const m = memberOf(k); if (m) out.push({ id: k, fid: F.id, icon: m.icon, title: m.title }); })); return out; };
     window.gyHubOpen = function (fid, tab) {
         const F = FOLDERS.find(x => x.id === fid); if (!F) return;
         if (F.open && !tab) { try { if (F.open()) return; } catch (e) {} }   // 自己有一整页的合集（📱 软件 = 手机桌面）
@@ -241,7 +252,7 @@
         });
     }
     /* ---------- 插件合并：装了合并版，就把旧的单个插件从列表里拿掉（数据不动）；不要了的两个也拿掉 ---------- */
-    const BUN = /*GYX_BUNDLES*/{"bundles": {"🖼️ 相册里的插件": [["📸 TA的相册", ["gyxAlbum"]], ["🎨 表情包工坊", ["gyxMeme"]], ["📸 和TA合照", ["gyxDuo"]], ["💑 情侣头像", ["gyxAvatar"]], ["📸 同一秒", ["gyxMoment"]]], "💞 我们的关系": [["💞 好感两层", ["gyxDual"]], ["📊 关系四条线", ["gyxAxes"]], ["📈 我们的等级", ["gyxLevel"]], ["🏅 我们的成就", ["gyxBadge"]], ["🎯 反向攻略", ["gyxWoo"]], ["🔁 我们的小习惯", ["gyxRitual"]], ["🎁 TA的秘密计划", ["gyxPlan"]], ["📜 TA的往事", ["gyxPast"]], ["🪴 TA的成长日志", ["gyxEvolve"]], ["📼 TA的录像带", ["gyxTapes"]]], "📚 回顾": [["📒 手帐时间线", ["gyxHandbook"]], ["📖 我们的书", ["gyxOurBook"]], ["✨ 我们的星图", ["gyxStar"]], ["🗞️ 我们的周报", ["gyxWeekly"]], ["🎞️ 回忆放映", ["gyxReel"]], ["👀 TA眼中的你", ["gyxEye"]], ["⏳ 时光机", ["gyxTime"]], ["🕹️ 记忆潜行", ["gyxDive"]]], "🎉 纪念日和生日": [["🎉 纪念日惊喜", ["gyxAnniv"]], ["🎂 给TA过生日", ["gyxBday"]], ["🏮 一起过节", ["gyxFest"]]], "🤙 我们的约定": [["🤙 小约定", ["gyxPromise"]], ["🎟️ 兑换券", ["gyxCoupon"]], ["🧾 恋爱审批", ["gyxOA"]], ["🎁 愿望清单", ["gyxWish"]], ["💯 一百件小事", ["gyx100"]]], "🌙 早安晚安": [["☀️ 早安简报", ["gyxBrief"]], ["⏰🌙 叫醒与哄睡", ["gyxWake"]], ["🌙 熬夜管家", ["gyxNight"]], ["🕯️ 睡前三件好事", ["gyxGood"]], ["📻 深夜电台", ["gyxRadio"]]], "💬 问答": [["🌅 每日一问", ["gyxDaily"]], ["💞 默契问答", ["gyxQuiz"]], ["📋 调查问卷", ["gyxSurvey"]], ["📮 提问箱", ["gyxAskBox"]], ["🗳️ TA的人生选择题", ["gyxDilemma"]], ["📡 心电感应光谱", ["gyxWave"]]], "🎮 游戏": [["🎮 一起玩", ["gyxGame"]], ["🧭 文字冒险", ["gyxQuest"]], ["🗺️ TA布置的寻宝", ["gyxHunt"]], ["🎡 帮我选", ["gyxPick"]], ["🎲 跑团", ["gyxTrpg"]], ["🎣 一起钓鱼", ["gyxFish"]], ["📍 现实捉迷藏", ["gyxSeek"]], ["🔁 时间循环", ["gyxLoop"]], ["🗝️ 双人密室", ["gyxRoom"]], ["🃏 命运卡牌", ["gyxFate"]], ["🆘 TA被困了", ["gyxStuck"]]], "🕵️ 推理和综艺": [["🎭 谁是真的TA", ["gyxReal"]], ["🐢 海龟汤", ["gyxSoup"]], ["🔍 剧本杀", ["gyxCase"]], ["💘 我们的恋综", ["gyxShow"]]], "📰 主页和社交": [["📰 营销号自己爆料", ["gyxScoop"]], ["🔥 微博热搜榜", ["gyxHotList"]], ["⏰ 准点群聊", ["gyxOnTime"]]], "💌 信": [["💌 拆信仪式", ["gyxLetter"]], ["📓 交换日记本", ["gyxJournal"]], ["⏳ 时间胶囊", ["gyxCapsule"]], ["🏞️ 明信片墙", ["gyxPost"]], ["🍾 漂流瓶", ["gyxBottle"]], ["💌 有条件才能拆的信", ["gyxSeal"]]], "🏠 我们的小屋": [["🏠 我们的小屋", ["gyxHome"]], ["🍁 随机掉落收藏册", ["gyxDrop"]], ["🌱 一起养小生命", ["gyxGrow"]], ["🐷 一起存钱罐", ["gyxJar"]], ["📦 TA的旧物箱", ["gyxBox"]], ["🪟 窗台来客", ["gyxSill"]]], "🗣️ TA怎么说话": [["🫂 相处模式", ["gyxBond"]], ["🧂 风格调料", ["gyxSpice"]], ["🛡️ 平视", ["gyxFair"]], ["🗣️ 口头禅传染", ["gyxEcho"]], ["🎬 听取模式", ["gyxListen"]], ["🌱 TA被你影响", ["gyxInfl"]], ["⌨️ 你打了又删", ["gyxErase"]], ["🔁 你让TA重说了", ["gyxRegen"]], ["🛡️ 别把她写弱", ["gyxFair"]]], "🫂 哄": [["🫂 抱抱", ["gyxHug"]], ["🥺 轮到你哄TA", ["gyxCoax"]], ["🌧️ 吵架和好", ["gyxMakeup"]], ["🌳 秘密树洞", ["gyxSecret"]]], "🚶 陪你": [["🚶 陪你散步", ["gyxWalk"]], ["🍳 一起做饭", ["gyxCook"]], ["📚 一起自习室", ["gyxStudy"]], ["🏃 TA是你的私教", ["gyxCoach"]], ["✈️ 一起旅行", ["gyxTrip"]], ["📮 现实小任务", ["gyxMis"]], ["🕯️ 一起安静待着", ["gyxStill"]]], "💓 贴贴": [["💓 听心跳", ["gyxBeat"]], ["📳 摇一摇贴贴", ["gyxShake"]]], "🎛️ 开关和后台": [["🎛️ 功能开关中心", ["gyxSwitch", "gyxWebInvite", "gyxMystic"]], ["🔋 省电模式", ["gyxSaver"]], ["💬 文案不重样", ["gyxVary"]], ["⏳ 生成中提示", ["gyxGen"]]], "📱 小手机": [["📝 TA的备忘录", ["gyxMemo"]], ["🧩 AI小程序", ["gyxApps"]], ["📞 来电动画和铃声", ["gyxRing"]], ["📞 来电增强", ["gyxCallPlus"]], ["📲 手机桌面小组件", ["gyxPhoneW"]], ["🧸 桌面上的TA", ["gyxPet"]], ["📤 角标和分享", ["gyxPing"]]], "📱 软件全家桶": [["🧣 微博", ["gysWeibo"]], ["🫧 泡泡", ["gysBubble"]], ["📕 小红书", ["gysRed"]], ["🫘 豆瓣", ["gysDouban"]], ["💬 iMessage", ["gysImsg"]], ["📲 真手机", ["gysPhone"]], ["🎵 网易云音乐", ["gysMusic"]], ["🎶 抖音", ["gysDouyin"]], ["💚 微信", ["gysWechat"]], ["📺 直播间", ["gyxLive"]]], "🎶 抖音": [["📺 直播间", ["gyxLive"]]], "🎨 美化": [["🫧 气泡工坊", ["gyxBubble"]], ["🎨 酒馆主题", ["gyxStTheme"]], ["🌗 日夜主题", ["gyxDayNight"]], ["👉 跟手返回", ["gyxSwipe"]], ["🛍️ 装扮商店", ["gyxShop"]]]}, "retired": ["📺 追剧进度", "🔐 我们的暗号"]}/*END*/;
+    const BUN = /*GYX_BUNDLES*/{"bundles": {"🖼️ 相册里的插件": [["📸 TA的相册", ["gyxAlbum"]], ["🎨 表情包工坊", ["gyxMeme"]], ["📸 和TA合照", ["gyxDuo"]], ["💑 情侣头像", ["gyxAvatar"]], ["📸 同一秒", ["gyxMoment"]]], "💞 我们的关系": [["💞 好感两层", ["gyxDual"]], ["📊 关系四条线", ["gyxAxes"]], ["📈 我们的等级", ["gyxLevel"]], ["🏅 我们的成就", ["gyxBadge"]], ["🎯 反向攻略", ["gyxWoo"]], ["🔁 我们的小习惯", ["gyxRitual"]], ["🎁 TA的秘密计划", ["gyxPlan"]], ["📜 TA的往事", ["gyxPast"]], ["🪴 TA的成长日志", ["gyxEvolve"]], ["📼 TA的录像带", ["gyxTapes"]]], "📚 回顾": [["📒 手帐时间线", ["gyxHandbook"]], ["📖 我们的书", ["gyxOurBook"]], ["✨ 我们的星图", ["gyxStar"]], ["🗞️ 我们的周报", ["gyxWeekly"]], ["🎞️ 回忆放映", ["gyxReel"]], ["👀 TA眼中的你", ["gyxEye"]], ["⏳ 时光机", ["gyxTime"]], ["🕹️ 记忆潜行", ["gyxDive"]]], "🎉 纪念日和生日": [["🎉 纪念日惊喜", ["gyxAnniv"]], ["🎂 给TA过生日", ["gyxBday"]], ["🏮 一起过节", ["gyxFest"]]], "🤙 我们的约定": [["🤙 小约定", ["gyxPromise"]], ["🎟️ 兑换券", ["gyxCoupon"]], ["🧾 恋爱审批", ["gyxOA"]], ["🎁 愿望清单", ["gyxWish"]], ["💯 一百件小事", ["gyx100"]]], "🌙 早安晚安": [["☀️ 早安简报", ["gyxBrief"]], ["⏰🌙 叫醒与哄睡", ["gyxWake"]], ["🌙 熬夜管家", ["gyxNight"]], ["🕯️ 睡前三件好事", ["gyxGood"]]], "💬 问答": [["🌅 每日一问", ["gyxDaily"]], ["💞 默契问答", ["gyxQuiz"]], ["📋 调查问卷", ["gyxSurvey"]], ["📮 提问箱", ["gyxAskBox"]], ["🗳️ TA的人生选择题", ["gyxDilemma"]], ["📡 心电感应光谱", ["gyxWave"]]], "🎮 游戏": [["🎮 一起玩", ["gyxGame"]], ["🧭 文字冒险", ["gyxQuest"]], ["🗺️ TA布置的寻宝", ["gyxHunt"]], ["🎡 帮我选", ["gyxPick"]], ["🎲 跑团", ["gyxTrpg"]], ["🎣 一起钓鱼", ["gyxFish"]], ["📍 现实捉迷藏", ["gyxSeek"]], ["🔁 时间循环", ["gyxLoop"]], ["🗝️ 双人密室", ["gyxRoom"]], ["🃏 命运卡牌", ["gyxFate"]], ["🆘 TA被困了", ["gyxStuck"]]], "🕵️ 推理和综艺": [["🎭 谁是真的TA", ["gyxReal"]], ["🐢 海龟汤", ["gyxSoup"]], ["🔍 剧本杀", ["gyxCase"]], ["💘 我们的恋综", ["gyxShow"]]], "📰 主页和社交": [["📰 营销号自己爆料", ["gyxScoop"]], ["🔥 微博热搜榜", ["gyxHotList"]], ["⏰ 准点群聊", ["gyxOnTime"]]], "💌 信": [["💌 拆信仪式", ["gyxLetter"]], ["📓 交换日记本", ["gyxJournal"]], ["⏳ 时间胶囊", ["gyxCapsule"]], ["🏞️ 明信片墙", ["gyxPost"]], ["🍾 漂流瓶", ["gyxBottle"]], ["💌 有条件才能拆的信", ["gyxSeal"]]], "🏠 我们的小屋": [["🏠 我们的小屋", ["gyxHome"]], ["🧊 3D小屋", ["gyx3dRoom"]], ["🍁 随机掉落收藏册", ["gyxDrop"]], ["🌱 一起养小生命", ["gyxGrow"]], ["🐷 一起存钱罐", ["gyxJar"]], ["📦 TA的旧物箱", ["gyxBox"]], ["🪟 窗台来客", ["gyxSill"]]], "🗣️ TA怎么说话": [["🫂 相处模式", ["gyxBond"]], ["🧂 风格调料", ["gyxSpice"]], ["🛡️ 平视", ["gyxFair"]], ["🗣️ 口头禅传染", ["gyxEcho"]], ["🎬 听取模式", ["gyxListen"]], ["🌱 TA被你影响", ["gyxInfl"]], ["⌨️ 你打了又删", ["gyxErase"]], ["🔁 你让TA重说了", ["gyxRegen"]], ["🛡️ 别把她写弱", ["gyxFair"]]], "🫂 哄": [["🫂 抱抱", ["gyxHug"]], ["🥺 轮到你哄TA", ["gyxCoax"]], ["🌧️ 吵架和好", ["gyxMakeup"]], ["🌳 秘密树洞", ["gyxSecret"]]], "🚶 陪你": [["🚶 陪你散步", ["gyxWalk"]], ["🍳 一起做饭", ["gyxCook"]], ["📚 一起自习室", ["gyxStudy"]], ["🏃 TA是你的私教", ["gyxCoach"]], ["✈️ 一起旅行", ["gyxTrip"]], ["📮 现实小任务", ["gyxMis"]], ["🕯️ 一起安静待着", ["gyxStill"]]], "💓 贴贴": [["💓 听心跳", ["gyxBeat"]], ["📳 摇一摇贴贴", ["gyxShake"]]], "🎛️ 开关和后台": [["🎛️ 功能开关中心", ["gyxSwitch", "gyxWebInvite", "gyxMystic"]], ["🔋 省电模式", ["gyxSaver"]], ["💬 文案不重样", ["gyxVary"]], ["⏳ 生成中提示", ["gyxGen"]]], "📱 小手机": [["📝 TA的备忘录", ["gyxMemo"]], ["🧩 AI小程序", ["gyxApps"]], ["📞 来电", ["gyxRing", "gyxCallPlus"]], ["📲 手机桌面小组件", ["gyxPhoneW"]], ["🧸 桌面上的TA", ["gyxPet"]], ["🧊 3D小人", ["gyx3d", "gyx3dPage"]], ["📤 角标和分享", ["gyxPing"]], ["📞 来电动画和铃声", ["gyxRing", "gyxCallPlus"]], ["📞 来电增强", ["gyxRing", "gyxCallPlus"]]], "🎨 美化": [["🫧 气泡工坊", ["gyxBubble"]], ["🎨 酒馆主题", ["gyxStTheme"]], ["🌗 日夜主题", ["gyxDayNight"]], ["👉 跟手返回", ["gyxSwipe"]], ["🛍️ 装扮商店", ["gyxShop"]]]}, "retired": ["📺 追剧进度", "🔐 我们的暗号", "📱 软件全家桶", "🧣 微博", "🫧 泡泡", "📕 小红书", "🫘 豆瓣", "💬 iMessage", "📲 真手机", "🎵 网易云", "🎵 网易云音乐", "🎶 抖音", "💚 微信", "📺 直播间", "📻 深夜电台", "🎶 共享歌单", "📼 留声机", "🎵 TA写给你的歌"]}/*END*/;
     function prune(boot) {
         try {
             if (typeof plugins === 'undefined' || !Array.isArray(plugins) || !plugins.length) return 0;
@@ -301,6 +312,6 @@ body.dark-theme .gyhb-box{background:#16181c;color:#e7e9ea}body.dark-theme .gyhb
 .gyhb-card{text-align:center;padding:26px 22px 30px}.gyhb-card .gyhb-ci{font-size:40px;line-height:1.2}.gyhb-card b{display:block;font-size:16px;margin:6px 0 4px}.gyhb-card p{margin:0 auto 14px;max-width:34em;font-size:13px;color:#8e8e93;line-height:1.7}
 .gyhb-go{padding:9px 18px;border-radius:14px;border:none;background:#1d1d1f;color:#fff;cursor:pointer;font-family:inherit;font-size:14px}`;
     document.head.appendChild(css);
-    window.gyHubInfo = () => ({ on: on(), HOSTS: HOSTS.map(h => ({ host: h.host, kids: h.kids })), FOLDERS: window.gyHubFolders(), SET_IDS, CAT, HIDE });
+    window.gyHubInfo = () => ({ on: on(), HOSTS: HOSTS.map(h => ({ host: h.host, kids: h.kids })), FOLDERS: window.gyHubFolders(), SET_IDS, CAT, HIDE: [...HIDE] });
     tick(); setInterval(tick, 800);
 })();

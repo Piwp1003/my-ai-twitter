@@ -55,7 +55,7 @@ const ALL = ['gyxTrpg', 'gyxWoo', 'gyxDive', 'gyxHot', 'gyxCare', 'gyxCallPlus',
 const base = await page.evaluate(ALL => {
   const o = {};
   o.feats = ALL.filter(id => !(window.__gyxFeats || []).some(f => f.id === id));
-  o.minis = ALL.filter(id => !GY_MINI_FEATURES.some(f => f.id === id));
+  o.minis = ALL.map(id => id === 'gyxCallPlus' ? 'gyxCall' : id).filter(id => !GY_MINI_FEATURES.some(f => f.id === id));   // 10/28 来电增强和来电动画合成「📞 来电」（gyxCall）一个入口
   const acts = { gyxTrpg: 'gyx_trpg', gyxWoo: 'gyx_woo', gyxDive: 'gyx_dive', gyxHot: 'gyx_hot', gyxCare: 'gyx_care', gyxCallPlus: 'gyx_call_check', gyxMoodSkin: 'gyx_mood_skin', gyxBubble: 'gyx_bubble', gyxStTheme: 'gyx_st_theme', gyxDayNight: 'gyx_daynight' };
   o.acts = Object.values(acts).filter(k => !GY_AUTONOMY_ACTIONS.some(a => a.key === k));
   const W = window.__gyPmW.WD; o.wd = ['gyxTrpgW', 'gyxWooW', 'gyxDiveW', 'gyxHotW', 'gyxCareW', 'gyxCallPlusW', 'gyxMoodSkinW', 'gyxBubbleW', 'gyxStThemeW', 'gyxDayNightW'].filter(k => !W[k]);

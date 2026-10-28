@@ -111,7 +111,8 @@ if (!window.GYX) (function () {
     // 通用小组件外观：大图标 + 标题 + 几行字（小号只显示图标和第一行）
     X.gw = (w, icon, title, lines) => { lines = (lines || []).filter(Boolean); return w.size === 's' ? `<div class="gw-x s"><b>${icon}</b><em>${lines[0] != null ? lines[0] : X.esc(title)}</em></div>` : `<div class="gw-x m"><div class="h"><b>${icon}</b><span>${X.esc(title)}</span></div>${lines.slice(0, 3).map(l => `<em>${l}</em>`).join('') || '<em>还没有内容</em>'}</div>`; };
     X.repaint = () => { try { const W = window.__gyPmW; if (W && W.render && document.body.classList.contains('gyphm') && !document.body.classList.contains('gyphm-app') && !document.querySelector('#gyPmHome .pm-lock')) W.render(); } catch (e) {} };
-    X.whoSel = (sel, on) => `<select class="gyx-who" onchange="${on}(this.value)">${X.chars().map(c => `<option value="${X.esc(c.id)}"${String(c.id) === String(sel) ? ' selected' : ''}>${X.esc(X.name(c))}</option>`).join('')}</select>`;
+    // on 可以是函数名字符串（append (this.value)），也可以误传了 X.go(...) 的对象——两种都认，取函数名，避免 onchange="[object Object]" 的语法错
+    X.whoSel = (sel, on) => { const fn = on && typeof on === 'object' ? on.fn : on; return `<select class="gyx-who" onchange="${fn}(this.value)">${X.chars().map(c => `<option value="${X.esc(c.id)}"${String(c.id) === String(sel) ? ' selected' : ''}>${X.esc(X.name(c))}</option>`).join('')}</select>`; };
     // 「今天」面板：每个插件往里加一小节（功能关了就不出现）
     const TODAY = [];
     X.today = (fn, fid) => { TODAY.push([fn, fid]); X.todayHook(); };

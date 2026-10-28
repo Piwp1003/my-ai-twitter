@@ -151,6 +151,7 @@ contextBridge.exposeInMainWorld('gyDesk', {
   petShow: o => ipcRenderer.send('gy-pet', 'show', o),
   petHide: () => ipcRenderer.send('gy-pet', 'hide'),
   petSay: t => ipcRenderer.send('gy-pet', 'say', String(t || '')),
+  petDo: (k, v) => ipcRenderer.send('gy-pet', 'do', [k, v]),
   onPet: cb => ipcRenderer.on('gy-pet-ev', (e, ev) => { try { cb(ev); } catch (er) {} }),
   showMain: () => ipcRenderer.send('gy-pet', 'main'),
   oauthLoopback: o => ipcRenderer.invoke('gy-oauth', o),
@@ -191,9 +192,16 @@ a.addEventListener('contextmenu',e=>{e.preventDefault();pet.menu()});a.addEventL
 pet.on((k,v)=>{if(k==='set'){document.body.style.setProperty('--s',(v.size||64)+'px');a.className=v.shape==='free'?'free':'';if(v.img){a.style.backgroundImage='url("'+v.img.replace(/"/g,'%22')+'")';a.textContent=''}else{a.style.backgroundImage='';a.textContent=v.letter||'T'}}
 if(k==='say'){b.textContent=v;b.classList.add('on');clearTimeout(ht);ht=setTimeout(()=>b.classList.remove('on'),Math.max(4000,v.length*280))}});
 </script></body></html>`;
-function petSize(o) { const s = Math.max(36, Math.min(320, +(o && o.size) || 64)); return { w: Math.max(260, s + 40), h: s + 120 }; }
+function petSize(o) { const s = Math.max(36, Math.min(420, +(o && o.size) || 64)); return o && o.mode === '3d' ? { w: Math.max(260, s + 40), h: Math.round(s * 1.25) + 90 } : { w: Math.max(260, s + 40), h: s + 120 }; }
+// 🧊 3D 小 TA：窗口加载 app/js/vendor/gy3d-pet.html（three.js 画的会动的小人）；模型数据从主窗口传过来，单独记着，换窗口时再给一次
+let petModel = null, petMode = '';
 function petShow(o) {
-  petOpts = o || {};
+  o = Object.assign({}, o || {});
+  if (o.model) { petModel = o.model; delete o.model; var newModel = true; }
+  const mode = o.mode === '3d' ? '3d' : '2d';
+  if (petWin && !petWin.isDestroyed() && petMode !== mode) { petWin.close(); petWin = null; }
+  petMode = mode;
+  petOpts = o;
   const sz = petSize(petOpts);
   if (!petWin || petWin.isDestroyed()) {
     const wa = screen.getPrimaryDisplay().workArea;
@@ -202,10 +210,11 @@ function petShow(o) {
       webPreferences: { preload: PRELOADS.pet, contextIsolation: true, nodeIntegration: false } });
     petWin.setAlwaysOnTop(true, 'floating');
     petWin.setIgnoreMouseEvents(true, { forward: true });
-    petWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(PET_HTML));
-    petWin.webContents.on('did-finish-load', () => { petWin.webContents.send('gy-pet-do', 'set', petOpts); petWin.showInactive(); });
-    petWin.on('closed', () => { petWin = null; });
-  } else { petWin.setSize(sz.w, sz.h); petWin.webContents.send('gy-pet-do', 'set', petOpts); petWin.showInactive(); }
+    if (mode === '3d') petWin.loadFile(path.join(__dirname, 'app', 'js', 'vendor', 'gy3d-pet.html'));
+    else petWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(PET_HTML));
+    petWin.webContents.on('did-finish-load', () => { petWin.webContents.send('gy-pet-do', 'set', mode === '3d' ? Object.assign({}, petOpts, { model: petModel }) : petOpts); petWin.showInactive(); });
+    const thisWin = petWin; petWin.on('closed', () => { if (petWin === thisWin) petWin = null; });
+  } else { petWin.setSize(sz.w, sz.h); petWin.webContents.send('gy-pet-do', 'set', newModel ? Object.assign({}, petOpts, { model: petModel }) : petOpts); petWin.showInactive(); }
 }
 function toMain(ev) { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('gy-pet-ev', ev); }
 function showMain() { if (!mainWindow || mainWindow.isDestroyed()) return; if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); }
@@ -295,6 +304,7 @@ ipcMain.on('gy-pet', (e, what, v) => {
   if (what === 'main') showMain();
   if (what === 'hide') { if (petWin && !petWin.isDestroyed()) petWin.close(); petWin = null; }
   if (what === 'say' && petWin && !petWin.isDestroyed()) petWin.webContents.send('gy-pet-do', 'say', v);
+  if (what === 'do' && petWin && !petWin.isDestroyed() && Array.isArray(v)) petWin.webContents.send('gy-pet-do', v[0], v[1]);
 });
 ipcMain.on('gy-pet-in', (e, what, v) => {
   if (!petWin || petWin.isDestroyed()) return;

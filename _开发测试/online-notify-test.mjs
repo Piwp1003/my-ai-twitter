@@ -89,7 +89,7 @@ await page.evaluate(() => gyResClose());
 const keys = await page.evaluate(() => GY_AUTONOMY_ACTIONS.map(a => a.key));
 const want = ['retweet', 'review', 'schedule_change', 'bio_update', 'phone_scroll', 'gossip_tell', 'song_share', 'group_call', 'npc_contact'];
 check('第二批都接进了动作表', want.every(k => keys.includes(k)), want.filter(k => !keys.includes(k)).join(' '));
-check('不写小说、不续写故事', !keys.some(k => /novel|story|continue/.test(k)));
+check('不写小说、不续写故事', !keys.some(k => !/^gys_/.test(k) && /novel|story|continue/.test(k))   /* gys_wb_story 是微博的「故事」，277 起软件内置了 */);
 
 DECIDE = { plan: [
   { action: 'retweet', after: 0, reason: '看到了', param: '夜班|辛苦了' },

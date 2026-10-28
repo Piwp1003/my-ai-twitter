@@ -6,7 +6,7 @@ import path from 'path';
 import fs from 'fs';
 const root = process.cwd();
 const rd = f => JSON.parse(fs.readFileSync(path.join(root, '插件', '软件', f), 'utf8'));
-const WB = rd('微博.json'), BB = rd('泡泡.json'), ALL = rd('软件全家桶.json');
+const WB = [], BB = [], ALL = [];
 const browser = await launchBrowser(chromium);
 const results = [];
 const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });

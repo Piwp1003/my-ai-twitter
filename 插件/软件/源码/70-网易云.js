@@ -165,7 +165,7 @@ function nowInfo() {
     return { s, t: t / 1000, d: d / 1000, playing: !NOW.paused && t < d };
 }
 let TK = null;
-function tick() { clearInterval(TK); TK = setInterval(() => { const r = document.querySelector('#gys_music .mu-player'); if (!r) { clearInterval(TK); return; } const n = nowInfo(); if (!n) return; const pr = r.querySelector('.mu-prog i'); if (pr) pr.style.width = (n.d ? Math.min(100, n.t / n.d * 100) : 0) + '%'; const tt = r.querySelector('.mu-tm'); if (tt) tt.innerHTML = `<span>${mmss(n.t)}</span><span>${mmss(n.d)}</span>`; r.classList.toggle('paused', !n.playing); if (!n.playing && NOW && !NOW.real && n.t >= n.d && !NOW.ended) { NOW.ended = 1; M.next(); } }, 1000); }
+function tick() { clearInterval(TK); TK = setInterval(() => { const r = document.querySelector('#gys_music .mu-player'); if (!r) { clearInterval(TK); return; } const n = nowInfo(); if (!n) return; const pr = r.querySelector('.mu-prog i'); if (pr) pr.style.width = (n.d ? Math.min(100, n.t / n.d * 100) : 0) + '%'; const tt = r.querySelector('.mu-tm'); if (tt) { const sp = tt.querySelectorAll('span'); if (sp.length === 3) { sp[0].textContent = mmss(n.t); sp[2].textContent = mmss(n.d); } else tt.innerHTML = `<span>${mmss(n.t)}</span><span>${mmss(n.d)}</span>`; } const kn = r.querySelector('.mu2-prog u'); if (kn) kn.style.left = (n.d ? Math.min(100, n.t / n.d * 100) : 0) + '%'; r.classList.toggle('paused', !n.playing); if (!n.playing && NOW && !NOW.real && n.t >= n.d && !NOW.ended) { NOW.ended = 1; M.next(); } }, 1000); }
 const mmss = s => { s = Math.max(0, Math.round(s || 0)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
 M.toggle = () => { const n = nowInfo(); if (!n) return; if (NOW.real && window.gymToggle) window.gymToggle(); else { if (NOW.paused) { NOW.t0 = Date.now() - NOW.pausedAt; NOW.paused = 0; } else { NOW.pausedAt = Date.now() - NOW.t0; NOW.paused = 1; } } G.repaint(APP); };
 function queue() { return (QUEUE && QUEUE.length) ? QUEUE : Object.keys(D.songs); }
@@ -249,7 +249,7 @@ M.openPlayer = () => { if (!NOW) return; G.push(APP, { id: 'player', title: '', 
 M.cmts = id => { const s = songOf(id); if (!s) return; REPLY = null; if (!s.cmtGen) genCmts(s, 8); G.push(APP, { id: 'cmt_' + id, title: `评论(${G.fmtN(s.cmtN || cmtFlat(s).length)})`, html: () => cmtHtml(s), foot: () => `<div class="mu-cin"><input id="muCin" placeholder="${REPLY ? '回复 ' + esc(nameOf(REPLY.by)) : '听说爱评论的人粉丝多'}" onkeydown="if(event.key==='Enter'&&!event.isComposing)gysMu.send('${id}')"><span onclick="gysMu.send('${id}')">发送</span></div>` }); };
 function cmtHtml(s) {
     const L = s.cmts.slice().sort((a, b) => CMTSORT === 'hot' ? (b.likeN + b.likes.length) - (a.likeN + a.likes.length) : b.at - a.at);
-    const one = (c, kid) => `<div class="mu-c${kid ? ' kid' : ''}">${G.av(APP, c.by, kid ? 26 : 34)}<div><div class="mu-ch2"><b onclick="gysMu.prof('${c.by}')">${esc(nameOf(c.by))}</b><span class="${c.likes.includes('me') ? 'on' : ''}" onclick="gysMu.cLike('${s.id}','${c.id}')">${G.fmtN(c.likeN + c.likes.length)} 👍</span></div><small>${G.ago(c.at)}</small><p onclick="gysMu.replyTo('${s.id}','${c.id}')">${c.to ? `回复 <a>@${esc(nameOf(c.to))}</a>：` : ''}${esc(c.text)}</p>${(c.kids || []).map(k => one(k, 1)).join('')}</div></div>`;
+    const one = (c, kid) => `<div class="mu-c${kid ? ' kid' : ''}">${G.av(APP, c.by, kid ? 26 : 34)}<div><div class="mu-ch2"><b onclick="gysMu.prof('${c.by}')">${esc(nameOf(c.by))}${G.charOf(c.by) ? '<span class="mu-ta">TA</span>' : ''}</b><span class="${c.likes.includes('me') ? 'on' : ''}" onclick="gysMu.cLike('${s.id}','${c.id}')">${G.fmtN(c.likeN + c.likes.length)} 👍</span></div><small>${G.ago(c.at)}</small><p onclick="gysMu.replyTo('${s.id}','${c.id}')">${c.to ? `回复 <a>@${esc(nameOf(c.to))}</a>：` : ''}${esc(c.text)}</p>${(c.kids || []).map(k => one(k, 1)).join('')}</div></div>`;
     return `<div class="mu-cs">${cover(s, 48)}<div><b>${esc(s.t)}</b><small>${esc(s.a)}</small></div></div><div class="mu-csort"><span class="${CMTSORT === 'hot' ? 'on' : ''}" onclick="gysMu.cs('hot')">最热</span><span class="${CMTSORT === 'new' ? 'on' : ''}" onclick="gysMu.cs('new')">最新</span><a onclick="gysMu.moreC('${s.id}')">${BUSY['c' + s.id] ? '⏳' : '↻ 更多'}</a></div>${L.map(c => one(c)).join('') || (BUSY['c' + s.id] ? '<div class="gys-busy">⏳ 评论加载中…</div>' : '<div class="gys-empty">还没有评论，来抢沙发</div>')}`;
 }
 M.cs = v => { CMTSORT = v; G.repaint(APP); };
@@ -407,9 +407,208 @@ M.__keep = v => { D.cfg.keep = +v; saveD(); };
 M.__clrHist = async () => { if (await G.confirm('清空最近播放？')) { D.hist = []; saveD(); G.repaint(APP); } };
 M.export = () => { const L = ['🎵 网易云音乐 导出 ' + new Date().toLocaleString(), '', '【我喜欢的音乐】'].concat((D.likes[meW] || []).map(songOf).filter(Boolean).map(s => `${s.t} - ${s.a}`), ['', '【歌单】']).concat(D.lists.map(l => `${l.name}（${nameOf(l.by)}）：` + l.ids.map(songOf).filter(Boolean).map(s => s.t).join(' / ')), ['', '【笔记】']).concat(D.posts.map(p => `${nameOf(p.by)}：${p.text}（${(songOf(p.sid) || {}).t || ''}）`)); const t = L.join('\n'); try { if (typeof saveTextFileForApp === 'function') return saveTextFileForApp(t, '网易云音乐.txt'); } catch (e) {} const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain' })); a.download = '网易云音乐.txt'; a.click(); };
 
+/* ================= 277：照网易云截图重做的新版界面（开关：🎵 网易云新版界面；关掉就是上面那套老样子） =================
+   底栏：首页 / 搜索 / 笔记 / 我的；首页顶上 推荐 · 漫游 · 播客；「本地」= 音乐盒，「共享」= 共享歌单，深夜电台 / 留声机在播客里，TA 写给你的歌在搜索里
+   一起听：两个头像挨着、连着耳机线；TA 说话从头像上冒气泡；「距离 …m」自己填；中间 💬 是一起听聊天记录 */
+X.feat('gysMuNew', { n: '🎵 网易云新版界面', desc: '照真网易云做的布局：首页 / 搜索 / 笔记 / 我的，红唱片播放页，一起听两个头像连着耳机线。关掉就是以前那套（推荐 / 发现 / 漫游 / 笔记 / 我的）' });
+X.feat('gysMuTalk', { n: '🎧 一起听时 TA 接话', desc: '在网易云里和 TA 一起听的时候，TA 会跟着正在放的歌说一句（从头像上冒气泡），也会把想让你听的歌插到下一首；中间 💬 能和 TA 聊。关掉就只是安静地一起听' });
+const newOn = () => X.on('gysMuNew'), talkOn = () => X.on('gysMuTalk');
+let HSUB = 'rec', MESUB = 'music', MELIST = 'recent';
+const TG = () => { D.tg = D.tg && typeof D.tg === 'object' ? D.tg : {}; return D.tg; };
+const tgOf = cid => { const T = TG(); return T[cid] = T[cid] || { msgs: [], dist: '' }; };
+const tgMin = cid => { try { const B = box(); const v = B && B.stats && B.stats.byChar && B.stats.byChar[String(cid)]; return v ? Math.round(v.ms / 60000) : 0; } catch (e) { return 0; } };
+const tgCid = () => listening()[0] || '';
+const distTxt = cid => { const d = String(tgOf(cid).dist || '').trim(); return d ? `距离 ${esc(d)}m` : '距离 …m'; };
+M.dist = async cid => { cid = cid || tgCid(); if (!cid) return; const v = await G.input('你们现在离多远？（米，填个数就行，空着就不显示数字）', tgOf(cid).dist || ''); if (v === null || v === undefined) return; tgOf(cid).dist = String(v).replace(/[^\d.,万千kK]/g, '').slice(0, 10); saveD(); G.repaint(APP); };
+const lastMsg = cid => { const L = tgOf(cid).msgs; return L[L.length - 1]; };
+const bubbleOf = cid => { const m = lastMsg(cid); return m && Date.now() - m.at < 15000 ? m : null; };
+// 一起听里说话：TA 回 / TA 自己接一句（参考正在放的歌和歌词）
+function nowLine() { const n = nowInfo(); if (!n) return ''; const L = lyricsOf(n.s); if (!L.length || !n.d) return ''; return L[Math.min(L.length - 1, Math.floor(n.t / n.d * L.length))] || ''; }
+async function tgSay(c, mine) {
+    const n = nowInfo(), s = n && n.s; const T = tgOf(String(c.id)); const hist = T.msgs.slice(-8).map(m => (m.by === 'me' ? G.meName() : c.name) + '：' + m.text).join('\n');
+    const ln = nowLine();
+    const r = X.plain(await X.ask(`${X.who(c)}\n你们正在网易云「一起听」${s ? `《${s.t}》- ${s.a || ''}` : ''}${ln ? `，这会儿唱到「${ln}」` : ''}。${T.dist ? `你们现在相距 ${T.dist} 米。` : ''}一起听聊天记录：\n${hist || '（还没说话）'}\n${mine ? '她刚说：「' + mine + '」。回她一句。' : '你想跟着这首歌随口说一句（可以说这首歌让你想到的、问她听没听过、或者跟刚才的话接上）。'}像在一起听歌时发的消息：短、口语，一句话。只写那一句。`) || '').slice(0, 80);
+    if (!r) return null; T.msgs.push({ by: 'c:' + c.id, text: r, at: Date.now(), sid: s ? s.id : '' }); if (T.msgs.length > 300) T.msgs.splice(0, T.msgs.length - 300); saveD(); G.repaint(APP); return r;
+}
+M.tgSend = async () => {
+    const inp = document.getElementById('muTgIn'); const cid = tgCid(); if (!inp || !cid) return; const t = inp.value.trim(); if (!t) return; inp.value = '';
+    const T = tgOf(cid), n = nowInfo(); T.msgs.push({ by: 'me', text: t.slice(0, 200), at: Date.now(), sid: n ? n.s.id : '' }); saveD(); G.repaint(APP);
+    const c = X.char(cid); if (!c) return;
+    if (/换|下一首|点.{0,4}歌|想听|推荐/.test(t) && talkOn()) { await taPick(c, t); return; }
+    const r = await tgSay(c, t); if (r && !G.isOpen(APP)) G.notify(APP, c, `🎧 <b>${X.esc(c.name)}</b>`, r, X.go('gysMusicOpenPlayer'));
+};
+// TA 点歌：挑一首插到下一首
+async function taPick(c, req) {
+    const n = nowInfo(), s = n && n.s;
+    const o = X.json(await X.ask(`${X.who(c)}\n你们在网易云一起听${s ? `，现在放的是《${s.t}》- ${s.a || ''}` : ''}。${req ? '她说：「' + req + '」。' : ''}挑一首你想让她接着听的歌（真实存在的歌，或者她音乐盒里的：${(syncBox().slice(0, 12).map(x => '《' + x.t + '》').join('') || '没有')}），再说一句为什么。只输出 JSON：{"t":"歌名","a":"歌手","say":"一句话"}`));
+    if (!o || !o.t) return null; const ns = mkSong(o); if (!ns) return null;
+    if (!QUEUE.length) QUEUE = s ? [s.id] : []; const i = s ? QUEUE.indexOf(s.id) : -1; const q = QUEUE.filter(x => x !== ns.id); q.splice(i < 0 ? 0 : Math.min(q.length, i + 1), 0, ns.id); QUEUE = q;
+    const T = tgOf(String(c.id)); T.msgs.push({ by: 'c:' + c.id, text: `🎵 把《${ns.t}》插到了下一首`, at: Date.now() - 1, sys: 1 }); const say = X.plain(o.say || '').slice(0, 80); if (say) T.msgs.push({ by: 'c:' + c.id, text: say, at: Date.now() });
+    saveD(); G.repaint(APP); return { s: ns, say };
+}
+M.taPick = async () => { const cs = G.chars(); if (!cs.length) return; let c = X.char(tgCid()) || cs[0]; if (!tgCid() && cs.length > 1) { const i = await G.sheet(cs.map(x => x.name), '叫谁给你点歌？'); if (i == null) return; c = cs[i]; } X.toast(X.v('⏳ TA 在挑', 'TA 在翻歌单'), ''); const r = await taPick(c); if (!r) return X.toast('没挑出来', '再试一次'); if (!NOW) M.play(r.s.id); else X.toast(`${c.name} 点了《${r.s.t}》`, r.say || '插到下一首了'); };
+M.tgChat = () => { const cid = tgCid(); if (!cid) return M.together(); G.push(APP, { id: 'tgchat', title: '', cls: 'mu-tgcb', html: () => tgChatHtml(), foot: () => `<div class="mu-tgin"><input id="muTgIn" placeholder="说点什么…" onkeydown="if(event.key==='Enter'&&!event.isComposing)gysMu.tgSend()"><span onclick="gysMu.tgSend()">发送</span></div>`, after: r => { const b = r.querySelector('.gys-body'); if (b) b.scrollTop = 1e6; } }); };
+function tgChatHtml() { const cid = tgCid(); if (!cid) return '<div class="gys-empty">没在一起听</div>'; const w = 'c:' + cid, T = tgOf(cid); return `<div class="mu-tgc"><div class="mu-tgch"><b>一起听聊天记录</b><small>一起听了 ${tgMin(cid)} 分钟${talkOn() ? ` · <a onclick="gysMu.taPick()">让 TA 点一首</a>` : ''}</small></div>${T.msgs.slice(-80).map(m => `<div class="mu-tgm${m.by === 'me' ? ' me' : ''}${m.sys ? ' sys' : ''}">${G.av(APP, m.by === 'me' ? meW : w, 38)}<span>${esc(m.text)}</span></div>`).join('') || '<div class="mu-tip" style="text-align:center;color:rgba(255,255,255,.6)">还没说话，说点什么吧</div>'}</div>`; }
+// 自己接话：播放页开着、一起听、正在放 → 隔一阵 TA 跟着歌说一句
+let TGT = 0; setInterval(() => { try { if (!newOn() || !talkOn() || !G.isOpen(APP)) return; const t = G.top(APP); if (!t || t.id !== 'player') return; const cid = tgCid(), n = nowInfo(); if (!cid || !n || !n.playing) return; if (Date.now() - TGT < 150e3) return; const l = lastMsg(cid); if (l && Date.now() - l.at < 120e3) return; if (Math.random() > 0.35) return; TGT = Date.now(); const c = X.char(cid); if (c) tgSay(c); } catch (e) {} }, 20000);
+
+/* ---------- 新版页面 ---------- */
+const mini = () => { const n = nowInfo(); if (!n) return ''; return `<div class="mu2-mini" onclick="gysMu.openPlayer()"><span class="mu2-md${n.playing ? ' on' : ''}">${cover(n.s, 30, 15)}</span><b>${esc(n.s.t)} <span>- ${esc(n.s.a || '')}</span></b><i class="mu2-pp" onclick="event.stopPropagation();gysMu.toggle()">${n.playing ? '❚❚' : '▶'}</i><i class="mu2-q" onclick="event.stopPropagation();gysMu.queue()">≡</i></div>`; };
+M.queue = () => G.push(APP, { title: '播放列表', html: () => rows(queue().slice(0, 100)) || '<div class="gys-empty">空的</div>' });
+function head2(tab) {
+    if (tab === 'me') return `<div class="gys-hd mu2-mhd"><span class="gys-bk" onclick="GYS.close('${APP}')">${G.ic('back', 22)}</span><b></b><span class="gys-hr" onclick="gysMu.searchPage()">🔍</span></div>`;
+    if (tab === 'search') return `<div class="gys-hd mu-hd"><span class="gys-bk" onclick="GYS.close('${APP}')">${G.ic('back', 22)}</span><div class="mu-sb" onclick="gysMu.searchPage()">🔍 ${esc(D.daily && D.daily.ids[0] && songOf(D.daily.ids[0]) ? songOf(D.daily.ids[0]).t + ' · ' + (songOf(D.daily.ids[0]).a || '') : '搜索歌曲、歌手')}</div></div>`;
+    if (tab === 'post') return `<div class="gys-hd"><span class="gys-bk" onclick="GYS.close('${APP}')">${G.ic('back', 22)}</span><b>笔记</b></div>`;
+    return `<div class="gys-hd mu2-hd"><span class="gys-bk" onclick="GYS.close('${APP}')">${G.ic('back', 22)}</span><div class="mu2-st">${[['rec', '推荐'], ['fm', '漫游'], ['pod', '播客']].map(([k, n]) => `<span class="${HSUB === k ? 'on' : ''}" onclick="gysMu.hsub('${k}')">${n}</span>`).join('')}</div><span class="gys-hr" onclick="gysMu.searchPage()">🔍</span></div>`;
+}
+M.hsub = k => { HSUB = k; G.tab(APP, 'home'); };
+const tagCv = (bg, ico, tag, sz) => `<span class="mu-cv mu2-cv" style="width:${sz || 120}px;height:${sz || 120}px;background:${bg}"><i style="font-size:${Math.round((sz || 120) * 0.36)}px">${ico}</i>${tag ? `<small>${tag}</small>` : ''}</span>`;
+function home2() {
+    if (HSUB === 'fm') return fmTab();
+    if (HSUB === 'pod') return podTab();
+    if (!D.daily || D.daily.day !== X.day()) genDaily();
+    syncBox();
+    const d = new Date(), cid = tgCid(), cs = G.chars(), tc = cid ? X.char(cid) : cs[0];
+    const pl = window.gyxListData ? (window.gyxListData().songs || []) : null, sg = window.gyxSongData ? (window.gyxSongData().list || []) : null;
+    const rec = D.lists.filter(l => l.by !== meW).slice(0, 6);
+    const hot = Object.values(D.songs).sort((a, b) => (b.likeN || 0) - (a.likeN || 0)).slice(0, 5).map(s => s.id);
+    return `<div class="mu2-home">
+      <div class="mu2-big">
+        <div onclick="gysMu.daily()"><div class="t" style="background:linear-gradient(135deg,#e0c3ff,#8b6fd6)"><b>${d.getDate()}</b>每日推荐<small>${BUSY.daily ? '正在挑歌…' : '根据你的口味'}</small><em>▶</em></div><div class="s" style="background:#3a2b55">${D.daily && D.daily.ids[0] && songOf(D.daily.ids[0]) ? esc(songOf(D.daily.ids[0]).t) : '今日限定好歌推荐'}</div></div>
+        ${tc ? `<div onclick="gysMu.together()"><div class="t" style="background:linear-gradient(160deg,#ff8a8a,#f2546a)">🎧 和 TA 一起听<small>${cid ? esc(tc.name) + ' 在听' : '叫 ' + esc(tc.name) + ' 来'}</small><em>▶</em></div><div class="s" style="background:#c9475a">${tgMin(tc.id) ? '已经一起听了 ' + tgMin(tc.id) + ' 分钟' : '还没一起听过'}</div></div>` : ''}
+        <div onclick="gysMu.heart()"><div class="t" style="background:linear-gradient(135deg,#ffe48a,#f5a35b)">💗 心动模式<em>▶</em></div><div class="s" style="background:#7a5b37">红心歌曲和 TA 的歌</div></div>
+      </div>
+      <div class="mu2-h3" onclick="gysMu.listsAll()">推荐歌单 ›</div>
+      <div class="mu-hs mu2-pls">${pl ? `<div class="mu-lc" onclick="gysMu.shared()">${tagCv('linear-gradient(135deg,#ffd7a8,#f59bb0)', '🌙', '共享歌单')}<b>我们俩的歌 · ${pl.length} 首</b></div>` : ''}${rec.map(l => { const s = songOf(l.ids[0]); return `<div class="mu-lc" onclick="gysMu.list('${l.id}')">${l.cover ? `<span class="mu-cv mu2-cv" style="width:120px;height:120px;background-image:url('${l.cover}')"><small>TA 做的</small></span>` : tagCv(coverBg(s), '♪', 'TA 做的')}<b>${esc(l.name)}（${esc(nameOf(l.by))}给你的）</b></div>`; }).join('')}<div class="mu-lc" onclick="gysMu.askList()">${tagCv('#26262e', '✨', '')}<b>叫 TA 给你做一个</b></div></div>
+      ${sg && sg.length ? `<div class="mu2-h3" onclick="gysMu.taSongs()">TA 写给你的歌 ›</div><div class="mu-hs mu2-pls">${sg.slice(-6).reverse().map(x => { const s = taSong(x); return s ? `<div class="mu-lc" onclick="gysMu.playIn(['${s.id}'],0)">${tagCv(coverBg(s), '✍️', '原创')}<b>${esc(s.t)}</b><small>${esc(nameOf(s.ta))}</small></div>` : ''; }).join('')}</div>` : ''}
+      <div class="mu2-h3">近期云村热播</div>${hot.length ? rows(hot) : `<div class="mu-tip">${BUSY.daily ? '⏳ 在挑歌…' : '多听几首就有了'}</div>`}
+    </div>`;
+}
+M.heart = () => { FMMODE = 'heart'; D.fm = []; saveD(); HSUB = 'fm'; G.tab(APP, 'home'); };
+function podTab() {
+    const R = window.gyxRadioOpen, T = window.gyxTapeOpen;
+    let eps = []; try { const st = window.gyxRadioData && window.gyxRadioData(); eps = (st && st.eps) || []; } catch (e) {}
+    return `<div class="mu2-home"><div class="mu2-h3">我的播客</div>
+      ${R ? `<div class="mu-row" onclick="gyxRadioOpen()">${tagCv('linear-gradient(135deg,#334,#667)', '📻', '', 56)}<div class="mu-ri"><b>TA 的深夜电台</b><small>只给你一个人开的节目${eps.length ? ' · ' + eps.length + ' 期' : ''}</small></div><span class="mu-more">›</span></div>` : ''}
+      ${T ? `<div class="mu-row" onclick="gyxTapeOpen()">${tagCv('linear-gradient(135deg,#8a5329,#3d2616)', '📼', '', 56)}<div class="mu-ri"><b>留声机 · 磁带</b><small>你录给 TA 的、TA 录回给你的</small></div><span class="mu-more">›</span></div>` : ''}
+      ${window.gyxSongOpen ? `<div class="mu-row" onclick="gyxSongOpen()">${tagCv('linear-gradient(135deg,#7f7fd5,#5b3cc4)', '✍️', '', 56)}<div class="mu-ri"><b>TA 写给你的歌 · 歌本</b><small>TA 用小合成器哼给你听的</small></div><span class="mu-more">›</span></div>` : ''}
+      ${!R && !T ? '<div class="gys-empty">深夜电台和留声机都关着<br>设置 → 全部开关 里打开</div>' : ''}</div>`;
+}
+function search2() {
+    const q = (n, i, f) => `<div onclick="${f}"><i>${i}</i>${n}</div>`;
+    const tile = (n, i, f) => `<div onclick="${f}">${n}<i>${i}</i></div>`;
+    return `<div class="mu2-home"><div class="mu2-qi">${q('TA 点歌', '🎧', 'gysMu.taPick()')}${q('热歌榜', '💯', 'gysMu.charts()')}${window.gyxRadioOpen ? q('深夜电台', '📻', 'gyxRadioOpen()') : ''}${q('新歌新碟', '💿', "gysMu.search('新歌')")}</div>
+      <div class="mu2-tiles">${tile('漫游', '🌀', "gysMu.hsub('fm')")}${window.gyxSongData ? tile('TA 写给你的歌', '✍️', 'gysMu.taSongs()') : ''}${window.gyxListData ? tile('共享歌单', '🌙', 'gysMu.shared()') : ''}${window.gyxTapeOpen ? tile('留声机 · 磁带', '📼', 'gyxTapeOpen()') : ''}${tile('歌单广场', '📑', 'gysMu.listsAll()')}${tile('下雨天', '🌧️', "gysMu.search('下雨天')")}${tile('深夜', '🌙', "gysMu.search('深夜')")}${tile('国语专属', '🎤', "gysMu.search('华语')")}${tile('EMO 说唱', '🎧', "gysMu.search('emo 说唱')")}${tile('热播动漫歌曲', '✨', "gysMu.search('动漫')")}</div></div>`;
+}
+function me2() {
+    syncBox(); const p = G.prof(APP, meW), B = box(), mine = D.lists.filter(l => l.by === meW), others = D.lists.filter(l => l.by !== meW), pl = window.gyxListData ? (window.gyxListData().songs || []) : null;
+    const hrs = Math.round(D.hist.length * 3.8 / 60);
+    const lrow = (l, sub) => `<div class="mu2-pl" onclick="gysMu.list('${l.id}')">${l.cover ? `<span class="mu-cv" style="width:50px;height:50px;border-radius:8px;background-image:url('${l.cover}')"></span>` : cover(songOf(l.ids[0]), 50)}<div class="i"><b>${esc(l.name)}</b><small>${sub}</small></div><span class="mu-more">⋮</span></div>`;
+    const shared = pl ? (() => { const c = X.char(tgCid()) || G.chars()[0]; return `<div class="mu2-pl" onclick="gysMu.shared()">${tagCv('linear-gradient(135deg,#ffd7a8,#f59bb0)', '🌙', '', 50)}<div class="i"><b>我们俩的歌 <span class="mu2-two">${c ? G.av(APP, 'c:' + c.id, 16) : ''}${G.av(APP, meW, 16)}</span></b><small>共享歌单 · ${pl.length} 首${c ? ' · ' + esc(c.name) + ' 和 你' : ''}</small></div><span class="mu-more">⋮</span></div>`; })() : '';
+    let list = '';
+    if (MESUB === 'music') {
+        const L = MELIST === 'mine' ? mine.map(l => lrow(l, `歌单 · ${l.ids.length} 首`)).join('') + `<div class="mu2-pl" onclick="gysMu.newList()">${tagCv('#26262e', '＋', '', 50)}<div class="i"><b>新建歌单</b></div></div>`
+            : MELIST === 'fav' ? others.map(l => lrow(l, `歌单 · ${l.ids.length} 首 · ${esc(nameOf(l.by))}`)).join('') || '<div class="mu-tip">TA 给你做的歌单在这里 · <a onclick="gysMu.askList()">叫 TA 做一个</a></div>'
+            : MELIST === 'share' ? shared || '<div class="mu-tip">共享歌单关着（设置 → 全部开关 →「共享歌单」）</div>'
+            : shared + D.lists.slice().sort((a, b) => b.at - a.at).slice(0, 6).map(l => lrow(l, `歌单 · ${l.ids.length} 首 · ${esc(nameOf(l.by))}`)).join('');
+        list = `<div class="mu2-st2">${[['recent', '🔒 近期'], ['mine', '创建', mine.length], ['fav', '收藏', others.length], ['share', '共享', pl ? 1 : 0]].map(([k, n, c]) => `<span class="${MELIST === k ? 'on' : ''}" onclick="gysMu.melist('${k}')">${n}${c ? `<sup>${c}</sup>` : ''}</span>`).join('')}</div>
+          <div class="mu2-pl" onclick="gysMu.likedList()"><span class="mu-cv" style="width:50px;height:50px;border-radius:8px;background:linear-gradient(135deg,#ff7a85,#fc3d49)"><i style="font-size:22px">♥</i></span><div class="i"><b>我喜欢的音乐</b><small>${(D.likes[meW] || []).length} 首</small></div><span class="mu2-xd" onclick="event.stopPropagation();gysMu.heart()">♡ 心动模式</span></div>${list}`;
+        list = list || '';
+    } else if (MESUB === 'pod') list = podTab();
+    else { const Ps = D.posts.filter(x => x.by === meW); list = `<div class="mu-pbar"><span class="gys-btn sm" onclick="gysMu.newPost()">✏️ 写笔记</span></div>${Ps.map(postHtml).join('') || '<div class="gys-empty">还没写过笔记</div>'}`; }
+    return `<div class="mu2-me"><div class="mu2-mehd" style="${p.bg ? `background-image:url('${p.bg}')` : ''}"><div onclick="gysMu.editMe()">${G.av(APP, meW, 84)}</div><b>${esc(p.nick)}</b>
+        <div class="mu2-num"><span><em>${G.fmtN(p.following || 0)}</em>关注</span><span><em>${G.fmtN(p.followers || 0)}</em>粉丝</span><span><em>Lv.${lv(meW)}</em></span><span><em>${hrs}</em>小时</span></div>
+        <div class="mu2-btns"><span onclick="gysMu.recent()">🕒 最近</span><span onclick="gysMu.local()">💽 本地</span><span onclick="gysMu.together()">🎧 一起听</span><span onclick="GYS.uiPage('music')">👔 装扮</span><span class="sm" onclick="gysMu.meMore()">▦</span></div></div>
+      <div class="mu2-sheet"><div class="mu2-st1">${[['music', '音乐'], ['pod', '播客'], ['note', '笔记']].map(([k, n]) => `<span class="${MESUB === k ? 'on' : ''}" onclick="gysMu.mesub('${k}')">${n}</span>`).join('')}</div>${list}</div></div>`;
+}
+M.mesub = k => { MESUB = k; G.repaint(APP); };
+M.melist = k => { MELIST = k; G.repaint(APP); };
+M.meMore = async () => { const i = await G.sheet(['🪪 编辑资料', '📊 听歌排行', '🎞️ 年度听歌报告', '⚙️ 设置'], ''); if (i == null) return; [() => M.editMe(), () => M.rankPage('me'), () => M.report(), () => M.settings()][i](); };
+// 新版播放页
+const ARM = `<svg class="mu2-arm" viewBox="0 0 120 130"><circle cx="20" cy="14" r="13" fill="rgba(0,0,0,.25)"/><circle cx="20" cy="14" r="8" fill="#fff"/><path d="M20 14 C 24 60, 40 90, 86 112" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round"/><rect x="78" y="104" width="24" height="16" rx="3" fill="#fff" transform="rotate(32 90 112)"/></svg>`;
+function player2() {
+    const n = nowInfo(); if (!n) return '<div class="gys-empty">没有在放的歌</div>'; const s = n.s;
+    const cid = tgCid(), w = cid ? 'c:' + cid : '', bub = cid ? bubbleOf(cid) : null;
+    const lrc = lyricsOf(s); const pct = n.d ? Math.min(100, n.t / n.d * 100) : 0;
+    const duo = cid ? `<div class="mu2-duo"><svg width="300" height="120" viewBox="0 0 300 120" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.4"><path d="M122 76 C 120 90, 134 98, 150 102"/><path d="M178 76 C 180 90, 166 98, 150 102"/><path d="M150 102 L150 110"/></svg>
+        <span class="a1">${G.av(APP, meW, 64)}</span><span class="a2" onclick="gysMu.prof('${w}')">${G.av(APP, w, 64)}</span>
+        ${bub ? `<div class="mu2-bub${bub.by === 'me' ? ' me' : ''}" data-until="${bub.at + 15000}">${esc(bub.text)}</div>` : ''}
+        <p onclick="gysMu.dist('${cid}')">${distTxt(cid)}，一起听了 ${tgMin(cid)} 分钟</p></div>` : '';
+    return `<div class="mu-player mu2-player${n.playing ? '' : ' paused'}${cid ? ' tg' : ''}"><div class="mu-pbg" style="${coverImg(s) ? `background-image:url('${coverImg(s)}')` : `background:${coverBg(s)}`}"></div>
+      <div class="mu-ph"><span onclick="GYS.back('music')">⌄</span><div><b>${cid ? esc(s.t) : '私人推荐'}</b>${cid ? `<small onclick="gysMu.search('${esc(s.a || '').replace(/'/g, '')}')">${esc(s.a || '未知歌手')} ›</small>` : ''}</div><span onclick="gysMu.menu('${s.id}')">⋮</span></div>
+      ${duo}
+      ${LYR ? `<div class="mu-lyr" onclick="gysMu.lyr()">${lrc.length ? lrc.map(l => `<p>${esc(l)}</p>`).join('') : `<p class="dim">${s.ta ? '这首没有歌词' : playable(s) ? '这首没有歌词<br>在音乐盒里给它传 .lrc 就有了' : '暂无歌词'}</p>`}</div>`
+            : `<div class="mu2-vin${cid ? ' sm' : ''}" onclick="gysMu.lyr()"><div class="ring"></div><div class="rec"></div>${coverImg(s) ? `<div class="lab" style="background-image:url('${coverImg(s)}')"></div>` : cid ? `<div class="lab" style="background:${coverBg(s)}">${s.ta ? '✍️' : '♪'}</div>` : '<div class="lab red"></div>'}${cid ? '' : ARM}</div>`}
+      ${cid ? '' : `<div class="mu2-tl"><div><b>${esc(s.t)}</b><small onclick="gysMu.search('${esc(s.a || '').replace(/'/g, '')}')">${esc(s.a || '未知歌手')}</small></div><div class="r"><span class="${liked(meW, s.id) ? 'on' : ''}" onclick="gysMu.like('${s.id}')">${liked(meW, s.id) ? '♥' : '♡'}<sup>${G.fmtN(s.likeN || 0)}</sup></span><span onclick="gysMu.cmts('${s.id}')">💬<sup>${s.cmtN ? G.fmtN(s.cmtN) : ''}</sup></span></div></div>`}
+      ${!n.s.ta && !playable(s) && !(window.gymFindTrack && window.gymFindTrack(s.t)) ? `<div class="mu-nosrc">🔇 没有音源，只是假装在放 · <a onclick="gysMu.toBox()">加到音乐盒</a></div>` : ''}
+      ${cid ? `<div class="mu2-ops"><span class="${liked(meW, s.id) ? 'on' : ''}" onclick="gysMu.like('${s.id}')">${liked(meW, s.id) ? '♥' : '♡'}<sup>${G.fmtN(s.likeN || 0)}</sup></span><span onclick="gysMu.taPick()">🎵</span><span class="chat" onclick="gysMu.tgChat()">💬${tgOf(cid).msgs.length ? `<sup>${tgOf(cid).msgs.length}</sup>` : ''}</span><span onclick="gysMu.cmts('${s.id}')">💭<sup>${s.cmtN ? G.fmtN(s.cmtN) : ''}</sup></span><span onclick="gysMu.menu('${s.id}')">⋮</span></div>` : ''}
+      <div class="mu-prog mu2-prog"><i style="width:${pct}%"></i><u style="left:${pct}%"></u></div><div class="mu-tm"><span>${mmss(n.t)}</span><span>${playable(s) ? '标准音质' : ''}</span><span>${mmss(n.d)}</span></div>
+      <div class="mu2-ctl"><span onclick="gysMu.together()">🎧</span><span onclick="gysMu.prev()">⏮</span><span class="big" onclick="gysMu.toggle()">${n.playing ? '❚❚' : '▶'}</span><span onclick="gysMu.next()">⏭</span><span onclick="gysMu.queue()">≡</span></div>
+      <div class="mu2-ff">${timerOn() ? `<span class="${TMR ? 'on' : ''}" onclick="gysMu.timer()">⏰${TMR ? ' ' + tmrLeft() : ''}</span>` : ''}<span onclick="gysMu.share('${s.id}')">↗</span><span onclick="gysMu.lyr()">词</span></div></div>`;
+}
+// 气泡到点自己消失（不重画整页）
+setInterval(() => { document.querySelectorAll('#gys_music .mu2-bub[data-until]').forEach(b => { if (Date.now() > +b.dataset.until) b.remove(); }); }, 1000);
+// 打开播放页：新版 / 老版
+const _openPlayer = M.openPlayer; M.openPlayer = () => { if (!newOn()) return _openPlayer(); if (!NOW) return; G.push(APP, { id: 'player', title: '', cls: 'mu-pb mu2-pb', html: () => player2(), after: () => tick() }); tick(); };
+const _play = M.play; M.play = async (id, quiet) => { if (!newOn() || quiet) return _play(id, quiet); await _play(id, 1); const t = G.top(APP); if (t && t.id === 'player') G.repaint(APP); else M.openPlayer(); };
+// 评论区：TA 的评论挂「TA」标签
+X.css('gys-music-277-css', `
+.mu-c .mu-ta{display:none}.gys-music.mu2 .mu-c .mu-ta{display:inline;font-size:10px;background:#ff3a3a;color:#fff;border-radius:3px;padding:0 4px;margin-left:5px;font-weight:600}
+.gys-music.mu2{--mb:#f7f7f9;--mc:#fff;--mc2:#ececf0;--mt:#222;--ms:#888;background:var(--mb);color:var(--mt)}body.dark-theme .gys-music.mu2{--mb:#13131a;--mc:#1f1f26;--mc2:#26262e;--mt:#fff;--ms:#888}
+.gys-music.mu2 .gys-hd{background:var(--mb);color:var(--mt);border:none}.gys-music.mu2 .gys-tabs{background:var(--mb);border-top:none}.gys-music.mu2 .gys-tb{color:#8a8a93}.gys-music.mu2 .gys-tb.on{color:var(--mt)}.gys-music.mu2 .gys-tb i{display:none}.gys-music.mu2 .gys-tb em{font-size:16px;font-weight:600}
+.gys-music.mu2 .mu-hd .mu-sb{background:var(--mc2);color:var(--ms)}.gys-music.mu2 .mu-sec a,.gys-music.mu2 .mu-ri small,.gys-music.mu2 .mu-tip{color:var(--ms)}
+.gys-music.mu2 .mu-nc,.gys-music.mu2 .mu-mgrid span,.gys-music.mu2 .mu-menu{background:var(--mc)}.gys-music.mu2 .mu-cin input,.gys-music.mu2 .mu-sbox input,.gys-music.mu2 .mu-chips span{background:var(--mc2)}
+.mu2-st{flex:1;display:flex;gap:18px;font-size:16px;color:#8a8a93;justify-content:center}.mu2-st span{cursor:pointer}.mu2-st span.on{color:var(--mt);font-weight:700}.mu2-hd .gys-hr,.mu2-mhd .gys-hr{font-size:18px;cursor:pointer;margin-left:auto}
+.mu2-home{padding-bottom:84px}.mu2-big{display:flex;gap:10px;padding:10px 16px 0;overflow-x:auto;scrollbar-width:none}.mu2-big::-webkit-scrollbar{display:none}
+.mu2-big>div{flex:none;width:128px;border-radius:10px;overflow:hidden;cursor:pointer}.mu2-big .t{height:124px;position:relative;padding:8px;font-weight:800;font-size:15px;color:#fff}.mu2-big .t b{display:block;font-size:26px;line-height:1}.mu2-big .t em{position:absolute;right:8px;bottom:8px;font-style:normal;font-size:16px}.mu2-big .t small{position:absolute;left:8px;bottom:8px;font-size:10px;background:rgba(0,0,0,.3);border-radius:4px;padding:1px 5px;font-weight:500;max-width:80px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.mu2-big .s{height:44px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;color:#fff;padding:0 6px;text-align:center;overflow:hidden}
+.mu2-h3{font-size:18px;font-weight:800;padding:20px 16px 10px;cursor:pointer}
+.mu2-pls .mu-lc{width:120px}.mu2-pls .mu-lc b{color:inherit;opacity:.9}.mu2-cv{position:relative;border-radius:8px}.mu2-cv small{position:absolute;left:6px;bottom:6px;font-size:10px;background:rgba(255,255,255,.85);color:#333;border-radius:3px;padding:0 4px;font-weight:600}
+.mu2-qi{display:grid;grid-template-columns:repeat(4,1fr);padding:16px 8px 10px}.mu2-qi div{text-align:center;font-size:12px;opacity:.85;cursor:pointer}.mu2-qi i{font-style:normal;display:block;font-size:24px;margin-bottom:5px}
+.mu2-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 10px}.mu2-tiles div{height:84px;border-radius:8px;background:var(--mc);display:flex;align-items:center;padding:0 14px;font-weight:800;font-size:15.5px;position:relative;overflow:hidden;cursor:pointer}.mu2-tiles div i{position:absolute;right:-6px;bottom:-10px;font-style:normal;font-size:52px;opacity:.35}
+.mu2-mini{position:absolute;left:12px;right:12px;bottom:calc(64px + env(safe-area-inset-bottom,0px));height:52px;background:var(--mc);border-radius:26px;display:flex;align-items:center;gap:10px;padding:0 14px 0 4px;z-index:5;cursor:pointer;color:var(--mt);box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.mu2-md{width:44px;height:44px;border-radius:22px;background:#0c0c0c;display:flex;align-items:center;justify-content:center;flex:none}.mu2-md.on .mu-cv{animation:muSpin 8s linear infinite}
+.mu2-mini b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}.mu2-mini b span{color:var(--ms);font-weight:400}.mu2-mini i{font-style:normal}.mu2-pp{width:30px;height:30px;border-radius:15px;border:1.6px solid var(--ms);display:flex;align-items:center;justify-content:center;font-size:10px}.mu2-q{font-size:20px}
+.mu2-me{padding-bottom:84px}.mu2-mehd{background:linear-gradient(180deg,#b9b9bf,#8b8b92 70%,#6d6d74) center/cover;padding:10px 0 28px;color:#fff;text-align:center;margin-top:-1px}.mu2-mehd .gys-av{border:3px solid rgba(255,255,255,.85);cursor:pointer}
+.mu2-mehd>b{display:block;font-size:22px;margin-top:8px}.mu2-num{display:flex;justify-content:center;gap:18px;font-size:12px;margin-top:10px;opacity:.95}.mu2-num em{font-style:normal;font-weight:700;font-size:15px;margin-right:2px}
+.mu2-btns{display:flex;gap:7px;padding:14px 12px 0}.mu2-btns span{flex:1;height:36px;border-radius:7px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;gap:4px;font-size:12.5px;cursor:pointer;white-space:nowrap}.mu2-btns span.sm{flex:none;width:36px}
+.mu2-sheet{background:var(--mb);border-radius:16px 16px 0 0;margin-top:-16px;position:relative;min-height:200px}
+.mu2-st1{display:flex;justify-content:space-around;font-size:17px;color:#8a8a93;padding:14px 0 8px;font-weight:700}.mu2-st1 span{cursor:pointer;position:relative}.mu2-st1 .on{color:var(--mt)}.mu2-st1 .on::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:2px;background:var(--mt)}
+.mu2-st2{display:flex;gap:22px;padding:12px 16px 6px;font-size:14.5px;color:#999;align-items:center}.mu2-st2 span{cursor:pointer}.mu2-st2 .on{color:var(--mt);font-weight:700}.mu2-st2 sup{font-size:9px}
+.mu2-pl{display:flex;align-items:center;gap:12px;padding:7px 16px;cursor:pointer}.mu2-pl .i{flex:1;min-width:0}.mu2-pl b{font-size:15px;font-weight:500;display:flex;align-items:center;gap:6px}.mu2-pl small{font-size:12px;color:var(--ms);display:block;margin-top:3px}.mu2-xd{border:1px solid var(--ms);border-radius:15px;font-size:12px;padding:5px 10px}
+.mu2-two{display:inline-flex}.mu2-two .gys-av{border:1px solid var(--mb)}.mu2-two .gys-av+.gys-av{margin-left:-5px}
+.mu2-pb{background:#2b1513!important}.mu2-player{padding-bottom:20px}.mu2-player .mu-pbg{filter:blur(50px) brightness(.45)}
+.mu2-player .mu-ph>div b{font-weight:500}.mu2-duo{position:relative;height:140px;margin-top:6px}.mu2-duo svg{position:absolute;left:50%;top:0;margin-left:-150px}
+.mu2-duo .a1,.mu2-duo .a2{position:absolute;top:8px;cursor:pointer}.mu2-duo .a1{left:calc(50% - 60px)}.mu2-duo .a2{left:calc(50% - 4px)}.mu2-duo .a1 .gys-av,.mu2-duo .a2 .gys-av{border:2px solid rgba(255,255,255,.35)}
+.mu2-duo p{position:absolute;left:0;right:0;top:112px;text-align:center;font-size:12.5px;opacity:.75;cursor:pointer}
+.mu2-bub{position:absolute;top:2px;left:calc(50% + 66px);max-width:150px;background:rgba(0,0,0,.3);border-radius:16px;padding:8px 14px;font-size:13.5px;line-height:1.4;animation:mu2Pop .25s ease}.mu2-bub::before{content:"";position:absolute;left:-6px;top:22px;border:6px solid transparent;border-right-color:rgba(0,0,0,.3);border-left:0}
+.mu2-bub.me{left:auto;right:calc(50% + 66px)}.mu2-bub.me::before{left:auto;right:-6px;border-right-color:transparent;border-left:6px solid rgba(0,0,0,.3)}
+@keyframes mu2Pop{from{transform:scale(.6);opacity:0}}
+.mu2-vin{position:relative;width:260px;height:260px;margin:70px auto 0;cursor:pointer}.mu2-vin.sm{width:220px;height:220px;margin-top:22px}.mu2-vin .ring{position:absolute;inset:-12px;border-radius:50%;background:rgba(255,255,255,.06)}
+.mu2-vin .rec{position:absolute;inset:0;border-radius:50%;background:repeating-radial-gradient(circle,#121212 0 2px,#1b1b1b 2px 4px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);animation:muSpin 20s linear infinite}.mu2-player.paused .mu2-vin .rec,.mu2-player.paused .mu2-vin .lab{animation-play-state:paused}
+.mu2-vin .lab{position:absolute;inset:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:46px;background-size:cover;background-position:center;animation:muSpin 20s linear infinite}.mu2-vin.sm .lab{inset:38px}
+.mu2-vin .lab.red{background:#ff3a3a}.mu2-vin .lab.red::after{content:"";width:12px;height:12px;border-radius:6px;background:#111;box-shadow:0 0 0 4px #e33}
+.mu2-arm{position:absolute;left:112px;top:-92px;width:130px;height:150px;transform-origin:22px 15px;transition:transform .5s}.mu2-player.paused .mu2-arm{transform:rotate(-22deg)}
+.mu2-tl{display:flex;align-items:center;padding:34px 22px 0}.mu2-tl b{font-size:19px}.mu2-tl small{display:block;font-size:13px;opacity:.6;margin-top:6px;cursor:pointer}.mu2-tl .r{margin-left:auto;display:flex;gap:22px;font-size:21px}.mu2-tl .r span,.mu2-ops span{position:relative;cursor:pointer}.mu2-tl .r sup,.mu2-ops sup{position:absolute;left:18px;top:-8px;font-size:9px}.mu2-tl .r .on,.mu2-ops .on{color:#ff4d5a}
+.mu2-ops{display:flex;align-items:center;justify-content:space-between;padding:0 24px;margin-top:30px;font-size:21px}.mu2-ops .chat{width:54px;height:54px;border-radius:27px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center}.mu2-ops .chat sup{left:36px;top:2px}
+.mu2-prog{margin-top:22px;position:relative;height:2px}.mu2-prog u{position:absolute;top:-4px;width:10px;height:10px;border-radius:5px;background:#fff;transform:translateX(-50%)}
+.mu2-ctl{display:flex;align-items:center;justify-content:space-between;padding:16px 26px 0;font-size:22px;opacity:.9}.mu2-ctl span{cursor:pointer}.mu2-ctl .big{font-size:34px}
+.mu2-ff{display:flex;justify-content:space-around;padding:22px 40px 0;font-size:15px;opacity:.75}.mu2-ff span{cursor:pointer}.mu2-ff .on{color:#ff9a9a}
+.mu-tgcb{background:linear-gradient(180deg,#6b4a32,#4a3a2e 60%,#3f3129)!important;color:#fff}.mu-tgc{padding-bottom:20px}.mu-tgch{text-align:center;padding:16px 0 4px}.mu-tgch b{font-size:19px}.mu-tgch small{display:block;font-size:13px;opacity:.6;margin-top:6px}.mu-tgch a{color:#ffc2c2;cursor:pointer}
+.mu-tgm{display:flex;gap:10px;padding:0 16px;margin-top:16px;align-items:flex-start}.mu-tgm span{background:rgba(255,255,255,.12);border-radius:14px;padding:9px 14px;font-size:15px;max-width:240px;line-height:1.45}.mu-tgm.me{flex-direction:row-reverse}.mu-tgm.me span{background:rgba(255,255,255,.22)}.mu-tgm.sys span{background:none;opacity:.7;font-size:13px;padding:9px 0}
+.mu-tgin{display:flex;gap:8px;padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));background:#3f3129}.mu-tgin input{flex:1;border:none;background:rgba(0,0,0,.25);border-radius:999px;padding:11px 16px;font-size:14px;color:#fff;outline:none}.mu-tgin span{align-self:center;color:#ffc2c2;cursor:pointer}
+`);
+M.__newOn = newOn;
+
+const TABS_OLD = [['home', 'i:disc', '推荐'], ['find', 'i:compass', '发现'], ['fm', 'i:roam', '漫游'], ['post', 'i:note', '笔记'], ['me', 'i:person', '我的']];
+const TABS_NEW = [['home', 'i:disc', '首页'], ['search', 'i:search', '搜索'], ['post', 'i:note', '笔记'], ['me', 'i:person', '我的']];
+const TABS = TABS_OLD.slice();
+const syncTabs = () => { const T = newOn() ? TABS_NEW : TABS_OLD; if (TABS.length !== T.length || TABS[1][0] !== T[1][0]) TABS.splice(0, TABS.length, ...T); try { const r = document.getElementById('gys_' + APP); if (r) r.classList.toggle('mu2', newOn()); } catch (e) {} };
 G.app(APP, {
-    tabs: [['home', 'i:disc', '推荐'], ['find', 'i:compass', '发现'], ['fm', 'i:roam', '漫游'], ['post', 'i:note', '笔记'], ['me', 'i:person', '我的']],
-    head, render: t => t === 'fm' ? fmTab() : t === 'post' ? postTab() : t === 'me' ? meTab() : t === 'find' ? findTab() : home()
+    tabs: TABS,
+    head: t => { syncTabs(); const A = newOn(); if (A && !TABS_NEW.some(x => x[0] === t)) t = 'home'; if (!A && !TABS_OLD.some(x => x[0] === t)) t = 'home'; return A ? head2(t) : head(t); },
+    render: t => { if (newOn()) return t === 'search' ? search2() : t === 'post' ? postTab() : t === 'me' ? me2() : home2(); t = TABS_OLD.some(x => x[0] === t) ? t : 'home'; return t === 'fm' ? fmTab() : t === 'post' ? postTab() : t === 'me' ? meTab() : t === 'find' ? findTab() : home(); },
+    after: r => { syncTabs(); if (!newOn()) return; const tb = r.querySelector('.gys-tabs'), m = mini(); if (tb && m) tb.insertAdjacentHTML('beforebegin', m); }
 });
 window.gysMusicOpen = tab => G.open(APP, tab);
 window.gysMusicOpenSong = id => { G.open(APP); if (songOf(id)) M.play(id, 1), M.openPlayer(); };
@@ -521,3 +720,9 @@ X.css('gys-music-258-css', `
 .mu-mt>b{font-size:16px;margin-top:8px}.mu-mt>small{color:#fc3d49;border:1px solid #fc3d49;border-radius:999px;padding:1px 10px;font-size:12px}.mu-mt>p{color:#666;font-size:14px;margin:8px 0 0;line-height:1.6}
 .mu-pops span.on{color:#fc3d49}.mu-pops sup{font-size:10px}
 `);
+// 🎧 一起听接话（277）：自主行动 / 今天 / 小组件 / 记忆总览
+X.action({ key: 'gys_mu_tgpick', label: '一起听的时候给她点一首、插到下一首', hint: '网易云一起听', need: c => talkOn() && tgCid() === String(c.id) && !!NOW && rare(c, 'tp', 1), run: async c => { mark(c, 'tp'); const r = await taPick(c); if (!r) return null; G.notify(APP, c, `🎧 <b>${X.esc(c.name)}</b> 把《${X.esc(r.s.t)}》插到了下一首`, r.say || '', X.go('gysMusicOpenPlayer')); return { text: `一起听的时候把《${r.s.t}》插到了下一首：${r.say}`, selfNotified: true, jump: X.go('gysMusicOpenPlayer') }; } }, 'gysMuTalk');
+X.today(() => { if (!talkOn()) return null; const d = X.day(), rows = []; Object.keys(TG()).forEach(cid => { const L = tgOf(cid).msgs.filter(m => m.by !== 'me' && X.day(new Date(m.at)) === d); if (L.length) rows.push({ t: nameOf('c:' + cid), x: `一起听时说了 ${L.length} 句 ·「${L[L.length - 1].text.slice(0, 24)}」`, go: X.go('gysMusicOpenPlayer') }); }); return rows.length ? { title: '🎧 一起听', rows } : null; }, 'gysMuTalk');
+X.widget('gysMuTgW', { n: '一起听', sizes: ['s', 'm'], tap: () => { G.open(APP); if (NOW) M.openPlayer(); else M.together(); }, r: () => { const cid = tgCid(), c = cid && X.char(cid), m = cid && lastMsg(cid); return `<div style="padding:10px;font-size:12px;line-height:1.6"><b style="color:#fc3d49">🎧 一起听</b><br>${c ? `和 ${esc(c.name)} · ${distTxt(cid)}<br><span style="opacity:.7">${m ? esc(m.text.slice(0, 20)) : '一起听了 ' + tgMin(cid) + ' 分钟'}</span>` : '没在一起听 · 点一下开始'}</div>`; } }, 'gysMuTalk');
+X.mem({ k: 'gysMuTg', ico: '🎧', n: '一起听时 TA 说的话', d: '网易云一起听聊天记录里 TA 说的（改了就是改那句，删了就没了）', items: c => tgOf(String(c.id)).msgs.filter(m => m.by !== 'me' && !m.sys), text: m => m.text, edit: (m, v) => { m.text = String(v).slice(0, 80); }, del: (c, i) => { const T = tgOf(String(c.id)), L = T.msgs.filter(m => m.by !== 'me' && !m.sys); T.msgs = T.msgs.filter(m => m !== L[i]); }, meta: m => G.ago(m.at), save: () => saveD() }, 'gysMuTalk');
+X.ctx(id => { if (!talkOn()) return ''; const c = X.char(id); if (!c) return ''; const T = (D.tg || {})[String(c.id)]; if (!T || !T.msgs.length) return ''; const L = T.msgs.slice(-4).map(m => (m.by === 'me' ? '她' : '你') + '：' + m.text).join(' / '); return `【网易云一起听】${T.dist ? '你们相距 ' + T.dist + ' 米；' : ''}刚才一起听时聊的：${L}`; }, 'gysMuTalk');

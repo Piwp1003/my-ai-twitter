@@ -6,7 +6,7 @@ import fs from 'fs';
 const root = process.cwd();
 if (fs.existsSync(path.join(root, 'js', '90-bailu-cards.js'))) { console.log('（白露不测）'); process.exit(0); }
 const PLUG = JSON.parse(fs.readFileSync(path.join(root, '插件', '新玩法', '新玩法全家桶.json'), 'utf8'));
-const SPRITE = JSON.parse(fs.readFileSync(path.join(root, '插件', '角色立绘差分.json'), 'utf8'));
+const SPRITE = JSON.parse(fs.readFileSync(path.join(root, '插件', '新玩法', '角色立绘差分.json'), 'utf8'));
 const browser = await launchBrowser(chromium);
 const results = [];
 const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });
@@ -105,7 +105,7 @@ const ls = await page.evaluate(async () => {
   return o;
 });
 check('🎬 听取模式：一句句播，名字、括号里的动作当旁白；装了立绘插件就用立绘，「哈哈」那句换成开心的那张；聊天里有 🎬 按钮', ls.open && ls.sprite && ls.name && ls.nar && ls.btn, JSON.stringify(ls));
-check('小功能再归了一次类（顶上 30 个以内），合集、使用指南打开都是整页', ls.count <= 30 && ls.page && ls.guidePage, JSON.stringify(ls));
+check('小功能再归了一次类（顶上 36 个以内；223 时是 30，后来加了游戏厅、个性化、软件、外面的世界、我的 MCP 这些入口），合集、使用指南打开都是整页', ls.count <= 36 && ls.page && ls.guidePage, JSON.stringify(ls));
 
 const bad = errs.filter(e => !/x\.test|Failed to fetch/.test(e));
 check('没有页面报错', !bad.length, bad.join(' | ').slice(0, 600));

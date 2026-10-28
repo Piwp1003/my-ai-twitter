@@ -25,9 +25,9 @@ await page.evaluate(() => gyPmBack()); await page.waitForTimeout(500);
 check('退回私信列表：标签回来', await vis('#gyPmX'));
 await page.evaluate(() => gyPmXGo('home')); await page.waitForTimeout(400);
 check('点「主页」：回谷雨主页', await page.evaluate(() => getComputedStyle(document.getElementById('view-home')).display !== 'none'));
-await page.evaluate(() => { gyPmHome(); }); await page.waitForTimeout(400);
+await page.evaluate(() => { gyPmHome(); }); await page.waitForTimeout(1200);   // 标签每 400ms 同步一次，iOS 外观开着时页面忙，多等一下
 check('回桌面：标签不见', !(await vis('#gyPmX')));
-await page.evaluate(() => gyPmSet(false)); await page.waitForTimeout(400);
+await page.evaluate(() => gyPmSet(false)); await page.waitForTimeout(1000);
 check('关小手机：谷雨原样', !(await vis('#gyPmX')) && !(await page.evaluate(() => document.body.classList.contains('gyphm'))));
 await browser.close();
 const pass = results.filter(x => x.ok).length;

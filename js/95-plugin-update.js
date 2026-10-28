@@ -16,7 +16,7 @@
 (function () {
     if (window.__gyPlgUpd) return; window.__gyPlgUpd = 1;
     const URL_ = './插件/新玩法/新玩法全家桶.json';
-    const URLS = [URL_, './插件/软件/软件全家桶.json'];   // 📱 软件合集也一起查（装过才会提示新增）
+    const URLS = [URL_];   // 📱 软件 10/28 起内置在本体里，不用再查
     const K_AUTO = 'gyPlgAutoUpd', K_SKIP = 'gyPlgUpdSkip';
     const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
     const autoOn = () => ls(K_AUTO) !== '0';

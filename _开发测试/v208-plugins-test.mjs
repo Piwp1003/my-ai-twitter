@@ -46,8 +46,8 @@ await page.evaluate(({ PLUG, BAILU }) => {
 await page.waitForTimeout(1500);
 const tag = BAILU ? '[白露]' : '[谷雨]';
 const NEW = ['gyxTrip', 'gyxMakeup', 'gyxAvatar', 'gyxBday', 'gyxBook'];
-const ins = await page.evaluate(NEW => ({ miss: NEW.filter(k => !GY_MINI_FEATURES.some(f => f.id === k)), n: (window.__gyxFeats || []).length, dup: GY_MINI_FEATURES.filter(f => (/^(gyxWeather|gyxList)$/.test(f.id) || /睡前故事/.test(f.title))).map(f => f.id) }), NEW).catch(e => ({ err: e.message }));
-check(`${tag} 第三批 5 个插件都装上了（追剧进度不要了）；重复的（天气、歌单、单独的睡前故事）没有`, ins.miss && !ins.miss.length && !ins.dup.length, JSON.stringify(ins));
+const ins = await page.evaluate(NEW => ({ miss: NEW.filter(k => !GY_MINI_FEATURES.some(f => f.id === k)), n: (window.__gyxFeats || []).length, dup: GY_MINI_FEATURES.filter(f => /睡前故事/.test(f.title)   /* 10/28 天气联动、共享歌单她说留着 */).map(f => f.id) }), NEW).catch(e => ({ err: e.message }));
+check(`${tag} 第三批 5 个插件都装上了（追剧进度不要了）；单独的睡前故事没有`, ins.miss && !ins.miss.length && !ins.dup.length, JSON.stringify(ins));
 const close = id => page.evaluate(id => { const o = document.getElementById(id); if (o) o.remove(); }, id);
 
 // ✈️ 一起旅行

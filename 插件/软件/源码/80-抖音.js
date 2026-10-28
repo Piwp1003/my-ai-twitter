@@ -5,6 +5,7 @@ X.feat('gysDouyin', { n: '🎶 抖音', desc: '抖音：上下滑刷视频、双
 const ST = X.store('gysdouyin');
 let D = { vids: [], lives: [], dms: {}, follow: ['me'], notes: [], cfg: { auto: 1 }, last: {}, migrated: 0 };
 const saveD = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => ST.set('d', D), 300); }; })();
+window.__gyxLive = 1;   // 278：挡住老合集里的旧直播间（86）
 const Y = window.gysDy = {};
 const BUSY = {};
 const P = (id, def, vars) => X.pl(id, def, vars);
@@ -106,12 +107,29 @@ function vidHtml(v, i) {
       <div class="dy-info">${v.loc ? `<em>📍 ${esc(v.loc)}</em>` : ''}<b onclick="gysDy.prof('${v.by}')">@${esc(nameOf(v.by))}</b> <small>· ${G.ago(v.at)}</small><p>${esc(v.cap).replace(/#([^#\s]{1,14})/g, '<u>#$1</u>')}</p><div class="dy-mu">♪ <span><i>${esc(v.music)}</i></span></div></div>
       <div class="dy-prog"><i style="animation-duration:${v.dur}s"></i></div></div>`;
 }
+// 🎬 一起看（277）：「一起听 · 一起看」（贴链接 / 官方网页）和「一起看电影」（本地片子 + 字幕）都从这里进
+X.feat('gysDyWatch', { n: '🎬 抖音 · 一起看', desc: '抖音首页顶上多一栏「一起看」：贴视频链接 / 开视频网站和 TA 一起看，或者打开本地电影一起看。关掉就没有这一栏（一起看还在小功能里）' });
+const watchOn = () => X.on('gysDyWatch');
+const TOPS = () => [['live', '直播'], ['city', '同城'], ['follow', '关注'], ['rec', '推荐']].concat(watchOn() ? [['watch', '一起看']] : []);
+const wmNow = () => { try { return window.gyWmNow ? window.gyWmNow() : null; } catch (e) { return null; } };
+function watchHtml() {
+    const n = wmNow(), c = X.cur();
+    const tile = (ico, t, f, bg) => `<div class="dy-wt" onclick="${f}" style="background:${bg}"><i>${ico}</i><b>${t}</b></div>`;
+    return `<div class="dy-home dy-lp dy-wp"><div class="dy-top"><span onclick="GYS.close('douyin')">‹</span>${TOPS().map(([k, nm]) => `<b class="${CH === k ? 'on' : ''}" onclick="gysDy.ch('${k}')">${nm}</b>`).join('')}<span onclick="gysDy.searchPage()">🔍</span></div>
+      ${n ? `<div class="dy-wnow" onclick="gysDy.wmGo()"><div class="dy-wpl"><span>▶</span></div><div class="dy-wni"><b>${esc(n.title || '正在看')}</b><small>${esc(n.artist || '')}</small></div></div>` : ''}
+      ${c ? `<div class="dy-wwith">${G.av(APP, 'me', 36)}${G.av(APP, 'c:' + c.id, 36)}<div><b>和${esc(c.name)}一起看</b></div></div>` : ''}
+      <div class="dy-wts">${window.gyWmOpen ? tile('🔗', '贴链接 / 视频网站', 'gysDy.wmGo()', 'linear-gradient(135deg,#fe2c55,#ff7a45)') : ''}${typeof gyOpenMiniFeature === 'function' ? tile('🎬', '本地电影', 'gysDy.film()', 'linear-gradient(135deg,#25f4ee,#3a7bd5)') : ''}</div></div>`;
+}
+Y.wmGo = () => { G.close(APP); try { window.gyWmOpen(); } catch (e) {} };
+Y.film = () => { G.close(APP); try { gyOpenMiniFeature('watch_together'); } catch (e) {} };
+window.gysDouyinWatch = () => { G.open(APP, 'home'); CH = 'watch'; G.repaint(APP); };
 function homeHtml() {
     if (CH === 'live') return livesHtml();
+    if (CH === 'watch') { if (watchOn()) return watchHtml(); CH = 'rec'; }
     const L = feedOf(CH); let i = Math.min(IDX[CH] || 0, Math.max(0, L.length - 1));
     if (L.length - i < 3 && !BUSY.f) setTimeout(() => genFeed(CH), 50);
     const v = L[i]; if (v && LASTV !== v.id) { LASTV = v.id; v.plays = (v.plays || 0) + 1; }
-    return `<div class="dy-home"><div class="dy-top"><span onclick="GYS.close('douyin')">‹</span>${[['live', '直播'], ['city', '同城'], ['follow', '关注'], ['rec', '推荐']].map(([k, n]) => `<b class="${CH === k ? 'on' : ''}" onclick="gysDy.ch('${k}')">${n}</b>`).join('')}<span onclick="gysDy.searchPage()">🔍</span></div>
+    return `<div class="dy-home"><div class="dy-top"><span onclick="GYS.close('douyin')">‹</span>${TOPS().map(([k, n]) => `<b class="${CH === k ? 'on' : ''}" onclick="gysDy.ch('${k}')">${n}</b>`).join('')}<span onclick="gysDy.searchPage()">🔍</span></div>
       <div class="dy-stage" id="dyStage">${v ? vidHtml(v, i) : `<div class="dy-empty">${BUSY.f ? '⏳ 正在加载…' : CH === 'follow' ? '关注的人还没发视频' : '刷新一下'}<br><a onclick="gysDy.__feed()">刷新</a></div>`}</div>
       <div class="dy-nav"><span onclick="gysDy.go(-1)">⌃</span><span onclick="gysDy.go(1)">⌄</span></div></div>`;
 }
@@ -160,7 +178,7 @@ function livesHtml() {
     if (!D.livesAt || Date.now() - D.livesAt > 3 * 3600e3) setTimeout(genLives, 50);
     const ta = onAir().filter(l => l.ta), oth = onAir().filter(l => !l.ta), rec = D.lives.filter(l => l.end && l.ta).slice(0, 10);
     const card = l => `<div class="dy-lc" onclick="gysDy.room('${l.id}')" style="background:${bgOf(l.title)}"><em>🔴 直播中 · ${G.fmtN(l.viewers)}</em><i>${esc(l.ico || '🎤')}</i><b>${esc(l.title)}</b><small>${G.av(APP, l.host, 18)} ${esc(nameOf(l.host))}</small></div>`;
-    return `<div class="dy-home dy-lp"><div class="dy-top"><span onclick="GYS.close('douyin')">‹</span>${[['live', '直播'], ['city', '同城'], ['follow', '关注'], ['rec', '推荐']].map(([k, n]) => `<b class="${CH === k ? 'on' : ''}" onclick="gysDy.ch('${k}')">${n}</b>`).join('')}<span onclick="gysDy.myLive()">📡</span></div>
+    return `<div class="dy-home dy-lp"><div class="dy-top"><span onclick="GYS.close('douyin')">‹</span>${TOPS().map(([k, n]) => `<b class="${CH === k ? 'on' : ''}" onclick="gysDy.ch('${k}')">${n}</b>`).join('')}<span onclick="gysDy.myLive()">📡</span></div>
       <div class="dy-lgrid">${ta.map(card).join('')}${oth.map(card).join('') || (BUSY.lv ? '<div class="gys-busy" style="color:#aaa">⏳</div>' : '')}</div>
       ${rec.length ? `<div class="dy-sec">TA 播过的</div>${rec.map(l => `<div class="dy-rec" onclick="gysDy.room('${l.id}')">${G.av(APP, l.host, 34)}<div><b>${esc(l.title)}</b><small>${new Date(l.at).toLocaleDateString()} · ${esc(l.sum || '')}</small></div></div>`).join('')}` : ''}
       <div class="gys-acts"><span class="gys-btn sm ghost" style="color:#fff;border-color:#555" onclick="gysDy.__lives()">${BUSY.lv ? '⏳' : '↻ 换一批'}</span>${G.chars().length ? `<span class="gys-btn sm ghost" style="color:#fff;border-color:#555" onclick="gysDy.askLive()">📣 叫 TA 开播</span>` : ''}</div></div>`;
@@ -488,4 +506,11 @@ X.css('gys-douyin-258-css', `
 .dy-hr i{font-style:normal;font-size:11px;color:#fff;border-radius:3px;padding:0 4px;line-height:16px}.dy-hr i.t0{background:#2e82ff}.dy-hr i.t1{background:#ff6a00}.dy-hr i.t2{background:#fe2c55}
 .dy-mic{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin:10px 0}.dy-mic>div{height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#fff;border-radius:4px}.dy-mic small{font-size:11.5px;color:rgba(255,255,255,.75);padding:0 6px;text-align:center}.dy-mic .wv{color:#25f4ee}
 .dy-rin .mic{font-size:13px!important;background:rgba(255,255,255,.15);border-radius:14px;padding:4px 10px}.dy-rin .mic.on{background:#fe2c55}
+`);
+X.css('gys-douyin-277-css', `
+.dy-wp{padding-bottom:30px}.dy-wnow{display:flex;align-items:center;gap:12px;margin:16px 12px 0;padding:12px;border-radius:16px;background:#1c1c22;cursor:pointer}
+.dy-wpl{width:92px;height:56px;border-radius:10px;background:linear-gradient(135deg,#2c3e50,#4a6b8a);display:flex;align-items:center;justify-content:center}.dy-wpl span{width:28px;height:28px;border-radius:14px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:12px}
+.dy-wni{flex:1;min-width:0}.dy-wni b{display:block;font-size:15px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.dy-wni small{opacity:.5;font-size:12px}
+.dy-wwith{display:flex;align-items:center;margin:16px 12px 0;padding:12px;border-radius:16px;background:#1c1c22}.dy-wwith>.gys-av+.gys-av{margin-left:-10px;border:2px solid #1c1c22}.dy-wwith>div{margin-left:10px;font-size:15px}
+.dy-wts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 12px 0}.dy-wt{height:150px;border-radius:18px;padding:14px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;color:#fff}.dy-wt i{font-style:normal;font-size:34px}.dy-wt b{font-size:16px}
 `);

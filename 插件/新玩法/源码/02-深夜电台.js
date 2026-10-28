@@ -72,6 +72,7 @@ window.gyxRadioOpen = function () {
 };
 window.gyxRadioWho = v => { D.cfg.who = v; S.set('d', D); };
 window.gyxRadioCfg = (k, v) => { D.cfg[k] = v; S.set('d', D); };
+window.gyxRadioData = () => D;   // 网易云「播客」里显示有几期
 window.gyxRadioNew = async function () {
     const b = document.getElementById('gyxRdGo'); if (b) { b.disabled = true; b.textContent = 'TA 在准备稿子……'; }
     const ep = await make(); if (b) { b.disabled = false; b.textContent = '让 TA 现在开播'; }

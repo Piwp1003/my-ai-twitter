@@ -36,7 +36,7 @@
         ],
         dock: ['chat', 'notif', 'home', 'set'],
         names: {}, colors: {}, imgs: {},
-        style: 'white', font: 'sys', labels: true, lock: true, dark: false, xMerge: true, xTheme: 'blue',
+        style: 'white', font: 'sys', labels: true, lock: true, dark: false, xMerge: true, xTheme: 'blue', mfEach: true,
         wall: null, wallColor: null
     });
     let C = DEF();
@@ -46,6 +46,7 @@
     const store = () => G().store;
     async function save() { try { if (store()) await store().setItem('cfg', C); } catch (e) {} }
     window.gyPmXOn = () => C.xMerge !== false;
+    window.gyPmMfEach = () => C.mfEach !== false;
     window.gyPmXTheme = () => C.xTheme === 'black' ? 'black' : 'blue';
     window.gyPmXThemeSet = v => { C.xTheme = v === 'black' ? 'black' : 'blue'; save(); };
     window.gyPmHomeLoad = async function () {
@@ -1095,6 +1096,7 @@
             <div class="lbl">图标名字</div><div class="seg">${opt('labels', true, '显示')}${opt('labels', false, '不显示')}</div>
             <div class="lbl">锁屏</div><div class="seg">${opt('lock', true, '进来先锁屏')}${opt('lock', false, '不要锁屏')}</div>
             <div class="lbl">聊天和推特</div><div class="seg">${opt('xMerge', true, '合成一个「推特」（私信就是聊天）')}${opt('xMerge', false, '分开两个图标')}</div>
+            <div class="lbl">小功能图标</div><div class="seg">${opt('mfEach', true, '每个功能一个（软件、合集里的都单独放）')}${opt('mfEach', false, '合集算一个（以前）')}</div>
             <div class="lbl">推特配色</div><div class="seg">${opt('xTheme', 'blue', '蓝色（白底蓝色）')}${opt('xTheme', 'black', '黑色（白底黑字）')}</div>
             <button class="it" onclick="gyPmAddWidget()">小组件</button>
             <button class="it" onclick="gyPmLibrary()">App 资源库</button>

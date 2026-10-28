@@ -61,3 +61,8 @@ config.secret.*
 *.secret.json
 密钥.txt
 私密配置.*
+
+# ============ 临时文件 / 给她看的预览（不传） ============
+_tmp/
+Claude outputs/
+_开发测试/3d-shots/

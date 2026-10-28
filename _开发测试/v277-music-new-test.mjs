@@ -1,0 +1,72 @@
+// 277：网易云照截图重做（首页 / 搜索 / 笔记 / 我的，红唱片，一起听两个头像 + 耳机线 + 气泡 + 自定义距离）；软件全都内置，音乐类并进网易云
+// 用法（项目根目录）：node _开发测试/v277-music-new-test.mjs
+import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
+import path from 'path'; import fs from 'fs';
+const root = process.cwd();
+const browser = await launchBrowser(chromium);
+const results = []; const check = (n, ok, e = '') => results.push({ n, ok: !!ok, e });
+const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+const errs = []; page.on('pageerror', e => errs.push(e.message)); page.on('console', m => { if (/出错/.test(m.text())) errs.push(m.text().slice(0, 200)); });
+page.on('dialog', d => d.accept('12'));
+await page.route(/^https?:\/\//, r => r.abort());
+await page.goto(fileUrl(path.join(root, 'index.html')));
+await page.waitForFunction(() => window.__guyuBooted, { timeout: 20000 });
+await page.evaluate(() => {
+  myCharacters.push({ id: 7001, name: '谢云昭', persona: '副县长', worldbooks: [], diaryData: { letters: [], diaries: [] } }); window.currentChatSessionId = 7001;
+  window.getApiConfig = () => ({ url: 'https://x.test/v1', key: 'k', model: 'm' });
+  const J = x => JSON.stringify(x);
+  window.sendChatRequest = async (api, p) => { const t = typeof p === 'string' ? p : JSON.stringify(p); let c = '嗯。';
+    if (/每日推荐/.test(t)) c = J([{ t: '夜航星', a: '不才', why: '根据你的口味' }, { t: '晴天', a: '周杰伦' }]);
+    else if (/挑一首你想让她接着听的歌/.test(t)) c = J({ t: '夜车', a: '曾轶可', say: '下一首换这个' });
+    else if (/一起听/.test(t)) c = '这首你听过？';
+    return { choices: [{ message: { content: c } }] }; };
+  window.gymState = () => ({ tracks: [], listen: { chars: ['7001'] }, stats: { byChar: { '7001': { ms: 23 * 60000 } } } });
+});
+await page.waitForTimeout(800);
+const r = await page.evaluate(async () => {
+  const s = ms => new Promise(r => setTimeout(r, ms)); const o = {}; const $ = q => document.querySelector(q);
+  o.builtin = !!window.__gySoftBuiltin && !!GYS.APPS.music && typeof gyxRadioOpen === 'function' && typeof gyxListData === 'function' && typeof gyxSongData === 'function' && typeof gyxTapeOpen === 'function';
+  o.noOld = !(window.__gyHubBundles.retired || []).includes('x') && ['📱 软件全家桶', '📻 深夜电台', '🎶 共享歌单', '📼 留声机', '🎵 TA写给你的歌', '🎵 网易云'].every(n => window.__gyHubBundles.retired.includes(n));
+  const H = gyHubHideIds(); o.hide = ['music', 'gyxRadio', 'gyxList', 'gyxSong', 'gyxTape'].every(k => H.has(k));
+  gysMusicOpen(); await s(400);
+  o.tabs = [...document.querySelectorAll('#gys_music .gys-tb em')].map(e => e.textContent).join('/');
+  o.root = $('#gys_music').classList.contains('mu2');
+  o.homeTxt = $('#gys_music').innerText.slice(0, 300); o.home = /和 TA 一起听/.test($('#gys_music').innerText) && /推荐歌单/.test($('#gys_music').innerText) && !!$('#gys_music .mu2-st');
+  GYS.tab('music', 'search'); await s(150); o.search = /TA 点歌/.test($('#gys_music').innerText) && /深夜电台/.test($('#gys_music').innerText) && /留声机/.test($('#gys_music').innerText);
+  GYS.tab('music', 'me'); await s(150); o.me = /本地/.test($('#gys_music').innerText) && /共享/.test($('#gys_music').innerText) && /我喜欢的音乐/.test($('#gys_music').innerText);
+  gysMu.hsub('pod'); await s(150); o.pod = /深夜电台/.test($('#gys_music').innerText);
+  gysMu.hsub('rec'); await s(200);
+  const id = gysMuState().daily && gysMuState().daily.ids[0]; o.daily = !!id;
+  gysMu.playIn(gysMuState().daily.ids, 0); await s(400);
+  o.player = !!$('#gys_music .mu2-player.tg') && !!$('#gys_music .mu2-duo svg') && $('#gys_music .mu2-duo .gys-av') !== null;
+  o.distTxt = /距离 …m，一起听了 23 分钟/.test($('#gys_music .mu2-duo p').textContent);
+  GYS.input = async () => '12'; await gysMu.dist('7001'); await s(200); o.dist = /距离 12m/.test($('#gys_music .mu2-duo p').textContent);
+  gysMu.tgChat(); await s(200); document.getElementById('muTgIn').value = '你在干嘛'; await gysMu.tgSend(); await s(300);
+  o.chat = /这首你听过/.test($('#gys_music').innerText);
+  await gysMu.taPick(); await s(200); o.pick = /插到了下一首/.test($('#gys_music').innerText);
+  GYS.back('music'); await s(200); o.bub = !!$('#gys_music .mu2-bub');
+  GYS.back('music'); await s(200); o.mini = !!$('#gys_music .mu2-mini');
+  // 关掉新版 → 老样子
+  const FS = JSON.parse(localStorage.getItem('gyxFeat') || '{}'); FS.gysMuNew = false; localStorage.setItem('gyxFeat', JSON.stringify(FS));
+  GYX.FEATS && 0; try { GYX.setOn ? GYX.setOn('gysMuNew', false) : 0; } catch (e) {}
+  return o;
+});
+check('软件都内置了：不导插件也有网易云 / 深夜电台 / 共享歌单 / 留声机 / TA写给你的歌', r.builtin, JSON.stringify(r));
+check('装过的老软件插件、音乐类单独插件会被自动拿掉', r.noOld);
+check('网易云开着时，音乐盒 / 电台 / 歌单 / 留声机 / 写给你的歌不再单独出图标', r.hide);
+check('底栏：首页 / 搜索 / 笔记 / 我的', r.tabs === '首页/搜索/笔记/我的' && r.root, r.tabs);
+check('首页：推荐·漫游·播客 + 和 TA 一起听 + 推荐歌单', r.home && r.pod, JSON.stringify([r.home, r.pod, r.homeTxt]));
+check('搜索页：TA 点歌、热歌榜、深夜电台、留声机', r.search);
+check('我的：本地 / 一起听 / 共享歌单栏', r.me);
+check('一起听播放页：两个头像 + 耳机线；「距离 …m，一起听了 23 分钟」', r.player && r.distTxt, JSON.stringify(r));
+check('距离能自己填（距离 12m）', r.dist);
+check('一起听聊天：说话 TA 回；让 TA 点歌插到下一首', r.chat && r.pick);
+check('TA 说话从头像冒气泡；退回首页有底部迷你播放条', r.bub && r.mini, JSON.stringify(r));
+check('没有报错', !errs.length, errs.slice(0, 3).join(' | '));
+await browser.close();
+const pass = results.filter(x => x.ok).length;
+console.log('\n===== 277 网易云新版 / 软件内置 =====');
+results.forEach(x => console.log(`${x.ok ? '✅' : '❌'} ${x.n}${x.ok ? '' : ' ' + x.e}`));
+console.log(`\n${pass}/${results.length} 通过`);
+process.exit(pass === results.length ? 0 : 1);

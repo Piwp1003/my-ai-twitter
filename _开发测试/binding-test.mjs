@@ -38,7 +38,9 @@ function collectCalls(text, where, out) {
 
 const calls = new Map();   // 函数名 -> 出现在哪些文件
 collectCalls(fs.readFileSync(path.join(root, 'index.html'), 'utf8'), 'index.html', calls);
-for (const f of fs.readdirSync(path.join(root, 'js')).filter(x => x.endsWith('.js'))) {
+// 只看 index.html 真的会加载的 js（像 js/72 这种改成插件、不再加载的文件，里面的函数本来就不在）
+const LOADED = (() => { const h = fs.readFileSync(path.join(root, 'index.html'), 'utf8'); return new Set([...h.matchAll(/['"]\.\/js\/([^'"?]+\.js)/g)].map(m => m[1])); })();
+for (const f of fs.readdirSync(path.join(root, 'js')).filter(x => x.endsWith('.js') && LOADED.has(x))) {
   collectCalls(fs.readFileSync(path.join(root, 'js', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''), 'js/' + f, calls);
 }
 
