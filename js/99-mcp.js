@@ -191,9 +191,10 @@
             const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('pull') : { err: '真手机没加载上' };
             if (r.err) throw new Error(r.err); return '把她拉回谷雨了';
         }],
-        lock_apps: ['临时锁住她常用的那几个娱乐软件一会儿（她答应让你管的时候）。要装谷雨守护插件 + 她把「锁你的软件」设成了「TA 直接做」', O({ minutes: { type: 'integer', description: '锁多少分钟，默认 30' } }), async a => {
-            const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('lock', '', { min: Math.max(1, Math.min(180, +a.minutes || 30)) }) : { err: '真手机没加载上' };
-            if (r.err) throw new Error(r.err); return '锁上了';
+        lock_apps: ['临时锁住她常用的那几个娱乐软件一会儿（她答应让你管的时候）。要装谷雨守护插件 + 她把「锁你的软件」设成了「TA 直接做」', O({ minutes: { type: 'integer', description: '锁多少分钟，默认 30' }, say: { type: 'string', description: '锁的时候想当面对她说的一句话（会弹在她屏幕上）' } }), async a => {
+            const say = String(a.say || '').slice(0, 80);
+            const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('lock', say, { min: Math.max(1, Math.min(180, +a.minutes || 30)), say }) : { err: '真手机没加载上' };
+            if (r.err) throw new Error(r.err); return '锁上了' + (say ? '，还说了：' + say : '');
         }]
     };
     async function builtinConn() {

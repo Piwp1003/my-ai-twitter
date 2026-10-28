@@ -308,6 +308,26 @@ P.blockPage = (pkg, info) => {
       <div class="ph-bb"><span class="b" onclick="gysPh.okBlock()">好吧</span><span onclick="gysPh.beg('${pkg}')">${BUSY.beg ? '⏳ TA 在想…' : '🥺 求求你，再玩 10 分钟'}</span><span class="sos" onclick="gysPh.sos()">🆘 紧急解锁</span></div><em>连点 TA 的头像 5 下也能紧急解锁</em></div>` });
 };
 P.okBlock = () => { N.home(); G.close(APP); };
+// 🔒 锁下去的那一刻，直接弹一个框，把 TA 想说的话亮出来（锁软件、聊天里锁、MCP 锁都会走这里）
+P.lockPopup = (c, names, whyTxt, line) => {
+    try {
+        const old = document.getElementById('gyPhLockPop'); if (old) old.remove();
+        const nm = esc((c && c.name) || 'TA');
+        const av = c && c.avatarImg ? `<img src="${esc(c.avatarImg)}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;">`
+            : `<div style="width:72px;height:72px;border-radius:50%;background:#1d9bf0;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;">${nm.slice(0, 1)}</div>`;
+        const d = document.createElement('div'); d.id = 'gyPhLockPop';
+        d.setAttribute('style', 'position:fixed;inset:0;z-index:2147483100;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:28px;box-sizing:border-box;font-family:-apple-system,"PingFang SC",sans-serif;');
+        d.innerHTML = `<div style="max-width:340px;width:100%;background:var(--gy-bg,#fff);color:inherit;border-radius:18px;padding:22px 20px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.35);">
+            ${av}
+            <div style="font-weight:700;font-size:16px;margin:12px 0 2px;">🔒 ${nm} 锁了你的${esc(names)}</div>
+            <div style="font-size:15.5px;line-height:1.75;margin:10px 0 4px;white-space:pre-wrap;">${nm}：${esc(line)}</div>
+            ${whyTxt ? `<div style="font-size:12px;color:#8b98a5;margin-bottom:14px;">${esc(whyTxt)}</div>` : '<div style="height:10px"></div>'}
+            <button onclick="document.getElementById('gyPhLockPop').remove()" style="border:none;background:#1d9bf0;color:#fff;border-radius:999px;padding:9px 28px;font-size:14px;cursor:pointer;">知道了</button>
+        </div>`;
+        d.onclick = e => { if (e.target === d) d.remove(); };
+        document.body.appendChild(d);
+    } catch (e) {}
+};
 P.beg = async pkg => {
     const c = who(); if (!c || BUSY.beg) return; BUSY.beg = 1; G.repaint(APP);
     try {
@@ -392,6 +412,7 @@ const DO = {
         D.rules.temp = { pkgs, until, by: String(c.id), why: opt.say || why || '' }; saveD(); pushRules();
         const names = pkgs === 'all' ? '除了谷雨的所有软件' : pkgs.map(labelOf).join('、');
         log('lock', `TA 锁了 ${names}，到 ${G.hm(until)}`, { cid: String(c.id) });
+        try { P.lockPopup(c, names, `锁到 ${G.hm(until)}${why ? '　·　' + why : ''}`, opt.say || why || G.pick(BLINES.temp)); } catch (e) {}
         X.reach(c, `你刚把她手机上的${names}锁到 ${G.hm(until)}（${why || '你觉得她该歇歇了'}），跟她说一声`);
         return { until };
     },
