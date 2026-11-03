@@ -59,7 +59,7 @@
         { id: 'hub_gift', icon: '🎁', title: 'TA 给你的', desc: 'TA 的秘密计划、TA 的梦、涂鸦互传、占卜', cat: '陪伴', kids: ['gyxPlan', 'gyxDream', 'gyxDoodle', 'gyxMystic'] },
         { id: 'hub_alt', icon: '🪐', title: '换个世界玩', desc: '平行世界、换个世界、互换身份一天、番外隔离', cat: '一起做', kids: ['gyxWorld', 'gyxTheater', 'gyxSwap', 'gyxSide'] },
         { id: 'hub_chat', icon: '💭', title: '聊天细节', desc: '时间感知、内置提示词、总结滚雪球、外语和翻译、气泡表情回应', cat: '陪伴', kids: ['timePlace', 'promptLib', 'gyxRoll', 'gyxLang', 'gyxReact'] },
-        { id: 'hub_soft', icon: '📱', title: '软件', desc: '微信、iMessage、微博、泡泡、小红书、豆瓣、网易云、抖音、社区——整页的真软件界面；同一个人在每个软件里的主页都可以不一样', cat: '生活', kids: ['gysWechat', 'gysWeibo', 'gysBubble', 'gysRed', 'gysDouban', 'gysImsg', 'gysMusic', 'gysDouyin', 'gyComm', 'gysUi'] },
+        { id: 'hub_soft', icon: '📱', title: '软件', desc: '微信、iMessage、微博、泡泡、小红书、豆瓣、网易云、抖音、社区、云端备份——整页的真软件界面；同一个人在每个软件里的主页都可以不一样', cat: '生活', kids: ['gysWechat', 'gysWeibo', 'gysBubble', 'gysRed', 'gysDouban', 'gysImsg', 'gysMusic', 'gysDouyin', 'gyComm', 'gyCloudBkApp', 'gysUi'] },
         { id: 'hub_world', icon: '🌐', title: '外面的世界', desc: '此刻、联网探索、真实热搜、站内微博热搜榜——TA 知道外面在发生什么', cat: '生活', kids: ['now', 'web_explore', 'gyxHot', 'gyxHotList'] },
         { id: 'hub_look', icon: '🎨', title: '美化', desc: '气泡工坊、导入酒馆主题、日夜主题和动态壁纸、跟手返回', set: true, kids: ['gyxBubble', 'gyxStTheme', 'gyxDayNight', 'gyxSwipe'] },
         { id: 'hub_set', icon: '🎛️', title: '开关和后台', desc: '全部开关、插件开关中心、省电模式、文案不重样、生成中提示', set: true, kids: ['@allsw', 'gyxSwitch', 'gyxSaver', 'gyxVary', 'gyxGen'] },

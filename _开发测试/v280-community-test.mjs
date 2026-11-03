@@ -88,6 +88,8 @@ const sendB = await Bp.evaluate(async () => (await (await fetch(gyGate.url + '/s
 check('禁言后说不了话', mu && !sendB);
 const up = await Bp.evaluate(async id => (await (await fetch(gyGate.url + '/mod', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Gy-Token': gyGate.tok }, body: JSON.stringify({ act: 'kick', uid: id }) })).json()).ok, aid);
 check('成员踢不了群主', !up);
+// 收尾：把加入方式改回谁都能进（后面的云端备份测试要新加人）
+await A.evaluate(async () => { await fetch(gyGate.url + '/cfg', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Gy-Token': gyGate.tok }, body: JSON.stringify({ join: 'open', gate: true }) }); });
 
 // 角色同桌：林带一个角色坐下 → 别人看得到
 await A.evaluate(async () => { myCharacters.push({ id: 9101, name: '谢云昭', persona: '副县长', worldbooks: [], diaryData: { letters: [], diaries: [] } }); GYS.sheet = async () => 0; await gysComm.sit('table'); });

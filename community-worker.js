@@ -7,6 +7,8 @@
      改了换一个新 id，所有人下一次同步就看到新的。
    · 第一个加入的人自动是群主。
    · 每个用户一把自己的钥匙（加入时发的），放在请求头 X-Gy-Token: <用户id>.<密钥>。
+   · ☁️ 云端备份（/bk/*）：存在另一个 D1（绑定名 BK，没绑就用 DB）。内容是在用户手机上**先加密**再传上来的，
+     服务器（包括群主）看不到里面是什么；解密要用那个人的钥匙。分块上传、每块校验，传完整了才替换旧的，留最近几份。
    ===================================================================== */
 
 const CORS = {
@@ -90,6 +92,77 @@ async function log(db, by, act, target, note) { await db.prepare(`INSERT INTO lo
 const pairOf = (a, b) => [a, b].sort().join('|');
 const userRank = (u, roles) => { const mine = parse(u.roles, []); if (mine.includes('owner')) return 1e9; return Math.max(0, ...roles.filter(r => mine.includes(r.id)).map(r => r.pos)); };
 
+/* ---------------- ☁️ 云端备份 ---------------- */
+const BK_SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS bk (id TEXT PRIMARY KEY, uid TEXT, state TEXT, size INTEGER, parts INTEGER, hash TEXT, note TEXT, meta TEXT, at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS bk_uid ON bk (uid, at)`,
+  `CREATE TABLE IF NOT EXISTS bkp (bid TEXT, i INTEGER, data TEXT, sha TEXT, PRIMARY KEY (bid, i))`,
+];
+let bkReady = false;
+async function bkInit(bk) { if (bkReady) return; await bk.batch(BK_SCHEMA.map(s => bk.prepare(s))); bkReady = true; }
+const BK_PART = 900000;   // 每块最多这么多字（base64），D1 一行最多 2MB
+const bkCfg = c => ({ on: c.bkOn !== false, max: Math.max(1, +c.bkMax || 30), keep: Math.max(1, Math.min(5, +c.bkKeep || 2)), total: Math.max(10, +c.bkTotal || 450) });
+async function bkDrop(bk, ids) { if (!ids.length) return; await bk.batch(ids.flatMap(id => [bk.prepare(`DELETE FROM bkp WHERE bid=?`).bind(id), bk.prepare(`DELETE FROM bk WHERE id=?`).bind(id)])); }
+async function bkRoute(p, req, q, body, me, db, bk) {
+  await bkInit(bk);
+  const C = bkCfg(await cfgOf(db));
+  const mine = async id => { const b = await bk.prepare(`SELECT * FROM bk WHERE id=?`).bind(String(id || '')).first(); return b && b.uid === me.id ? b : null; };
+  if (p === '/bk/list') {
+    const L = (await bk.prepare(`SELECT id,state,size,parts,hash,note,meta,at FROM bk WHERE uid=? AND state='ok' ORDER BY at DESC`).bind(me.id).all()).results || [];
+    return J({ ok: true, list: L.map(b => Object.assign(b, { meta: parse(b.meta, {}) })), max: C.max, keep: C.keep, on: C.on, part: BK_PART });
+  }
+  if (p === '/bk/begin' && req.method === 'POST') {
+    if (!C.on) return E('群主把云端备份关了');
+    if (me.status === 'banned') return E('你被封号了，不能再往上传（已经传上去的还能下载）', 403);
+    const size = Math.floor(+body.size || 0), parts = Math.floor(+body.parts || 0);
+    if (size <= 0 || parts <= 0 || parts !== Math.ceil(size / BK_PART)) return E('备份大小不对');
+    if (size > C.max * 1048576 * 1.37) return E(`备份太大了（上限 ${C.max} MB）。可以在「云端备份」里选不带图片再试，或者让群主调大上限`);
+    // 先把自己没传完的旧的清掉（之前断了的）
+    const stale = (await bk.prepare(`SELECT id FROM bk WHERE uid=? AND state='up'`).bind(me.id).all()).results || [];
+    await bkDrop(bk, stale.map(x => x.id));
+    const tot = await bk.prepare(`SELECT COALESCE(SUM(size),0) n FROM bk`).first();
+    if ((tot ? tot.n : 0) + size > C.total * 1048576) return E('服务器上的备份空间快满了，跟群主说一声（可以删掉一些旧备份或换付费版）');
+    const id = rid('b').toLowerCase();
+    await bk.prepare(`INSERT INTO bk VALUES (?,?,?,?,?,?,?,?,?)`).bind(id, me.id, 'up', size, parts, clip(body.hash, 80), clip(body.note, 100), JSON.stringify(body.meta || {}).slice(0, 2000), now()).run();
+    return J({ ok: true, id, part: BK_PART });
+  }
+  if (p === '/bk/part' && req.method === 'POST') {
+    const b = await mine(body.bid); if (!b || b.state !== 'up') return E('这份备份不存在或者已经传完了');
+    const i = Math.floor(+body.i), data = String(body.data || '');
+    if (!(i >= 0 && i < b.parts) || !data || data.length > BK_PART) return E('这一块不对');
+    if (await sha(data) !== String(body.sha || '')) return E('这一块传坏了（校验对不上），再传一次');
+    await bk.prepare(`INSERT OR REPLACE INTO bkp VALUES (?,?,?,?)`).bind(b.id, i, data, body.sha).run();
+    return J({ ok: true });
+  }
+  if (p === '/bk/commit' && req.method === 'POST') {
+    const b = await mine(body.bid); if (!b || b.state !== 'up') return E('这份备份不存在');
+    const r = await bk.prepare(`SELECT COUNT(*) n, COALESCE(SUM(LENGTH(data)),0) len FROM bkp WHERE bid=?`).bind(b.id).first();
+    if (!r || r.n !== b.parts || r.len !== b.size) return E(`还没传完整（${r ? r.n : 0}/${b.parts} 块），旧的备份没动`);
+    await bk.prepare(`UPDATE bk SET state='ok', at=? WHERE id=?`).bind(now(), b.id).run();
+    // 传完整了才清掉更旧的，只留最近 keep 份
+    const L = (await bk.prepare(`SELECT id FROM bk WHERE uid=? AND state='ok' ORDER BY at DESC`).bind(me.id).all()).results || [];
+    await bkDrop(bk, L.slice(C.keep).map(x => x.id));
+    return J({ ok: true, id: b.id });
+  }
+  if (p === '/bk/get') {
+    const b = await mine(q.get('bid')); if (!b || b.state !== 'ok') return E('没有这份备份');
+    const i = Math.floor(+q.get('i') || 0); const r = await bk.prepare(`SELECT data, sha FROM bkp WHERE bid=? AND i=?`).bind(b.id, i).first();
+    if (!r) return E('这一块不见了');
+    return J({ ok: true, data: r.data, sha: r.sha });
+  }
+  if (p === '/bk/del' && req.method === 'POST') {
+    const b = await mine(body.bid); if (!b) return E('没有这份备份');
+    await bkDrop(bk, [b.id]); return J({ ok: true });
+  }
+  if (p === '/bk/usage') {
+    if (!parse(me.roles, []).includes('owner')) return E('只有群主能看');
+    const L = (await bk.prepare(`SELECT uid, COUNT(*) n, SUM(size) size, MAX(at) at FROM bk WHERE state='ok' GROUP BY uid ORDER BY size DESC`).all()).results || [];
+    const tot = await bk.prepare(`SELECT COALESCE(SUM(size),0) n FROM bk`).first();
+    return J({ ok: true, users: L, total: tot ? tot.n : 0, cfg: C, separate: bk !== db });
+  }
+  return E('没有这个接口', 404);
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -141,6 +214,8 @@ export default {
 
     // ---------- 要登录的 ----------
     const me = await who(req, db); if (!me) return E('没登录或钥匙不对（重新加入一次）', 401);
+    // 云端备份：自己的东西，被踢出 / 被封号也还能拿回去
+    if (p.startsWith('/bk/')) { try { return await bkRoute(p, req, q, body, me, db, env.BK || db); } catch (e) { return E('云端备份出错：' + (e.message || e), 500); } }
     if (me.status === 'banned') return E('你被封号了', 403);
     const roles = await rolesOf(db), P = permsOf(me, roles);
     const pending = me.status === 'pending';
@@ -307,6 +382,13 @@ export default {
           if (body.minVer != null) x.minVer = Math.max(0, Math.floor(+body.minVer || 0));
           if (body.updUrl != null) x.updUrl = clip(body.updUrl, 300);
           if (body.updMsg != null) x.updMsg = clip(body.updMsg, 300);
+        }
+        if (body.bkOn != null || body.bkMax != null || body.bkKeep != null || body.bkTotal != null) {
+          if (!P.all) return E('云端备份的设置只有群主能改');
+          if (body.bkOn != null) x.bkOn = !!body.bkOn;
+          if (body.bkMax != null) x.bkMax = Math.max(1, Math.min(500, Math.floor(+body.bkMax || 30)));
+          if (body.bkKeep != null) x.bkKeep = Math.max(1, Math.min(5, Math.floor(+body.bkKeep || 2)));
+          if (body.bkTotal != null) x.bkTotal = Math.max(10, Math.min(10000, Math.floor(+body.bkTotal || 450)));
         }
         await log(db, me.id, 'cfg', '', Object.keys(x).join(',')); return J({ ok: true, cfg: await bump(db, x) });
       }

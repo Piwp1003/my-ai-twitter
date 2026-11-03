@@ -14,7 +14,7 @@
    ============================================================ */
 (function () {
     if (window.__gyBackupExtra) return; window.__gyBackupExtra = true;
-    const SKIP_DB = new Set(['guyuLiveMedia']);
+    const SKIP_DB = new Set(['guyuLiveMedia', 'gyCloudPre']);   // gyCloudPre：云端备份恢复前另存的那份，不往备份里套娃
     const MAIN_KEY = 'myTwitterAppData';
     // 白露的库名前面都加了 bailu_（js/00-bailu-shim，为了和谷雨放在同一个网址下也不打架）：备份里存去掉前缀的名字，两边都能互相导
     const PFX = (() => { try { return typeof localforage !== 'undefined' && localforage.config && localforage.config().name === 'bailu_localforage' ? 'bailu_' : ''; } catch (e) { return ''; } })();
