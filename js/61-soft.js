@@ -105,7 +105,7 @@ if (!window.GYX) (function () {
     X.mini = (def, fid) => { MINIS.push([def, fid || def.id]); syncMini(); };
     // 小手机桌面小组件：手机页还没加载好就等一会儿再登记；功能关了小组件显示「关着」而不是报错
     const WQ = [];
-    function wFlush() { const W = window.__gyPmW; if (!W || !W.WD) return false; WQ.splice(0).forEach(([k, def, fid]) => { if (W.WD[k]) return; const r = def.r, tap = def.tap; if (fid) { def.r = w => X.on(fid) ? r(w) : `<div class="gw-x s"><b>💤</b><em>${X.esc(def.n)}（关着）</em></div>`; if (tap) def.tap = w => X.on(fid) ? tap(w) : (window.gyxSwitchOpen ? window.gyxSwitchOpen() : 0); } W.WD[k] = def; }); return true; }
+    function wFlush() { const W = window.__gyPmW; if (!W || !W.WD) return false; WQ.splice(0).forEach(([k, def, fid]) => { if (W.WD[k]) return; def.__fid = fid; const r = def.r, tap = def.tap; if (fid) { def.r = w => X.on(fid) ? r(w) : `<div class="gw-x s"><b>💤</b><em>${X.esc(def.n)}（关着）</em></div>`; if (tap) def.tap = w => X.on(fid) ? tap(w) : (window.gyxSwitchOpen ? window.gyxSwitchOpen() : 0); } W.WD[k] = def; }); return true; }
     let wTimer = null;
     X.widget = (k, def, fid) => { WQ.push([k, def, fid]); if (wFlush() || wTimer) return; let n = 0; wTimer = setInterval(() => { if (wFlush() || ++n > 120) { clearInterval(wTimer); wTimer = null; } }, 500); };
     // 记忆总览：插件记下的东西登记进「记忆总览 → 🧩 其它记忆」，能改能删（功能关了这一节就不显示）
@@ -120,6 +120,15 @@ if (!window.GYX) (function () {
     // 「今天」面板：每个插件往里加一小节（功能关了就不出现）
     const TODAY = [];
     X.today = (fn, fid) => { TODAY.push([fn, fid]); X.todayHook(); };
+    // 282：合集做成一页（js/79）——每个功能一张卡片，卡片里放它「今天」那一节；没有就放它的小组件
+    X.miniFid = id => { const m = MINIS.find(([d]) => d.id === id); return m ? m[1] : null; };
+    X.cardOf = fid => {
+        let today = null; TODAY.forEach(([fn, f]) => { if (today || f !== fid) return; try { const r = fn(); if (r && r.rows && r.rows.length) today = r; } catch (e) {} });
+        let widget = null; const W = window.__gyPmW;
+        if (W && W.WD) for (const k of Object.keys(W.WD)) { if (W.WD[k].__fid === fid) { widget = { k, def: W.WD[k] }; break; } }
+        if (!widget) { const q = WQ.find(x => x[2] === fid); if (q) widget = { k: q[0], def: q[1] }; }
+        return { today, widget };
+    };
     X.todayHtml = function () {
         let h = '';
         TODAY.forEach(([fn, fid]) => {

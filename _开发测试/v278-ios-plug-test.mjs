@@ -12,6 +12,7 @@ const errs = []; page.on('pageerror', e => errs.push(e.message));
 await page.route(/^https?:\/\//, r => r.abort());
 await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => window.__guyuBooted, { timeout: 20000 });
+await page.evaluate(() => localStorage.setItem('gyHubPage', '0'));   // 282：合集默认是一页；这个测试测的是原来那一列
 await page.evaluate(NEW => { myCharacters.push({ id: 7001, name: '谢云昭', persona: 'x', worldbooks: [], diaryData: { letters: [], diaries: [] } }); window.currentChatSessionId = 7001; NEW.forEach(p => { try { executePluginOnLoad(p); } catch (e) {} }); gyPmSet(true); }, NEW);
 await page.waitForTimeout(1200);
 const r = await page.evaluate(async () => {

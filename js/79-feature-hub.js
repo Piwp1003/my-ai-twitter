@@ -50,17 +50,16 @@
         { id: 'hub_home', icon: '🏠', title: '我们的小屋', desc: '小屋、随机掉落的收藏、一起养的小生命、存钱罐、TA 的旧物箱、窗台来客', cat: '回忆', kids: ['gyxHome', 'gyxDrop', 'gyxGrow', 'gyxJar', 'gyxBox', 'gyxSill'] },
         { id: 'hub_voice', icon: '🗣️', title: 'TA 怎么说话', desc: '相处模式、风格调料、平视、口头禅、听取模式（一句句听 TA 说）、你打了又删、你让 TA 重说了', cat: '陪伴', kids: ['gyxBond', 'gyxSpice', 'gyxFair', 'gyxEcho', 'gyxListen', 'gyxErase', 'gyxRegen'] },
         { id: 'hub_comfort', icon: '🫂', title: '哄', desc: '你不开心（抱抱）、TA 不开心（轮到你哄）、吵架了、秘密树洞', cat: '陪伴', kids: ['gyxHug', 'gyxCoax', 'gyxMakeup', 'gyxSecret'] },
-        { id: 'hub_with', icon: '🚶', title: '陪你', desc: '散步、现实小任务、一起安静待着、做饭、自习、运动、旅行、TA 养你（反向养成）', cat: '一起做', kids: ['gyxWalk', 'gyxMis', 'gyxStill', 'gyxCook', 'gyxStudy', 'gyxCoach', 'gyxTrip', 'gyxCare'] },
-        { id: 'hub_touch', icon: '💓', title: '贴贴', desc: '听心跳、摇一摇贴贴', cat: '陪伴', kids: ['gyxBeat', 'gyxShake'] },
+        { id: 'hub_with', icon: '🚶', title: '陪你', desc: '散步、现实小任务、一起安静待着、做饭、自习、运动、旅行、TA 养你（反向养成）、听心跳、摇一摇贴贴', cat: '一起做', kids: ['gyxWalk', 'gyxMis', 'gyxStill', 'gyxCook', 'gyxStudy', 'gyxCoach', 'gyxTrip', 'gyxCare', 'gyxBeat', 'gyxShake'] },
         { id: 'hub_unsaid', icon: '🤐', title: 'TA 没说出口的', desc: '心声、TA 的往事、TA 的录像带、思维链收纳盒、草稿箱、情绪皮肤', cat: '陪伴', kids: ['@inner', 'gyxPast', 'gyxTapes', 'gyReasoningVault', 'gyxDraft', 'gyxMoodSkin'] },
         { id: 'hub_phone', icon: '📱', title: '小手机', desc: 'TA 的手机、备忘录、AI 小程序、来电（画面铃声、拒接理由、语音留言）、桌面小组件、桌面上的 TA、角标和分享', cat: '生活', kids: ['@phone', 'gyxMemo', 'gyxApps', 'gyxCall', 'gyxPhoneW', 'gyxPet', 'gyxPing'] },
-        { id: 'hub_life', icon: '🧺', title: '生活', desc: '行程与天气、随身物、商城、装扮商店、经期记录、心情手账、生活小档案', cat: '生活', kids: ['map', 'kit', 'mall', 'gyxShop', 'period', 'moodbook', 'gyxNotes'] },
+        { id: 'hub_life', icon: '🧺', title: '生活', desc: '行程与天气、随身物、商城、装扮商店、经期记录、心情手账、生活小档案', cat: '生活', kids: ['map', 'kit', 'mall', 'gyxShop', 'gyxBook', 'period', 'moodbook', 'gyxNotes'] },
         { id: 'hub_people', icon: '👥', title: 'TA 身边的人', desc: '日常、关系网、NPC 列表、营销号自己爆料、准点群聊', cat: '生活', kids: ['grapevine', 'factionNetwork', 'npc', 'gyxScoop', 'gyxOnTime'] },
         { id: 'hub_gift', icon: '🎁', title: 'TA 给你的', desc: 'TA 的秘密计划、TA 的梦、涂鸦互传、占卜', cat: '陪伴', kids: ['gyxPlan', 'gyxDream', 'gyxDoodle', 'gyxMystic'] },
         { id: 'hub_alt', icon: '🪐', title: '换个世界玩', desc: '平行世界、换个世界、互换身份一天、番外隔离', cat: '一起做', kids: ['gyxWorld', 'gyxTheater', 'gyxSwap', 'gyxSide'] },
         { id: 'hub_chat', icon: '💭', title: '聊天细节', desc: '时间感知、内置提示词、总结滚雪球、外语和翻译、气泡表情回应', cat: '陪伴', kids: ['timePlace', 'promptLib', 'gyxRoll', 'gyxLang', 'gyxReact'] },
         { id: 'hub_soft', icon: '📱', title: '软件', desc: '微信、iMessage、微博、泡泡、小红书、豆瓣、网易云、抖音、社区、云端备份——整页的真软件界面；同一个人在每个软件里的主页都可以不一样', cat: '生活', kids: ['gysWechat', 'gysWeibo', 'gysBubble', 'gysRed', 'gysDouban', 'gysImsg', 'gysMusic', 'gysDouyin', 'gyComm', 'gyCloudBkApp', 'gysUi'] },
-        { id: 'hub_world', icon: '🌐', title: '外面的世界', desc: '此刻、联网探索、真实热搜、站内微博热搜榜——TA 知道外面在发生什么', cat: '生活', kids: ['now', 'web_explore', 'gyxHot', 'gyxHotList'] },
+        { id: 'hub_world', icon: '🌐', title: '外面的世界', desc: '此刻、联网探索、真实热搜、站内微博热搜榜——TA 知道外面在发生什么', cat: '生活', kids: ['now', 'web_explore', 'gyxWeather', 'gyxHot', 'gyxHotList'] },
         { id: 'hub_look', icon: '🎨', title: '美化', desc: '气泡工坊、导入酒馆主题、日夜主题和动态壁纸、跟手返回', set: true, kids: ['gyxBubble', 'gyxStTheme', 'gyxDayNight', 'gyxSwipe'] },
         { id: 'hub_set', icon: '🎛️', title: '开关和后台', desc: '全部开关、插件开关中心、省电模式、文案不重样、生成中提示', set: true, kids: ['@allsw', 'gyxSwitch', 'gyxSaver', 'gyxVary', 'gyxGen'] },
         // ⚙️ 设置里那几样，小功能里也放一份（两边都能进）
@@ -145,6 +144,54 @@
     // 小手机「每个功能一个图标」用：真的不要出现的（八卦网，「日常」里已经有）、合集里那几个 @ 开头的内置东西
     window.gyHubHideIds = () => new Set(HIDE);
     window.gyHubPseudo = () => { const out = []; FOLDERS.forEach(F => F.kids.forEach(k => { if (k[0] !== '@' || out.some(o => o.id === k)) return; const m = memberOf(k); if (m) out.push({ id: k, fid: F.id, icon: m.icon, title: m.title }); })); return out; };
+    /* ---------- 282：合集一页 ---------- */
+    const PK = 'gyHubPage', CK = 'gyHubCfg';
+    const pageOn = () => { try { return localStorage.getItem(PK) !== '0'; } catch (e) { return true; } };
+    const cfgAll = () => { try { return JSON.parse(localStorage.getItem(CK) || '{}') || {}; } catch (e) { return {}; } };
+    const cfgOf = F => Object.assign({ hide: [], order: [] }, cfgAll()[F.id] || {});
+    const cfgSet = (F, c) => { const a = cfgAll(); a[F.id] = c; try { localStorage.setItem(CK, JSON.stringify(a)); } catch (e) {} };
+    const hiddenCard = (F, id) => cfgOf(F).hide.includes(id);
+    const ordered = (F, M) => { const o = cfgOf(F).order; return M.slice().sort((a, b) => { const i = o.indexOf(a.id), j = o.indexOf(b.id); return (i < 0 ? 999 + M.indexOf(a) : i) - (j < 0 ? 999 + M.indexOf(b) : j); }); };
+    const GX = () => window.GYX || null;
+    const fidOf = m => { const X = GX(); if (!X || m.id[0] === '@') return null; return (X.miniFid && X.miniFid(m.id)) || (X.FEATS && X.FEATS.some(f => f.id === m.id) ? m.id : null); };
+    function cardBody(m) {
+        const X = GX(), fid = fidOf(m); let c = null;
+        try { c = fid && X && X.cardOf ? X.cardOf(fid) : null; } catch (e) {}
+        if (c && c.today) return `<div class="gyhb-rows">${c.today.rows.slice(0, 4).map(w => `<div class="gyhb-tr${w.go ? ' go' : ''}"${w.go ? ` onclick="event.stopPropagation();${esc(w.go)}"` : ''}><span>${esc(w.t || '')}</span><em>${w.x || ''}</em></div>`).join('')}</div>`;
+        if (c && c.widget && typeof c.widget.def.r === 'function') { try { const h = c.widget.def.r({ size: 'm', id: c.widget.k, k: c.widget.k }); if (h) return `<div class="gyhb-w" onclick="event.stopPropagation();gyHubTapW('${esc(c.widget.k)}')">${h}</div>`; } catch (e) {} }
+        return m.desc ? `<p class="gyhb-d">${esc(m.desc)}</p>` : '';
+    }
+    function card(F, m) {
+        return `<div class="gyhb-card2" onclick="gyHubOpen('${F.id}','${m.id}')"><div class="gyhb-ch"><span class="gyhb-ci">${m.icon || '🧩'}</span><b>${esc(m.title)}</b><span class="gyhb-ca">›</span></div>${cardBody(m)}</div>`;
+    }
+    window.gyHubTapW = k => { try { const W = window.__gyPmW, d = W && W.WD && W.WD[k]; if (d && d.tap) { window.gyHubClose(); d.tap({ size: 'm', id: k, k }); } } catch (e) {} };
+    function pills(F, M, cur) {
+        const box = document.getElementById('gyHubPills'), lt = document.getElementById('gyHubLt'); if (!box) return;
+        if (lt) { lt.textContent = pageOn() ? F.title : ''; lt.style.display = pageOn() ? '' : 'none'; }
+        if (!pageOn()) { box.innerHTML = ''; box.style.display = 'none'; return; }
+        box.style.display = '';
+        const L = ordered(F, M).filter(x => !hiddenCard(F, x.id));
+        box.innerHTML = `<button type="button" class="${cur ? '' : 'on'}" onclick="gyHubOpen('${F.id}')">全部</button>` + L.map(x => `<button type="button" class="${cur === x.id ? 'on' : ''}" onclick="gyHubOpen('${F.id}','${x.id}')">${x.icon || ''} ${esc(x.title)}</button>`).join('') + `<button type="button" class="gyhb-pm" onclick="gyHubMore()" aria-label="这一页显示什么">⋯</button>`;
+        const on = box.querySelector('.on'); if (on && on.scrollIntoView) try { on.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (e) {}
+    }
+    // ⋯：这一页显示哪些、顺序、TA 会自己做
+    window.gyHubMore = function () {
+        if (!HUB) return; const F = HUB.F, M = ordered(F, membersOf(F)), c = cfgOf(F), X = GX();
+        let sh = document.getElementById('gyHubSheet'); if (sh) sh.remove();
+        sh = document.createElement('div'); sh.id = 'gyHubSheet'; sh.className = 'gyhb-sheet';
+        const auto = M.map(m => ({ m, fid: fidOf(m) })).filter(x => x.fid && X && X.FEATS && X.FEATS.some(f => f.id === x.fid && f.auto !== false));
+        sh.innerHTML = `<div class="gyhb-sbox"><div class="gyhb-shd"><span onclick="gyHubMoreReset()">重置</span><b>${esc(F.title)}</b><span class="k" onclick="document.getElementById('gyHubSheet').remove();gyHubOpen('${F.id}')">完成</span></div>
+          <div class="gyhb-sgh">这一页显示</div><div class="gyhb-sgrp">${M.map((m, i) => `<div class="gyhb-srow"><span class="gyhb-ci">${m.icon || '🧩'}</span><span class="t">${esc(m.title)}</span><span class="mv" onclick="gyHubMove('${m.id}',-1)">${i ? '↑' : ''}</span><span class="mv" onclick="gyHubMove('${m.id}',1)">${i < M.length - 1 ? '↓' : ''}</span><input type="checkbox" ${c.hide.includes(m.id) ? '' : 'checked'} onchange="gyHubShow('${m.id}',this.checked)"></div>`).join('')}</div>
+          ${auto.length ? `<div class="gyhb-sgh">TA 会自己做</div><div class="gyhb-sgrp">${auto.map(x => `<div class="gyhb-srow"><span class="gyhb-ci">${x.m.icon || '🧩'}</span><span class="t">${esc(x.m.title)}</span><input type="checkbox" ${X.on(x.fid + '.auto') ? 'checked' : ''} onchange="GYX.set('${x.fid}.auto',this.checked)"></div>`).join('')}</div>` : ''}
+          <div class="gyhb-sgh">样子</div><div class="gyhb-sgrp"><div class="gyhb-srow"><span class="t">合集做成一页（关掉＝原来的一列）</span><input type="checkbox" ${pageOn() ? 'checked' : ''} onchange="gyHubPageSet(this.checked)"></div></div></div>`;
+        sh.addEventListener('click', e => { if (e.target === sh) { sh.remove(); window.gyHubOpen(F.id); } });
+        (document.getElementById('gyHubOv') || document.body).appendChild(sh);
+    };
+    window.gyHubShow = (id, v) => { if (!HUB) return; const c = cfgOf(HUB.F); c.hide = c.hide.filter(x => x !== id); if (!v) c.hide.push(id); cfgSet(HUB.F, c); };
+    window.gyHubMove = (id, d) => { if (!HUB) return; const F = HUB.F, c = cfgOf(F), L = ordered(F, membersOf(F)).map(m => m.id), i = L.indexOf(id), j = i + d; if (i < 0 || j < 0 || j >= L.length) return; [L[i], L[j]] = [L[j], L[i]]; c.order = L; cfgSet(F, c); window.gyHubMore(); };
+    window.gyHubMoreReset = () => { if (!HUB) return; cfgSet(HUB.F, { hide: [], order: [] }); window.gyHubMore(); };
+    window.gyHubPageSet = v => { try { localStorage.setItem(PK, v ? '1' : '0'); } catch (e) {} };
+    window.gyHubPageOn = pageOn;
     window.gyHubOpen = function (fid, tab) {
         const F = FOLDERS.find(x => x.id === fid); if (!F) return;
         if (F.open && !tab) { try { if (F.open()) return; } catch (e) {} }   // 自己有一整页的合集（📱 软件 = 手机桌面）
@@ -156,7 +203,7 @@
         if (!ov || !HUB || HUB.F !== F || getComputedStyle(ov).display === 'none') {
             if (ov) ov.remove();
             ov = document.createElement('div'); ov.id = 'gyHubOv'; ov.className = 'gyhb-ov'; ov.setAttribute('data-gy-overlay', '1'); ov.setAttribute('data-gy-page', '1');   // 合集一律当一整页
-            ov.innerHTML = `<div class="gyhb-box"><div class="gyhb-hd"><span class="gyhb-back" onclick="gyHubBack()" style="display:none">‹</span><b class="gyhb-ttl"></b><span class="gyhb-x" onclick="gyHubClose()">✕</span></div><div class="gyhb-body" id="gyHubBody"></div></div>`;
+            ov.innerHTML = `<div class="gyhb-box"><div class="gyhb-hd"><span class="gyhb-back" onclick="gyHubBack()" style="display:none">‹</span><b class="gyhb-ttl"></b><span class="gyhb-x" onclick="gyHubClose()">✕</span></div><div class="gyhb-lt" id="gyHubLt"></div><div class="gyhb-pills" id="gyHubPills"></div><div class="gyhb-body" id="gyHubBody"></div></div>`;
             ov.addEventListener('click', e => { if (e.target === ov) window.gyHubClose(); });
             document.body.appendChild(ov);
             HUB = { F, tab: null, body: ov.querySelector('#gyHubBody'), claim: new Map(), quiet: 0 };
@@ -168,18 +215,21 @@
         }
         const ttl = ov.querySelector('.gyhb-ttl'), back = ov.querySelector('.gyhb-back');
         clearBody();
+        pills(F, M, m ? m.id : '');
         if (!m) {
-            // 一列
+            // 282：一整页——每个功能一张卡片（它「今天」的那几行 / 小组件 / 一句话），卡片头点进去；顶上一排标签切换
             HUB.tab = null;
             ttl.textContent = `${F.icon} ${F.title}`; back.style.display = 'none';
-            HUB.body.innerHTML = `<div class="gyhb-list">${M.map(x => `<button type="button" class="gyhb-row" onclick="gyHubOpen('${F.id}','${x.id}')">
-                <span class="gyhb-ri">${x.icon || '🧩'}</span><span class="gyhb-rm"><b>${esc(x.title)}</b>${x.desc ? `<em>${esc(x.desc)}</em>` : ''}</span><span class="gyhb-ra">›</span></button>`).join('')}</div>`;
+            if (!pageOn()) {   // 关了「一页」：还是原来的一列
+                HUB.body.innerHTML = `<div class="gyhb-list">${M.map(x => `<button type="button" class="gyhb-row" onclick="gyHubOpen('${F.id}','${x.id}')">
+                <span class="gyhb-ri">${x.icon || '🧩'}</span><span class="gyhb-rm"><b>${esc(x.title)}</b>${x.desc ? `<em>${esc(x.desc)}</em>` : ''}</span><span class="gyhb-ra">›</span></button>`).join('')}</div><div class="gyhb-more2" onclick="gyHubPageSet(true);gyHubOpen('${F.id}')">换成一页的样子 ›</div>`;
+            } else HUB.body.innerHTML = ordered(F, M).filter(x => !hiddenCard(F, x.id)).map(x => card(F, x)).join('') + (ordered(F, M).some(x => hiddenCard(F, x.id)) ? `<div class="gyhb-more2" onclick="gyHubMore()">还有 ${ordered(F, M).filter(x => hiddenCard(F, x.id)).length} 个藏起来了 ›</div>` : '');
             try { const b = ov.querySelector('.gyhb-box'); if (b) b.scrollTop = 0; } catch (e) {}
             return;
         }
         // 打开插件那一项：面板画进合集
         HUB.tab = m.id; try { localStorage.setItem('gyHubLast_' + fid, m.id); } catch (e) {}
-        ttl.textContent = `${m.icon || '🧩'} ${m.title}`; back.style.display = '';
+        ttl.textContent = `${m.icon || '🧩'} ${m.title}`; back.style.display = pageOn() ? 'none' : '';
         HUB.cap = Date.now();
         try { const r = m.open(); if (r && r.then) r.then(() => { if (HUB) HUB.cap = 0; }, () => { if (HUB) HUB.cap = 0; }); } catch (e) { console.warn('[合集] 打开出错：', e); }
         setTimeout(() => {
@@ -252,7 +302,7 @@
         });
     }
     /* ---------- 插件合并：装了合并版，就把旧的单个插件从列表里拿掉（数据不动）；不要了的两个也拿掉 ---------- */
-    const BUN = /*GYX_BUNDLES*/{"bundles": {"🖼️ 相册里的插件": [["📸 TA的相册", ["gyxAlbum"]], ["🎨 表情包工坊", ["gyxMeme"]], ["📸 和TA合照", ["gyxDuo"]], ["💑 情侣头像", ["gyxAvatar"]], ["📸 同一秒", ["gyxMoment"]]], "💞 我们的关系": [["💞 好感两层", ["gyxDual"]], ["📊 关系四条线", ["gyxAxes"]], ["📈 我们的等级", ["gyxLevel"]], ["🏅 我们的成就", ["gyxBadge"]], ["🎯 反向攻略", ["gyxWoo"]], ["🔁 我们的小习惯", ["gyxRitual"]], ["🎁 TA的秘密计划", ["gyxPlan"]], ["📜 TA的往事", ["gyxPast"]], ["🪴 TA的成长日志", ["gyxEvolve"]], ["📼 TA的录像带", ["gyxTapes"]]], "📚 回顾": [["📒 手帐时间线", ["gyxHandbook"]], ["📖 我们的书", ["gyxOurBook"]], ["✨ 我们的星图", ["gyxStar"]], ["🗞️ 我们的周报", ["gyxWeekly"]], ["🎞️ 回忆放映", ["gyxReel"]], ["👀 TA眼中的你", ["gyxEye"]], ["⏳ 时光机", ["gyxTime"]], ["🕹️ 记忆潜行", ["gyxDive"]]], "🎉 纪念日和生日": [["🎉 纪念日惊喜", ["gyxAnniv"]], ["🎂 给TA过生日", ["gyxBday"]], ["🏮 一起过节", ["gyxFest"]]], "🤙 我们的约定": [["🤙 小约定", ["gyxPromise"]], ["🎟️ 兑换券", ["gyxCoupon"]], ["🧾 恋爱审批", ["gyxOA"]], ["🎁 愿望清单", ["gyxWish"]], ["💯 一百件小事", ["gyx100"]]], "🌙 早安晚安": [["☀️ 早安简报", ["gyxBrief"]], ["⏰🌙 叫醒与哄睡", ["gyxWake"]], ["🌙 熬夜管家", ["gyxNight"]], ["🕯️ 睡前三件好事", ["gyxGood"]]], "💬 问答": [["🌅 每日一问", ["gyxDaily"]], ["💞 默契问答", ["gyxQuiz"]], ["📋 调查问卷", ["gyxSurvey"]], ["📮 提问箱", ["gyxAskBox"]], ["🗳️ TA的人生选择题", ["gyxDilemma"]], ["📡 心电感应光谱", ["gyxWave"]]], "🎮 游戏": [["🎮 一起玩", ["gyxGame"]], ["🧭 文字冒险", ["gyxQuest"]], ["🗺️ TA布置的寻宝", ["gyxHunt"]], ["🎡 帮我选", ["gyxPick"]], ["🎲 跑团", ["gyxTrpg"]], ["🎣 一起钓鱼", ["gyxFish"]], ["📍 现实捉迷藏", ["gyxSeek"]], ["🔁 时间循环", ["gyxLoop"]], ["🗝️ 双人密室", ["gyxRoom"]], ["🃏 命运卡牌", ["gyxFate"]], ["🆘 TA被困了", ["gyxStuck"]]], "🕵️ 推理和综艺": [["🎭 谁是真的TA", ["gyxReal"]], ["🐢 海龟汤", ["gyxSoup"]], ["🔍 剧本杀", ["gyxCase"]], ["💘 我们的恋综", ["gyxShow"]]], "📰 主页和社交": [["📰 营销号自己爆料", ["gyxScoop"]], ["🔥 微博热搜榜", ["gyxHotList"]], ["⏰ 准点群聊", ["gyxOnTime"]]], "💌 信": [["💌 拆信仪式", ["gyxLetter"]], ["📓 交换日记本", ["gyxJournal"]], ["⏳ 时间胶囊", ["gyxCapsule"]], ["🏞️ 明信片墙", ["gyxPost"]], ["🍾 漂流瓶", ["gyxBottle"]], ["💌 有条件才能拆的信", ["gyxSeal"]]], "🏠 我们的小屋": [["🏠 我们的小屋", ["gyxHome"]], ["🧊 3D小屋", ["gyx3dRoom"]], ["🍁 随机掉落收藏册", ["gyxDrop"]], ["🌱 一起养小生命", ["gyxGrow"]], ["🐷 一起存钱罐", ["gyxJar"]], ["📦 TA的旧物箱", ["gyxBox"]], ["🪟 窗台来客", ["gyxSill"]]], "🗣️ TA怎么说话": [["🫂 相处模式", ["gyxBond"]], ["🧂 风格调料", ["gyxSpice"]], ["🛡️ 平视", ["gyxFair"]], ["🗣️ 口头禅传染", ["gyxEcho"]], ["🎬 听取模式", ["gyxListen"]], ["🌱 TA被你影响", ["gyxInfl"]], ["⌨️ 你打了又删", ["gyxErase"]], ["🔁 你让TA重说了", ["gyxRegen"]], ["🛡️ 别把她写弱", ["gyxFair"]]], "🫂 哄": [["🫂 抱抱", ["gyxHug"]], ["🥺 轮到你哄TA", ["gyxCoax"]], ["🌧️ 吵架和好", ["gyxMakeup"]], ["🌳 秘密树洞", ["gyxSecret"]]], "🚶 陪你": [["🚶 陪你散步", ["gyxWalk"]], ["🍳 一起做饭", ["gyxCook"]], ["📚 一起自习室", ["gyxStudy"]], ["🏃 TA是你的私教", ["gyxCoach"]], ["✈️ 一起旅行", ["gyxTrip"]], ["📮 现实小任务", ["gyxMis"]], ["🕯️ 一起安静待着", ["gyxStill"]]], "💓 贴贴": [["💓 听心跳", ["gyxBeat"]], ["📳 摇一摇贴贴", ["gyxShake"]]], "🎛️ 开关和后台": [["🎛️ 功能开关中心", ["gyxSwitch", "gyxWebInvite", "gyxMystic"]], ["🔋 省电模式", ["gyxSaver"]], ["💬 文案不重样", ["gyxVary"]], ["⏳ 生成中提示", ["gyxGen"]]], "📱 小手机": [["📝 TA的备忘录", ["gyxMemo"]], ["🧩 AI小程序", ["gyxApps"]], ["📞 来电", ["gyxRing", "gyxCallPlus"]], ["📲 手机桌面小组件", ["gyxPhoneW"]], ["🧸 桌面上的TA", ["gyxPet"]], ["🧊 3D小人", ["gyx3d", "gyx3dPage"]], ["📤 角标和分享", ["gyxPing"]], ["📞 来电动画和铃声", ["gyxRing", "gyxCallPlus"]], ["📞 来电增强", ["gyxRing", "gyxCallPlus"]]], "🎨 美化": [["🫧 气泡工坊", ["gyxBubble"]], ["🎨 酒馆主题", ["gyxStTheme"]], ["🌗 日夜主题", ["gyxDayNight"]], ["👉 跟手返回", ["gyxSwipe"]], ["🛍️ 装扮商店", ["gyxShop"]]]}, "retired": ["📺 追剧进度", "🔐 我们的暗号", "📱 软件全家桶", "🧣 微博", "🫧 泡泡", "📕 小红书", "🫘 豆瓣", "💬 iMessage", "📲 真手机", "🎵 网易云", "🎵 网易云音乐", "🎶 抖音", "💚 微信", "📺 直播间", "📻 深夜电台", "🎶 共享歌单", "📼 留声机", "🎵 TA写给你的歌"]}/*END*/;
+    const BUN = /*GYX_BUNDLES*/{"bundles": {"🖼️ 相册里的插件": [["📸 TA的相册", ["gyxAlbum"]], ["🎨 表情包工坊", ["gyxMeme"]], ["📸 和TA合照", ["gyxDuo"]], ["💑 情侣头像", ["gyxAvatar"]], ["📸 同一秒", ["gyxMoment"]]], "💞 我们的关系": [["💞 好感两层", ["gyxDual"]], ["📊 关系四条线", ["gyxAxes"]], ["📈 我们的等级", ["gyxLevel"]], ["🏅 我们的成就", ["gyxBadge"]], ["🎯 反向攻略", ["gyxWoo"]], ["🔁 我们的小习惯", ["gyxRitual"]], ["🎁 TA的秘密计划", ["gyxPlan"]], ["📜 TA的往事", ["gyxPast"]], ["🪴 TA的成长日志", ["gyxEvolve"]], ["📼 TA的录像带", ["gyxTapes"]]], "📚 回顾": [["📒 手帐时间线", ["gyxHandbook"]], ["📖 我们的书", ["gyxOurBook"]], ["✨ 我们的星图", ["gyxStar"]], ["🗞️ 我们的周报", ["gyxWeekly"]], ["🎞️ 回忆放映", ["gyxReel"]], ["👀 TA眼中的你", ["gyxEye"]], ["⏳ 时光机", ["gyxTime"]], ["🕹️ 记忆潜行", ["gyxDive"]]], "🎉 纪念日和生日": [["🎉 纪念日惊喜", ["gyxAnniv"]], ["🎂 给TA过生日", ["gyxBday"]], ["🏮 一起过节", ["gyxFest"]]], "🤙 我们的约定": [["🤙 小约定", ["gyxPromise"]], ["🎟️ 兑换券", ["gyxCoupon"]], ["🧾 恋爱审批", ["gyxOA"]], ["🎁 愿望清单", ["gyxWish"]], ["💯 一百件小事", ["gyx100"]]], "🌙 早安晚安": [["☀️ 早安简报", ["gyxBrief"]], ["⏰🌙 叫醒与哄睡", ["gyxWake"]], ["🌙 熬夜管家", ["gyxNight"]], ["🕯️ 睡前三件好事", ["gyxGood"]]], "💬 问答": [["🌅 每日一问", ["gyxDaily"]], ["💞 默契问答", ["gyxQuiz"]], ["📋 调查问卷", ["gyxSurvey"]], ["📮 提问箱", ["gyxAskBox"]], ["🗳️ TA的人生选择题", ["gyxDilemma"]], ["📡 心电感应光谱", ["gyxWave"]]], "🎮 游戏": [["🎮 一起玩", ["gyxGame"]], ["🧭 文字冒险", ["gyxQuest"]], ["🗺️ TA布置的寻宝", ["gyxHunt"]], ["🎡 帮我选", ["gyxPick"]], ["🎲 跑团", ["gyxTrpg"]], ["🎣 一起钓鱼", ["gyxFish"]], ["📍 现实捉迷藏", ["gyxSeek"]], ["🔁 时间循环", ["gyxLoop"]], ["🗝️ 双人密室", ["gyxRoom"]], ["🃏 命运卡牌", ["gyxFate"]], ["🆘 TA被困了", ["gyxStuck"]]], "🕵️ 推理和综艺": [["🎭 谁是真的TA", ["gyxReal"]], ["🐢 海龟汤", ["gyxSoup"]], ["🔍 剧本杀", ["gyxCase"]], ["💘 我们的恋综", ["gyxShow"]]], "📰 主页和社交": [["📰 营销号自己爆料", ["gyxScoop"]], ["🔥 微博热搜榜", ["gyxHotList"]], ["⏰ 准点群聊", ["gyxOnTime"]]], "💌 信": [["💌 拆信仪式", ["gyxLetter"]], ["📓 交换日记本", ["gyxJournal"]], ["⏳ 时间胶囊", ["gyxCapsule"]], ["🏞️ 明信片墙", ["gyxPost"]], ["🍾 漂流瓶", ["gyxBottle"]], ["💌 有条件才能拆的信", ["gyxSeal"]]], "🏠 我们的小屋": [["🏠 我们的小屋", ["gyxHome"]], ["🧊 3D小屋", ["gyx3dRoom"]], ["🍁 随机掉落收藏册", ["gyxDrop"]], ["🌱 一起养小生命", ["gyxGrow"]], ["🐷 一起存钱罐", ["gyxJar"]], ["📦 TA的旧物箱", ["gyxBox"]], ["🪟 窗台来客", ["gyxSill"]]], "🗣️ TA怎么说话": [["🫂 相处模式", ["gyxBond"]], ["🧂 风格调料", ["gyxSpice"]], ["🛡️ 平视", ["gyxFair"]], ["🗣️ 口头禅传染", ["gyxEcho"]], ["🎬 听取模式", ["gyxListen"]], ["🌱 TA被你影响", ["gyxInfl"]], ["⌨️ 你打了又删", ["gyxErase"]], ["🔁 你让TA重说了", ["gyxRegen"]], ["✏️ TA的草稿箱", ["gyxDraft"]], ["🛡️ 别把她写弱", ["gyxFair"]]], "🫂 哄": [["🫂 抱抱", ["gyxHug"]], ["🥺 轮到你哄TA", ["gyxCoax"]], ["🌧️ 吵架和好", ["gyxMakeup"]], ["🌳 秘密树洞", ["gyxSecret"]]], "🚶 陪你": [["🚶 陪你散步", ["gyxWalk"]], ["🍳 一起做饭", ["gyxCook"]], ["📚 一起自习室", ["gyxStudy"]], ["🏃 TA是你的私教", ["gyxCoach"]], ["✈️ 一起旅行", ["gyxTrip"]], ["📮 现实小任务", ["gyxMis"]], ["🕯️ 一起安静待着", ["gyxStill"]], ["💓 听心跳", ["gyxBeat"]], ["📳 摇一摇贴贴", ["gyxShake"]], ["💓 贴贴", ["gyxBeat"]]], "🎛️ 开关和后台": [["🎛️ 功能开关中心", ["gyxSwitch", "gyxWebInvite", "gyxMystic"]], ["🔋 省电模式", ["gyxSaver"]], ["💬 文案不重样", ["gyxVary"]], ["⏳ 生成中提示", ["gyxGen"]]], "📱 小手机": [["📝 TA的备忘录", ["gyxMemo"]], ["🧩 AI小程序", ["gyxApps"]], ["📞 来电", ["gyxRing", "gyxCallPlus"]], ["📲 手机桌面小组件", ["gyxPhoneW"]], ["🧸 桌面上的TA", ["gyxPet"]], ["🧊 3D小人", ["gyx3d", "gyx3dPage"]], ["📤 角标和分享", ["gyxPing"]], ["📞 来电动画和铃声", ["gyxRing", "gyxCallPlus"]], ["📞 来电增强", ["gyxRing", "gyxCallPlus"]]], "🎨 美化": [["🫧 气泡工坊", ["gyxBubble"]], ["🎨 酒馆主题", ["gyxStTheme"]], ["🌗 日夜主题", ["gyxDayNight"]], ["👉 跟手返回", ["gyxSwipe"]], ["🛍️ 装扮商店", ["gyxShop"]], ["🌈 情绪皮肤", ["gyxMoodSkin"]]], "🎁 TA给你的": [["🌙 TA的梦", ["gyxDream"]], ["🎨 涂鸦互传", ["gyxDoodle"]], ["🔮 神秘学加量", ["gyxMystic"]]], "🪐 换个世界玩": [["🪐 平行世界", ["gyxWorld"]], ["🎭 换个世界", ["gyxTheater"]], ["🔄 互换身份", ["gyxSwap"]], ["🎬 番外隔离", ["gyxSide"]]], "🧠 记忆": [["❄️ 总结滚雪球", ["gyxRoll"]], ["📇 生活小档案", ["gyxNotes"]]], "🌐 外面的世界": [["🌦️ 天气联动", ["gyxWeather"]], ["🔥 真实热搜", ["gyxHot"]]], "💭 聊天细节": [["🌐 外语和翻译", ["gyxLang"]], ["🫶 气泡表情回应", ["gyxReact"]]], "🧺 生活": [["🧾 一起记账", ["gyxBook"]], ["🍙 反向养成", ["gyxCare"]]]}, "retired": ["📺 追剧进度", "🔐 我们的暗号", "📱 软件全家桶", "🧣 微博", "🫧 泡泡", "📕 小红书", "🫘 豆瓣", "💬 iMessage", "📲 真手机", "🎵 网易云", "🎵 网易云音乐", "🎶 抖音", "💚 微信", "📺 直播间", "📻 深夜电台", "🎶 共享歌单", "📼 留声机", "🎵 TA写给你的歌"]}/*END*/;
     function prune(boot) {
         try {
             if (typeof plugins === 'undefined' || !Array.isArray(plugins) || !plugins.length) return 0;
@@ -310,7 +360,33 @@ body.dark-theme .gyhb-box{background:#16181c;color:#e7e9ea}body.dark-theme .gyhb
 .gyhb-body{min-height:120px}
 .gyhb-body .gyx-inhub>.gyx-box{width:auto;max-height:none;overflow:visible;box-shadow:none;border-radius:0;background:transparent;color:inherit}
 .gyhb-card{text-align:center;padding:26px 22px 30px}.gyhb-card .gyhb-ci{font-size:40px;line-height:1.2}.gyhb-card b{display:block;font-size:16px;margin:6px 0 4px}.gyhb-card p{margin:0 auto 14px;max-width:34em;font-size:13px;color:#8e8e93;line-height:1.7}
-.gyhb-go{padding:9px 18px;border-radius:14px;border:none;background:#1d1d1f;color:#fff;cursor:pointer;font-family:inherit;font-size:14px}`;
+.gyhb-go{padding:9px 18px;border-radius:14px;border:none;background:#1d1d1f;color:#fff;cursor:pointer;font-family:inherit;font-size:14px}
+/* 282 合集一页 */
+.gyhb-ov{--hc:#f2f2f7;--hk:#fff;--hs:#8e8e93;--hf:rgba(120,120,128,.12);--hl:rgba(60,60,67,.18)}
+body.dark-theme .gyhb-ov{--hc:#000;--hk:#1c1c1e;--hl:rgba(84,84,88,.6);--hf:rgba(120,120,128,.24)}
+.gyhb-box:has(.gyhb-pills:not(:empty)){background:var(--hc)}
+.gyhb-more{cursor:pointer;width:30px;height:30px;border-radius:15px;background:var(--hf);display:inline-flex;align-items:center;justify-content:center;font-size:15px;color:#8e8e93;flex:none}
+.gyhb-pills{position:sticky;top:0;z-index:2;display:flex;gap:8px;overflow-x:auto;padding:2px 16px 12px;background:inherit;scrollbar-width:none}.gyhb-pills::-webkit-scrollbar{display:none}.gyhb-pills:empty{display:none}
+.gyhb-pills button{flex:none;border:none;height:32px;padding:0 13px;border-radius:16px;background:var(--hk);color:inherit;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap}
+.gyhb-pills button.on{background:#1d1d1f;color:#fff}body.dark-theme .gyhb-pills button.on{background:#f2f2f7;color:#000}
+.gyhb-lt{font-size:30px;font-weight:700;padding:2px 18px 12px;letter-spacing:.2px}.gyhb-lt:empty{display:none}.gyhb-pills .gyhb-pm{background:var(--hf);color:var(--hs);min-width:40px}
+.gyhb-card2{background:var(--hk);border-radius:18px;margin:0 14px 12px;padding:13px 16px;cursor:pointer}
+.gyhb-ch{display:flex;align-items:center;gap:8px;font-size:15.5px}.gyhb-ch b{flex:1;font-weight:600}.gyhb-ch .gyhb-ci{font-size:18px}.gyhb-ca{color:#c4c4c7}
+.gyhb-rows{margin-top:8px}.gyhb-tr{display:flex;gap:10px;align-items:baseline;padding:5px 0;font-size:14.5px}.gyhb-tr span{flex:none;color:var(--hs);min-width:3.5em}.gyhb-tr em{font-style:normal;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.gyhb-tr.go em{color:inherit}
+.gyhb-w{margin-top:8px;background:var(--hf);border-radius:14px;padding:10px 12px;min-height:56px;--pm-sub:var(--hs)}.gyhb-w .gw-x{gap:4px}.gyhb-w .gw-x em{font-size:13px}
+.gyhb-w .gw-x .h{display:none}.gyhb-w .gw-x.m em:first-of-type{font-size:14px;color:inherit}
+.gyhb-d{margin:6px 0 0;font-size:13.5px;color:var(--hs);line-height:1.6}
+.gyhb-more2{text-align:center;color:var(--hs);font-size:13.5px;padding:4px 0 20px;cursor:pointer}
+.gyhb-body .gyx-inhub{background:var(--hk);border-radius:18px;margin:0 14px 14px}
+.gyhb-sheet{position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.3);display:flex;align-items:flex-end;justify-content:center}
+.gyhb-ov .gyhb-sheet{position:fixed}
+.gyhb-sbox{background:var(--hc);color:inherit;width:min(600px,100%);max-height:85vh;overflow:auto;border-radius:14px 14px 0 0;padding-bottom:26px}
+.gyhb-shd{display:flex;justify-content:space-between;align-items:center;padding:16px;font-size:16px;position:sticky;top:0;background:var(--hc)}.gyhb-shd span{color:#007aff;cursor:pointer}.gyhb-shd .k{font-weight:600}
+.gyhb-sgh{font-size:13px;color:var(--hs);padding:8px 32px 6px}
+.gyhb-sgrp{background:var(--hk);border-radius:12px;margin:0 16px 16px;overflow:hidden}
+.gyhb-srow{display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:15.5px;border-top:.5px solid var(--hl)}.gyhb-srow:first-child{border-top:0}.gyhb-srow .t{flex:1;min-width:0}
+.gyhb-srow .mv{width:24px;text-align:center;color:#007aff;cursor:pointer}
+.gyhb-srow input{appearance:none;-webkit-appearance:none;width:51px;height:31px;border-radius:16px;background:var(--hf);position:relative;cursor:pointer;flex:none;margin:0;transition:background .2s}.gyhb-srow input::after{content:"";position:absolute;left:2px;top:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15);transition:transform .2s}.gyhb-srow input:checked{background:#34c759}.gyhb-srow input:checked::after{transform:translateX(20px)}`;
     document.head.appendChild(css);
     window.gyHubInfo = () => ({ on: on(), HOSTS: HOSTS.map(h => ({ host: h.host, kids: h.kids })), FOLDERS: window.gyHubFolders(), SET_IDS, CAT, HIDE: [...HIDE] });
     tick(); setInterval(tick, 800);

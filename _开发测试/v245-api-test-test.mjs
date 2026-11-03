@@ -26,6 +26,7 @@ await page.route(/^https?:\/\//, r => {
 });
 await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => window.__guyuBooted && typeof executePluginOnLoad === 'function', { timeout: 20000 });
+await page.evaluate(() => localStorage.setItem('gyHubPage', '0'));   // 282：合集默认是一页；这个测试测的是原来那一列
 await page.evaluate(({ PLUG }) => {
   myCharacters.push({ id: 9991, name: 'Leon', persona: '摄影师', worldbooks: [], diaryData: { letters: [], diaries: [] } });
   plugins.push(...PLUG); PLUG.forEach(p => executePluginOnLoad(p));

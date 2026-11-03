@@ -17,6 +17,7 @@ page.on('dialog', d => d.dismiss());
 await page.route(/^https?:\/\//, r => r.abort());
 await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => window.__guyuBooted && typeof executePluginOnLoad === 'function', { timeout: 20000 });
+await page.evaluate(() => localStorage.setItem('gyHubPage', '0'));   // 282：合集默认是一页；这个测试测的是原来那一列
 await page.waitForTimeout(1200);
 await page.evaluate(({ PLUG }) => {
   if (window.bailuCards) window.__bailuNoBuiltin = true;
