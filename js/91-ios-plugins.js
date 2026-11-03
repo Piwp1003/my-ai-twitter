@@ -23,6 +23,8 @@
     const textLen = el => (el.textContent || '').replace(/\s+/g, '').length;
     function isSetting(el) {
         if (!el || el.nodeType !== 1 || el.closest('.gy-ios-keep')) return false;
+        // 功能开关中心这类「一行＝名字＋开关」的列表：开关是正文，不是设置项，别搬进 ⋯（搬走就只剩一列光秃秃的开关）
+        if (el.closest('.sw-it') || (el.matches && el.matches('label.sw'))) return false;
         if (el.querySelector('button,.gyx-btn,textarea,canvas,img,audio,video')) return false;
         if (textLen(el) > 160) return false;
         const cb = el.querySelector('input[type=checkbox]') || (el.matches('input[type=checkbox]') ? el : null);
@@ -179,8 +181,8 @@ body.gy-ios-plug :is(.gyx-bd,.gy-ips) input[type=checkbox]::after{content:"";pos
 body.gy-ios-plug :is(.gyx-bd,.gy-ips) input[type=checkbox]:checked{background:#34c759}
 body.gy-ios-plug :is(.gyx-bd,.gy-ips) input[type=checkbox]:checked::after{transform:translateX(20px)}
 body.gy-ios-plug :is(.gyx-bd,.gy-ips) input[type=checkbox]:disabled{opacity:.4}
-body.gy-ios-plug .gyx-bd label:has(>input[type=checkbox]){display:flex;align-items:center;gap:10px;background:var(--ipc);border-radius:12px;padding:10px 16px;margin:0 0 8px;font-size:16px}
-body.gy-ios-plug .gyx-bd label:has(>input[type=checkbox])>input[type=checkbox]{order:2}
+body.gy-ios-plug .gyx-bd label:not(.sw):has(>input[type=checkbox]){display:flex;align-items:center;gap:10px;background:var(--ipc);border-radius:12px;padding:10px 16px;margin:0 0 8px;font-size:16px}
+body.gy-ios-plug .gyx-bd label:not(.sw):has(>input[type=checkbox])>input[type=checkbox]{order:2}
 
 /* 小手机（手机上）：不是居中的小弹窗，是 iOS 那种从底下升上来的整页卡片 */
 body.gy-ios-plug.gyphm-mob :is(.gyx-ov,.gyhb-ov):not(.gy-aspage){align-items:flex-end!important;padding:0!important;background:rgba(0,0,0,.3)!important}
