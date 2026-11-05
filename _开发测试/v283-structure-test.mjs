@@ -32,6 +32,7 @@ const r = await page.evaluate(async () => {
   // 首页 8 个大方块
   switchMainView('miniHub'); await s(800);
   o.tiles = [...document.querySelectorAll('#miniFeatureList .gyhm-t b')].map(b => b.textContent);
+  o.apps = document.querySelectorAll('#miniFeatureList .gyhm-a').length;
   o.lines = [...document.querySelectorAll('#miniFeatureList .gyhm-t span')].map(b => b.textContent).filter(Boolean).length;
   o.noOldHubs = !GY_MINI_FEATURES.some(f => ['hub_rel', 'hub_night', 'hub_gift', 'hub_voice'].includes(f.id));
   // 点「我们」→ 分页
@@ -84,7 +85,7 @@ const r = await page.evaluate(async () => {
 });
 check('新玩法都内置了：127 个模块跑起来，陪你 / 梦 / 跑团 / 相处模式 都在', r.mods >= 120 && r.feats, JSON.stringify({ mods: r.mods, feats: r.feats }));
 check('TA被困了没了；角色立绘是自带的', r.noStuck && r.sprite);
-check('小功能首页 8 个大方块：我们 / 陪你 / TA 的 / 游戏 / 生活 / 世界 / 软件 / 相册，每块有一行现在的情况', r.tiles.join() === '我们,陪你,TA 的,游戏,生活,世界,软件,相册' && r.lines >= 6 && r.noOldHubs, JSON.stringify(r.tiles));
+check('小功能首页 7 个大方块：我们 / 陪你 / TA 的 / 游戏 / 生活 / 世界 / 相册（每块一行现在的情况），下面一个个软件图标', r.tiles.join() === '我们,陪你,TA 的,游戏,生活,世界,相册' && r.apps >= 10 && r.lines >= 6 && r.noOldHubs, JSON.stringify(r.tiles));
 check('「我们」分 4 页：关系 / 约定和愿望 / 日子 / 回顾（+⋯），第一页是关系的卡片', r.usPills.slice(0, 4).map(t => t.replace(/^\S+\s/, '')).join() === '关系,约定和愿望,日子,回顾' && r.usCards.some(t => /好感/.test(t)), JSON.stringify(r.usPills) + JSON.stringify(r.usCards));
 check('切到「日子」整页换成那一页；下次打开还在那页', r.dayOn && r.remember && !r.days.some(t => /好感/.test(t)), JSON.stringify(r.days));
 check('打开一个功能：面板画在入口里，标签亮着它那一页；⋯ 只管这一页', r.inPanel && /约定/.test(r.sheetTitle) && r.sheetRows >= 3 && r.sheetRows <= 6, JSON.stringify({ t: r.sheetTitle, n: r.sheetRows }));

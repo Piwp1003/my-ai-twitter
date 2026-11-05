@@ -90,7 +90,8 @@
         hub_people: ['hub_world', 'p_身边的人'], hub_alt: ['hub_world', 'p_换个世界'], hub_voice: ['hub_chatset', 'p_TA 的性格'], hub_chat: ['hub_chatset', 'p_听和看'], hub_together: ['hub_with', 'p_一起做'],
         hub_look: ['hub_custom', 'p_美化'], hub_set: ['hub_custom', 'p_开关和后台'], hub_phone: ['hub_custom', 'p_小手机'] };
     // 首页 8 个入口的顺序（gameHall = 游戏厅，gallery = 相册：本来就是一整页）
-    const HOME = ['hub_us', 'hub_with', 'hub_ta', 'gameHall', 'hub_life', 'hub_world', 'hub_soft', 'gallery'];
+    const HOME = ['hub_us', 'hub_with', 'hub_ta', 'gameHall', 'hub_life', 'hub_world', 'gallery'];   // 287：软件不再是一个合集，每个软件直接在首页下面一排图标
+    const APP_COLOR = { gysWechat: ['#2dc100', '#07a35a'], gysImsg: ['#5ac8fa', '#007aff'], gysWeibo: ['#ff9500', '#e6162d'], gysBubble: ['#a0e9ff', '#5ac8fa'], gysRed: ['#ff5a5f', '#ff2442'], gysDouban: ['#4cd964', '#2e963d'], gysMusic: ['#ff5a5f', '#d33a31'], gysDouyin: ['#3a3a3c', '#000000'], gysPdd: ['#ff7a45', '#e02e24'], gyComm: ['#34c759', '#248a3d'], gyCloudBkApp: ['#64d2ff', '#0a84ff'], gyxApps: ['#bf5af2', '#5e5ce6'], gysUi: ['#8e8e93', '#48484a'] };
     const HOME_COLOR = { gameHall: ['#ff9f43', '#ee5a24'], gallery: ['#a29bfe', '#6c5ce7'] };
     const HOME_TITLE = { gameHall: ['🎮', '游戏'], gallery: ['🖼️', '相册'] };
     // 直接不在小功能里出现的：八卦网（「日常」里已经有）；进了聊天 🎮 的游戏
@@ -169,13 +170,23 @@
         grid.innerHTML = ids.map(id => { const f = featOf(id), F = FOLDERS.find(x => x.id === id), c = (F && F.color) || HOME_COLOR[id] || ['#8e8e93', '#636366'];
             return `<button type="button" class="gyhm-t" style="background:linear-gradient(150deg,${c[0]},${c[1]})" onclick="gyOpenMiniFeature('${id}')"><em>${(F && F.icon) || (HOME_TITLE[id] || [])[0] || f.icon || '🧩'}</em><b>${esc((F && F.title) || (HOME_TITLE[id] || [])[1] || f.title)}</b><span>${esc(liveLine(id).slice(0, 22))}</span></button>`; }).join('');
         box.insertBefore(grid, box.firstChild);
+        // 287：软件一个个直接摆出来（像手机桌面），点了直接进那个软件
+        const SF = FOLDERS.find(x => x.id === 'hub_soft'), apps = SF ? membersOf(SF) : [];
+        box.querySelectorAll('.gyhm-apps,.gyhm-sh').forEach(e => e.remove());
+        if (apps.length) {
+            const sh = document.createElement('div'); sh.className = 'gyhm-sh'; sh.textContent = '📱 软件';
+            const ag = document.createElement('div'); ag.className = 'gyhm-apps';
+            ag.innerHTML = apps.map(m => { const c = APP_COLOR[m.id] || ['#8e8e93', '#636366']; return `<button type="button" class="gyhm-a" onclick="gyHomeApp('${m.id}')"><i style="background:linear-gradient(150deg,${c[0]},${c[1]})">${m.icon || '📱'}</i><span>${esc(m.title)}</span></button>`; }).join('');
+            grid.after(sh); sh.after(ag);
+        }
         // 首页上剩下的（别人写的插件之类）：放在大方块下面
         const menu = box.querySelector('.set-menu');
-        if (menu) { menu.querySelectorAll('button.set-entry').forEach(b => { const m = /gyOpenMiniFeature\('([^']+)'\)/.exec(b.getAttribute('onclick') || ''); if (m && HOME.includes(m[1])) b.style.display = 'none'; }); }
+        if (menu) { menu.querySelectorAll('button.set-entry').forEach(b => { const m = /gyOpenMiniFeature\('([^']+)'\)/.exec(b.getAttribute('onclick') || ''); if (m && (HOME.includes(m[1]) || m[1] === 'hub_soft')) b.style.display = 'none'; }); }
         const rest = menu ? [...menu.querySelectorAll('button.set-entry')].filter(b => b.style.display !== 'none').length : 0;
         if (rest) { const h = document.createElement('div'); h.className = 'gyhm-more'; h.textContent = '更多'; menu.parentNode.insertBefore(h, menu); }
     }
     window.gyHomeTiles = homeTiles;
+    window.gyHomeApp = id => { const m = memberOf(id); if (m && m.open) try { m.open(); } catch (e) { console.warn(e); } else window.gyOpenMiniFeature(id); };
     function bar() {
         const box = document.getElementById('miniFeatureList'); if (!box) return;
         let b = document.getElementById('gyHubBar'); if (b) b.remove();
@@ -581,6 +592,9 @@ body.dark-theme .gyhb-box{background:#16181c;color:#e7e9ea}body.dark-theme .gyhb
 .gyhm-t{min-width:0;box-sizing:border-box;border:none;border-radius:22px;padding:14px;min-height:128px;color:#fff;display:flex;flex-direction:column;align-items:flex-start;text-align:left;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(0,0,0,.08)}
 .gyhm-t em{font-style:normal;font-size:30px;line-height:1}.gyhm-t b{font-size:18px;margin-top:auto}.gyhm-t span{font-size:12.5px;opacity:.88;margin-top:3px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gyhm-t:active{transform:scale(.97)}
+.gyhm-grid>.gyhm-t:last-child:nth-child(odd){grid-column:span 2;min-height:104px}
+.gyhm-sh{font-size:20px;font-weight:700;margin:2px 4px 10px}.gyhm-apps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 6px;margin:0 0 18px}
+.gyhm-a{border:0;background:none;padding:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;font-family:inherit;color:inherit;min-width:0}.gyhm-a i{font-style:normal;width:58px;height:58px;border-radius:15px;display:grid;place-items:center;font-size:28px;box-shadow:0 4px 12px rgba(0,0,0,.1)}.gyhm-a span{font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gyhm-a:active i{transform:scale(.94)}
 .gyhm-more{font-size:13px;color:#8b98a5;margin:4px 4px 8px}.gyhm-foot{text-align:center;margin:18px 0 6px}.gyhm-foot span{font-size:12.5px;color:#8b98a5;cursor:pointer;text-decoration:underline}
 /* 282 合集一页 */
 .gyhb-ov{--hc:#f2f2f7;--hk:#fff;--hs:#8e8e93;--hf:rgba(120,120,128,.12);--hl:rgba(60,60,67,.18)}

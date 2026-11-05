@@ -122,6 +122,14 @@
     async function srcOf(t) {
         if (!t) return '';
         if (t.kind === 'url') return t.src || '';
+        // 286：在线曲库（网易云 / QQ 音乐）——链接会过期，每次放之前现拿一条
+        if (t.kind === 'online') {
+            if (t._u && Date.now() - (t._ut || 0) < 8 * 60000) return t._u;
+            if (!window.gyMu) return '';
+            const r = await window.gyMu.url(t.osrc, t.oid).catch(e => ({ why: e.message || String(e) }));
+            if (r && r.url) { t._u = r.url; t._ut = Date.now(); if (r.trial) toast('只能试听一段', '这首是会员歌，登录会员账号就能放完整的'); return r.url; }
+            toast('这首放不了', (r && r.why) || '换一首试试'); return '';
+        }
         if (blobUrls[t.id]) return blobUrls[t.id];
         if (!LF) return '';
         try {
@@ -1074,7 +1082,7 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         S.idx = (i + L.length) % L.length;
         const t = cur();
         const src = await srcOf(t);
-        if (!src) { toast('这首没有音源', '它的文件可能已经不在了，去曲库里重新添加一次。'); return; }
+        if (!src) { if (t.kind !== 'online') toast('这首没有音源', '它的文件可能已经不在了，去曲库里重新添加一次。'); return; }
         audio.src = src;
         lrcLines = parseLrc(t.lrc); lrcIdx = -1;
         lyricSaidThisSong = 0; lastSaidLyricIdx = -1;   // 新的一首，歌词接话次数清零
@@ -1095,6 +1103,20 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         if (charsIn().length && LS().sayOnSwitch) setTimeout(() => someoneSay('switch'), 1200);
     };
     // 只读：现在放的是哪首（小手机的「音乐」小组件用）
+    // 286：从在线曲库加一首（同一首不重复加），play=true 就马上放
+    window.gymAddOnline = async function (it, play) {
+        if (!it || !it.id) return null;
+        let t = S.tracks.find(x => x.kind === 'online' && x.osrc === it.src && x.oid === String(it.id));
+        if (!t) {
+            t = { id: 'on_' + it.src + '_' + it.id, title: String(it.name || '未命名'), artist: String(it.ar || ''), cover: '', src: '', kind: 'online', osrc: it.src, oid: String(it.id), lrc: '', dur: Math.round((it.dur || 0) / 1000), note: it.al ? '专辑《' + it.al + '》' : '' };
+            S.tracks.push(t);
+            try { const l = window.gyMu ? await window.gyMu.lyric(it.src, it.id) : null; if (l && l.lrc) t.lrc = l.lrc; } catch (e) {}
+            save();
+        }
+        if (play) { try { if (S.hidden && window.gymShow) gymShow(); } catch (e) {} window.gymPlayTrackId(t.id); }
+        try { renderMgr(); } catch (e) {}
+        return t;
+    };
     window.gymState = () => S;   // 📱 软件里的网易云要读曲库 / 歌单 / 听歌统计（只读）
     window.gymNowInfo = function () {
         const t = cur(); if (!t) return null;

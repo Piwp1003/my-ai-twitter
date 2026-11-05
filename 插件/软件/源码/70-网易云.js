@@ -91,12 +91,14 @@ const whoByName = n => { n = String(n || '').trim(); return G.people().find(w =>
 function passer(name) { name = X.plain(name || '').slice(0, 16) || G.pick(['云村村民', '深夜emo选手', '耳机里的海', '一只鲸鱼', '晚风', '单曲循环中', '不想上班']) + G.rnd(10, 999); const w = 'x:mp_' + name; if (!G.hasProf(APP, w)) G.prof(APP, w, { nick: name, emoji: G.pick(['🐳', '🌙', '🎧', '🌊', '🍃', '🐱', '⭐', '🌧️']), followers: G.rnd(3, 800), gen: true }); return w; }
 
 /* ---------------- 生成 ---------------- */
+const FAIL = {};   // 286：没生成出来就歇两分钟再试（不然页面一重画就又去要，没完没了）
 async function genDaily(force) {
     if (BUSY.daily) return; const d = X.day(); if (!force && D.daily && D.daily.day === d && D.daily.ids.length) return;
+    if (!force && Date.now() - (FAIL.daily || 0) < 120000) return; FAIL.daily = Date.now();
     BUSY.daily = 1; G.repaint(APP);
     try {
         const o = X.json(await X.ask(P('mu.daily', DEF_DAILY, { 我: G.meName(), 听过: myTaste(), 人: peopleLines(), 条数: 12 })));
-        if (Array.isArray(o)) { const why = {}; const ids = o.map(x => { const s = x && mkSong(x); if (s && x.why) why[s.id] = X.plain(x.why).slice(0, 40); return s && s.id; }).filter(Boolean); if (ids.length) D.daily = { day: d, ids, why }; saveD(); }
+        if (Array.isArray(o)) { const why = {}; const ids = o.map(x => { const s = x && mkSong(x); if (s && x.why) why[s.id] = X.plain(x.why).slice(0, 40); return s && s.id; }).filter(Boolean); if (ids.length) { D.daily = { day: d, ids, why }; FAIL.daily = 0; } saveD(); }
     } catch (e) {} finally { BUSY.daily = 0; G.repaint(APP); }
 }
 function cmtFlat(s) { const L = []; (s.cmts || []).forEach(c => { L.push(c); (c.kids || []).forEach(k => L.push(k)); }); return L; }
@@ -129,7 +131,7 @@ async function genSearch(q) {
     try { const o = X.json(await X.ask(P('mu.search', DEF_SEARCH, { 词: q, 条数: 10 }))); if (Array.isArray(o)) SRCH = { q, ids: o.map(x => { const s = x && mkSong(x); return s && s.id; }).filter(Boolean) }; } catch (e) {} finally { BUSY.s = 0; G.repaint(APP); }
 }
 async function genFm() {
-    if (BUSY.fm) return; BUSY.fm = 1; G.repaint(APP);
+    if (BUSY.fm) return; if (Date.now() - (FAIL.fm || 0) < 120000) return; FAIL.fm = Date.now(); BUSY.fm = 1; G.repaint(APP);
     try { const o = X.json(await X.ask(P('mu.fm', DEF_FM, { 我: G.meName(), 听过: myTaste(), 模式: FMMODE === 'heart' ? '现在是「心动模式」：跟她最近红心的歌风格接近。' : '普通模式：可以跳出她的舒适区。', 条数: 8 }))); if (Array.isArray(o)) { o.forEach(x => { const s = x && mkSong(x); if (s && !D.fm.includes(s.id)) D.fm.push(s.id); }); saveD(); } } catch (e) {} finally { BUSY.fm = 0; G.repaint(APP); }
 }
 async function taList(c, req) {
@@ -270,8 +272,35 @@ M.send = async id => {
 
 /* ---------------- 搜索 ---------------- */
 M.searchPage = () => G.push(APP, { id: 'search', title: '搜索', html: () => `<div class="mu-sbox"><input id="muQ" placeholder="搜歌、歌手、心情" value="${esc(SRCH ? SRCH.q : '')}" onkeydown="if(event.key==='Enter'&&!event.isComposing)gysMu.search(this.value)"><span onclick="gysMu.search(document.getElementById('muQ').value)">搜索</span></div>${SRCH ? searchRes() : `<div class="mu-sec">🔥 热搜</div><div class="mu-chips">${['适合下雨天听的', '失恋', '周杰伦', '深夜', '学习专注', '甜到发齁'].concat(cast().slice(0, 3).map(nameOf)).map(q => `<span onclick="gysMu.search('${esc(q).replace(/'/g, '')}')">${esc(q)}</span>`).join('')}</div>`}` });
-function searchRes() { const q = SRCH.q.toLowerCase(); const loc = Object.values(D.songs).filter(s => (s.t + s.a).toLowerCase().includes(q)).map(s => s.id); const ids = Array.from(new Set(loc.concat(SRCH.ids || []))); const users = G.people().filter(w => w !== 'me' && nameOf(w).toLowerCase().includes(q)); return `${users.length ? `<div class="mu-sec">用户</div>${users.map(w => `<div class="mu-row" onclick="gysMu.prof('${w}')">${G.av(APP, w, 40)}<div class="mu-ri"><b>${esc(nameOf(w))}</b><small>${esc(G.prof(APP, w).bio || '')}</small></div></div>`).join('')}` : ''}<div class="mu-sec">单曲</div>${rows(ids) || ''}${BUSY.s ? '<div class="gys-busy">⏳ 搜索中…</div>' : ''}`; }
-M.search = q => { q = String(q || '').trim(); if (!q) return; SRCH = { q, ids: [] }; if (!G.top(APP) || G.top(APP).id !== 'search') M.searchPage(); else G.repaint(APP); genSearch(q); };
+function searchRes() { const q = SRCH.q.toLowerCase(); const loc = Object.values(D.songs).filter(s => (s.t + s.a).toLowerCase().includes(q)).map(s => s.id); const ids = Array.from(new Set(loc.concat(SRCH.ids || []))); const users = G.people().filter(w => w !== 'me' && nameOf(w).toLowerCase().includes(q)); return `${onlineRes()}${users.length ? `<div class="mu-sec">用户</div>${users.map(w => `<div class="mu-row" onclick="gysMu.prof('${w}')">${G.av(APP, w, 40)}<div class="mu-ri"><b>${esc(nameOf(w))}</b><small>${esc(G.prof(APP, w).bio || '')}</small></div></div>`).join('')}` : ''}<div class="mu-sec">单曲</div>${rows(ids) || ''}${BUSY.s ? '<div class="gys-busy">⏳ 搜索中…</div>' : ''}`; }
+/* 287：在线的歌（网易云 / QQ 音乐，真的能放）——都在网易云里：搜索页直接列出来，「我的」里管登录 */
+let ONSRC = (() => { try { return (JSON.parse(localStorage.getItem('gyMuUi') || '{}') || {}).src || 'ne'; } catch (e) { return 'ne'; } })();
+const onAcc = s2 => (window.gyMu && window.gyMu.acc(s2)) || null;
+function onlineRes() {
+    if (!window.gyMu || !SRCH) return '';
+    const L = SRCH.on || [], name = { ne: '网易云', qq: 'QQ 音乐' };
+    return `<div class="mu-sec">能放的 <span class="mu-onp">${['ne', 'qq'].map(k => `<span class="${ONSRC === k ? 'on' : ''}" onclick="gysMu.onSrc('${k}')">${name[k]}</span>`).join('')}</span></div>${SRCH.onBusy ? '<div class="gys-busy">⏳ 在找能放的…</div>' : SRCH.onErr ? `<div class="mu-tip">${esc(SRCH.onErr)}</div>` : L.length ? L.slice(0, 8).map((it, i) => `<div class="mu-row" onclick="gysMu.playOn(${i})"><span class="mu-cv" style="width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,#ff5a5f,#d33a31)"><i style="font-size:15px;color:#fff;font-style:normal">${esc((it.name || '♪').slice(0, 1))}</i></span><div class="mu-ri"><b>${esc(it.name)}${it.vip ? ' <em class="mu-vip">会员</em>' : ''}</b><small>${esc(it.ar)}${it.al ? ' · ' + esc(it.al) : ''}</small></div><span class="mu-more" onclick="event.stopPropagation();gysMu.addOn(${i})">＋</span></div>`).join('') + (onAcc(ONSRC) && onAcc(ONSRC).ck ? '' : `<div class="mu-tip">会员歌要登录 ${name[ONSRC]} · <a onclick="gysMu.onlinePage()">去登录</a></div>`) : '<div class="mu-tip">没找到能放的</div>'}`;
+}
+async function onSearch(q) {
+    if (!window.gyMu || !SRCH) return; SRCH.onBusy = 1; SRCH.onErr = ''; G.repaint(APP);
+    try { const L = await window.gyMu.search(ONSRC, q); if (SRCH && SRCH.q === q) SRCH.on = L; } catch (e) { if (SRCH) SRCH.onErr = e.message || String(e); }
+    if (SRCH) SRCH.onBusy = 0; G.repaint(APP);
+}
+M.onSrc = k => { ONSRC = k; try { localStorage.setItem('gyMuUi', JSON.stringify({ src: k })); } catch (e) {} if (SRCH) onSearch(SRCH.q); };
+M.playOnline = async (it, add) => {
+    if (typeof window.gymAddOnline !== 'function') return X.toast('音乐盒没开', '在 设置 → 全部开关 里打开音乐盒（网易云靠它放声音）');
+    const t = await window.gymAddOnline(it, false); if (!t) return;
+    const key = it.src + ':' + it.id;
+    let s = Object.values(D.songs).find(x => x.on === key);
+    if (!s) { s = mkSong({ t: it.name, a: it.ar, al: it.al || '', mood: '' }); if (!s) return; s.on = key; }
+    s.bid = t.id; saveD();
+    if (add) return X.toast('加进曲库了', it.name);
+    M.play(s.id);
+};
+M.playOn = i => { const it = SRCH && (SRCH.on || [])[i]; if (it) M.playOnline(it); };
+M.addOn = i => { const it = SRCH && (SRCH.on || [])[i]; if (it) M.playOnline(it, 1); };
+M.onlinePage = (q, src) => { if (src) ONSRC = src; G.push(APP, { id: 'online', title: '能放的歌 · 登录', html: () => '<div id="gyMuBody"></div>', after: () => { if (window.gyMuMount) window.gyMuMount(q, ONSRC); q = ''; } }); };
+M.search = q => { q = String(q || '').trim(); if (!q) return; SRCH = { q, ids: [] }; if (!G.top(APP) || G.top(APP).id !== 'search') M.searchPage(); else G.repaint(APP); genSearch(q); onSearch(q); };
 
 /* ---------------- 漫游（私人 FM） ---------------- */
 function fmTab() {
@@ -512,7 +541,7 @@ function me2() {
             : MELIST === 'share' ? shared || '<div class="mu-tip">共享歌单关着（设置 → 全部开关 →「共享歌单」）</div>'
             : shared + D.lists.slice().sort((a, b) => b.at - a.at).slice(0, 6).map(l => lrow(l, `歌单 · ${l.ids.length} 首 · ${esc(nameOf(l.by))}`)).join('');
         list = `<div class="mu2-st2">${[['recent', '🔒 近期'], ['mine', '创建', mine.length], ['fav', '收藏', others.length], ['share', '共享', pl ? 1 : 0]].map(([k, n, c]) => `<span class="${MELIST === k ? 'on' : ''}" onclick="gysMu.melist('${k}')">${n}${c ? `<sup>${c}</sup>` : ''}</span>`).join('')}</div>
-          <div class="mu2-pl" onclick="gysMu.likedList()"><span class="mu-cv" style="width:50px;height:50px;border-radius:8px;background:linear-gradient(135deg,#ff7a85,#fc3d49)"><i style="font-size:22px">♥</i></span><div class="i"><b>我喜欢的音乐</b><small>${(D.likes[meW] || []).length} 首</small></div><span class="mu2-xd" onclick="event.stopPropagation();gysMu.heart()">♡ 心动模式</span></div>${list}`;
+          ${window.gyMu ? `<div class="mu2-pl" onclick="gysMu.onlinePage()">${tagCv('linear-gradient(135deg,#ff9500,#ff2d55)', '🌐', '', 50)}<div class="i"><b>能真的放的歌</b><small>网易云：${onAcc('ne') && onAcc('ne').ck ? '已登录' + (onAcc('ne').nick ? ' ' + esc(onAcc('ne').nick) : '') : '没登录'} · QQ 音乐：${onAcc('qq') && onAcc('qq').ck ? '已登录' : '没登录'}</small></div><span class="mu-more">›</span></div>` : ''}          <div class="mu2-pl" onclick="gysMu.likedList()"><span class="mu-cv" style="width:50px;height:50px;border-radius:8px;background:linear-gradient(135deg,#ff7a85,#fc3d49)"><i style="font-size:22px">♥</i></span><div class="i"><b>我喜欢的音乐</b><small>${(D.likes[meW] || []).length} 首</small></div><span class="mu2-xd" onclick="event.stopPropagation();gysMu.heart()">♡ 心动模式</span></div>${list}`;
         list = list || '';
     } else if (MESUB === 'pod') list = podTab();
     else { const Ps = D.posts.filter(x => x.by === meW); list = `<div class="mu-pbar"><span class="gys-btn sm" onclick="gysMu.newPost()">✏️ 写笔记</span></div>${Ps.map(postHtml).join('') || '<div class="gys-empty">还没写过笔记</div>'}`; }
@@ -652,6 +681,7 @@ X.css('gys-music-css', `
 .mu-home{padding-bottom:20px}.mu-ent{display:flex;justify-content:space-around;padding:12px 6px}.mu-ent span{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;font-size:12px}.mu-ent i{font-style:normal;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#ff6b6b,#e33);display:flex;align-items:center;justify-content:center;font-size:21px}.mu-ent em{font-style:normal}
 .mu-dcard{display:flex;align-items:center;gap:14px;margin:4px 14px 6px;padding:14px;border-radius:14px;background:linear-gradient(135deg,#ff7b7b,#d91f2d);color:#fff;cursor:pointer}.mu-dcard>div:first-child{text-align:center}.mu-dcard>div:first-child b{display:block;font-size:30px;line-height:1}.mu-dcard small{opacity:.85}.mu-dci{flex:1;min-width:0}.mu-dci b{font-size:16px}.mu-dci p{margin:3px 0 0;font-size:12.5px;opacity:.9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.mu-dcard>span{font-size:22px}
 .mu-sec{display:flex;justify-content:space-between;align-items:center;padding:16px 16px 8px;font-weight:600;font-size:16px}.mu-sec a{font-weight:400;font-size:12.5px;color:#999;cursor:pointer}
+.mu-onp{display:inline-flex;gap:6px;margin-left:8px;font-weight:500}.mu-onp span{font-size:12px;padding:2px 9px;border-radius:10px;background:rgba(127,127,127,.15);cursor:pointer}.mu-onp span.on{background:#ff2d55;color:#fff}.mu-vip{font-style:normal;font-size:10px;color:#ff2d55;border:1px solid #ff2d55;border-radius:3px;padding:0 3px;vertical-align:2px}
 .mu-hs{display:flex;gap:12px;overflow-x:auto;padding:0 16px 4px;scrollbar-width:none}.mu-hs::-webkit-scrollbar{display:none}
 .mu-lc{position:relative;width:104px;flex-shrink:0;cursor:pointer}.mu-lc b{display:block;font-size:12.5px;font-weight:400;line-height:1.35;margin-top:5px;max-height:2.7em;overflow:hidden}.mu-lc small{font-size:11px;color:#999}.mu-lc em{position:absolute;right:5px;top:5px;font-style:normal;font-size:10.5px;color:#fff;background:rgba(0,0,0,.3);border-radius:8px;padding:0 5px}
 .mu-tal{display:flex;flex-direction:column;align-items:center;gap:3px;width:72px;flex-shrink:0;cursor:pointer;text-align:center}.mu-tal b{font-size:12.5px;font-weight:500}.mu-tal small{font-size:11px;color:#999;max-width:72px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
