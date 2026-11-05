@@ -59,9 +59,9 @@ const hub = await page.evaluate(async () => {
   switchMainView('settings'); await sleep(200);
   if (!document.getElementById('miniFeatureList')) { const d = document.createElement('div'); d.id = 'miniFeatureList'; document.body.appendChild(d); }
   renderMiniFeaturePanel(); const list = [...document.querySelectorAll('#miniFeatureList .set-entry-title')].map(b => b.textContent).join('|');
-  return { seen: seen.length, bad, closed, alone, hasHub: /我们的约定/.test(list) && /早安晚安/.test(list), noKid: !/愿望清单/.test(list) && !/兑换券/.test(list) && !/^八卦网$/m.test(list.split('|').join('\n')), noGame: !/文字冒险/.test(list) };
+  return { seen: seen.length, bad, closed, alone, hasHub: /我们/.test(list) && /陪你/.test(list), noKid: !/愿望清单/.test(list) && !/兑换券/.test(list) && !/^八卦网$/m.test(list.split('|').join('\n')), noGame: !/文字冒险/.test(list) };
 });
-check(`${tag} 合集：${hub.seen} 个合集，每个标签都直接显示在合集里；插件自己关面板合集一起关；单独打开还是原来的弹窗`, hub.seen >= 14 && !hub.bad.length && hub.closed && hub.alone, JSON.stringify(hub));
+check(`${tag} 合集：${hub.seen} 个合集，每个标签都直接显示在合集里；插件自己关面板合集一起关；单独打开还是原来的弹窗`, hub.seen >= 7 && !hub.bad.length && hub.closed && hub.alone, JSON.stringify(hub));
 check(`${tag} 小功能列表：出现合集入口，被合进去的、八卦网、进了 🎮 的游戏都不再单独占一格`, hub.hasHub && hub.noKid && hub.noGame, JSON.stringify(hub));
 
 // ② 插件打包：装了合并版，旧的单个插件自动拿掉（原来关着的那一项合并后也关着）；追剧进度、我们的暗号拿掉

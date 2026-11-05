@@ -29,7 +29,7 @@ const r = await page.evaluate(async () => {
   const I = gyHubInfo(), F = I.FOLDERS.find(f => f.id === 'hub_custom');
   o.hall = GY_MINI_FEATURES.some(f => f.id === 'gameHall');
   o.custom = !!F && F.live && ['gySkinBox', 'voice', 'chatstat', 'intro'].every(k => F.kids.includes(k)) && F.members.length >= 5;
-  o.stillSet = I.SET_IDS.includes('voice');
+  o.stillSet = I.SET_IDS.includes('hub_custom');
   gyHallOpen(); await s(200); const t = document.getElementById('gyHallOv').innerText;
   o.list = ['剧本杀', '海龟汤', '我们的恋综', '五子棋', '狼人杀', '一起钓鱼', '时间循环', '和 TA 两个人', '拉好几个角色一起'].filter(w => !t.includes(w));
   o.n = document.querySelectorAll('#gyHallOv .gyhl-g').length; o.total = registeredMiniGames.length;

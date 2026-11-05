@@ -2,7 +2,7 @@
 if (window.__gyxHug) return; window.__gyxHug = 1;
 X.feat('gyxHug', { n: '🫂 抱抱', desc: '不开心时点一下，TA 抱抱你、陪你呼吸、陪你缓一缓' });
 const S = X.store('hug');
-let D = { log: [], cfg: { voice: true } };
+let D = { log: [], cfg: { voice: false } };
 const SMALL = ['去倒一杯温水，慢慢喝完', '把窗户打开一条缝，吹一会儿风', '洗把脸，或者洗个热水澡', '给自己换一件舒服的衣服', '吃一点甜的东西', '把手机放下五分钟，闭上眼睛', '听一首你喜欢的歌', '抱着枕头躺一会儿', '写下三件今天还不错的小事', '出门走一小圈'];
 let BR = null;
 async function note(c, why) {
@@ -15,7 +15,7 @@ window.gyxHugOpen = async function (why) {
     let av = ''; try { av = getAvatarHTML(c, 96); } catch (e) {}
     ov.innerHTML = `<div class="hg-x" onclick="gyxHugClose()">✕</div><div class="hg-c"><div class="hg-arms"><div class="hg-av">${av}</div><i class="l"></i><i class="r"></i></div><div class="hg-t">${X.esc(X.name(c))} 抱住了你</div>
         <div class="hg-why"><input id="gyxHugWhy" class="gyx-in" placeholder="想说说怎么了吗？（不说也可以）" value="${X.esc(why || '')}"><button class="gyx-btn lite" onclick="gyxHugNote()">说给 TA</button></div>
-        <div class="hg-note gyx-hand" id="gyxHugNote">……</div>
+        <div class="hg-note gyx-hand" id="gyxHugNote">……</div>${X.voiceRow('gyxHug')}
         <div class="hg-br"><div class="hg-ball" id="gyxHugBall"></div><b id="gyxHugBT">跟着圆圈呼吸</b><button class="gyx-btn lite" onclick="gyxHugBreath()">开始（吸 4 · 停 4 · 呼 6）</button></div>
         <div class="hg-small"><div class="gyx-tip">然后，陪你做一件小事：</div>${X.pick([SMALL.slice(0, 5), SMALL.slice(5)]).map(s => `<label><input type="checkbox" onchange="this.parentElement.classList.toggle('ok',this.checked)"> ${s}</label>`).join('')}</div>
         <div class="gyx-tip hg-foot">如果真的很难受、撑不住，也要记得找身边信任的人，或者专业的心理热线聊一聊。你值得被好好照顾。</div></div>`;
@@ -25,7 +25,7 @@ window.gyxHugOpen = async function (why) {
 };
 window.gyxHugNote = async function () {
     const c = X.cur(), why = ((document.getElementById('gyxHugWhy') || {}).value || '').trim(), el = document.getElementById('gyxHugNote'); if (!el) return;
-    el.textContent = '……'; const t = await note(c, why); el.textContent = t; if (D.cfg.voice) X.speak(c, t);
+    el.textContent = '……'; const t = await note(c, why); el.textContent = t; if (X.vOn('gyxHug')) X.offerVoice(c, t);
     if (why) { const L = D.log[0]; if (L) { L.why = why; S.set('d', D); } X.reach(c, `她刚刚不太好，点了「抱抱」，跟你说：「${why}」。你已经抱着她、跟她说了几句了，现在在聊天里继续陪着她（温柔、别说教）`); }
     return t;
 };
@@ -33,7 +33,7 @@ window.gyxHugBreath = function () {
     if (BR) { clearTimeout(BR.t); BR = null; }
     const ball = document.getElementById('gyxHugBall'), tx = document.getElementById('gyxHugBT'), c = X.cur(); if (!ball) return;
     const steps = [['吸气', 4000, 1.6], ['停一下', 4000, 1.6], ['慢慢呼气', 6000, 1]]; let i = 0, round = 0; BR = {};
-    const go = () => { if (!BR || !document.getElementById('gyxHugBall')) return; const [w, ms, sc] = steps[i]; tx.textContent = w + (round ? `（第 ${round + 1} 轮）` : ''); ball.style.transition = `transform ${ms}ms ease-in-out`; ball.style.transform = `scale(${sc})`; if (D.cfg.voice && round < 2) X.speak(c, w); i++; if (i >= steps.length) { i = 0; round++; } if (round >= 5) { tx.textContent = '好一点了吗？'; BR = null; return; } BR.t = setTimeout(go, ms); };
+    const go = () => { if (!BR || !document.getElementById('gyxHugBall')) return; const [w, ms, sc] = steps[i]; tx.textContent = w + (round ? `（第 ${round + 1} 轮）` : ''); ball.style.transition = `transform ${ms}ms ease-in-out`; ball.style.transform = `scale(${sc})`; i++; if (i >= steps.length) { i = 0; round++; } if (round >= 5) { tx.textContent = '好一点了吗？'; BR = null; return; } BR.t = setTimeout(go, ms); };
     go();
 };
 window.gyxHugClose = () => { if (BR) { clearTimeout(BR.t); BR = null; } X.stopSpeak(); const o = document.getElementById('gyxHugOv'); if (o) o.remove(); };
@@ -52,6 +52,6 @@ X.css('gyxHgCss', `#gyxHugOv{position:fixed;inset:0;z-index:100007;background:li
 .hg-br{display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px;border-radius:18px;background:rgba(255,255,255,.5);width:100%;box-sizing:border-box}.hg-ball{width:70px;height:70px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#b8d8f8);box-shadow:0 0 30px rgba(150,190,240,.6);margin:20px}
 .hg-small{width:100%}.hg-small label{display:block;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.55);margin:5px 0;font-size:14px;cursor:pointer}.hg-small label.ok{text-decoration:line-through;opacity:.6}.hg-foot{text-align:center;font-size:12px}`);
 X.mini({ id: 'gyxHug', icon: '🫂', title: '抱抱', desc: '不开心时点一下：TA 抱抱你、陪你呼吸、给你写几句话', onOpen: () => window.gyxHugOpen() });
-(async () => { D = Object.assign(D, await S.get('d', {})); D.log = D.log || []; D.cfg = Object.assign({ voice: true }, D.cfg || {}); btn(); setInterval(btn, 3000); })();
+(async () => { D = Object.assign(D, await S.get('d', {})); D.log = D.log || []; D.cfg = Object.assign({ voice: false }, D.cfg || {}); if (!D.v284) { D.v284 = 1; D.cfg.voice = false; S.set('d', D); } btn(); setInterval(btn, 3000); })();
 X.widget('gyxHugW', { n: '抱抱', sizes: ['s'], tap: () => window.gyxHugOpen(), r: w => X.gw(w, '🫂', '抱抱', [X.v('要抱抱吗', '我在', '过来抱一下')]) }, 'gyxHug');
 X.memArr({ k: 'gyxHug', ico: '🫂', n: '不开心的时候', d: '你点「抱抱」时说的话（TA 会记着多陪你）', arr: () => D.log, text: x => x.why || '（没说为什么）', field: 'why', save: () => S.set('d', D) }, 'gyxHug');

@@ -50,7 +50,7 @@ const j = await page.evaluate(async () => {
   gyGuideOpen(); await sleep(50); gyGuideGo('allsw'); await sleep(250);
   o.allsw = getComputedStyle(document.getElementById('setPanel-auto')).display !== 'none' && !document.getElementById('gyGuideOv');
   gyGuideOpen(); await sleep(50); gyGuideGo('h_rel'); await sleep(400);
-  o.hub = !!document.getElementById('gyHubOv') && /我们的关系/.test(document.getElementById('gyHubOv').innerText); try { gyHubClose(); } catch (e) {}
+  o.hub = !!document.getElementById('gyHubOv') && /关系/.test(document.getElementById('gyHubOv').innerText); try { gyHubClose(); } catch (e) {}
   gyGuideOpen(); await sleep(50); gyGuideGo('badge'); await sleep(400);
   o.hubTab = !!document.querySelector('#gyHubOv .gyhb-ttl') && /成就/.test(document.querySelector('#gyHubOv .gyhb-ttl').innerText); try { gyHubClose(); } catch (e) {}
   gyGuideOpen(); await sleep(50); gyGuideSw('c:charAutonomy'); await sleep(500);

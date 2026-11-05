@@ -43,7 +43,7 @@ window.gyxBdayBlow = async function (cid) {
     const prep = ITEMS.filter(([k]) => p[k]).map(([k, n]) => n.replace(/^\S+\s/, '') + '：' + p[k]).join('；');
     let say; if (X.bailu()) say = X.cards(['生日', '感谢', '聊天'], c, 2).join('\n') || '谢谢你，这是我过得最好的生日。';
     else say = X.plain(await X.ask(`${X.who(c)}\n今天是你的生日，她给你办了生日：${prep || '她陪你吹了蜡烛'}。你刚吹完蜡烛。说说你此刻的感受和对她说的话（看到她准备的每样东西的反应，按你的性格，60~160 字）。只输出这段话。`) || '谢谢你，这是我过得最好的生日。');
-    el.textContent = say; X.speak(c, say); p.party = Date.now(); D.log.unshift({ cid: String(c.id), year: b ? b.year : new Date().getFullYear(), at: Date.now(), say }); await S.set('d', D);
+    el.textContent = say; if (X.vOn('gyxBday')) X.offerVoice(c, say); p.party = Date.now(); D.log.unshift({ cid: String(c.id), year: b ? b.year : new Date().getFullYear(), at: Date.now(), say }); await S.set('d', D);
     X.say(c, '🎂 ' + say); return say;
 };
 window.gyxBdayClose = () => { stopMic(); X.stopSpeak(); const o = document.getElementById('gyxBdOv'); if (o) o.remove(); };
@@ -52,7 +52,7 @@ window.gyxBdayOpen = function (who) {
     if (!b) { X.panel('gyxBdPl', '🎂 给 TA 过生日', `<div class="gyx-row">${X.whoSel(cid, X.go('gyxBdayOpen', c.id))}</div><div class="gyx-tip">${X.esc(X.name(c))} 的资料里还没写生日。</div><div class="gyx-row">TA 的生日：<input type="date" class="gyx-who" onchange="gyxBdayDate('${cid}',this.value)"></div>`); return; }
     const p = planOf(cid, b.year), H = D.hints[cid + ':' + b.year] || [], ok = ITEMS.filter(([k]) => p[k]).length;
     X.panel('gyxBdPl', '🎂 给 TA 过生日', `<div class="gyx-row">${X.whoSel(cid, X.go('gyxBdayOpen', c.id))}</div>
-        <div class="bd-cnt"><span>${X.esc(X.name(c))} 的生日 · ${b.md}</span><b>${b.left === 0 ? '就是今天' : b.left}</b><span>${b.left === 0 ? '🎉' : '天后'} · 准备了 ${ok}/${ITEMS.length}</span></div>
+        ${X.voiceRow('gyxBday')}<div class="bd-cnt"><span>${X.esc(X.name(c))} 的生日 · ${b.md}</span><b>${b.left === 0 ? '就是今天' : b.left}</b><span>${b.left === 0 ? '🎉' : '天后'} · 准备了 ${ok}/${ITEMS.length}</span></div>
         ${b.left === 0 ? `<div class="gyx-row"><button class="gyx-btn" onclick="document.getElementById('gyxBdPl').remove();gyxBdayParty('${cid}')">🕯️ 开派对</button></div>` : ''}
         ${H.length ? `<div class="gyx-card"><div class="gyx-tip">TA 最近不经意说过的</div>${H.map(t => `<div class="bd-h">「${X.esc(t)}」</div>`).join('')}</div>` : ''}
         ${ITEMS.map(([k, n, ph]) => `<div class="bd-it"><b>${n}</b>${k === 'card' ? `<textarea class="gyx-in" rows="3" placeholder="${ph}" onchange="gyxBdaySet('${cid}','${k}',this.value)">${X.esc(p[k] || '')}</textarea>` : `<input class="gyx-in" placeholder="${ph}" value="${X.esc(p[k] || '')}" onchange="gyxBdaySet('${cid}','${k}',this.value)">`}</div>`).join('')}

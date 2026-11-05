@@ -2,7 +2,7 @@
 if (window.__gyxListen) return; window.__gyxListen = 1;
 X.feat('gyxListen', { n: '🎬 听取模式', desc: '像 galgame 一样一句句播 TA 的话：配音、立绘表情跟着变' });
 const S = X.store('listen');
-let D = { auto: false, speed: 38, voice: true, bg: {}, log: [], reads: [] };   // reads: TA 主动念的 {id,cid,at,lines}
+let D = { auto: false, speed: 38, voice: false, bg: {}, log: [], reads: [] };   // reads: TA 主动念的 {id,cid,at,lines}
 const saveD = () => S.set('d', D);
 const FALL = { '哭': '难过', '得意': '开心', '温柔': '开心', '害羞': '开心', '担心': '难过', '困': '默认', '认真': '默认', '惊讶': '默认', '生气': '默认', '难过': '默认', '开心': '默认' };
 // 立绘：用「角色立绘差分」插件的数据（没装就 null）
@@ -102,4 +102,4 @@ X.css('gyxLsCss', `#gyxLsOv{position:fixed;inset:0;z-index:100008;background:#1a
 #gyxLsOv .ls-bar{position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;display:flex;gap:6px;z-index:2}#gyxLsOv .ls-bar span{background:rgba(0,0,0,.35);color:#fff;font-size:13px;padding:6px 11px;border-radius:999px;cursor:pointer}#gyxLsOv .ls-bar span.on{background:#ff7aa8}
 #gyxLsOv .ls-logbox{position:absolute;inset:0;z-index:3;background:rgba(10,8,18,.92);color:#eee;overflow:auto;padding:60px 24px 30px;display:none;font-size:15px;line-height:1.8}#gyxLsOv .ls-logbox.on{display:block}#gyxLsOv .ls-logbox p{max-width:760px;margin:8px auto}#gyxLsOv .ls-logbox b{color:#ff9fc0;margin-right:8px}#gyxLsOv .ls-logbox p.nar{color:#a9a0cc;font-style:italic}#gyxLsOv .ls-logbox p.me b{color:#8fd3ff}`);
 X.mini({ id: 'gyxListen', icon: '🎬', title: '听取模式', desc: '像 galgame 一样一句句播 TA 的话，配音、立绘表情跟着变', cat: '陪伴', onOpen: () => window.gyxListenOpen() });
-(async () => { D = Object.assign(D, await S.get('d', {})); D.bg = D.bg || {}; D.log = D.log || []; D.reads = D.reads || []; setInterval(tick, 1500); })();
+(async () => { D = Object.assign(D, await S.get('d', {})); D.bg = D.bg || {}; D.log = D.log || []; D.reads = D.reads || []; if (!D.v284) { D.v284 = 1; D.voice = false; saveD(); } setInterval(tick, 1500); })();

@@ -102,7 +102,7 @@ const pages = await A.evaluate(async () => { const s = ms => new Promise(r => se
   return out; });
 check('成员 / 管理 / 身份组 / 频道 / 邀请码 / 改资料 / 我 / 私聊 / 好友 页面都能打开', pages.every(x => /:ok$/.test(x)), pages.join(' '));
 // 关掉社区 → 不再连
-check('「社区」在软件合集里（有开关）', /'gysDouyin', 'gyComm'/.test((await import('fs')).readFileSync(path.join(root, 'js', '79-feature-hub.js'), 'utf8')));
+check('「社区」在软件合集里（有开关）', /'gysPdd', 'gyComm'/.test((await import('fs')).readFileSync(path.join(root, 'js', '79-feature-hub.js'), 'utf8')));
 check('没有报错', !errs.length, errs.slice(0, 3).join(' | '));
 await browser.close();
 const pass = results.filter(x => x.ok).length;

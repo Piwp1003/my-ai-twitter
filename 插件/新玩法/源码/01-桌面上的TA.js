@@ -94,7 +94,7 @@ async function poke() {
         try { if (is3d()) { if (act) window.gyx3dPetAct({ act, face: ({ 开心: 'happy', 难过: 'sad', 生气: 'angry', 害羞: 'shy', 困: 'closed', 惊讶: 'surprised', 撒娇: 'shy', 想你: 'happy' })[mood] }); else window.gyx3dMoodAct(mood || '默认'); } } catch (e) {}
         paint(); desk(); bubble(say); lastSay = Date.now();
         if (C.pokeChat) X.say(c, say, { gyxPoke: 1 });
-        X.speak && C.voice && X.speak(c, say);
+        C.voice && X.offerVoice && X.offerVoice(c, say);
         return say;
     } finally { pokeBusy = false; }
 }
@@ -161,7 +161,7 @@ window.gyxPetOpen = function () {
         <div class="gyx-row">样子：<span class="gyx-chip ${C.shape !== 'free' ? 'on' : ''}" onclick="gyxPetSet('shape','round')">圆头像</span><span class="gyx-chip ${C.shape === 'free' ? 'on' : ''}" onclick="gyxPetSet('shape','free')">立绘（透明底 png）</span></div>
         <div class="gyx-row"><span class="gyx-btn" onclick="gyxPetTalk()">让 TA 说一句</span>${C.img ? `<label><input type="checkbox" ${C.imgAll ? 'checked' : ''} onchange="gyxPetSet('imgAll',this.checked)"> 没传立绘的角色都用以前传的那张</label><span class="gyx-btn lite" onclick="gyxPetOldTo()">把以前那张给现在这个角色</span>` : ''}</div>
         <div class="gyx-tip">小 TA 跟着你现在聊天的人走：换了聊天对象，桌面上的图就换成那个人的立绘（没传就是 TA 的头像）。想固定一个人，在上面「是谁」里选。</div>
-        <div class="gyx-row"><label><input type="checkbox" ${C.poke ? 'checked' : ''} onchange="gyxPetSet('poke',this.checked)"> 点一下＝理 TA（TA 当场回你）</label><label><input type="checkbox" ${C.pokeChat ? 'checked' : ''} onchange="gyxPetSet('pokeChat',this.checked)"> TA 的回应也发进聊天</label><label><input type="checkbox" ${C.voice ? 'checked' : ''} onchange="gyxPetSet('voice',this.checked)"> 用 TA 的声音念</label></div>
+        <div class="gyx-row"><label><input type="checkbox" ${C.poke ? 'checked' : ''} onchange="gyxPetSet('poke',this.checked)"> 点一下＝理 TA（TA 当场回你）</label><label><input type="checkbox" ${C.pokeChat ? 'checked' : ''} onchange="gyxPetSet('pokeChat',this.checked)"> TA 的回应也发进聊天</label><label><input type="checkbox" ${C.voice ? 'checked' : ''} onchange="gyxPetSet('voice',this.checked)"> 用 TA 的声音念 （不会自己念，点 ▶ 才放）</label></div>
         <hr style="border:none;border-top:1px solid #eee">
         ${(() => { const c = X.char(window.GYX_PET_WHO || C.who) || who(); if (!c) return ''; const p = perOf(c) || { imgs: [] }; return `<div class="gyx-tip"><b>${X.esc(X.name(c))} 的立绘</b>（可以传好几张，每张标一个情绪；TA 什么心情就换哪张，没有对应的就用「默认」）　看谁的：<select class="gyx-who" onchange="GYX_PET_WHO=this.value;gyxPetOpen()">${cs.map(x => `<option value="${X.esc(x.id)}"${String(x.id) === String(c.id) ? ' selected' : ''}>${X.esc(X.name(x))}</option>`).join('')}</select></div>
         <div class="pt-imgs">${p.imgs.map((x, i) => `<div class="pt-im"><img src="${X.esc(x.src)}"><select onchange="gyxPetMood('${c.id}',${i},this.value)">${MOODS.map(m => `<option${m === x.mood ? ' selected' : ''}>${m}</option>`).join('')}</select><span onclick="gyxPetDelImg('${c.id}',${i})">删</span></div>`).join('') || '<div class="gyx-tip">还没传，用的是头像。</div>'}</div>

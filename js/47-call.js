@@ -90,6 +90,8 @@
         const d = document.createElement('div');
         d.className = 'gycall-line ' + (cls || '');
         d.innerHTML = `<b>${esc(who)}</b>${esc(text)}`;
+        // 284：纯文字模式下 TA 的每句旁边一个 ▶，点了才念（选了「加朗读」才是自己念）
+        if (cls === 'them' && S.mode === 'text') { const p = document.createElement('span'); p.className = 'gycall-p'; p.textContent = '▶'; p.title = '点一下听'; p.onclick = () => { const old = S.mode; S.mode = 'tts'; try { speak(text); } finally { S.mode = old; } }; d.appendChild(p); }
         box.appendChild(d);
         box.scrollTop = box.scrollHeight;
     }
@@ -895,6 +897,7 @@ ${sched ? '\n' + sched + '\n' : ''}
 #gyCallModal .gycall-log { flex: 1 1 auto; overflow-y: auto; padding: 10px 18px; font-size: 14.5px; line-height: 1.6; }
 #gyCallModal .gycall-line { margin: 8px 0; opacity: .95; }
 #gyCallModal .gycall-line b { display: block; font-size: 12px; opacity: .5; font-weight: 500; margin-bottom: 2px; }
+#gyCallModal .gycall-p { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,.18); align-items: center; justify-content: center; font-size: 10px; margin-left: 6px; cursor: pointer; vertical-align: middle; }
 #gyCallModal .gycall-line.me { text-align: right; }
 #gyCallModal .gycall-line.wait { opacity: .45; }
 #gyCallModal .gycall-line.dim { opacity: .5; }

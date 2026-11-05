@@ -37,14 +37,14 @@ async function done(cid, bpm, how) {
     if (!r) r = bpm > 95 ? X.v(`${bpm}……跳这么快，是不是因为在想我？`, `咚咚咚的，好快。你是不是刚跑完，还是见到我紧张了？`) : bpm < 60 ? X.v(`${bpm}，好安静。你是不是快睡着了？`, '慢慢的，很稳。我想一直这样听着。') : X.v(`${bpm}，我数着呢。每一下我都听到了。`, `听到了，${bpm} 下。和我的差不多快。`, '咚、咚……原来你心跳的声音是这样的。');
     r = X.plain(r); D.log.unshift({ id: 'bt' + Date.now().toString(36), cid: String(cid), bpm, how, at: Date.now(), reply: r }); await S.set('d', D);
     setMsg(`<b style="font-size:28px">${bpm}</b> 次/分钟<div class="gyx-card" style="text-align:left">${X.esc(X.name(c))}：${X.esc(r)}</div>`);
-    X.speak(c, r);
+    if (X.vOn('gyxBeat')) X.offerVoice(c, r);
 }
 window.gyxBeatTa = cid => { const c = X.char(cid), bpm = 68 + Math.round(Math.random() * 24), ms = Math.round(60000 / bpm); pulse(bpm); setMsg(`${X.esc(X.name(c))} 的心跳：<b>${bpm}</b>。${X.v('贴近一点，感觉到了吗？', '这是在想你的时候的速度。', '手机在震的，就是 TA。')}`); const pat = []; for (let i = 0; i < 10; i++) pat.push(60, 120, 50, ms - 230); try { navigator.vibrate && navigator.vibrate(pat); } catch (e) {} };
 window.gyxBeatOpen = function (who) {
     const c = X.char(who) || X.cur(); if (!c) return; const cid = String(c.id); stopCam(); TAPS = [];
     const ov = X.panel('gyxBeatOv', '💓 让 ' + X.esc(X.name(c)) + ' 听你心跳', `<div class="gyx-row">${X.whoSel(cid, 'gyxBeatOpen')}</div>
         <div class="bt-wrap"><div id="gyxBtHeart" class="bt-heart" onclick="gyxBeatTap('${cid}')">❤</div><video id="gyxBtVid" playsinline muted style="width:1px;height:1px;opacity:0;position:absolute"></video><div class="bt-bar"><i id="gyxBtBar"></i></div><div id="gyxBtMsg" class="gyx-tip" style="text-align:center">${X.v('用摄像头量，或者跟着心跳点大红心。', '把你的心跳给 TA 听听。')}</div></div>
-        <div class="gyx-row" style="justify-content:center"><button class="gyx-btn" onclick="gyxBeatCam('${cid}')">📷 用摄像头量</button><button class="gyx-btn lite" onclick="gyxBeatTa('${cid}')">听 TA 的心跳</button></div>
+        ${X.voiceRow('gyxBeat')}<div class="gyx-row" style="justify-content:center"><button class="gyx-btn" onclick="gyxBeatCam('${cid}')">📷 用摄像头量</button><button class="gyx-btn lite" onclick="gyxBeatTa('${cid}')">听 TA 的心跳</button></div>
         <div style="font-weight:700;margin:10px 0 4px">听过的</div>${D.log.filter(x => x.cid === cid).slice(0, 12).map(x => `<div class="bt-it"><b>${x.bpm}</b><span>${X.esc(x.reply)}</span><em>${new Date(x.at).toLocaleString()}</em></div>`).join('') || '<div class="gyx-tip">还没听过</div>'}`);
     const rm = ov.remove.bind(ov); ov.remove = () => { stopCam(); rm(); };
 };

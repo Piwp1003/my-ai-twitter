@@ -27,7 +27,7 @@ async function murmur() {
     if (!R || R.busy) return; R.busy = 1; const c = X.char(R.cid), el = Date.now() - R.start, h = new Date().getHours();
     let t = X.bailu() ? null : await X.ask(`${X.who(c)}\n你和她现在「安静地待在一起」——各做各的，不聊天，背景是${SND[D.cfg.snd]}。已经待了 ${mins(el)} 分钟，现在 ${h} 点。刚才你说过：${R.lines.slice(-3).map(x => x.t).join(' / ') || '（还没说过话）'}\n轻轻说一句，很短（10 字以内），不要打扰她、不要问问题、不要找话题。也可以只是"嗯"、一个动作，或者什么都不说（那就只输出：…）。`);
     t = X.plain(t || X.pick(X.cards(['陪伴'], c, 3).concat(['嗯。', '我在。', '（翻了一页书）', '…', '你忙你的。', '（给你倒了杯水）', h >= 23 || h < 5 ? '困了就睡吧。' : '累了就歇会儿。'])));
-    R.lines.push({ t, at: Date.now() }); R.busy = 0; paint(); if (D.cfg.voice && t !== '…') X.speak(c, t);
+    R.lines.push({ t, at: Date.now() }); R.busy = 0; paint(); if (D.cfg.voice && t !== '…') X.offerVoice(c, t);
 }
 window.gyxStillStart = cid => {
     const c = X.char(cid) || X.cur(); if (!c || R) return;
@@ -54,7 +54,7 @@ window.gyxStillOpen = function (who) {
     X.panel('gyxStillOv', '🕯️ 和 ' + X.esc(X.name(c)) + ' 安静待着', `${R ? `<div class="st-room"><div id="gyxStLive"></div><div class="gyx-row" style="justify-content:center"><button class="gyx-btn" onclick="gyxStillStop()">先这样</button><button class="gyx-btn lite" onclick="gyxStillSay()">看 TA 一眼</button></div></div>`
         : `<div class="gyx-row">${X.whoSel(cid, 'gyxStillOpen')}<button class="gyx-btn" onclick="gyxStillStart('${cid}')">一起待会儿</button></div><div class="gyx-tip">${X.v('不用说话，TA 就在。', '各做各的，也算在一起。', '安安静静的，挺好。')}开着的时候手机屏幕不会自己熄掉（支持的浏览器）。</div>`}
       <div class="gyx-row">${sel}</div>
-      <div class="gyx-row gyx-tip">音量 <input type="range" min="0" max="1" step="0.05" value="${D.cfg.vol}" oninput="gyxStillCfg('vol',+this.value)"> · 每 <input class="gyx-who" type="number" min="3" value="${D.cfg.every}" style="width:56px" onchange="gyxStillCfg('every',+this.value)"> 分钟轻轻说一句 · <label><input type="checkbox" ${D.cfg.quiet ? 'checked' : ''} onchange="gyxStillCfg('quiet',this.checked)"> 一句都别说</label> · <label><input type="checkbox" ${D.cfg.voice ? 'checked' : ''} onchange="gyxStillCfg('voice',this.checked)"> 念出来</label></div>
+      <div class="gyx-row gyx-tip">音量 <input type="range" min="0" max="1" step="0.05" value="${D.cfg.vol}" oninput="gyxStillCfg('vol',+this.value)"> · 每 <input class="gyx-who" type="number" min="3" value="${D.cfg.every}" style="width:56px" onchange="gyxStillCfg('every',+this.value)"> 分钟轻轻说一句 · <label><input type="checkbox" ${D.cfg.quiet ? 'checked' : ''} onchange="gyxStillCfg('quiet',this.checked)"> 一句都别说</label> · <label><input type="checkbox" ${D.cfg.voice ? 'checked' : ''} onchange="gyxStillCfg('voice',this.checked)"> 念出来 （不会自己念，点 ▶ 才放）</label></div>
       <div class="gyx-tip">一起待过 ${mins(tot)} 分钟</div>
       ${D.log.filter(x => x.cid === cid).slice(0, 12).map(x => `<div class="st-row"><b>${mins(x.end - x.start)} 分钟</b><span>${new Date(x.start).toLocaleString()} · ${SND[x.snd] || ''}${x.lines.length ? '<br>「' + X.esc(x.lines.slice(-1)[0]) + '」' : ''}</span><i onclick="gyxStillDel('${x.id}')">删</i></div>`).join('')}`, 'dark');
     paint();

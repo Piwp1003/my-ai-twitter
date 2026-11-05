@@ -103,7 +103,7 @@ async function seed() {
   });
 }
 const groupTexts = () => page.evaluate(() => (globalChats['g_test'] || []).map(m => m.text || ''));
-const privTexts = () => page.evaluate(() => (globalChats[7001] || []).map(m => m.text || ''));
+const privTexts = () => page.evaluate(() => (globalChats[7001] || []).map(m => m.text || '').filter(t => !/^📻/.test(t)));   // 晚上 8 点后深夜电台会自己开播，跟这个测试无关
 
 // ============ 第二部分：流式开着，聊天也走流式 ============
 await seed();

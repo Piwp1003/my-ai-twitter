@@ -17,7 +17,7 @@ async function ring(al) {
     ov.innerHTML = `<div class="wk-bg"></div><div class="wk-c"><div class="wk-t">${new Date().toTimeString().slice(0, 5)}</div><div class="wk-av">${av}</div><div class="wk-n">${X.esc(X.name(c))}</div><div class="wk-s" id="gyxWkS">……</div>
         <div class="wk-bt"><button onclick="gyxWakeSnooze()">再睡 5 分钟</button><button class="up" onclick="gyxWakeUp()">起来了</button></div></div>`;
     document.body.appendChild(ov);
-    const say = async () => { if (!RING) return; const t = await wakeLine(c, RING.n); const e = document.getElementById('gyxWkS'); if (e) e.textContent = t; beep(); X.speak(c, t); };
+    const say = async () => { if (!RING) return; const t = await wakeLine(c, RING.n); const e = document.getElementById('gyxWkS'); if (e) e.textContent = t; beep(); if (X.vOn('gyxWake')) X.offerVoice(c, t); };
     await say();
     RING.iv = setInterval(() => { if (!RING) return; RING.n++; say(); }, 45000);
 }
@@ -67,7 +67,7 @@ window.gyxSleepStart = async function () {
     noise(D.sleep.noise, D.sleep.vol);
     const t = await story(c); if (b) b.innerHTML = `<div class="gyx-hand sl-story">${X.esc(t).replace(/\n/g, '<br>')}</div>`;
     const parts = t.split(/(?<=[。！？…\n])/).filter(s => s.trim());
-    (async () => { for (const p of parts) { if (!NOISE) break; await new Promise(res => { X.speak(c, p, res).then(r => { if (!r) res(); }); setTimeout(res, 8000 + p.length * 350); }); } })();
+    if (X.vOn('gyxWake')) (async () => { for (const p of parts) { if (!NOISE) break; await new Promise(res => { X.speak(c, p, res).then(r => { if (!r) res(); }); setTimeout(res, 8000 + p.length * 350); }); } })();
     // 定时：慢慢变小声直到停
     const end = Date.now() + D.sleep.min * 60000;
     const fade = () => { if (!NOISE) return; const left = end - Date.now(); if (left <= 0) return window.gyxSleepStop(); if (left < 120000) NOISE.g.gain.value = D.sleep.vol * left / 120000; window.__gyxSleepT = setTimeout(fade, 2000); };
@@ -86,7 +86,7 @@ window.gyxWakeOpen = function () {
         <div class="gyx-row">${X.whoSel(window.GYX_SL_WHO, 'gyxSleepWho')} ${[['rain', '雨声'], ['wave', '海浪'], ['brown', '低沉的风'], ['fire', '壁炉'], ['white', '白噪音']].map(([k, n]) => `<span class="gyx-chip ${D.sleep.noise === k ? 'on' : ''}" onclick="gyxSleepCfg('noise','${k}')">${n}</span>`).join('')}</div>
         <div class="gyx-row">放 <input class="gyx-who" type="number" min="1" value="${D.sleep.min}" style="width:70px" onchange="gyxSleepCfg('min',+this.value)"> 分钟 · 音量 <input type="range" min="0" max="1" step=".05" value="${D.sleep.vol}" oninput="gyxSleepCfg('vol',+this.value)"></div>
         <div class="gyx-row">${SK.map(([k, n]) => `<span class="gyx-chip ${(D.sleep.kind || 'fairy') === k ? 'on' : ''}" onclick="gyxSleepKind('${k}')">${n}</span>`).join('')}</div>${D.sleep.kind === 'ask' ? '<input id="gyxSlTopic" class="gyx-in" placeholder="想听什么故事">' : ''}
-        <div class="gyx-row"><button class="gyx-btn" onclick="gyxSleepStart()">开始哄睡</button><button class="gyx-btn lite" onclick="gyxSleepStop()">停</button></div><div id="gyxSlNow"></div>${(D.stories || []).length ? `<details><summary class="gyx-tip">📚 故事本（${D.stories.length} 个）</summary>${D.stories.slice(0, 60).map((x, i) => `<div class="gyx-tip" style="cursor:pointer" onclick="gyxSleepRead(${i})">${new Date(x.at).toLocaleDateString()} · ${X.esc(X.name(X.char(x.cid)))} · ${X.esc(x.text.slice(0, 26))}…</div>`).join('')}</details>` : ''}`);
+        ${X.voiceRow('gyxWake')}<div class="gyx-row"><button class="gyx-btn" onclick="gyxSleepStart()">开始哄睡</button><button class="gyx-btn lite" onclick="gyxSleepStop()">停</button></div><div id="gyxSlNow"></div>${(D.stories || []).length ? `<details><summary class="gyx-tip">📚 故事本（${D.stories.length} 个）</summary>${D.stories.slice(0, 60).map((x, i) => `<div class="gyx-tip" style="cursor:pointer" onclick="gyxSleepRead(${i})">${new Date(x.at).toLocaleDateString()} · ${X.esc(X.name(X.char(x.cid)))} · ${X.esc(x.text.slice(0, 26))}…</div>`).join('')}</details>` : ''}`);
 };
 window.gyxSleepWho = v => { window.GYX_SL_WHO = v; };
 window.gyxSleepCfg = (k, v) => { D.sleep[k] = v; S.set('d', D); if (k === 'vol' && NOISE) NOISE.g.gain.value = v; if (k === 'noise') { if (NOISE) noise(v, D.sleep.vol); window.gyxWakeOpen(); } };

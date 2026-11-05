@@ -182,6 +182,31 @@ textarea.gyx-in{resize:vertical;line-height:1.7}
     window.GYX = X;
 })();
 const X = window.GYX;
+// 284：TA 出声 —— 新玩法里的功能一律不自己念：开了「🔊 TA 出声」的，冒一个小条「▶ 听 TA 说」，点了才放
+if (!X.offerVoice) {
+    X.vOn = fid => { try { return (JSON.parse(localStorage.getItem('gyxFeat') || '{}') || {})[fid + '.voice'] === true; } catch (e) { return false; } };
+    X.vSet = (fid, v) => X.set(fid + '.voice', !!v);
+    X.voiceRow = fid => `<label class="gyx-row gyx-tip gyx-vrow"><input type="checkbox" ${X.vOn(fid) ? 'checked' : ''} onchange="GYX.vSet('${fid}',this.checked)"> 🔊 TA 出声（不会自己念，点 ▶ 才放）</label>`;
+    X.offerVoice = (c, text) => {
+        text = X.plain ? X.plain(text || '') : String(text || ''); if (!c || !text.trim() || text.trim() === '…') return;
+        let el = document.getElementById('gyxVoOffer');
+        if (!el) { el = document.createElement('div'); el.id = 'gyxVoOffer'; el.className = 'gyx-vo'; document.body.appendChild(el); }
+        window.__gyxVO = { c, text };
+        el.innerHTML = `<span class="p" onclick="gyxVoicePlay()">▶</span><span class="t"><b>${X.esc(X.name(c))}</b>${X.esc(text.slice(0, 60))}</span><span class="x" onclick="gyxVoiceDrop()">✕</span>`;
+        clearTimeout(el.__t); el.__t = setTimeout(() => { if (!el.__on) el.remove(); }, 25000);
+    };
+    window.gyxVoiceDrop = () => { const el = document.getElementById('gyxVoOffer'); if (el) { if (el.__on) try { X.stopSpeak ? X.stopSpeak() : speechSynthesis.cancel(); } catch (e) {} el.remove(); } };
+    window.gyxVoicePlay = () => {
+        const v = window.__gyxVO, el = document.getElementById('gyxVoOffer'); if (!v || !el) return;
+        if (el.__on) return window.gyxVoiceDrop();
+        el.__on = 1; const p = el.querySelector('.p'); if (p) p.textContent = '■';
+        X.speak(v.c, v.text, () => { const e = document.getElementById('gyxVoOffer'); if (e && e.__on) e.remove(); });
+    };
+    X.css('gyxVoCss', `.gyx-vo{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:2147483000;display:flex;align-items:center;gap:10px;max-width:min(420px,calc(100vw - 32px));box-sizing:border-box;padding:8px 10px 8px 8px;border-radius:24px;background:rgba(30,30,32,.92);color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:13.5px;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.gyx-vo .p{flex:none;width:32px;height:32px;border-radius:50%;background:#ff2d55;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px}
+.gyx-vo .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.92}.gyx-vo .t b{margin-right:6px}
+.gyx-vo .x{flex:none;opacity:.6;cursor:pointer;padding:0 4px}.gyx-vrow{display:flex;align-items:center;gap:6px}`);
+}
 // 老版本插件先建好的 GYX 里可能没有后来加的这几个小工具：缺什么补什么，免得新插件一用就报错
 if (!X.inj) X.inj = (fid, rows) => { const q = window.__gyxInjQ = window.__gyxInjQ || []; rows.forEach((r, i) => q.push(['gyx', { k: 'gyx.' + fid + '.' + i, label: r[1], head: r[0], desc: r[2] || '' }])); };
 // 内置提示词：X.pl(id, 默认, 变量) 取（你改过就用你改的）；X.plGroup 把这一组登记到「设置 → 内置提示词」

@@ -62,7 +62,7 @@ const TESTS = [
   ['v238-five-more-test.mjs', '同一秒、有条件才能拆的信、TA的往事、成长日志、人生选择题 + API 分工表'],
   ['v239-social-test.mjs', '营销号自己爆料、微博热搜榜、小红书 + 内置提示词'],
   ['v240-pm-apk-scroll.mjs', '安卓 App 里开小手机模式：页面和弹出来的小页面都能滑'],
-  ['v241-eight-test.mjs', 'TA被困了、你打了又删、你让TA重说了、准点群聊、旧物箱、窗台来客、心电感应光谱、录像带'],
+  ['v241-eight-test.mjs', '你打了又删、你让TA重说了、准点群聊、旧物箱、窗台来客、心电感应光谱、录像带'],
   ['v242-gen-status-test.mjs', '生成中提示：小条 / 流体云 / 停止'],
   ['v205-test.mjs',         'TA 的声音（语音模型/每人自己的声音/语音条/你发语音/转文字/语音库）+ 心情手账 + 统计词云 + 开场动画'],
   ['post-regen-test.mjs',    '让 TA 重新写推文'],
@@ -84,7 +84,7 @@ const TESTS = [
   ['v249-soft-test.mjs', '软件：微博 / 泡泡'], ['v250-soft2-test.mjs', '软件：小红书 / 豆瓣 / iMessage'], ['v251-ios-test.mjs', '软件：苹果外观 / iMessage 全功能'],
   ['v252-phone-test.mjs', '真手机'], ['v254-soft3-test.mjs', '软件补包'], ['v255-soft4-test.mjs', '软件之间分享 / 草稿箱 / 微博抽奖'],
   ['v256-music-test.mjs', '软件桌面 + 网易云'], ['v257-douyin-test.mjs', '抖音（含直播间）'], ['v258-wechat-test.mjs', '微信'],
-  ['v259-phone-x-test.mjs', '小手机推特（主页 + 私信）'], ['v260-chat-route-test.mjs', '聊天互通 + TA 喜欢用哪个软件找你'], ['v261-pm-minis-test.mjs', '小手机桌面：小功能都有图标'], ['v262-x-theme-test.mjs', '推特蓝色 / 黑色、书签、X 个人主页'], ['v264-x-search-test.mjs', '推特搜索页（探索页、下拉刷新）、顶栏不重叠'], ['v273-ios-look-test.mjs', '🍏 iOS 外观：液态玻璃桌面、状态栏 / 底栏开关、深浅色同步'], ['v275-call-red-icons-test.mjs', '📞 来电合成一个、老小红书拿掉'], ['v277-music-new-test.mjs', '🎵 网易云新版、一起听气泡 / 距离、软件内置、音乐类并进网易云'], ['v278-ios-plug-test.mjs', '🍏 新玩法插件 iOS 样子、抖音一起看'], ['v280-gate-test.mjs', '🚪 开屏登录、最低版本'], ['v280-community-test.mjs', '🌱 社区（要先开本地社区服务器，没开就跳过）'], ['v281-cloud-backup-test.mjs', '☁️ 云端备份（要先开本地社区服务器，没开就跳过）'], ['v282-hub-page-test.mjs', '🧩 合集做成一页、插件重新合并'], ['v263-soft-more-test.mjs', '微信运动、朋友圈可见范围、聊天背景、抖音日常 / 热榜 / 连麦、网易云匹配度 / 定时关闭、小红书购物车 / 店铺'],
+  ['v259-phone-x-test.mjs', '小手机推特（主页 + 私信）'], ['v260-chat-route-test.mjs', '聊天互通 + TA 喜欢用哪个软件找你'], ['v261-pm-minis-test.mjs', '小手机桌面：小功能都有图标'], ['v262-x-theme-test.mjs', '推特蓝色 / 黑色、书签、X 个人主页'], ['v264-x-search-test.mjs', '推特搜索页（探索页、下拉刷新）、顶栏不重叠'], ['v273-ios-look-test.mjs', '🍏 iOS 外观：液态玻璃桌面、状态栏 / 底栏开关、深浅色同步'], ['v275-call-red-icons-test.mjs', '📞 来电合成一个、老小红书拿掉'], ['v277-music-new-test.mjs', '🎵 网易云新版、一起听气泡 / 距离、软件内置、音乐类并进网易云'], ['v278-ios-plug-test.mjs', '🍏 新玩法插件 iOS 样子、抖音一起看'], ['v280-gate-test.mjs', '🚪 开屏登录、最低版本'], ['v280-community-test.mjs', '🌱 社区（要先开本地社区服务器，没开就跳过）'], ['v281-cloud-backup-test.mjs', '☁️ 云端备份（要先开本地社区服务器，没开就跳过）'], ['v283-structure-test.mjs', '🧩 新玩法内置、8 个入口、分页'], ['v284-pages-voice-test.mjs', '🧩 每页小组件、🔊 TA 出声点了才放'], ['v285-pdd-test.mjs', '🛍️ 拼多多：拼单、砍一刀、TA 开团'], ['v263-soft-more-test.mjs', '微信运动、朋友圈可见范围、聊天背景、抖音日常 / 热榜 / 连麦、网易云匹配度 / 定时关闭、小红书购物车 / 店铺'],
 ];
 // 需要额外素材的：有素材才跑
 if (fs.existsSync(path.join(root, '_test', 'card-闻述-状态栏.json'))) TESTS.push(['card-test.mjs', '角色卡状态栏']);

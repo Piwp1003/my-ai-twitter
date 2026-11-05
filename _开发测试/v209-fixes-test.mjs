@@ -24,6 +24,7 @@ await page.route(/^https?:\/\//, r => {
 });
 await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.waitForFunction(() => window.__guyuBooted && typeof executePluginOnLoad === 'function' && window.__gyPmW, { timeout: 20000 });
+await page.evaluate(() => localStorage.setItem('gyHubPage', '0'));   // 283：小功能首页默认是 8 个大方块；这个测试测的是原来的分组列表
 await page.waitForTimeout(1500);
 const tag = BAILU ? '[白露]' : '[谷雨]';
 
@@ -116,13 +117,13 @@ const hub = await page.evaluate(async () => {
   const all = list().join('|');
   const hidden = ['TA 的相册', '一起旅行', '纪念日惊喜', '一起存钱罐', 'TA 的声音', '功能开关中心'].filter(t => all.includes(t));
   const tabs = document.querySelectorAll('.gyhub-tabs span').length;
-  gyHubTab('陪伴'); const pei = list().join('|'); gyHubTab('all');
+  gyHubTab('陪伴'); const pei = list().join('|'); window.__pei = pei; gyHubTab('all');
   gyGalleryOpen(); await new Promise(r => setTimeout(r, 1000)); const gal = (document.querySelector('#gyGalModal .gyhub-in') || {}).innerText || ''; gyGalleryClose();
   gydayOpen && gydayOpen(); await new Promise(r => setTimeout(r, 1000)); const day = (document.querySelector('#gydayModal .gyhub-in') || {}).innerText || ''; gydayClose && gydayClose();
   gymapOpen(); await new Promise(r => setTimeout(r, 1000)); const map = document.getElementById('gymapTab-place') ? '🌏 两地' : ''; gymapClose();
   const setE = [...document.querySelectorAll('#setIndex [data-gyhub] .set-entry-title')].map(e => e.textContent);
   gyHubSet(false); await new Promise(r => setTimeout(r, 900)); const flat = list().join('|'); const setOff = document.querySelectorAll('#setIndex [data-gyhub]').length; gyHubSet(true);
-  return { hidden, tabs, pei: /早安晚安/.test(pei) && /哄/.test(pei) && !/音乐盒/.test(pei), gal, day, map, setE, flatHas: /TA 的相册/.test(flat) && /一起旅行/.test(flat), setOff };
+  return { hidden, tabs, pei: /陪你/.test(pei) && /TA 的/.test(pei) && !/音乐盒/.test(pei), gal, day, map, setE, flatHas: /TA 的相册/.test(flat) && /一起旅行/.test(flat), setOff };
 });
 check(`${tag} 小功能整理：分组标签；照片进相册、纪念日/生日进我们的日子、记账进钱包、同类的合成合集、设置类挪去设置；所在地在行程与天气的「两地」；关掉开关回到平铺`, !hub.hidden.length && hub.tabs === 5 && hub.pei && /TA 的相册/.test(hub.gal) && /纪念日惊喜/.test(hub.day) && /两地/.test(hub.map) && hub.setE.length >= 3 && hub.flatHas && hub.setOff === 0, JSON.stringify(hub));
 

@@ -6,7 +6,7 @@ import fs from 'fs';
 const root = process.cwd();
 if (fs.existsSync(path.join(root, 'js', '90-bailu-cards.js'))) { console.log('（白露不测）'); process.exit(0); }
 const PLUG = JSON.parse(fs.readFileSync(path.join(root, '插件', '新玩法', '新玩法全家桶.json'), 'utf8'));
-const SPRITE = JSON.parse(fs.readFileSync(path.join(root, '插件', '新玩法', '角色立绘差分.json'), 'utf8'));
+const SPRITE = JSON.parse(fs.readFileSync(path.join(root, '_开发测试', 'fixtures', '角色立绘差分.json'), 'utf8'));
 const browser = await launchBrowser(chromium);
 const results = [];
 const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });

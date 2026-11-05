@@ -34,16 +34,11 @@ await page.evaluate(({ PLUG }) => {
 }, { PLUG });
 await page.waitForTimeout(3500);
 const r = await page.evaluate(async () => {
-  const s = ms => new Promise(r => setTimeout(r, ms)); const o = {}; const ids = ['gyxStuck', 'gyxErase', 'gyxRegen', 'gyxOnTime', 'gyxBox', 'gyxSill', 'gyxWave', 'gyxTapes'];
-  o.base = ids.every(id => GYX.FEATS.some(f => f.id === id) && GY_MINI_FEATURES.some(f => f.id === id)) && ['gyx_stuck', 'gyx_erase_ask', 'gyx_regen_talk', 'gyx_ontime_call', 'gyx_box_find', 'gyx_sill_visit', 'gyx_wave', 'gyx_tapes_send'].every(k => GY_AUTONOMY_ACTIONS.some(a => a.key === k));
-  o.games = ['gyxStuck', 'gyxWave'].every(id => registeredMiniGames.some(g => g.id === id));
+  const s = ms => new Promise(r => setTimeout(r, ms)); const o = {}; const ids = ['gyxErase', 'gyxRegen', 'gyxOnTime', 'gyxBox', 'gyxSill', 'gyxWave', 'gyxTapes'];
+  o.base = ids.every(id => GYX.FEATS.some(f => f.id === id) && GY_MINI_FEATURES.some(f => f.id === id)) && ['gyx_erase_ask', 'gyx_regen_talk', 'gyx_ontime_call', 'gyx_box_find', 'gyx_sill_visit', 'gyx_wave', 'gyx_tapes_send'].every(k => GY_AUTONOMY_ACTIONS.some(a => a.key === k));
+  o.games = ['gyxWave'].every(id => registeredMiniGames.some(g => g.id === id));
   const L = myCharacters.find(c => c.id === 9991);
   // 🆘
-  gyxStuckData().speed = 'real'; await gyxStuckStart(9991); const run = gyxStuckData().runs[0];
-  o.stuck1 = run && run.title === '困在电梯里' && globalChats['9991'].some(m => m.text === '电梯卡住了') && run.choices.length === 2;
-  gyxStuckPick(run.id, 0); await s(300); o.stuckWait = run.pending && run.nextAt > Date.now() + 20 * 60000 && globalChats['9991'].some(m => m.sender === 'me' && m.text === '按紧急按钮') && globalChats['9991'].some(m => m.text === '好，我按了');
-  gyxStuckSkip(run.id); await s(200); o.stuckLater = globalChats['9991'].some(m => /十分钟到/.test(m.text)) && run.choices.length === 2 && /你被困住了/.test(__gyxCtxFor('9991'));
-  document.getElementById('gyxStuckOv')?.remove();
   // ⌨️
   currentChatSessionId = '9991'; const inp = document.getElementById('chatInput');
   gyxEraseData().cfg.rate = 'high'; Math.random0 = Math.random; Math.random = () => 0.01;
@@ -104,14 +99,13 @@ const r = await page.evaluate(async () => {
   gyxOnTimeGrp('g_t1', false); gyxOnTimeBar(); o.grpOff = !document.getElementById('gyxOtBar') && gyxOnTimeData().cfg.off.includes('g_t1'); gyxOnTimeGrp('g_t1', true); o.grpOn = !gyxOnTimeData().cfg.off.length && !gyxOnTimeData().cfg.gids.length;
   const qa = (window.gyHubInfo ? JSON.stringify(gyHubInfo()) : ''); o.qaHub = !qa || /gyxWave/.test(qa);
   // 内置提示词 + 注入内容管理 + 合集
-  gyPLOpen(); await s(200); const pt = document.getElementById('gyPLOv').innerText; o.pl = ['TA被困了', '你打了又删', '你让TA重说了', '准点群聊', 'TA的旧物箱', '窗台来客', '心电感应光谱', 'TA的录像带'].every(n => pt.includes(n)); document.getElementById('gyPLOv')?.remove();
-  const gg = gyInjectGroups().find(g => g.key === 'gyx'); o.inj = ['TA 正被困着', 'TA 偷偷去过你的窗台', 'TA 的旧物和摆在哪', '刚玩过心电感应光谱'].every(l => gg.items.some(i => i.label === l));
+  gyPLOpen(); await s(200); const pt = document.getElementById('gyPLOv').innerText; o.pl = ['你打了又删', '你让TA重说了', '准点群聊', 'TA的旧物箱', '窗台来客', '心电感应光谱', 'TA的录像带'].every(n => pt.includes(n)); document.getElementById('gyPLOv')?.remove();
+  const gg = gyInjectGroups().find(g => g.key === 'gyx'); o.inj = ['TA 偷偷去过你的窗台', 'TA 的旧物和摆在哪', '刚玩过心电感应光谱'].every(l => gg.items.some(i => i.label === l));
   const H = gyHubInfo ? gyHubInfo() : null; o.hub = !H || JSON.stringify(H).includes('gyxSill');
   return o;
 });
 const J = JSON.stringify(r);
-check('八个新玩法都有开关、小功能入口、自主行动；两个游戏进了游戏厅', r.base && r.games, J);
-check('🆘 TA被困了：消息发进聊天、你选了 TA 照做、真按时间等、等完有下文、平时聊天带着处境', r.stuck1 && r.stuckWait && r.stuckLater, J);
+check('七个新玩法（283：TA被困了删了）都有开关、小功能入口、自主行动；光谱进了游戏厅', r.base && r.games, J);
 check('⌨️ 你打了又删：认出删掉没发；TA 来问时看不到你打了什么（默认）', r.erase && r.eraseAsk, J);
 check('🔁 你让TA重说了：连着重说第二次才可能察觉，只带在那一次里', r.regen, J);
 check('⏰ 准点群聊：到点在群里开聊、你说话就算来了、错过了有人 @ 你、TA 记得你没来', r.ontime && r.join && r.miss, J);

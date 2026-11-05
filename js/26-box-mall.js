@@ -470,11 +470,15 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         mallChanged();
     }
 
-    async function buyManually(productId, forWhom) {
-        const product = S.products.find(p => p.id === productId);
-        if (!product) return;
-        const o = newOrder(product, forWhom, 'me',
-            forWhom === 'me' ? '你自己下单买的。' : ('你给 ' + nameOf(forWhom) + ' 买了一份心意。'));
+    async function buyManually(productId, forWhom, opt) {
+        opt = opt || {};
+        const product0 = S.products.find(p => p.id === productId);
+        if (!product0) return;
+        // 284：拼多多那边下单可以带一个成交价（拼单价 / 秒杀价 / 砍到 0）和一句来由
+        const product = opt.price != null ? Object.assign({}, product0, { price: String(Math.max(0, Math.round(Number(opt.price) * 100) / 100)) }) : product0;
+        const o = newOrder(product, forWhom, 'me', opt.reason ||
+            (forWhom === 'me' ? '你自己下单买的。' : ('你给 ' + nameOf(forWhom) + ' 买了一份心意。')));
+        if (opt.src) o.src = opt.src;
         // v108：钱包开着的话真的扣钱 + 出小票；钱不够也照下（卡可以透支）
         await chargeFor(o);
         S.orders.unshift(o);
@@ -483,9 +487,17 @@ ${had ? `你已经上架过这些，别重复：\n${had}\n` : ''}
         paintBadge();
         genTimeline(o, forWhom === 'me' ? null : charOf(forWhom));
         toast('下单成功 · ' + etaLabel(o));
-        tab = 'orders'; renderAll();
+        if (!opt.quiet) { tab = 'orders'; renderAll(); }
         mallChanged();
+        return o;
     }
+    // 284：给 📱 拼多多 用的口子（拼多多只是商城 / 外卖 / 钱包 / 包裹的另一张脸，数据都在这里）
+    window.gymallState = () => S;
+    window.gymallBuyAt = (pid, forWhom, opt) => buyManually(pid, forWhom || 'me', Object.assign({ quiet: true }, opt || {}));
+    window.gymallAddItems = async function (items, ownerId) {
+        const L = (items || []).map(r => ({ id: uid('mp_'), name: String(r.name || '').trim().slice(0, 30), price: String(r.price || '0').replace(/[^\d.]/g, '') || '0', emoji: String(r.emoji || '📦').slice(0, 4) || '📦', description: String(r.desc || r.description || '').trim().slice(0, 80), tag: String(r.tag || '').slice(0, 8), ownerId: ownerId ? String(ownerId) : '', createdAt: Date.now(), byChar: !!ownerId })).filter(x => x.name);
+        S.products.unshift(...L); await save(); try { renderAll(); } catch (e) {} mallChanged(); return L;
+    };
 
     // 通知别的面板"商城数据变了"（全局帮手可能还没装上，所以要判断）
     function mallChanged() {

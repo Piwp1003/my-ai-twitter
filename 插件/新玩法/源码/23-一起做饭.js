@@ -2,7 +2,7 @@
 if (window.__gyxCook) return; window.__gyxCook = 1;
 X.feat('gyxCook', { n: '🍳 一起做饭', desc: 'TA 一步一步教你做菜，陪你做完' });
 const S = X.store('cook');
-let D = { log: [], cfg: { voice: true } };
+let D = { log: [], cfg: { voice: false } };
 let K = null;   // 正在做：{cid, dish, steps:[{s, min, say}], i, t0, timer, left}
 const IDEAS = ['番茄炒蛋', '可乐鸡翅', '蛋炒饭', '红烧肉', '清炒时蔬', '酸辣土豆丝', '葱油拌面', '番茄牛腩', '麻婆豆腐', '蒸蛋羹', '咖喱饭', '寿喜锅', '三明治', '松饼', '热红酒', '红糖姜茶', '皮蛋瘦肉粥', '宫保鸡丁', '糖醋排骨', '冬阴功汤'];
 const LOCAL = { '番茄炒蛋': [['番茄切块，鸡蛋打散加一点点盐', 0, '刀小心点，我看着呢'], ['热锅倒油，油热了倒蛋液，凝固就盛出来', 2, '蛋别炒太老，嫩一点好吃'], ['再加点油，下番茄炒出汁', 3, '可以压一压，汁多一点'], ['倒回鸡蛋，加盐和一点点糖，翻匀', 1, '好香，我都闻到了'], ['出锅！', 0, '第一口给我尝尝']], '蛋炒饭': [['隔夜饭打散，鸡蛋打匀', 0, '隔夜饭最好吃'], ['油热下蛋液，快速划散', 1, '手快一点'], ['下米饭大火翻炒', 3, '炒到米粒跳起来'], ['加盐、葱花，翻匀出锅', 1, '真厉害']], '红糖姜茶': [['姜切片', 0, '多切几片，暖一点'], ['水里放姜煮开', 5, '等水开的时候陪我说说话'], ['加红糖再煮一会儿', 3, '小心烫'], ['倒出来，慢慢喝', 0, '喝完肚子就暖了']] };
@@ -19,14 +19,14 @@ window.gyxCookStart = async function (dish, who) {
     K = { cid: String(c.id), dish, steps, i: 0, t0: Date.now(), left: 0 };
     paint(); say(); return K;
 };
-function say() { if (!K) return; const st = K.steps[K.i], c = X.char(K.cid); if (st && st.say && D.cfg.voice) X.speak(c, st.say); }
+function say() { if (!K) return; const st = K.steps[K.i], c = X.char(K.cid); if (st && st.say && D.cfg.voice) X.offerVoice(c, st.say); }
 window.gyxCookNext = function (d) {
     if (!K) return; clearInterval(K.timer); K.left = 0; K.i = Math.max(0, K.i + (d || 1));
     if (K.i >= K.steps.length) return done(); paint(); say();
 };
 window.gyxCookTimer = function () {
     if (!K) return; const st = K.steps[K.i]; clearInterval(K.timer); K.left = Math.round((st.min || 1) * 60);
-    K.timer = setInterval(() => { if (!K) return; K.left--; const e = document.getElementById('gyxCkT'); if (e) e.textContent = mmss(K.left); if (K.left <= 0) { clearInterval(K.timer); ding(); X.toast(X.v('⏰ 时间到了', '⏰ 好了，下一步', '⏰ 叮！'), K.steps[K.i].s); const c = X.char(K.cid); if (D.cfg.voice) X.speak(c, X.pick(['好了，可以下一步了', '时间到啦', '叮，好了'])); } }, 1000); paint();
+    K.timer = setInterval(() => { if (!K) return; K.left--; const e = document.getElementById('gyxCkT'); if (e) e.textContent = mmss(K.left); if (K.left <= 0) { clearInterval(K.timer); ding(); X.toast(X.v('⏰ 时间到了', '⏰ 好了，下一步', '⏰ 叮！'), K.steps[K.i].s); const c = X.char(K.cid); if (D.cfg.voice) X.offerVoice(c, X.pick(['好了，可以下一步了', '时间到啦', '叮，好了'])); } }, 1000); paint();
 };
 const mmss = s => String(Math.floor(Math.max(0, s) / 60)).padStart(2, '0') + ':' + String(Math.max(0, s) % 60).padStart(2, '0');
 function ding() { try { const a = new (window.AudioContext || window.webkitAudioContext)(); [0, .18].forEach(t => { const o = a.createOscillator(), g = a.createGain(); o.frequency.value = 1320; o.connect(g); g.connect(a.destination); g.gain.setValueAtTime(.001, a.currentTime + t); g.gain.exponentialRampToValueAtTime(.2, a.currentTime + t + .02); g.gain.exponentialRampToValueAtTime(.001, a.currentTime + t + .4); o.start(a.currentTime + t); o.stop(a.currentTime + t + .45); }); } catch (e) {} }
@@ -58,7 +58,7 @@ window.gyxCookOpen = function (who) {
     X.panel('gyxCkOv', '🍳 一起做饭', '<div id="gyxCkBody"></div>');
     if (K) return paint();
     const c = X.char(who) || X.cur(), b = document.getElementById('gyxCkBody');
-    b.innerHTML = `<div class="gyx-row">和谁：${X.whoSel((c || {}).id, 'gyxCookWho')}<label><input type="checkbox" ${D.cfg.voice ? 'checked' : ''} onchange="gyxCookCfg(this.checked)"> TA 出声说话</label></div>
+    b.innerHTML = `<div class="gyx-row">和谁：${X.whoSel((c || {}).id, 'gyxCookWho')}<label><input type="checkbox" ${D.cfg.voice ? 'checked' : ''} onchange="gyxCookCfg(this.checked)"> TA 出声说话 （不会自己念，点 ▶ 才放）</label></div>
         <div class="gyx-row"><input id="gyxCkDish" class="gyx-in" placeholder="想做什么菜？（空着＝TA 随便挑一道）" style="flex:1"><button class="gyx-btn" onclick="gyxCookStart(document.getElementById('gyxCkDish').value, GYX_CK_WHO)">开始</button></div>
         <div class="gyx-row">${X.pick([IDEAS.slice(0, 10), IDEAS.slice(10)]).map(d => `<span class="gyx-chip" onclick="gyxCookStart('${d}', GYX_CK_WHO)">${d}</span>`).join('')}</div>
         ${D.log.length ? '<div class="gyx-tip">我们做过的菜</div>' + D.log.slice(0, 20).map(x => `<div class="ck-log">${x.photo ? `<img src="${x.photo}">` : '🍽️'} <b>${X.esc(x.dish)}</b><span>${new Date(x.at).toLocaleDateString()} · 和 ${X.esc(X.name(X.char(x.cid)))}</span></div>`).join('') : ''}`;
@@ -76,6 +76,6 @@ X.css('gyxCkCss', `.ck-wait{padding:40px 0;text-align:center;color:#8e8e93}.ck-t
 .ck-step{font-size:22px;line-height:1.6;padding:18px 16px;border-radius:18px;background:#fff7ec;margin:10px 0;min-height:90px}.ck-say{font-size:14px;color:#8e4ec6;margin:6px 2px}.ck-tm{display:flex;align-items:center;gap:14px;margin:12px 0}.ck-tm b{font-size:40px;font-weight:300;font-variant-numeric:tabular-nums}
 .ck-done{display:flex;flex-direction:column;align-items:center;gap:12px;padding:30px 0}.ck-done b{font-size:22px}.ck-done span{color:#8e8e93}.ck-log{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:14px}.ck-log img{width:40px;height:40px;object-fit:cover;border-radius:8px}.ck-log span{font-size:12px;color:#aaa;margin-left:auto}`);
 X.mini({ id: 'gyxCook', icon: '🍳', title: '一起做饭', desc: 'TA 一步一步教你做菜：计时器、TA 在旁边说话、做完拍照给 TA 看', onOpen: () => window.gyxCookOpen() });
-(async () => { D = Object.assign(D, await S.get('d', {})); D.log = D.log || []; D.cfg = Object.assign({ voice: true }, D.cfg || {}); })();
+(async () => { D = Object.assign(D, await S.get('d', {})); D.log = D.log || []; D.cfg = Object.assign({ voice: false }, D.cfg || {}); if (!D.v284) { D.v284 = 1; D.cfg.voice = false; S.set('d', D); } })();
 X.widget('gyxCookW', { n: '一起做饭', sizes: ['s', 'm'], tap: () => window.gyxCookOpen(), r: w => { const l = D.log[0]; return X.gw(w, '🍳', '一起做饭', K ? [X.esc(K.dish), '第 ' + (K.i + 1) + '/' + K.steps.length + ' 步'] : [l ? '上次：' + X.esc(l.dish) : '今天做点什么', D.log.length ? '一起做过 ' + D.log.length + ' 道' : '']); } }, 'gyxCook');
 X.memArr({ k: 'gyxCook', ico: '🍳', n: '一起做过的菜', d: '', arr: () => D.log, text: x => x.dish, field: 'dish', save: () => S.set('d', D) }, 'gyxCook');

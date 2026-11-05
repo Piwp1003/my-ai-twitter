@@ -119,7 +119,7 @@ const up = await p2.evaluate(async ({ old }) => {
   return { upd: d && d.upd.length, add: d && d.add.length, same: p && p.onLoad === old.onLoad, keepOff: p && p.enabled === false && p.id === 'plg_x', total: plugins.length, again: ((await gyPluginUpdateCheck(true) || {}).upd || []).length };
 }, { old: PLUG[1] });
 srv.close();
-check('🔄 插件自动检查更新：网站上的插件比装的新就提醒，更新后保留你的开关，没装的合集一起补上；更新完再查就是最新', up.upd === 1 && up.add === PLUG.length - 1 && up.same && up.keepOff && up.total === PLUG.length && up.again === 0, JSON.stringify(up));
+check('🔄 新玩法内置（283）后不再去网站查插件更新：查一次什么都不动、装的插件原样留着', !up.upd && !up.add && up.keepOff && up.total === 1, JSON.stringify(up));
 
 const gd = await page.evaluate(async () => { const o = {}; gyGuideOpen(); await new Promise(r => setTimeout(r, 200)); const t = document.getElementById('gyGuideOv').innerText; document.getElementById('gyGuideOv').remove();
   o.has = ['谁是真的 TA', '现实捉迷藏', '时间循环', '双人密室', '命运卡牌', '海龟汤', '我们的恋综', '剧本杀', '插件自动检查更新', 'TA 的秘密计划', '现实小任务', '一起安静待着', '我们的小习惯', '角标和分享', 'TA 被你影响'].filter(w => !t.includes(w));
