@@ -197,17 +197,22 @@ async function qq(data, ck, ip) {
   return { j: await r.json().catch(() => ({})), uin };
 }
 const hash33 = s => { let h = 0; for (let i = 0; i < s.length; i++) h += (h << 5) + s.charCodeAt(i); return h & 0x7fffffff; };
+const gtk = s => { let h = 5381; for (let i = 0; i < s.length; i++) h += (h << 5) + s.charCodeAt(i); return h & 0x7fffffff; };   // g_tk 是从 5381 起算的（ptqrtoken 才是从 0）
+const neSong = s => ({ src: 'ne', id: String(s.id), name: s.name, ar: (s.ar || []).map(x => x.name).join(' / '), al: (s.al || {}).name || '', cover: ((s.al || {}).picUrl || '').replace(/^http:/, 'https:'), dur: s.dt || 0, vip: s.fee === 1 || s.fee === 4 });
 async function muRoute(p, req, q, body) {
   const src = body.src || q.get('src') || 'ne', ck = muCk(req.headers.get('X-Mu-Ck')), ip = req.headers.get('CF-Connecting-IP') || '';
   if (p === '/mu/search') {
     const kw = String(body.q || q.get('q') || '').slice(0, 60); if (!kw) return E('搜什么？');
     if (src === 'qq') {
       const { j } = await qq({ req: { method: 'DoSearchForQQMusicDesktop', module: 'music.search.SearchCgiService', param: { query: kw, num_per_page: 20, page_num: 1, search_type: 0 } } }, ck);
-      const L = (((j.req || {}).data || {}).body || {}).song; const list = ((L && L.list) || []).map(s => ({ src: 'qq', id: s.mid, name: s.name || s.title, ar: (s.singer || []).map(x => x.name).join(' / '), al: (s.album || {}).name || '', cover: (s.album || {}).mid ? `https://y.qq.com/music/photo_new/T002R300x300M000${s.album.mid}.jpg` : '', dur: (s.interval || 0) * 1000, vip: !!((s.pay || {}).pay_play) }));
+      let L = ((((j.req || {}).data || {}).body || {}).song || {}).list || [];
+      // 搜得太勤 QQ 会回 2001（要验证），这时换老的搜索接口再试一次
+      if (!L.length) { const r2 = await fetch('https://c.y.qq.com/soso/fcgi-bin/client_search_cp?format=json&new_json=1&cr=1&p=1&n=20&w=' + encodeURIComponent(kw), { headers: { Referer: 'https://y.qq.com/', 'User-Agent': MU_UA } }); const j3 = await r2.json().catch(() => ({})); L = (((j3.data || {}).song || {}).list) || []; }
+      const list = L.map(s => ({ src: 'qq', id: s.mid, name: s.name || s.title, ar: (s.singer || []).map(x => x.name).join(' / '), al: (s.album || {}).name || '', cover: (s.album || {}).mid ? `https://y.qq.com/music/photo_new/T002R300x300M000${s.album.mid}.jpg` : '', dur: (s.interval || 0) * 1000, vip: !!((s.pay || {}).pay_play || (s.pay || {}).payplay) }));
       return J({ ok: true, list });
     }
     const { j } = await ne('/cloudsearch/pc', { s: kw, type: 1, limit: 20, offset: 0 }, ck);
-    const list = (((j.result || {}).songs) || []).map(s => ({ src: 'ne', id: String(s.id), name: s.name, ar: (s.ar || []).map(x => x.name).join(' / '), al: (s.al || {}).name || '', cover: ((s.al || {}).picUrl || '').replace(/^http:/, 'https:'), dur: s.dt || 0, vip: s.fee === 1 || s.fee === 4 }));
+    const list = (((j.result || {}).songs) || []).map(neSong);
     return J({ ok: true, list, code: j.code });
   }
   if (p === '/mu/url') {
@@ -264,13 +269,15 @@ async function muRoute(p, req, q, body) {
       const cs = await fetch(m[2], { redirect: 'manual', headers: { 'User-Agent': MU_UA, Cookie: jar.join('; ') } }); jar = jar.concat(setCk(cs));
       const pskey = (jar.find(c => c.startsWith('p_skey=')) || '').slice(7), uin = ((jar.find(c => c.startsWith('uin=')) || '').slice(4)).replace(/^o0*/, '');
       if (!pskey) return J({ ok: true, st: 'fail', msg: 'QQ 登录没走完（没拿到 p_skey）' });
-      const fd = new URLSearchParams({ response_type: 'code', client_id: '100497308', redirect_uri: 'https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/', scope: 'get_user_info,get_app_friends', state: 'state', switch: '', from_ptlogin: '1', src: '1', update_auth: '1', openapi: '1010_1030', g_tk: String(hash33(pskey)), auth_time: String(Date.now()), ui: 'D17E54D5-F6FB-4EF2-A1B4-AC4D36A69ED8' });
-      const au = await fetch('https://graph.qq.com/oauth2.0/authorize', { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': MU_UA, Referer: 'https://graph.qq.com/', Cookie: jar.join('; ') }, body: fd.toString() });
+      const fd = new URLSearchParams({ response_type: 'code', client_id: '100497308', redirect_uri: 'https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/', scope: 'get_user_info,get_app_friends', state: 'state', switch: '', from_ptlogin: '1', src: '1', update_auth: '1', openapi: '1010_1030', g_tk: String(gtk(pskey)), auth_time: String(Date.now()), ui: 'D17E54D5-F6FB-4EF2-A1B4-AC4D36A69ED8' });
+      const fm = new FormData(); for (const [k2, v2] of fd) fm.append(k2, v2);
+      const au = await fetch('https://graph.qq.com/oauth2.0/authorize', { method: 'POST', redirect: 'manual', headers: { 'User-Agent': MU_UA, Referer: 'https://graph.qq.com/', Cookie: jar.join('; ') }, body: fm });
       const loc = au.headers.get('location') || ''; const qcode = (/[?&]code=([^&]+)/.exec(loc) || [])[1];
-      if (!qcode) return J({ ok: true, st: 'fail', msg: 'QQ 授权没拿到 code' });
-      const lr = await fetch('https://u.y.qq.com/cgi-bin/musicu.fcg', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': MU_UA, Referer: 'https://y.qq.com/' }, body: JSON.stringify({ comm: { g_tk: 5381, platform: 'yqq', ct: 24, cv: 0 }, req: { module: 'QQConnectLogin.LoginServer', method: 'QQLogin', param: { code: qcode } } }) });
+      if (!qcode) return J({ ok: true, st: 'fail', msg: 'QQ 授权没拿到 code（' + au.status + '）' });
+      const lr = await fetch('https://u.y.qq.com/cgi-bin/musicu.fcg', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': MU_UA, Referer: 'https://y.qq.com/', Cookie: jar.join('; ') }, body: JSON.stringify({ comm: { g_tk: gtk(pskey), platform: 'yqq', ct: 24, cv: 0 }, req: { module: 'QQConnectLogin.LoginServer', method: 'QQLogin', param: { code: qcode } } }) });
+      const lc = setCk(lr), ckv = n => ((lc.find(c2 => c2.startsWith(n + '=')) || '').slice(n.length + 1));
       const lj = await lr.json().catch(() => ({})); const d = (lj.req || {}).data || {};
-      const mk = d.musickey || '', mu = String(d.musicid || uin || '');
+      const mk = d.musickey || ckv('qqmusic_key') || ckv('qm_keyst'), mu = String(d.musicid || ckv('uin') || ckv('wxuin') || uin || '').replace(/^o0*/, '');
       if (!mk) return J({ ok: true, st: 'fail', msg: 'QQ 音乐登录没成功' });
       return J({ ok: true, st: 'ok', ck: `uin=${mu}; qqmusic_key=${mk}; qm_keyst=${mk}`, nick: '' });
     }
@@ -281,6 +288,31 @@ async function muRoute(p, req, q, body) {
     if (c === 800) return J({ ok: true, st: 'expired' });
     if (c === 803) { const keep = got.filter(x => /^(MUSIC_U|__csrf|MUSIC_A_T|MUSIC_R_T|NMTID)=/.test(x)); return J({ ok: true, st: 'ok', ck: keep.join('; '), nick: j.nickname || '' }); }
     return J({ ok: true, st: 'fail', msg: j.message || ('网易云返回 ' + c) });
+  }
+  // 287：登录了网易云的，每日推荐 / 自己的歌单 / 我喜欢的 能从账号里同步过来（QQ 音乐暂时只能搜和放）
+  if (p === '/mu/daily') {
+    if (src !== 'ne') return E('QQ 音乐的每日推荐还不能同步');
+    if (!ck) return E('要先登录网易云');
+    const { j } = await ne('/v3/discovery/recommend/songs', {}, ck, ip);
+    const d = j.data || {}, why = {}; (d.recommendReasons || []).forEach(r => { why[String(r.songId)] = r.reason; });
+    if (j.code !== 200) return E('网易云没给每日推荐（' + (j.code || '') + (j.message ? ' ' + j.message : '') + '），可能登录过期了');
+    return J({ ok: true, list: (d.dailySongs || []).map(x => Object.assign(neSong(x), { why: why[String(x.id)] || x.reason || '' })) });
+  }
+  if (p === '/mu/lists') {
+    if (src !== 'ne') return E('QQ 音乐的歌单还不能同步');
+    if (!ck) return E('要先登录网易云');
+    const { j: a } = await ne('/w/nuser/account/get', {}, ck, ip); const uid = (a.profile || {}).userId; if (!uid) return E('网易云登录过期了，重新扫码登录一次');
+    const { j } = await ne('/user/playlist', { uid, limit: 60, offset: 0, includeVideo: true }, ck, ip);
+    return J({ ok: true, uid, list: (j.playlist || []).map(l => ({ id: String(l.id), name: l.name, n: l.trackCount || 0, cover: (l.coverImgUrl || '').replace(/^http:/, 'https:'), mine: (l.creator || {}).userId === uid, liked: l.specialType === 5 })) });
+  }
+  if (p === '/mu/list') {
+    if (src !== 'ne') return E('QQ 音乐的歌单还不能同步');
+    const id = String(body.id || q.get('id') || ''); if (!id) return E('哪个歌单？');
+    const { j } = await ne('/v6/playlist/detail', { id, n: 1000, s: 0 }, ck, ip);
+    const pl = j.playlist || {}; let tracks = pl.tracks || [];
+    const ids = (pl.trackIds || []).map(t => t.id); const have = new Set(tracks.map(t => t.id)); const miss = ids.filter(x => !have.has(x)).slice(0, 500);
+    for (let k = 0; k < miss.length; k += 250) { const { j: d } = await ne('/v3/song/detail', { c: JSON.stringify(miss.slice(k, k + 250).map(x => ({ id: x }))) }, ck, ip); tracks = tracks.concat(d.songs || []); }
+    return J({ ok: true, name: pl.name || '', list: tracks.map(neSong) });
   }
   if (p === '/mu/me') {
     if (!ck) return J({ ok: true, in: false });

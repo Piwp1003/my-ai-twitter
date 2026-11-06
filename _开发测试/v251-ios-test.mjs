@@ -64,7 +64,7 @@ const r = await page.evaluate(async () => {
   const pick = async txt => { await s(80); const el = [...document.querySelectorAll('.im-sheet-in div[data-i],.rd-sheet-in div[data-i]')].find(d => d.textContent.indexOf(txt) >= 0); if (el) el.click(); return !!el; };
   window.__spoke = []; window.gyVoiceSpeak = async (id, t) => { window.__spoke.push(t); };
   /* ---------- 🍎 苹果外观 ---------- */
-  o.uiDef = GYS.ui.sb === 'off' && GYS.framed() === false && GYS.ui.banner === true && GYS.ui.lock === false && GY_MINI_FEATURES.some(f => f.id === 'gysUi');
+  o.uiDef = GYS.ui.sb === 'off' && GYS.framed() === false && GYS.ui.banner === true && GYS.ui.lock === false && !GY_MINI_FEATURES.some(f => f.id === 'gysUi');   // 287：软件外观的入口去掉了
   GYS.uiSet('sb', 'on'); gysImsgOpen(); await s(150);
   const R = document.getElementById('gys_imsg');
   o.frame = !R.classList.contains('framed') && !R.querySelector('.gys-island') && !R.querySelector('.gys-homebar') && !!R.querySelector('.gys-sb b') && /\d\d:\d\d/.test(R.querySelector('.gys-sb b').textContent) && R.getBoundingClientRect().width >= 380;   // 不要手机外壳和灵动岛；状态栏能自己打开

@@ -1108,11 +1108,12 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         if (!it || !it.id) return null;
         let t = S.tracks.find(x => x.kind === 'online' && x.osrc === it.src && x.oid === String(it.id));
         if (!t) {
-            t = { id: 'on_' + it.src + '_' + it.id, title: String(it.name || '未命名'), artist: String(it.ar || ''), cover: '', src: '', kind: 'online', osrc: it.src, oid: String(it.id), lrc: '', dur: Math.round((it.dur || 0) / 1000), note: it.al ? '专辑《' + it.al + '》' : '' };
+            t = { id: 'on_' + it.src + '_' + it.id, title: String(it.name || '未命名'), artist: String(it.ar || ''), cover: String(it.cover || ''), src: '', kind: 'online', osrc: it.src, oid: String(it.id), lrc: '', dur: Math.round((it.dur || 0) / 1000), note: it.al ? '专辑《' + it.al + '》' : '' };
             S.tracks.push(t);
             try { const l = window.gyMu ? await window.gyMu.lyric(it.src, it.id) : null; if (l && l.lrc) t.lrc = l.lrc; } catch (e) {}
             save();
         }
+        if (!t.cover && it.cover) { t.cover = String(it.cover); save(); }   // 287：以前加的没封面，补上
         if (play) { try { if (S.hidden && window.gymShow) gymShow(); } catch (e) {} window.gymPlayTrackId(t.id); }
         try { renderMgr(); } catch (e) {}
         return t;
@@ -1146,6 +1147,7 @@ textarea.gym-in{resize:vertical;min-height:74px;line-height:1.6;}
         audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + sec));
         onTime();
     };
+    window.gymSeekTo = function (sec) { if (!audio || !isFinite(audio.duration)) return; audio.currentTime = Math.max(0, Math.min(audio.duration - 0.5, +sec || 0)); onTime(); };   // 287：点歌词跳到那一句
     window.gymStop = function () { if (!audio) return; audio.pause(); audio.currentTime = 0; onTime(); paint(); };
     // 竖排音量条那款的竖向进度（从下往上）
     window.gymSeekV = function (e) {

@@ -463,7 +463,7 @@ R.taFavs = () => G.push(APP, { title: '🕵️ TA 们偷偷收藏的', html: () 
 R.settings = () => G.push(APP, { title: '小红书设置', html: () => `
   <label class="gys-f"><span>最多留多少篇笔记（你的、收藏的、TA 收藏的不会被删）</span><input id="rdC_keep" type="number" min="100" value="${D.cfg.keep}"></label>
   <label class="gys-f"><span>每次刷新刷出几篇</span><input id="rdC_feedN" type="number" min="2" max="12" value="${D.cfg.feedN}"></label>
-  <div class="gys-acts"><button class="gys-btn" onclick="gysRd.saveCfg()">保存</button><button class="gys-btn ghost" onclick="GYS.uiPage('red')">🍎 苹果外观</button></div>` });
+  <div class="gys-acts"><button class="gys-btn" onclick="gysRd.saveCfg()">保存</button></div>` });
 R.saveCfg = () => { const g = k => Number((document.getElementById('rdC_' + k) || {}).value) || 0; D.cfg.keep = Math.max(100, g('keep') || 500); D.cfg.feedN = Math.max(2, Math.min(12, g('feedN') || 6)); saveD(); X.toast('💾 存好了', ''); G.back(APP); };
 R.export = () => {
     const L = D.notes.filter(n => n.by === 'me' || faved(n) || charOfW(n.by) || Object.keys(n.favBy || {}).length).map(n => `【${n.title}】${nameOf(n.by)} · ${new Date(n.at).toLocaleString()}\n${n.body}\n${n.tags.map(t => '#' + t).join(' ')}\n${flat(n.cmts).map(c => '  · ' + nameOf(c.by) + '：' + c.text).join('\n')}${Object.keys(n.favBy || {}).map(id => '\n  ⭐ ' + ((X.char(id) || {}).name || '') + ' 偷偷收藏：' + n.favBy[id]).join('')}`);

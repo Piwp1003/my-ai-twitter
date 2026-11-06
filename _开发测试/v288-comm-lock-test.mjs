@@ -1,0 +1,27 @@
+// 288：社区只连群主那一个（别的地址不认）
+import { chromium } from 'playwright';
+import { launchBrowser, fileUrl } from './_launch.mjs';
+import path from 'path';
+import fs from 'fs';
+const root = process.cwd();
+const browser = await launchBrowser(chromium);
+const results = []; const check = (n, ok, e = '') => results.push({ n, ok: !!ok, e });
+const W = 'https://guyu-community.3040831326.workers.dev';
+const ctx = await browser.newContext({ viewport: { width: 393, height: 852 } });
+await ctx.route(/^https?:\/\//, r => r.abort());
+const page = await ctx.newPage(); const errs = []; page.on('pageerror', e => errs.push(e.message));
+await page.goto(fileUrl(path.join(root, 'index.html')));
+await page.evaluate(() => localStorage.setItem('gyGate', JSON.stringify({ url: 'https://evil.example.workers.dev', tok: 'a.b', ok: 1 })));
+await page.reload(); await page.waitForFunction(() => window.__guyuBooted, { timeout: 25000 }); await page.waitForTimeout(1500);
+check('存着别的地址：开机改回群主的社区', await page.evaluate(W => gyGate.url === W && JSON.parse(localStorage.getItem('gyGate')).url === W, W));
+await page.evaluate(() => gyGate.set('c.d', 'https://evil.example.workers.dev'));
+check('gyGate.set 传别的地址也不认', await page.evaluate(W => gyGate.url === W, W));
+await page.waitForTimeout(800);
+check('社区那边地址也是群主的', await page.evaluate(W => gysCommState().S.url === W, W));
+const src = fs.readFileSync(path.join(root, 'js/61-soft.js'), 'utf8');
+check('加入页没有「社区地址」输入框', src && !src.includes('cmJUrl'));
+check('指南里没有「自己搭社区」', !fs.readFileSync(path.join(root, 'js/94-guide-help.js'), 'utf8').includes("id: 'comm_self'"));
+check('没有页面报错', !errs.length, errs.join(' | '));
+await browser.close();
+for (const r of results) console.log((r.ok ? '✅ ' : '❌ ') + r.n + (r.ok ? '' : '  ' + r.e));
+console.log(`\n${results.filter(r => r.ok).length}/${results.length} 通过`); process.exit(results.every(r => r.ok) ? 0 : 1);

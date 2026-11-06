@@ -101,11 +101,9 @@ function joinHtml() {
     return `<div class="cm-join"><div class="cm-jlogo" style="${I.icon ? `background-image:url('${esc(fileUrl(I.icon))}')` : ''}">${I.icon ? '' : '🌱'}</div><b>${esc(I.name || '谷雨社区')}</b><small>${I.err ? esc(I.err) : I.members != null ? (I.empty ? '还没人，你第一个进来就是群主' : I.members + ' 位成员') : S.url ? '⏳ 连接中…' : '先填社区地址'}</small>${I.intro ? `<p>${esc(I.intro)}</p>` : ''}</div>
       <div class="cm-grp"><label class="cm-row"><span>昵称</span><input id="cmJNick" placeholder="大家看到的名字" value="${esc((me() || {}).nick || '')}"></label><label class="cm-row"><span>谷雨号</span><input id="cmJHandle" placeholder="英文数字，加好友用（可空）"></label>
       ${I.empty ? '' : mode === 'invite' ? `<label class="cm-row"><span>邀请码</span><input id="cmJCode" placeholder="GY-XXXX"></label>` : mode === 'apply' ? `<label class="cm-row col"><span>${esc(I.applyQ || '说一句你怎么知道谷雨的')}</span><textarea id="cmJApply" rows="3"></textarea></label>` : ''}</div>
-      <div class="cm-btn" onclick="gysComm.join()">${BUSY.join ? '⏳' : mode === 'apply' && !I.empty ? '提交申请' : '加入'}</div>
-      <div class="cm-grp"><label class="cm-row"><span>社区地址</span><input id="cmJUrl" placeholder="https://…workers.dev" value="${esc(S.url)}" onchange="gysComm.setUrl(this.value)"></label></div>
-      <div class="cm-foot">群主部署的社区地址；换一个地址就是进另一个社区。</div>`;
+      <div class="cm-btn" onclick="gysComm.join()">${BUSY.join ? '⏳' : mode === 'apply' && !I.empty ? '提交申请' : '加入'}</div>`;
 }
-C.setUrl = v => { S.url = String(v || '').trim().replace(/\/+$/, ''); INFO = null; save(); loadInfo(); };
+C.setUrl = () => { S.url = DEFAULT_URL; INFO = null; save(); loadInfo(); };   /* 288：只连群主的社区，地址改不了 */
 C.join = async () => {
     if (BUSY.join) return; const v = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
     if (!v('cmJNick')) return X.toast('起个昵称', '');
@@ -355,10 +353,10 @@ function meTab() {
         ${can('roles') ? `<div class="cm-r" onclick="gysComm.rolesPage()"><div class="t"><b>身份组</b></div><span class="chev">›</span></div>` : ''}
         ${can('channel') ? `<div class="cm-r" onclick="gysComm.chList()"><div class="t"><b>频道</b></div><span class="chev">›</span></div>` : ''}
         ${can('approve') ? `<div class="cm-r" onclick="gysComm.staff()"><div class="t"><b>管理</b><small>举报、入群申请、记录、封号名单</small></div>${STAFF && (STAFF.reports + STAFF.applies) ? `<em class="cm-badge">${STAFF.reports + STAFF.applies}</em>` : '<span class="chev">›</span>'}</div>` : ''}</div>` : ''}
-      <div class="cm-gh">连接</div><div class="cm-grp"><div class="cm-r"><div class="t"><b>社区地址</b><small>${esc(S.url)}</small></div></div><div class="cm-r" onclick="gysCloudBkOpen()"><div class="t"><b>☁️ 云端备份</b><small>用这把钥匙把整个谷雨加密存到云端，换手机拉回来</small></div><span class="chev">›</span></div><div class="cm-r" onclick="gysComm.backup()"><div class="t"><b>备份我的钥匙</b><small>换手机 / 清了数据用它找回这个账号</small></div><span class="chev">›</span></div><div class="cm-r" onclick="gysComm.restore()"><div class="t"><b>用钥匙登录</b></div><span class="chev">›</span></div><div class="cm-r red" onclick="gysComm.leave()"><div class="t"><b>退出社区</b></div></div></div>`;
+      <div class="cm-gh">连接</div><div class="cm-grp"><div class="cm-r" onclick="gysComm.backup()"><div class="t"><b>备份我的钥匙</b><small>换手机 / 清了数据用它找回这个账号</small></div><span class="chev">›</span></div><div class="cm-r" onclick="gysComm.restore()"><div class="t"><b>用钥匙登录</b></div><span class="chev">›</span></div><div class="cm-r red" onclick="gysComm.leave()"><div class="t"><b>退出社区</b></div></div></div>`;
 }
 C.backup = async () => { try { await navigator.clipboard.writeText(S.url + '#' + S.tok); X.toast('钥匙复制了', '存好，别给别人'); } catch (e) { await G.input('你的钥匙（存好，别给别人）', S.url + '#' + S.tok); } };
-C.restore = async () => { const v = await G.input('粘贴备份的钥匙', ''); if (!v) return; const i = v.indexOf('#'); if (i < 0) return X.toast('格式不对', ''); S.url = v.slice(0, i); S.tok = v.slice(i + 1); B = null; save(); try { await boot(); gateSync(); X.toast('登录了', me().nick); } catch (e) { X.toast('钥匙不对', ''); S.tok = ''; save(); } G.repaint(APP); };
+C.restore = async () => { const v = await G.input('粘贴备份的钥匙', ''); if (!v) return; const i = v.indexOf('#'); if (i < 0) return X.toast('格式不对', ''); if (v.slice(0, i).replace(/\/+$/, '') !== DEFAULT_URL) return X.toast('这把钥匙不是谷雨社区的', ''); S.url = DEFAULT_URL; S.tok = v.slice(i + 1); B = null; save(); try { await boot(); gateSync(); X.toast('登录了', me().nick); } catch (e) { X.toast('钥匙不对', ''); S.tok = ''; save(); } G.repaint(APP); };
 C.leave = async () => { if (!(await G.confirm('退出社区？（账号会离开，想回来要重新加入）'))) return; try { await api('/leave', {}); } catch (e) {} S.tok = ''; try { window.gyGate && window.gyGate.clear(); } catch (e) {} B = null; MSGS = {}; DMS = []; S.read = {}; S.dmLast = 0; save(); G.tab(APP, 'ch'); };
 C.editMe = () => {
     const m = me(), V = { avatar: m.avatar, bg: m.bg };
@@ -376,10 +374,8 @@ C.cfgPage = () => {
       <div class="cm-grp"><label class="cm-row"><span>名字</span><input id="cmCN" value="${esc(c.name || '')}"></label><label class="cm-row col"><span>介绍（加入页能看到）</span><textarea id="cmCI" rows="2">${esc(c.intro || '')}</textarea></label><label class="cm-row col"><span>规则</span><textarea id="cmCR" rows="3">${esc(c.rules || '')}</textarea></label></div>
       ${owner ? `<div class="cm-gh">怎么加入</div><div class="cm-seg">${[['invite', '邀请码'], ['open', '谁都能进'], ['apply', '申请审核']].map(([k, n]) => `<span class="${c.join === k ? 'on' : ''}" onclick="gysComm.__join('${k}')">${n}</span>`).join('')}</div>${c.join === 'apply' ? `<div class="cm-grp"><label class="cm-row col"><span>申请时要回答的问题</span><input id="cmCQ" value="${esc(c.applyQ || '')}"></label></div>` : ''}
       <div class="cm-gh">开屏登录</div><div class="cm-seg">${[[true, '要登录才能用谷雨'], [false, '不用登录']].map(([k, n]) => `<span class="${(c.gate !== false) === k ? 'on' : ''}" onclick="gysComm.__gate(${k})">${n}</span>`).join('')}</div><div class="cm-foot">开着的话，没加入社区的人打开谷雨会先看到登录页，用的是上面选的加入方式。已经登录过的人没网也能进。</div>
-      <div class="cm-gh">最低版本</div><div class="cm-grp"><label class="cm-row"><span>低于这个版本不让用（0 = 不限）</span><input id="cmCV" type="number" value="${+c.minVer || 0}" oninput="gysComm.__cv('minVer',this.value)"></label><label class="cm-row col"><span>更新链接（APK / 网页地址）</span><input id="cmCU" value="${esc(c.updUrl || '')}" placeholder="https://…" oninput="gysComm.__cv('updUrl',this.value)"></label><label class="cm-row col"><span>拦下来时显示的话</span><input id="cmCM" value="${esc(c.updMsg || '')}" placeholder="这个版本太旧了，更新一下再用" oninput="gysComm.__cv('updMsg',this.value)"></label></div><div class="cm-foot">你现在用的是 ${window.GY_VERSION || '?'}。改成比别人高的数字，旧版本的人打开就会被拦下来叫他更新——小心别填比自己还高。</div>
-      <div class="cm-gh">☁️ 云端备份</div><div class="cm-seg">${[[true, '开着'], [false, '关掉']].map(([k, n]) => `<span class="${(c.bkOn !== false) === k ? 'on' : ''}" onclick="gysComm.__bk(${k})">${n}</span>`).join('')}</div><div class="cm-grp"><label class="cm-row"><span>每人每份最大（MB）</span><input type="number" value="${+c.bkMax || 30}" oninput="gysComm.__cv('bkMax',this.value)"></label><label class="cm-row"><span>每人留几份（1~5）</span><input type="number" value="${+c.bkKeep || 2}" oninput="gysComm.__cv('bkKeep',this.value)"></label><label class="cm-row"><span>所有人加起来最多（MB）</span><input type="number" value="${+c.bkTotal || 450}" oninput="gysComm.__cv('bkTotal',this.value)"></label></div><div class="cm-foot" id="cmBkUse">${BKUSE ? `现在一共用了 ${(BKUSE.total / 1048576).toFixed(1)} MB，${BKUSE.users.length} 个人有备份${BKUSE.separate ? '' : '（备份和社区放在同一个数据库里）'}。` : '正在看用了多少…'}备份是每个人在自己手机上加密的，你也看不到里面的内容。Cloudflare 免费版一个数据库最多 500 MB。</div>` : ''}` });
+      <div class="cm-gh">最低版本</div><div class="cm-grp"><label class="cm-row"><span>低于这个版本不让用（0 = 不限）</span><input id="cmCV" type="number" value="${+c.minVer || 0}" oninput="gysComm.__cv('minVer',this.value)"></label><label class="cm-row col"><span>更新链接（APK / 网页地址）</span><input id="cmCU" value="${esc(c.updUrl || '')}" placeholder="https://…" oninput="gysComm.__cv('updUrl',this.value)"></label><label class="cm-row col"><span>拦下来时显示的话</span><input id="cmCM" value="${esc(c.updMsg || '')}" placeholder="这个版本太旧了，更新一下再用" oninput="gysComm.__cv('updMsg',this.value)"></label></div><div class="cm-foot">你现在用的是 ${window.GY_VERSION || '?'}。改成比别人高的数字，旧版本的人打开就会被拦下来叫他更新——小心别填比自己还高。</div>` : ''}` });
     C.__bk = k => { c.bkOn = k; G.repaint(APP); };
-    if (owner) api('/bk/usage', null, true).then(j => { BKUSE = j; G.repaint(APP); }).catch(() => {});
     C.__gate = k => { c.gate = k; G.repaint(APP); };
     C.__cv = (k, v) => { c[k] = v; };
     C.__cpick = async k => { const id = await pickUp(k === 'cover' ? 16 / 9 : 1, k === 'cover' ? 1080 : 400); if (id) { c[k] = id; G.repaint(APP); } };
@@ -515,8 +511,8 @@ body.dark-theme .gys-community{--cb:#000;--cc:#1c1c1e;--ct:#fff;--cl:rgba(84,84,
 // 280：跟开屏登录（js/92）共用一把钥匙——哪边登录的，另一边都算登录了
 function gateSync() { try { window.gyGate && S.tok && window.gyGate.set(S.tok, S.url); } catch (e) {} }
 window.addEventListener('gy-gate-logout', () => { S.tok = ''; B = null; save(); });
-window.addEventListener('gy-gate-login', e => { const d = e.detail || {}; if (!d.tok || d.tok === S.tok) return; S.tok = d.tok; if (d.url) S.url = d.url; B = null; save(); });
-(async () => { await G.ready(); S = Object.assign(S, await ST.get('s', {}) || {}); if (!S.url && DEFAULT_URL) S.url = DEFAULT_URL;
-    try { const g = window.gyGate; if (g && (g.tok !== S.tok)) { S.tok = g.tok; if (g.tok) S.url = g.url || S.url; save(); } } catch (e) {}   /* 钥匙以开屏登录那边为准 */
+window.addEventListener('gy-gate-login', e => { const d = e.detail || {}; if (!d.tok || d.tok === S.tok) return; S.tok = d.tok; S.url = DEFAULT_URL; B = null; save(); });
+(async () => { await G.ready(); S = Object.assign(S, await ST.get('s', {}) || {}); S.url = DEFAULT_URL;
+    try { const g = window.gyGate; if (g && (g.tok !== S.tok)) { S.tok = g.tok; S.url = DEFAULT_URL; save(); } } catch (e) {}   /* 钥匙以开屏登录那边为准 */
     S.read = S.read || {}; S.lastSeen = S.lastSeen || {}; S.said = S.said || []; })();
 window.gysCommState = () => ({ S, B, MSGS, DMS });

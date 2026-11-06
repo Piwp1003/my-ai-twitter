@@ -260,7 +260,7 @@ for (const [vp, tag] of [[{ width: 1280, height: 860 }, '电脑'], [{ width: 390
 
   await page.reload();
   await page.waitForFunction(() => window.__guyuBooted && window.gyPmSet, { timeout: 20000 });
-  await page.waitForTimeout(400);
+  await page.waitForFunction(() => document.body.classList.contains('gyphm'), { timeout: 4000 }).catch(() => {}); await page.waitForTimeout(400);
   check(`[${tag}] 刷新后还是小手机`, await page.evaluate(() => document.body.classList.contains('gyphm')));
   check(`[${tag}] 刷新后桌面还是自己摆的样子（改的名字还在）`, await page.evaluate(() => { const l = document.querySelector('.pm-app[data-pmapp="music"] .pm-lb'); return l && l.innerText === '听歌'; }));
   await page.evaluate(() => gyPmUnlock());

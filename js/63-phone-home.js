@@ -502,7 +502,7 @@
     /* ---------------- 锁屏 ---------------- */
     function lockHtml() {
         const d = new Date(), wk = '日一二三四五六'[d.getDay()];
-        let ns = []; try { ns = (globalNotifications || []).slice(0, 4); } catch (e) {}
+        let ns = []; try { ns = (globalNotifications || []).filter(n => n && !n.read).slice(0, 4); } catch (e) {}
         const lw = C.lockWall || (!C.lockColor && C.wall), lc = C.lockColor || (!C.lockWall && C.wallColor);
         const fg = C.lockDepth !== false && C.lockFg ? C.lockFg : null;
         return `<div class="pm-lock${lw || /#1c1c1e|#000000|#2c2c2e/.test(lc || '') ? ' has-wall' : ''}${fg ? ' depth' : ''}">

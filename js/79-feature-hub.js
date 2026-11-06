@@ -70,7 +70,7 @@
             pg('身边的人', '👥', ['grapevine', 'factionNetwork', 'npc', 'gyxScoop', 'gyxOnTime']),
             pg('外面', '🌐', ['now', 'web_explore', 'gyxWeather', 'gyxHot', 'gyxHotList']),
             pg('换个世界', '🪐', ['gyxWorld', 'gyxTheater', 'gyxSwap', 'gyxSide'])] },
-        { id: 'hub_soft', color: ['#576574', '#222f3e'], icon: '📱', title: '软件', desc: '微信、iMessage、微博、泡泡、小红书、豆瓣、网易云、抖音、拼多多、社区、云端备份——整页的真软件界面；同一个人在每个软件里的主页都可以不一样', cat: '生活', kids: ['gysWechat', 'gysWeibo', 'gysBubble', 'gysRed', 'gysDouban', 'gysImsg', 'gysMusic', 'gysDouyin', 'gysPdd', 'gyComm', 'gyCloudBkApp', 'gyxApps', 'gysUi'] },
+        { id: 'hub_soft', color: ['#576574', '#222f3e'], icon: '📱', title: '软件', desc: '微信、iMessage、微博、泡泡、小红书、豆瓣、网易云、抖音、拼多多、社区——整页的真软件界面；同一个人在每个软件里的主页都可以不一样', cat: '生活', kids: ['gysWechat', 'gysWeibo', 'gysBubble', 'gysRed', 'gysDouban', 'gysImsg', 'gysMusic', 'gysDouyin', 'gysPdd', 'gyComm', 'gyxApps'] },   // 287：云端备份、软件外观（苹果样子）她说去掉
         // ⚙️ 设置里的（不在小功能首页）
         { id: 'hub_chatset', icon: '💬', title: '聊天', set: true, desc: 'TA 的性格、TA 在变、听和看、记忆', pages: [
             pg('TA 的性格', '🫂', ['gyxBond', 'gyxSpice', 'gyxFair']),

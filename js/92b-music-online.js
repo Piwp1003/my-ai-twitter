@@ -33,6 +33,9 @@
         search: (src, q) => api('/mu/search', { src, q }, src).then(j => j.list || []),
         url: (src, id) => api('/mu/url', { src, id }, src),
         lyric: (src, id) => api('/mu/lyric', { src, id }, src),
+        daily: src => api('/mu/daily', { src }, src).then(j => j.list || []),
+        lists: src => api('/mu/lists', { src }, src).then(j => j.list || []),
+        list: (src, id) => api('/mu/list', { src, id }, src).then(j => j.list || []),
         acc,
         logout: src => { const o = rd(); delete o[src]; wr(o); paint(); toast('退出了 ' + SRC[src], '这台设备上的登录信息删掉了'); }
     };
@@ -125,7 +128,9 @@
                 if (j.st === 'ok') {
                     const o = rd(); o[q.src] = { ck: j.ck, nick: j.nick || '', at: Date.now() }; wr(o);
                     try { const me = await api('/mu/me', { src: q.src }, q.src); if (me.nick) { o[q.src].nick = me.nick; o[q.src].vip = me.vip; wr(o); } } catch (e) {}
-                    stopQr(); ST.src = q.src; paint(); toast('登录好了', SRC[q.src] + (rd()[q.src].nick ? '：' + rd()[q.src].nick : '')); return;
+                    stopQr(); ST.src = q.src; paint(); toast('登录好了', SRC[q.src] + (rd()[q.src].nick ? '：' + rd()[q.src].nick : ''));
+                    if (q.src === 'ne' && window.gysMu && window.gysMu.askSync) setTimeout(() => window.gysMu.askSync(), 400);   // 287：问她要同步账号还是让 AI 生成
+                    return;
                 }
                 paint(); if (j.st === 'wait' || j.st === 'scanned') poll();
             } catch (e) { q.st = 'fail'; q.msg = e.message || String(e); paint(); }

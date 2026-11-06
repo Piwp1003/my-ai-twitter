@@ -809,7 +809,7 @@ W.favs = () => G.push(APP, { title: '我的收藏', html: () => D.fav.map(postOf
 W.settings = () => G.push(APP, { title: '设置', html: () => `
   <label class="gys-f"><span>TA 们大概多少小时自己发一次微博（「TA 会自己做」打开时）</span><input type="number" min="1" value="${D.cfg.refresh}" onchange="gysWb.__cfg('refresh', this.value)"></label>
   <label class="gys-f"><span>最多存多少条微博（你自己的、置顶的、收藏的不删）</span><select onchange="gysWb.__cfg('keep', this.value)">${[200, 600, 1500, 5000].map(n => `<option value="${n}" ${Number(D.cfg.keep) === n ? 'selected' : ''}>${n} 条</option>`).join('')}</select></label>
-  <div class="gys-acts"><span class="gys-btn ghost" onclick="gysWb.exportTxt()">📤 导出我的微博（TXT）</span><span class="gys-btn ghost" onclick="GYS.uiPage('weibo')">🍎 苹果外观</span></div>
+  <div class="gys-acts"><span class="gys-btn ghost" onclick="gysWb.exportTxt()">📤 导出我的微博（TXT）</span></div>
   <div class="gys-empty" style="text-align:left;padding:8px 20px">评论里 NPC 和路人各占多少：去「👥 NPC 列表 → ⚖️ 评论里的比例 → 🧣 微博」调。<br>刷新首页 / 热搜 / 评论区每次调一次副 API。</div>` });
 W.__cfg = (k, v) => { D.cfg[k] = Math.max(1, parseInt(v) || 1); saveD(); };
 W.exportTxt = () => {

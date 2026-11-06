@@ -666,9 +666,9 @@ function gameHtml(t, m) { const who = opp(t); const st = m.win ? (m.win === 'dra
 /* ---------------- 🗑️ 最近删除 · ⋯ 菜单 · 已读回执 · 短信 ---------------- */
 M.listMenu = async () => {
     const tr = Object.keys(D.trash || {}).length;
-    const ops = ['☾ 专注模式' + (D.focus ? '（' + focusName(D.focus) + '）' : ''), (D.cfg.rr === false ? '✓ 打开' : '✕ 关掉') + '「发送已读回执」', '🗑️ 最近删除' + (tr ? '（' + tr + '）' : ''), '🍎 苹果外观'];
+    const ops = ['☾ 专注模式' + (D.focus ? '（' + focusName(D.focus) + '）' : ''), (D.cfg.rr === false ? '✓ 打开' : '✕ 关掉') + '「发送已读回执」', '🗑️ 最近删除' + (tr ? '（' + tr + '）' : '')];
     const i = await chooser(ops); if (i == null) return;
-    if (i === 0) M.focusMenu(); else if (i === 1) { D.cfg.rr = D.cfg.rr === false; saveD(); X.toast(D.cfg.rr ? '对方能看到你「已读」了' : '已读回执关了', D.cfg.rr ? '' : 'TA 看不到你读没读'); } else if (i === 2) M.trash(); else G.uiPage(APP);
+    if (i === 0) M.focusMenu(); else if (i === 1) { D.cfg.rr = D.cfg.rr === false; saveD(); X.toast(D.cfg.rr ? '对方能看到你「已读」了' : '已读回执关了', D.cfg.rr ? '' : 'TA 看不到你读没读'); } else if (i === 2) M.trash();
 };
 M.trash = () => G.push(APP, { title: '最近删除', html: () => { const L = Object.entries(D.trash || {}).sort((a, b) => b[1].at - a[1].at); return `<div class="im-tip">删掉的对话会在这里留 30 天，之后自动永久删除。</div>${L.map(([id, x]) => `<div class="im-row"><i class="im-dot off"></i>${thAv(x.t, 46)}<div><div class="im-rt"><b>${esc(thName(x.t))}</b><small>${Math.max(0, 30 - Math.floor((Date.now() - x.at) / 86400e3))} 天</small></div><em><a onclick="gysIm.restore('${id}')">恢复</a> · <a class="red" onclick="gysIm.purge('${id}')">永久删除</a></em></div></div>`).join('') || '<div class="gys-empty">没有最近删除的对话</div>'}`; } });
 M.restore = id => { const x = (D.trash || {})[id]; if (!x) return; D.th[id] = x.t; delete D.trash[id]; saveD(); G.repaint(APP); X.toast('恢复了', ''); };

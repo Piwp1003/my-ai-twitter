@@ -144,7 +144,7 @@ function meTab() {
     return `<div class="wx-me" onclick="gysWx.editMe()">${wav('me', 64)}<div><b>${esc(p.nick || G.meName())}</b><small>微信号：${esc(p.handle || 'wxid_' + (G.meName().length * 7919 % 100000))}</small><span class="wx-st" onclick="event.stopPropagation();gysWx.setStatus()">${s ? `${esc(s.ico)} ${esc(s.t)}` : '＋ 状态'}</span></div><em>›</em></div>
       <div class="wx-cells"><div onclick="${window.gyWalletPanel ? 'gyWalletPanel()' : "X.toast('钱包没开','设置 → 全部开关 里打开')"}"><span class="wx-ci" style="background:#07c160">💰</span>服务</div></div>
       <div class="wx-cells"><div onclick="gysWx.favsPage()"><span class="wx-ci" style="background:#f6b900">⭐</span>收藏<em>${D.favs.length || ''}</em></div><div onclick="gysWx.moments('me')"><span class="wx-ci" style="background:#2782d7">🖼️</span>朋友圈</div><div onclick="gysWx.patSet()"><span class="wx-ci" style="background:#fa9d3b">👋</span>拍一拍<em>${esc(D.pat.me || '没设')}</em></div></div>
-      <div class="wx-cells"><div onclick="GYS.uiPage('wechat')"><span class="wx-ci" style="background:#8e8e93">🍎</span>软件外观</div><div onclick="gysWx.settings()"><span class="wx-ci" style="background:#2782d7">⚙️</span>设置</div></div>`;
+      <div class="wx-cells"><div onclick="gysWx.settings()"><span class="wx-ci" style="background:#2782d7">⚙️</span>设置</div></div>`;
 }
 const HEAD_T = { chats: '微信', contacts: '通讯录', discover: '发现', me: '' };
 function head(tab) { const u = unreadAll(); return `<div class="gys-hd wx-hd"><span class="gys-bk" onclick="GYS.close('wechat')">${G.ic('back', 22)}</span><b>${HEAD_T[tab] || '微信'}${tab === 'chats' && u ? `(${u})` : ''}</b>${tab === 'chats' || tab === 'contacts' ? `<span class="gys-hr"><span onclick="gysWx.plusMenu()" style="font-size:22px">⊕</span></span>` : ''}</div>`; }

@@ -624,7 +624,7 @@ function setTab() {
         <div class="ph-row"><div><b>记录最多留</b></div><select onchange="gysPh.setLogKeep(this.value)">${[100, 300, 1000, 5000].map(v => `<option value="${v}" ${Number(D.cfg.logKeep) === v ? 'selected' : ''}>${v} 条</option>`).join('')}</select></div></div>
       <div class="ph-sech">试试看（不用等 TA 想起来）</div>
       <div class="ph-try">${[['shot', '📸 截屏给 TA 看'], ['read', '📖 读屏给 TA 看'], ['desk', '🖥️ 让 TA 点评桌面'], ['buzz', '💓 TA 的心跳'], ['torch', '🔦 手电筒'], ['clip', '📋 剪贴板留言'], ['wall', '🖼️ 换成 TA 的照片'], ['alarm', '⏰ 让 TA 设闹钟'], ['pull', '↩️ 拉回谷雨'], ['screen', '🌙 锁屏']].map(([k, n]) => `<span onclick="gysPh.do('${k}')">${n}</span>`).join('')}<span onclick="gysPh.wallPick()">🖼️ 我挑图让 TA 换</span><span onclick="gysPh.torchOff()">🔦 关手电筒</span></div>
-      <div class="gys-acts"><span class="gys-btn sm ghost" onclick="GYS.uiPage('phone')">🍎 苹果外观</span></div>`;
+      <div class="gys-acts"></div>`;
 }
 P.pickWho = async () => { const cs = G.chars(); const i = await chooser(cs.map(c => c.name), '谁来管你的手机？'); if (i == null) return; D.who = String(cs[i].id); saveD(); G.repaint(APP); };
 P.setKeep = v => { D.keep = Number(v) || 0; log('cfg', '截图保留改成 ' + D.keep); G.repaint(APP); };

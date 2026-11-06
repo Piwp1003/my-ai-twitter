@@ -423,6 +423,7 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         const each = typeof window.gyPmMfEach === 'function' ? window.gyPmMfEach() : true;
         const hid = each ? (typeof window.gyHubHideIds === 'function' ? window.gyHubHideIds() : new Set()) : (typeof window.gyHubHiddenIds === 'function' ? window.gyHubHiddenIds() : new Set());
         const fixed = new Set(APPS.map(a => a[4] && (a[4].feature || '')).filter(Boolean));
+        try { syncModern(); Object.keys(MODERN).forEach(k => { const m = modernOf(k); if (m && m.dup) fixed.add(m.id); }); } catch (e) {}
         const keys = [];
         const put = (k, title, icon, open) => {
             keys.push(k);
@@ -440,6 +441,19 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         return keys;
     };
     const appOf = k => APPS.find(a => a[0] === k);
+    // 🔁 289：桌面上老的几个图标换成后来做好的软件（她说「购物明明做成拼多多了还是以前的样子」）——
+    //   购物 → 拼多多、音乐 → 网易云、电影 → 抖音「一起看」；那个软件关了 / 没装就还是原来的页面。
+    //   换成软件时，单独的「拼多多 / 网易云」小功能图标就不再重复出现（抖音本身还有自己的图标）。
+    const softOn = (app, id) => { try { return !!(window.GYS && GYS.APPS && GYS.APPS[app]) && (!window.GYX || !GYX.on || GYX.on(id)); } catch (e) { return false; } };
+    const MODERN = {
+        mall: { id: 'gysPdd', name: '拼多多', on: () => softOn('pdd', 'gysPdd'), open: () => window.gysPddOpen ? gysPddOpen('home') : gyOpenMiniFeature('gysPdd'), dup: 1 },
+        music: { id: 'gysMusic', name: '网易云', on: () => softOn('music', 'gysMusic'), open: () => { let pl = false; try { const m = window.gymNowInfo && gymNowInfo(); pl = !!(m && (m.playing || m.title)); } catch (e) {} if (pl && window.gysMu && gysMu.openPlayer) { gysMusicOpen(); gysMu.openPlayer(); } else if (window.gysMusicOpen) gysMusicOpen(); else gyOpenMiniFeature('gysMusic'); }, dup: 1 },
+        film: { id: 'gysDouyin', name: '一起看', on: () => softOn('douyin', 'gysDouyin') && softOn('douyin', 'gysDyWatch') && typeof window.gysDouyinWatch === 'function', open: () => gysDouyinWatch() }
+    };
+    const ORIG = {}; APPS.forEach(a => { if (MODERN[a[0]]) ORIG[a[0]] = a[1]; });
+    const modernOf = k => { const m = MODERN[k]; try { return m && m.on() ? m : null; } catch (e) { return null; } };
+    function syncModern() { APPS.forEach(a => { if (ORIG[a[0]] != null) { const m = modernOf(a[0]); a[1] = m ? m.name : ORIG[a[0]]; } }); }
+    window.gyPmModernOf = k => { const m = modernOf(k); return m ? { id: m.id, name: m.name } : null; };
     function setTitle(t) { S.title = t || ''; const el = document.getElementById('gyPmT'); if (el) el.textContent = S.title; }
     function viewTitle(v) {
         if (v === 'chat') {
@@ -592,6 +606,7 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
     };
     window.gyPmOpen = function (key) {
         const a = appOf(key); if (!a) return;
+        const md = modernOf(key); if (md) { try { md.open(); } catch (e) { console.warn('[小手机] 打开失败：', e); } return; }
         const j = a[4];
         // 开别的 App：小窗不收起来，里面换成新 App 接着浮着（以前是先收起来）
         if (j.sheet) { if (typeof window.gyPmBeauty === 'function') window.gyPmBeauty(); return; }
@@ -799,7 +814,7 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
     function ncHtml() {
         const d = new Date();
         try { if (typeof window.gyNotifEnsureIds === 'function') window.gyNotifEnsureIds(); } catch (e) {}
-        let list = []; try { list = (typeof globalNotifications !== 'undefined' ? globalNotifications : []).slice(0, 60); } catch (e) {}
+        let list = []; try { list = (typeof globalNotifications !== 'undefined' ? globalNotifications : []).filter(n => n && !n.read).slice(0, 60); } catch (e) {}   /* 已读的不显示 */
         const today0 = new Date(); today0.setHours(0, 0, 0, 0);
         const card = (n, i) => { const det = ncDetail(n); return `<div class="nc-n" data-nid="${esc(String(n.id || ''))}" onclick="gyPmNCGo('${String(n.id || '').replace(/[^\w-]/g, '')}')"><span class="ic">${ncIcon(n)}</span><div class="tx"><div class="hd"><b>${esc(String(n.text || '').replace(/<[^>]+>/g, ''))}</b><em>${(() => { try { return timeAgo(n.timestamp); } catch (e) { return ''; } })()}</em></div>${det ? `<p>${esc(det)}</p>` : ''}</div></div>`; };
         const tod = [], old = [];
@@ -840,7 +855,7 @@ body.gyphm #gyChatHead{background:transparent!important;border-bottom:.5px solid
         setTimeout(syncNav, 80);
     };
     window.gyPmNCAll = function () { window.gyPmNC(false); closeNative(); enterApp(); S.stack = []; try { switchMainView('notifications'); } catch (e) {} setTitle('通知'); syncNav(); };
-    window.gyPmNCRead = function () { try { unreadNotifs = 0; if (typeof updateNotifBadge === 'function') updateNotifBadge(); } catch (e) {} window.gyPmNC(true); renderHome(); };
+    window.gyPmNCRead = function () { try { (typeof globalNotifications !== 'undefined' ? globalNotifications : []).forEach(n => { if (n && typeof n === 'object') n.read = true; }); } catch (e) {} try { if (typeof renderNotifications === 'function') renderNotifications(); } catch (e) {} try { unreadNotifs = 0; if (typeof updateNotifBadge === 'function') updateNotifBadge(); } catch (e) {} window.gyPmNC(true); renderHome(); };
     // 拉的手势：状态栏按下 → 往下拉，通知中心跟着手指下来；松手拉过一小段就打开，没拉够就缩回去；只点了一下也打开
     function ncGesture() {
         const D = { on: false, y: 0, t: 0, dy: 0, id: null };

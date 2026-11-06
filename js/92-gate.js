@@ -11,7 +11,8 @@
     function rd() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
     function wr(o) { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {} }
     var st = rd();
-    var url = function () { return String(st.url || DEFAULT_URL || '').replace(/\/+$/, ''); };
+    var url = function () { return DEFAULT_URL.replace(/\/+$/, ''); };   /* 288：只连群主这一个社区，不认别的地址 */
+    if (st.url && st.url !== DEFAULT_URL) { st.url = DEFAULT_URL; wr(st); }
     var VER = +(window.GY_VERSION || 0);
 
     var API = window.gyGate = {
@@ -19,7 +20,7 @@
         get tok() { return st.tok || ''; },
         info: null,
         // 社区里加入 / 用钥匙登录 / 退出时调这个，两边共用一把钥匙
-        set: function (tok, u) { st.tok = tok || ''; if (u) st.url = u; st.ok = tok ? Date.now() : 0; wr(st); },
+        set: function (tok, u) { st.tok = tok || ''; st.url = DEFAULT_URL; st.ok = tok ? Date.now() : 0; wr(st); },
         clear: function () { st.tok = ''; st.ok = 0; wr(st); try { window.dispatchEvent(new CustomEvent('gy-gate-logout')); } catch (e) {} },
         open: function () { show(); }
     };
@@ -102,6 +103,7 @@
         box.querySelector('#ggGo').onclick = function () {
             var t = box.querySelector('#ggK').value.trim(), i = t.indexOf('#'), err = box.querySelector('#ggErr');
             if (i < 0) { err.textContent = '格式不对'; return; }
+            if (t.slice(0, i).replace(/\/+$/, '') !== url()) { err.textContent = '这把钥匙不是谷雨社区的'; return; }
             var old = { url: st.url, tok: st.tok };
             st.url = t.slice(0, i); st.tok = t.slice(i + 1);
             req('/whoami').then(function (j) {

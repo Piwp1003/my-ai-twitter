@@ -20,7 +20,9 @@ def info(f):
     return {'name': name, 'full': f'{icon} {name}', 'body': body}
 
 apps = []
+SKIP = {'96-云端备份.js'}   # 287：云端备份她说去掉（源码留着，服务器上的 /bk 接口也还在）
 for f in sorted(glob.glob(os.path.join(src, '[0-9]*.js'))):
+    if os.path.basename(f) in SKIP: continue
     if os.path.basename(f).startswith('70-'):
         apps += [info(os.path.join(newsrc, x)) for x in MUSIC_EXTRA]
     apps.append(info(f))

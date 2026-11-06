@@ -482,7 +482,7 @@ B.settings = () => G.push(APP, { title: '泡泡设置', html: () => `
   <label class="gys-f"><span>TA 大概隔几个小时会发一次泡泡（自主行动里用）</span><input id="bbC_freq" type="number" min="1" value="${D.cfg.freq}"></label>
   <label class="gys-f"><span>你发消息后，一次刷出多少条粉丝回复</span><input id="bbC_flood" type="number" min="4" max="30" value="${D.cfg.flood}"></label>
   <label class="gys-f"><span>每个聊天最多留多少条消息（收藏的和信不会被删）</span><input id="bbC_keep" type="number" min="50" value="${D.cfg.keep}"></label>
-  <div class="gys-acts"><button class="gys-btn" onclick="gysBb.saveCfg()">保存</button><button class="gys-btn ghost" onclick="GYS.uiPage('bubble')">🍎 苹果外观</button></div>` });
+  <div class="gys-acts"><button class="gys-btn" onclick="gysBb.saveCfg()">保存</button></div>` });
 B.saveCfg = () => { const g = k => Number((document.getElementById('bbC_' + k) || {}).value) || 0; D.cfg.freq = Math.max(1, g('freq') || 8); D.cfg.flood = Math.max(4, Math.min(30, g('flood') || 12)); D.cfg.keep = Math.max(50, g('keep') || 300); saveD(); X.toast('💾 存好了', ''); G.back(APP); };
 B.export = () => {
     const L = [];
