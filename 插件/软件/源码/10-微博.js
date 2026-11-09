@@ -8,7 +8,7 @@ if (window.__gysWeibo) return; window.__gysWeibo = 1;
 const G = window.GYS, APP = 'weibo', esc = G.esc;
 X.feat('gysWeibo', { n: '🧣 微博', desc: '刷微博、发微博、热搜、超话、私信、小号、bot；TA 也在上面发微博、评论你、用小号' });
 const ST = X.store('weibo');
-let D = { posts: [], hot: { list: [], at: 0 }, supers: {}, bots: [], dms: {}, notes: [], stories: [], xacc: {}, fav: [], act: 'me', alts: [], follow: {}, videos: [], cfg: { refresh: 6, keep: 600 }, seenDel: {} };
+let D = { posts: [], hot: { list: [], at: 0 }, supers: {}, bots: [], dms: {}, notes: [], stories: [], xacc: {}, fav: [], act: 'me', alts: [], follow: {}, videos: [], cfg: { refresh: 6, keep: 600 }, seenDel: {}, ifhe: {} };
 const saveD = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => ST.set('d', D), 300); }; })();
 let BUSY = {};
 const W = window.gysWb = {};
@@ -232,11 +232,13 @@ function note(t, from, pid, text) { if (isMine(from)) return; D.notes.unshift({ 
 W.open = (id, toCmt) => { const p = postOf(id); if (!p) return X.toast('🧣 找不到这条了', ''); if (p.del) D.seenDel[p.id] = 1; G.push(APP, { title: '微博正文', id: 'p_' + id, html: () => detail(id), foot: () => cmtBar(id), after: r => { if (toCmt) { const e = r.querySelector('.wb-cmts'); if (e) e.scrollIntoView(); } } }); if (!p.cmtGen && !p.del && (countC(p.cmts) < 3)) genCmts(p, 6, { quiet: !isMine(p.by) }); };
 window.gysWeiboOpenPost = id => { G.open(APP); W.open(id); };
 window.gysWeiboOpen = tab => G.open(APP, tab);
+window.gysWeiboProf = w => { G.open(APP); W.prof(w); };
 W.like = id => { const p = postOf(id); if (!p) return; const me = myAcc(), i = p.likes.indexOf(me); if (i >= 0) p.likes.splice(i, 1); else { p.likes.push(me); const c = charOfW(p.by); if (c && Math.random() < 0.35) X.ctxNote && 0; } saveD(); G.repaint(APP); };
 W.follow = w => { const L = following('me'); if (L.includes(w)) L.splice(L.indexOf(w), 1); else { L.push(w); G.prof(APP, w).followers++; } saveD(); G.repaint(APP); };
 W.vote = (id, i) => { const p = postOf(id); if (!p || !p.poll || p.poll.mine != null) return; p.poll.mine = i; p.poll.opts[i].n++; saveD(); G.repaint(APP); };
 W.fav = id => { const i = D.fav.indexOf(id); if (i >= 0) D.fav.splice(i, 1); else D.fav.unshift(id); saveD(); X.toast(i >= 0 ? '取消收藏' : '⭐ 收藏了', ''); };
 /* ---------- 🎁 转发抽奖（255）：转发就算参加，到点自动开奖；TA 发的抽奖可能偷偷让你中 ---------- */
+X.feat('gysWbIf', { n: '🪞 微博主页「如果 TA 是……」', desc: '微博主页「动态」页最上面一组十问十答（如果他是一种动物 / 天气 / 气味……），AI 照人设写，每一格都能自己改；TA 也会时不时改改自己主页上的状态' });
 X.feat('gysWbLot', { n: '🎁 微博转发抽奖', desc: '你和 TA 都能发「转发抽奖」，转发就算参加，到点自动开奖、公布中奖名单；TA 发抽奖的时候可能会偷偷想让你中' });
 const lotOn = () => X.on('gysWbLot');
 const LOT_H = [['1 小时后', 1], ['6 小时后', 6], ['明天这个时候', 24], ['3 天后', 72], ['1 周后', 168]];
@@ -370,15 +372,18 @@ W.sendCmt = async pid => {
 W.prof = w => {
     if (!w) return;
     if (!G.prof(APP, w).gen && G.base(w)) G.genProfiles(APP, [w]).then(() => G.repaint(APP));
-    G.push(APP, { title: '', id: 'u_' + w, cls: 'wb-pf-body', html: () => profile(w), right: isMine(w) ? `<span onclick="gysWb.editMe('${w}')">编辑</span>` : `<span onclick="gysWb.profMenu('${w}')">⋯</span>` });
+    G.push(APP, { title: '', id: 'u_' + w, get cls() { return pfSt() === 'classic' ? 'wb-pf-body' : 'wbx-body ' + pfSt(); }, get hdCls() { return pfSt() === 'classic' ? '' : 'pf-ov ' + pfSt(); },
+        html: () => pfSt() === 'classic' ? profile(w) : profileX(w),
+        get right() { return pfSt() === 'classic' ? (isMine(w) ? `<span onclick="gysWb.editMe('${w}')">编辑</span>` : `<span onclick="gysWb.profMenu('${w}')">⋯</span>`) : `<span class="pf-ic${PE[w] ? ' on' : ''}" onclick="gysWb.pfEditMode('${w}')">✎</span><span class="pf-ic" onclick="gysWb.${isMine(w) ? 'pfStyle()' : `profMenu('${w}')`}">⋯</span>`; } });
 };
-W.editMe = w => G.editProf(APP, w, [['school', '学校 / 公司', '可不填']]);
+W.editMe = w => G.editProf(APP, w, [['school', '学校 / 公司', '可不填'], ['status', '状态', '在干嘛 / 一句话'], ['bday', '小标签', '比如：10月18日 天秤座']]);
 W.profMenu = async w => {
-    const b = G.base(w); const opts = ['编辑 TA 的主页（换头像、改简介）', '私信', following('me').includes(w) ? '取消关注' : '关注', '把 TA 设成特别关注'];
+    const b = G.base(w); const opts = ['编辑 TA 的主页（换头像、改简介）', '私信', following('me').includes(w) ? '取消关注' : '关注', '把 TA 设成特别关注', '主页样式（黑 / 白 / 经典）'];
     if (b && b.kind === 'char') opts.push('和 TA 官宣');
     const i = await chooser(opts); if (i == null) return;
     const o = opts[i];
-    if (o.startsWith('编辑')) G.editProf(APP, w);
+    if (o.startsWith('主页样式')) return W.pfStyle();
+    if (o.startsWith('编辑')) W.profEdit(w);
     else if (o === '私信') W.dm(w);
     else if (o.endsWith('关注')) W.follow(w);
     else if (o.startsWith('把 TA')) { (D.star = D.star || []).includes(w) || D.star.push(w); saveD(); X.toast('⭐ 特别关注了', 'TA 一发微博你就会收到提醒'); }
@@ -419,6 +424,95 @@ function superList(w) {
     const L = Object.entries(D.supers).filter(([k, s]) => !s.deleted && (s.members || {})[w]);
     return L.length ? L.map(([k, s]) => `<div class="wb-row" onclick="gysWb.superOpen('${k}')"><span class="wb-sico">💎</span><div><b>${esc(s.name)}超话</b><em>Lv.${lvOf(s.members[w].exp)} · 已签到 ${s.members[w].days || 0} 天</em></div></div>`).join('') : '<div class="gys-empty">没加入超话</div>';
 }
+
+/* ---------------- 🖤🤍 主页新样式（290）：黑（夜色档案）/ 白 / 经典 ----------------
+   · 设置 → 主页样式，或主页右上 ⋯。D.cfg.pf：'dark' | 'light' | 'classic'（默认黑）。
+   · 右上 ✎ = 编辑模式：封面、头像点了换图（能裁剪）；昵称、状态、简介、IP、生日、「如果 TA 是」每一格点了改字。
+   · 「动态」页：如果 TA 是……（AI 照人设写，存在 D.ifhe[w]，「换一批」才再写；关了开关就不显示）+ TA 最近赞过的。 */
+const pfSt = () => ['dark', 'light', 'classic'].includes(D.cfg.pf) ? D.cfg.pf : 'dark';
+const PE = {};   // 哪些主页开着编辑模式
+W.pfStyle = async () => { const L = [['dark', '🖤 黑 · 夜色档案'], ['light', '🤍 白'], ['classic', '经典（原来的样子）']]; const i = await G.sheet(L.map(x => (pfSt() === x[0] ? '✓ ' : '') + x[1]), '主页样式'); if (i == null) return; D.cfg.pf = L[i][0]; saveD(); G.repaint(APP); };
+W.pfEditMode = w => { PE[w] = !PE[w]; if (PE[w]) X.toast('✎ 编辑模式', '点封面、头像换图；点文字改字。再点 ✎ 退出'); G.repaint(APP); };
+W.pfImg = (w, k) => G.pickImg(k === 'bg' ? 2.2 : 1, url => { G.prof(APP, w)[k] = url; G.save(); G.repaint(APP); });
+const PF_TXT = { nick: '昵称', status: '状态（在干嘛 / 一句话）', bio: '简介', loc: 'IP 属地', bday: '生日 / 星座之类的小标签', school: '学校 / 公司' };
+W.pfTxt = async (w, k) => { const p = G.prof(APP, w); const v = await G.input(PF_TXT[k] || k, p[k] || ''); if (v == null) return; p[k] = String(v).trim().slice(0, k === 'bio' ? 300 : 60); if (k === 'nick' && !p.nick) p.nick = G.base(w) ? G.base(w).name : '用户'; G.save(); G.repaint(APP); };
+const pron = w => { const g = G.prof(APP, w).gender || (G.base(w) && G.base(w).obj && G.base(w).obj.gender) || ''; return /女/.test(g) ? '她' : /男/.test(g) ? '他' : 'TA'; };
+const ifOn = () => X.on('gysWbIf');
+const ifhe = w => (D.ifhe = D.ifhe || {})[w];
+W.ifGen = async w => {
+    if (BUSY['if' + w]) return; BUSY['if' + w] = 1; G.repaint(APP);
+    try {
+        const b = G.base(w), c = charOfW(w), p = G.prof(APP, w), he = pron(w);
+        const who = c ? X.who(c) : `「${p.nick}」：${(b && b.persona) || p.bio || '一个普通微博用户'}`;
+        const old = ifhe(w) ? '（上一批写过：' + ifhe(w).L.map(x => x[1]).join('、') + '，这次换不一样的）' : '';
+        const o = X.json(await X.ask(`${who}\n\n给这个人写一组「如果${he}是……」（微博主页上那种十问十答，别人眼里的${he}）。10 条，问题从这些里挑或自己出：动物、天气、颜色、饮料 / 酒、季节、地方、物品、气味、一句话、一种关系、一首歌、一个时间点……答案要具体、有画面，贴着人设，不要空泛的形容词，每个不超过 12 个字。${old}\n只回 JSON：{"items":[["如果${he}是一种动物","……"]]}`)) || {};
+        const L = (o.items || []).filter(x => Array.isArray(x) && x[0] && x[1]).slice(0, 12).map(x => [X.plain(x[0]).slice(0, 20), X.plain(x[1]).slice(0, 30)]);
+        if (L.length < 4) { X.toast('没写出来', '再点一次试试'); return; }
+        D.ifhe[w] = { t: (ifhe(w) && ifhe(w).t) || `如果${he}是……`, L, at: Date.now() }; saveD();
+    } catch (e) { X.toast('没写出来', String(e.message || e).slice(0, 40)); } finally { BUSY['if' + w] = 0; G.repaint(APP); }
+};
+W.ifEdit = async (w, i) => {
+    const h = ifhe(w) || (D.ifhe[w] = { t: `如果${pron(w)}是……`, L: [], at: Date.now() });
+    if (i === 't') { const v = await G.input('标题', h.t); if (v != null) { h.t = String(v).trim() || h.t; saveD(); G.repaint(APP); } return; }
+    if (i === 'add') { const q = await G.input('问题', `如果${pron(w)}是一种`); if (!q) return; const a = await G.input(q, ''); if (a == null) return; h.L.push([q.trim(), String(a).trim()]); saveD(); G.repaint(APP); return; }
+    const it = h.L[i]; if (!it) return;
+    const k = await G.sheet(['改问题', '改答案', '删掉这一格'], it[0]); if (k == null) return;
+    if (k === 2) h.L.splice(i, 1);
+    else { const v = await G.input(k ? '答案' : '问题', it[k]); if (v == null) return; it[k] = String(v).trim() || it[k]; }
+    saveD(); G.repaint(APP);
+};
+const ICO = {
+    rp: '<svg class="wbx-i" viewBox="0 0 20 20"><path d="M13 3l4 4-4 4"/><path d="M17 7H8a5 5 0 0 0-5 5v4"/></svg>',
+    cm: '<svg class="wbx-i" viewBox="0 0 20 20"><path d="M3 3.5H17V13.5H9L5 17V13.5H3Z"/></svg>',
+    lk: '<svg class="wbx-i" viewBox="0 0 20 20"><path d="M7.2 9.1L10.1 3.2C10.5 2.4 11.7 2.7 11.7 3.6V7H15.2C16.5 7 17.3 8.1 16.9 9.3L15.2 15.1C14.9 16 14.2 16.5 13.2 16.5H7.2Z"/><path d="M3 8.5H7.2V16.5H3Z"/></svg>'
+};
+function profileX(w) {
+    const st = pfSt(), p = G.prof(APP, w), b = G.base(w), x = xacc(w), mine = isMine(w), ed = !!PE[w];
+    const tab = PT[w] || 'posts';
+    const L = D.posts.filter(q => q.by === w && (mine || (visibleTo(q, 'me') && q.vis !== 'self'))).sort((a, b2) => (b2.pin - a.pin) || (b2.at - a.at));
+    const selfN = !mine ? D.posts.filter(q => q.by === w && q.vis === 'self').length : 0;
+    const likesL = D.posts.filter(q => (q.likes || []).includes(w) && q.by !== w).sort((a, b2) => b2.at - a.at).slice(0, 30);
+    const links = G.linksOf(APP, w);
+    const stKey = b && b.kind === 'char' ? 'c' + b.obj.id : '';
+    const E = (k, html, cls) => ed ? `<span class="wbx-ed ${cls || ''}" onclick="event.stopPropagation();gysWb.pfTxt('${w}','${k}')">${html}</span>` : html;
+    const vt = p.verify && p.verify.t;
+    const fol = following('me').includes(w);
+    const h = ifhe(w);
+    let body;
+    if (tab === 'dyn') {
+        body = (ifOn() ? `<div class="wbx-if">
+            <div class="wbx-ift"><h3 onclick="${ed ? `gysWb.ifEdit('${w}','t')` : ''}" class="${ed ? 'wbx-ed' : ''}">${esc(h ? h.t : `如果${pron(w)}是……`)}</h3>${h ? `<span onclick="gysWb.ifGen('${w}')">${BUSY['if' + w] ? '⏳ 在写…' : '↻ 换一批'}</span>` : ''}</div>
+            ${h && h.L.length ? `<div class="wbx-ifl">${h.L.map(([q, a], i) => `<div class="${ed ? 'wbx-ed' : ''}" onclick="${ed ? `gysWb.ifEdit('${w}',${i})` : ''}"><small>${esc(q)}</small><b>${esc(a)}</b></div>`).join('')}${ed ? `<div class="wbx-ed add" onclick="gysWb.ifEdit('${w}','add')"><small>＋ 加一格</small><b>&nbsp;</b></div>` : ''}</div>`
+              : `<div class="wbx-ifempty">${BUSY['if' + w] ? '⏳ 在写……' : `<span onclick="gysWb.ifGen('${w}')">✨ 让 AI 照人设写一份</span><span onclick="gysWb.ifEdit('${w}','add')">✎ 自己写</span>`}</div>`}
+          </div>` : '')
+          + (likesL.length ? likesL.slice(0, 12).map(q => `<div class="wbx-dyn" onclick="gysWb.open('${q.id}')"><div class="d">${G.ago(q.at)} · 赞了</div><div class="t">@${esc(nameOf(q.by))}：${esc(X.plain(q.text).slice(0, 70))}</div></div>`).join('') : `<div class="wbx-empty">${mine ? '还没赞过别人' : pron(w) + '最近没什么动态'}</div>`);
+    } else if (tab === 'posts') {
+        body = `<div class="wbx-fh">全部微博</div>` + (L.length ? L.map(q => card(q, { inProfile: true, noFollow: true })).join('') : '<div class="wbx-empty">还没发过微博</div>') + (selfN ? `<div class="wbx-empty">🔒 还有 ${selfN} 条「仅自己可见」，只有翻 ${pron(w)} 的手机才看得到</div>` : '');
+    } else if (tab === 'pics') {
+        body = `<div class="wb-album">${L.flatMap(q => (q.imgs || []).map(s2 => `<span style="background-image:url('${s2}')" onclick="GYS.imgView('${s2}')"></span>`).concat((q.pics || []).map(t => `<span class="t" style="background:${picBg(t)}" onclick="gysWb.open('${q.id}')"><em>${esc(t)}</em></span>`))).join('') || '<div class="wbx-empty">没有图片</div>'}</div>`;
+    } else body = superList(w);
+    const tabs = [['dyn', '动态'], ['posts', '微博 ' + L.length], ['pics', '相册'], ['super', '超话']];
+    return `<div class="wbx ${st}${ed ? ' editing' : ''}">
+      <div class="wbx-cover" style="${p.bg ? `background-image:url('${p.bg}')` : ''}" onclick="${ed ? `gysWb.pfImg('${w}','bg')` : p.bg ? `GYS.imgView('${p.bg}')` : ''}">${ed ? '<i class="wbx-camb">🖼️ 换封面</i>' : ''}</div>
+      <div class="wbx-info">
+        <div class="wbx-main"><div class="wbx-avw" onclick="${ed ? `gysWb.pfImg('${w}','avatar')` : ''}">${G.av(APP, w, 76, 'wbx-av')}${vt ? `<span class="wbx-ver ${vt}">V</span>` : ''}${ed ? '<i class="wbx-cam">📷</i>' : ''}</div>
+          <div class="wbx-idt"><div class="wbx-nm">${E('nick', `<b>${esc(p.nick)}</b>`)}${p.vip ? '<span class="wbx-vip">SVIP</span>' : ''}</div>
+            ${p.status || ed ? E('status', `<div class="wbx-st">${esc(p.status || '加个状态')}</div>`) : ''}</div></div>
+        <div class="wbx-btns">${mine ? `<span onclick="gysWb.pfEditMode('${w}')">${ed ? '✓ 改好了' : '编辑主页'}</span><span onclick="gysWb.pfStyle()">主页样式</span>` : `<span class="${fol ? '' : 'on'}" onclick="gysWb.follow('${w}')">${fol ? (isFollow(w, 'me') ? '互相关注' : '已关注') : '+ 关注'}</span><span onclick="gysWb.dm('${w}')">私信</span>`}</div>
+        <div class="wbx-stats"><div><strong>${G.fmtN(p.followers)}</strong><small>粉丝</small></div><div><strong>${G.fmtN(p.following + (mine ? following('me').length : 0))}</strong><small>关注</small></div><div><strong>${G.fmtN(L.reduce((n, q) => n + totalLikes(q), 0) + (p.likes || 0))}</strong><small>转评赞</small></div></div>
+        ${p.verify && p.verify.text ? `<div class="wbx-vt">${vt === 'blue' ? '蓝V' : vt === 'gold' ? '金V' : '微博'}认证：${esc(p.verify.text)}</div>` : ''}
+        ${E('bio', `<div class="wbx-bio">${richText(p.bio || (mine ? '还没有简介' : '这个人很懒，什么都没写'))}</div>`, 'blk')}
+        <div class="wbx-tags">${E('loc', `<span><b>IP</b>${esc(ipOf(w))}</span>`)}${p.gender ? `<span>${/女/.test(p.gender) ? '♀' : '♂'}${p.bday ? ' ' + esc(p.bday) : ''}</span>` : p.bday || ed ? E('bday', `<span>${esc(p.bday || '+ 小标签')}</span>`) : ''}${p.school || ed ? E('school', `<span>${esc(p.school || '+ 学校 / 公司')}</span>`) : ''}${links.map(([k, hh]) => `<span>${G.APPS[k].ico} ${esc(hh)}</span>`).join('')}</div>
+        ${stKey ? `<div class="wbx-sup" onclick="gysWb.superOpen('${stKey}')">💎 ${esc(p.nick)}超话 ›</div>` : ''}
+        ${x && x.kind === 'alt' && x.owner && !mine ? `<div class="wbx-sup">🕵️ 这个号有点眼熟……<span onclick="gysWb.guessAlt('${w}')">我知道是谁</span></div>` : ''}
+        ${x && x.kind === 'bot' ? `<div class="wbx-sup">🤖 这是你建的 bot <span onclick="gysWb.botEdit('${x.id}')">管理</span></div>` : ''}
+        ${ed ? `<div class="wbx-edtip">编辑模式：点封面 / 头像换图，点文字改字。粉丝数、认证这些在 <a onclick="gysWb.${mine ? `editMe('${w}')` : `profEdit('${w}')`}">全部资料</a> 里改</div>` : ''}
+      </div>
+      <div class="wbx-tabs">${tabs.map(([k, n]) => `<span class="${tab === k ? 'on' : ''}" onclick="gysWb.tabP('${w}','${k}')">${n}</span>`).join('')}</div>
+      <div class="wbx-feed">${body}</div>
+    </div>`;
+}
+W.profEdit = w => G.editProf(APP, w, [['school', '学校 / 公司', '可不填'], ['status', '状态', '在干嘛 / 一句话'], ['bday', '小标签', '比如：10月18日 天秤座']]);
 
 /* ---------------- 发微博 ---------------- */
 let DRAFT = null;
@@ -809,9 +903,11 @@ W.favs = () => G.push(APP, { title: '我的收藏', html: () => D.fav.map(postOf
 W.settings = () => G.push(APP, { title: '设置', html: () => `
   <label class="gys-f"><span>TA 们大概多少小时自己发一次微博（「TA 会自己做」打开时）</span><input type="number" min="1" value="${D.cfg.refresh}" onchange="gysWb.__cfg('refresh', this.value)"></label>
   <label class="gys-f"><span>最多存多少条微博（你自己的、置顶的、收藏的不删）</span><select onchange="gysWb.__cfg('keep', this.value)">${[200, 600, 1500, 5000].map(n => `<option value="${n}" ${Number(D.cfg.keep) === n ? 'selected' : ''}>${n} 条</option>`).join('')}</select></label>
+  <label class="gys-f"><span>主页样式（自己和 TA 的主页都用这个）</span><select onchange="gysWb.__pf(this.value)">${[['dark', '🖤 黑 · 夜色档案'], ['light', '🤍 白'], ['classic', '经典（原来的样子）']].map(([v, n]) => `<option value="${v}" ${pfSt() === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
   <div class="gys-acts"><span class="gys-btn ghost" onclick="gysWb.exportTxt()">📤 导出我的微博（TXT）</span></div>
   <div class="gys-empty" style="text-align:left;padding:8px 20px">评论里 NPC 和路人各占多少：去「👥 NPC 列表 → ⚖️ 评论里的比例 → 🧣 微博」调。<br>刷新首页 / 热搜 / 评论区每次调一次副 API。</div>` });
 W.__cfg = (k, v) => { D.cfg[k] = Math.max(1, parseInt(v) || 1); saveD(); };
+W.__pf = v => { D.cfg.pf = v; saveD(); };
 W.exportTxt = () => {
     const t = D.posts.filter(p => isMine(p.by)).map(p => `[${new Date(p.at).toLocaleString()}] ${nameOf(p.by)}${p.vis !== 'public' ? '（' + p.vis + '）' : ''}\n${p.text}\n${countC(p.cmts) ? '评论：\n' + flat(p.cmts).map(c => '  ' + nameOf(c.by) + '：' + c.text).join('\n') + '\n' : ''}`).join('\n');
     const name = '谷雨-我的微博-' + X.day() + '.txt';
@@ -868,6 +964,17 @@ X.action({ key: 'gys_wb_lottery', label: '在微博发一个转发抽奖', hint:
     G.notify(APP, c, `🎁 <b>${X.esc(c.name)}</b> 发了个微博抽奖`, `抽「${p.lot.prize}」，转发就能参加`, X.go('gysWeiboOpenPost', p.id));
     return { text: `在微博发了个转发抽奖：抽${p.lot.prize}`, selfNotified: true, jump: X.go('gysWeiboOpenPost', p.id) };
 } }, 'gysWeibo');
+/* 🪞 290：TA 自己改微博主页上的状态 + 如果 TA 是 */
+X.action({ key: 'gys_wb_status', label: '改一下自己微博主页上的状态', hint: '主页名字下面那个小胶囊：在干嘛、心情、一句话', need: c => ifOn() && rare(c, 'st', 20), run: async c => {
+    mark(c, 'st'); const w = 'c:' + c.id, p = G.prof(APP, w);
+    const t = X.plain(await X.ask(`${X.who(c)}\n你要改一下自己微博主页名字下面的「状态」（一个小胶囊，像「在开会，晚点回」「今天不营业」）。现在是：${p.status || '（空）'}。写一句新的，口语，不超过 14 个字，只回这一句。`) || '').replace(/^["「]|["」]$/g, '').slice(0, 20);
+    if (!t) return null; p.status = t; (p.stHist = p.stHist || []).unshift({ t, at: Date.now() }); p.stHist = p.stHist.slice(0, 20); G.save();
+    return null;   // 只是改个状态，不用在聊天里说
+}, jump: c => X.go('gysWeiboProf', 'c:' + c.id) }, 'gysWbIf');
+X.today(() => { if (!ifOn()) return null; const L = G.people().filter(w => G.charOf(w) && G.hasProf(APP, w) && G.prof(APP, w).status); if (!L.length) return null; return { title: '🪞 微博主页状态', rows: L.slice(0, 4).map(w => ({ t: nameOf(w), x: G.prof(APP, w).status, go: X.go('gysWeiboProf', w) })) }; }, 'gysWbIf');
+X.widget('gysWbIfW', { n: '微博主页 · 如果 TA 是', sizes: ['s', 'm'], tap: () => { const c = X.cur(); if (c) window.gysWeiboProf('c:' + c.id); else G.open(APP); }, r: w => { const c = X.cur(); if (!c) return X.gw(w, '🪞', '如果 TA 是', ['还没有角色', '']); const ww = 'c:' + c.id, h = ifhe(ww), it = h && h.L.length ? h.L[Math.floor(Date.now() / 3600e3) % h.L.length] : null, st = G.hasProf(APP, ww) ? G.prof(APP, ww).status : ''; return X.gw(w, '🪞', esc(c.name), it ? [esc(it[1]), esc(it[0])] : [st ? esc(st) : '去微博主页「动态」', st ? '微博状态' : '让 AI 写一份']); } }, 'gysWbIf');
+X.mem({ k: 'gysWbIf', ico: '🪞', n: 'TA 的微博主页：状态 / 如果 TA 是', d: '主页上的状态和「如果 TA 是……」每一格（改了就是改字，删了就去掉）', items: c => { const w = 'c:' + c.id, p = G.hasProf(APP, w) ? G.prof(APP, w) : {}, h = ifhe(w); return (p.status ? [{ w, k: 'st', text: '状态：' + p.status }] : []).concat(h ? h.L.map((x, i) => ({ w, k: i, text: x[0] + '：' + x[1] })) : []); }, text: x => x.text, edit: (x, v) => { const w = x.w; v = String(v); if (x.k === 'st') { G.prof(APP, w).status = v.replace(/^状态：/, '').slice(0, 20); G.save(); } else { const h = ifhe(w); if (h && h.L[x.k]) { const m = v.split(/：|:/); h.L[x.k] = m.length > 1 ? [m[0], m.slice(1).join('：')] : [h.L[x.k][0], v]; } } }, del: (c, i) => { const w = 'c:' + c.id, p = G.hasProf(APP, w) ? G.prof(APP, w) : null, h = ifhe(w); let j = i; if (p && p.status) { if (i === 0) { p.status = ''; G.save(); return; } j = i - 1; } if (h) h.L.splice(j, 1); }, save: () => saveD() }, 'gysWbIf');
+X.ctx(id => { if (!ifOn()) return ''; const w = 'c:' + id; if (!G.hasProf(APP, w)) return ''; const st = G.prof(APP, w).status; return st ? `【微博主页】你主页上现在挂的状态是「${st}」` : ''; });
 X.today(() => { if (!lotOn()) return null; const d = X.day(); const L = D.posts.filter(p => p.lot && (!p.lot.done ? (isMine(p.by) || p.lot.ents.some(isMine) || G.charOf(p.by)) : X.day(new Date(p.lot.done)) === d)); if (!L.length) return null; return { title: '🎁 微博抽奖', rows: L.slice(0, 3).map(p => ({ t: nameOf(p.by), x: `「${p.lot.prize}」` + (p.lot.done ? (p.lot.wins.some(isMine) ? ' · 🎉 你中了' : ' · 已开奖') : ` · ${G.hm(p.lot.end)} 开奖${p.lot.ents.some(isMine) ? ' · 你参加了' : ''}`), go: X.go('gysWeiboOpenPost', p.id) })) }; }, 'gysWeibo');
 X.widget('gysWbLotW', { n: '微博抽奖', sizes: ['s', 'm'], tap: () => { const p = D.posts.find(p => p.lot && !p.lot.done); if (p) window.gysWeiboOpenPost(p.id); else G.open(APP); }, r: () => { const L = D.posts.filter(p => p.lot && !p.lot.done).sort((a, b) => a.lot.end - b.lot.end); const p = L[0]; return `<div style="padding:10px;font-size:12px;line-height:1.6"><b style="color:#ff8200">🎁 微博抽奖</b><br>${p ? `${esc(nameOf(p.by))}：${esc(p.lot.prize)}<br>${G.hm(p.lot.end)} 开奖${p.lot.ents.some(isMine) ? ' · 已参与' : ''}` : '现在没有进行中的抽奖'}</div>`; } }, 'gysWeibo');
 X.mem({ k: 'gysWbLot', ico: '🎁', n: 'TA 的微博抽奖', d: 'TA 在微博发过的抽奖（改了就是改奖品，删了就是去掉这个抽奖，微博还在）', items: c => D.posts.filter(p => p.by === 'c:' + c.id && p.lot), text: p => p.lot.prize + (p.lot.done ? '（中奖：' + (p.lot.wins || []).map(nameOf).join('、') + '）' : ''), edit: (p, v) => { p.lot.prize = String(v).replace(/（中奖：.*$/, '').slice(0, 40); }, del: (c, i) => { const L = D.posts.filter(p => p.by === 'c:' + c.id && p.lot); if (L[i]) L[i].lot = null; }, meta: p => G.ago(p.at), save: () => saveD() }, 'gysWeibo');
@@ -954,6 +1061,70 @@ body.dark-theme .wb-topic{background:#151515}
 .wb-row>div{flex:1;min-width:0}.wb-row b{display:flex;align-items:center;gap:3px;font-size:15px;font-weight:500}.wb-row em{display:block;font-style:normal;font-size:12.5px;color:#939393;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wb-row small{font-size:11.5px;color:#b2b2b2}
 .wb-sico{font-size:28px}
 .wb-pf-body{background:#f2f2f2}
+/* 290 主页新样式：黑 / 白（变量切换） */
+.wbx-body.dark{background:#1c1d21}.wbx-body.light{background:#fff}
+.wbx{--x-bg:#1c1d21;--x-fg:#f5f5f5;--x-sub:rgba(255,255,255,.6);--x-dim:rgba(255,255,255,.42);--x-line:rgba(255,255,255,.1);--x-fill:rgba(255,255,255,.07);--x-pill:rgba(255,255,255,.1);--x-pillb:rgba(255,255,255,.22);--x-acc:#f5c13d;--x-link:#75baff;--x-cov:#3a3c42;background:var(--x-bg);color:var(--x-fg);min-height:100%;font-size:13px}
+.wbx.light{--x-bg:#fff;--x-fg:#1a1a1a;--x-sub:#8a8a8a;--x-dim:#aaa;--x-line:#efefef;--x-fill:#f6f6f6;--x-pill:#f3f3f3;--x-pillb:#e2e2e2;--x-acc:#ff8200;--x-link:#507daf;--x-cov:#d9dbe0}
+.wbx-cover{height:190px;background:var(--x-cov) center/cover no-repeat;position:relative}
+.wbx-cover:after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.18),transparent 35%,transparent 55%,var(--x-bg));pointer-events:none}
+.wbx-info{padding:0 16px 14px;position:relative}
+.wbx-main{display:flex;gap:12px;margin-top:-28px;position:relative}
+.wbx-avw{width:76px;height:76px;flex-shrink:0;position:relative}
+.wbx-av{border:3px solid var(--x-bg)!important;box-shadow:0 2px 9px rgba(0,0,0,.3);box-sizing:border-box}
+.wbx.dark .wbx-av{border-color:rgba(255,255,255,.95)!important}
+.wbx-ver{position:absolute;right:-1px;bottom:0;width:19px;height:19px;border-radius:50%;background:#f5bd32;border:2px solid var(--x-bg);color:#fff;font-size:10px;font-weight:700;font-style:normal;display:flex;align-items:center;justify-content:center}
+.wbx-ver.blue{background:#3a8ee6}
+.wbx-cam{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-style:normal;font-size:20px;background:rgba(0,0,0,.45);border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center}
+.wbx-camb{position:absolute;right:12px;bottom:12px;z-index:1;font-style:normal;font-size:12px;color:#fff;background:rgba(0,0,0,.5);border-radius:14px;padding:4px 10px}
+.wbx-idt{padding-top:32px;min-width:0;flex:1}
+.wbx-nm{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.wbx-nm b{font-size:19px;font-weight:650}
+.wbx-vip{font-size:9px;color:#49360a;background:#f5c13d;border-radius:3px;padding:2px 5px 1px;font-weight:800}
+.wbx-st{display:inline-flex;align-items:center;margin-top:5px;padding:3px 9px;border:1px solid var(--x-pillb);border-radius:20px;background:var(--x-pill);font-size:10.5px;color:var(--x-fg);max-width:230px}
+.wbx-st:before{content:"";width:5px;height:5px;flex-shrink:0;border-radius:50%;background:var(--x-acc);margin-right:6px}
+.wbx-btns{display:flex;gap:8px;margin-top:14px}
+.wbx-btns span{flex:1;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:12.5px;border:1px solid var(--x-pillb);cursor:pointer}
+.wbx-btns span.on{background:var(--x-acc);border-color:var(--x-acc);color:#fff;font-weight:600}.wbx.dark .wbx-btns span.on{color:#3a2b05}
+.wbx-stats{display:flex;margin-top:14px}.wbx-stats div{flex:1;display:flex;align-items:baseline;gap:5px}
+.wbx-stats strong{font-size:15px}.wbx-stats small{font-size:11.5px;color:var(--x-sub)}
+.wbx-vt{margin-top:10px;font-size:12px;color:var(--x-sub)}
+.wbx-bio{margin-top:10px;line-height:1.8;white-space:pre-wrap;word-break:break-word;opacity:.9}
+.wbx-bio a{color:var(--x-link)}
+.wbx-tags{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+.wbx-tags span{display:inline-flex;align-items:center;height:21px;padding:0 9px;border:1px solid var(--x-pillb);border-radius:20px;font-size:10.5px}
+.wbx-tags span b{font-size:9px;margin-right:5px}
+.wbx-sup{margin-top:10px;font-size:12.5px;color:var(--x-acc);cursor:pointer}.wbx-sup span{margin-left:8px;text-decoration:underline}
+.wbx-edtip{margin-top:12px;font-size:11.5px;line-height:1.6;color:var(--x-sub);background:var(--x-fill);border-radius:8px;padding:8px 10px}.wbx-edtip a{color:var(--x-link);cursor:pointer}
+.wbx .wbx-ed{outline:1px dashed var(--x-acc);outline-offset:2px;border-radius:4px;cursor:pointer}
+.wbx .wbx-ed.blk{display:block}
+.wbx.editing .wbx-cover{outline:2px dashed var(--x-acc);outline-offset:-6px;cursor:pointer}
+.wbx-tabs{display:flex;height:46px;border-bottom:1px solid var(--x-line);position:sticky;top:0;background:var(--x-bg);z-index:2}
+.wbx-tabs span{flex:1;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--x-sub);position:relative;cursor:pointer}
+.wbx-tabs span.on{color:var(--x-acc);font-weight:600}
+.wbx-tabs span.on:after{content:"";position:absolute;bottom:0;width:24px;height:2px;border-radius:2px;background:var(--x-acc)}
+.wbx-fh{padding:12px 14px 4px;font-size:12.5px;font-weight:500}
+.wbx-empty{text-align:center;color:var(--x-dim);padding:40px 20px;font-size:13px}
+.wbx-if{padding:16px 14px}
+.wbx-ift{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+.wbx-ift h3{font-family:"Noto Serif SC","Songti SC","STSong","SimSun",serif;font-size:16px;font-weight:500;letter-spacing:1px;margin:0}
+.wbx-ift span{font-size:11.5px;color:var(--x-sub);cursor:pointer}
+.wbx-ifl{display:grid;grid-template-columns:1fr 1fr;column-gap:14px;row-gap:12px}
+.wbx-ifl div{padding-bottom:9px;border-bottom:1px solid var(--x-line);min-width:0}
+.wbx-ifl small{display:block;font-size:10.5px;color:var(--x-sub);margin-bottom:4px}
+.wbx-ifl b{font-family:"Noto Serif SC","Songti SC","STSong","SimSun",serif;font-weight:400;font-size:14px;line-height:1.6;word-break:break-word}
+.wbx-ifempty{display:flex;gap:10px;justify-content:center;padding:10px 0}.wbx-ifempty span{border:1px solid var(--x-pillb);border-radius:16px;padding:6px 14px;font-size:12.5px;cursor:pointer}
+.wbx-dyn{padding:12px 14px;border-top:1px solid var(--x-line);cursor:pointer}
+.wbx-dyn .d{font-size:10.5px;color:var(--x-dim);margin-bottom:5px}.wbx-dyn .t{font-size:12.5px;line-height:1.8;opacity:.88}
+/* 主页里的微博卡片跟着换色 */
+.wbx .wb-card{background:transparent;border-bottom:1px solid var(--x-line);margin-bottom:0}
+.wbx .wb-nm{color:var(--x-fg)}.wbx.light .wb-nm{color:#ff8200}
+.wbx .wb-meta,.wbx .wb-ip{color:var(--x-dim)}
+.wbx .wb-tx{color:var(--x-fg);opacity:.92;font-size:14px}
+.wbx .wb-rp{background:var(--x-fill);color:var(--x-sub)}.wbx .wb-rp b{color:var(--x-link)}
+.wbx .wb-loc{color:var(--x-link)}
+.wbx .wb-pin{display:inline-block;width:max-content;font-size:10px;color:var(--x-acc);border:1px solid var(--x-acc);border-radius:3px;padding:1px 5px}
+.wbx .wb-bar{border-top:0}.wbx .wb-bar span{color:var(--x-sub)}
+.wbx .wb-row{background:transparent;border-color:var(--x-line);color:var(--x-fg)}
+.wbx .wb-album{padding:2px 2px 20px}
 .wb-pf{background:#fff;min-height:100%}body.dark-theme .wb-pf{background:#151515}
 .wb-cover{height:150px;background:linear-gradient(135deg,#ffb36b,#ff8200) center/cover no-repeat}
 .wb-pf-top{display:flex;justify-content:space-between;align-items:flex-end;padding:0 14px;margin-top:-38px}
@@ -1005,7 +1176,7 @@ body.dark-theme .wb-dm span{background:#222}
 .wb-sheet{position:fixed;inset:0;z-index:99980;background:rgba(0,0,0,.35);display:flex;align-items:flex-end}.wb-sheet-in{width:100%;background:#fff;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom,0px);max-height:70vh;overflow-y:auto}body.dark-theme .wb-sheet-in{background:#1c1c1e;color:#eee}
 .wb-sheet-in div{padding:15px;text-align:center;border-bottom:.5px solid #eee;font-size:16px;cursor:pointer}.wb-sheet-in div.c{color:#8e8e93;border-top:6px solid #f2f2f2}
 `);
-(async () => { await G.ready(); D = Object.assign(D, await ST.get('d', {})); ['posts', 'bots', 'notes', 'stories', 'fav', 'alts', 'videos'].forEach(k => { if (!Array.isArray(D[k])) D[k] = []; }); ['supers', 'dms', 'xacc', 'follow', 'seenDel'].forEach(k => { if (!D[k] || typeof D[k] !== 'object') D[k] = {}; }); D.hot = D.hot || { list: [], at: 0 }; D.cfg = Object.assign({ refresh: 6, keep: 600 }, D.cfg || {}); ensureMkt(); })();
+(async () => { await G.ready(); D = Object.assign(D, await ST.get('d', {})); ['posts', 'bots', 'notes', 'stories', 'fav', 'alts', 'videos'].forEach(k => { if (!Array.isArray(D[k])) D[k] = []; }); ['supers', 'dms', 'xacc', 'follow', 'seenDel', 'ifhe'].forEach(k => { if (!D[k] || typeof D[k] !== 'object') D[k] = {}; }); D.hot = D.hot || { list: [], at: 0 }; D.cfg = Object.assign({ refresh: 6, keep: 600 }, D.cfg || {}); ensureMkt(); })();
 window.gysWbState = () => D;
 // 💬 互通（256）：微博私信别处也知道
 try { G.chatReg(APP, { all: c => { const th = D.dms[thKey('me', 'c:' + c.id)]; return th ? th.msgs.map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你') + '：' + m.t })) : []; }, lines: c => { const th = D.dms[thKey('me', 'c:' + c.id)]; return th ? th.msgs.slice(-6).map(m => ({ at: m.at, t: (m.from === 'me' ? '她' : '你（' + c.name + '）') + '：' + m.t })) : []; }, lastMe: c => { const th = D.dms[thKey('me', 'c:' + c.id)]; const m = th && th.msgs.filter(x => x.from === 'me').slice(-1)[0]; return m ? m.at : 0; } }); } catch (e) {}

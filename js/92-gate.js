@@ -6,24 +6,53 @@
 // · 本地的角色、聊天记录一概不动，这里只是盖一层
 (function () {
     'use strict';
-    var DEFAULT_URL = 'https://guyu-community.3040831326.workers.dev';
+    // 291：社区服务器有两个地址，都是群主的同一个服务器（同一个库，钥匙通用）：
+    //   api.guyu.pw（自己的域名，国内能直接连）在前；workers.dev（国内被墙，开梯子能连）当备用。
+    //   先用上次连得上的；连不上（网络错误）就自动换下一个，换成功了记住。开机后台再探一次，主地址通了就换回主地址。
+    var URLS = ['https://api.guyu.pw', 'https://guyu-community.3040831326.workers.dev'];
+    var DEFAULT_URL = URLS[0];
     var KEY = 'gyGate';
     function rd() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
     function wr(o) { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {} }
     var st = rd();
-    var url = function () { return DEFAULT_URL.replace(/\/+$/, ''); };   /* 288：只连群主这一个社区，不认别的地址 */
-    if (st.url && st.url !== DEFAULT_URL) { st.url = DEFAULT_URL; wr(st); }
+    var official = function (u) { return URLS.indexOf(String(u || '').replace(/\/+$/, '')) >= 0; };   /* 288：只连群主这一个社区，不认别的地址 */
+    var cur = official(st.url) ? String(st.url).replace(/\/+$/, '') : URLS[0];
+    if (st.url !== cur) { st.url = cur; wr(st); }
+    var url = function () { return cur; };
+    function use(u) { if (u === cur) return; cur = u; st.url = u; wr(st); try { window.dispatchEvent(new CustomEvent('gy-gate-url', { detail: { url: u } })); } catch (e) {} }
+    // 依次试每个地址（从 from 开始），网络错误才换；服务器回了话（哪怕是 4xx）就算连上了
+    function tryFetch(path, opt, from) {
+        var order = [from].concat(URLS.filter(function (x) { return x !== from; }));
+        var i = 0;
+        function next(err) {
+            if (i >= order.length) return Promise.reject(err || new Error('连不上社区服务器'));
+            var u = order[i++];
+            return fetch(u + path, opt).then(function (r) { use(u); return r; }, function (e) { return next(e); });
+        }
+        return next();
+    }
     var VER = +(window.GY_VERSION || 0);
 
     var API = window.gyGate = {
         get url() { return url(); },
+        urls: URLS.slice(),
+        official: official,
+        // 别的地方（社区、在线音乐）发请求用这个：连不上会自动换备用地址
+        fetch: function (path, opt) { return tryFetch(path, opt || {}, cur); },
         get tok() { return st.tok || ''; },
         info: null,
         // 社区里加入 / 用钥匙登录 / 退出时调这个，两边共用一把钥匙
-        set: function (tok, u) { st.tok = tok || ''; st.url = DEFAULT_URL; st.ok = tok ? Date.now() : 0; wr(st); },
+        set: function (tok, u) { st.tok = tok || ''; st.url = cur; st.ok = tok ? Date.now() : 0; wr(st); },
         clear: function () { st.tok = ''; st.ok = 0; wr(st); try { window.dispatchEvent(new CustomEvent('gy-gate-logout')); } catch (e) {} },
         open: function () { show(); }
     };
+    // 开机后台探一下：主地址（api.guyu.pw）通了就用主地址
+    setTimeout(function () {
+        if (cur === URLS[0]) return;
+        var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        var tm = setTimeout(function () { try { ctl && ctl.abort(); } catch (e) {} }, 5000);
+        fetch(URLS[0] + '/info', { signal: ctl ? ctl.signal : undefined }).then(function (r) { return r.json(); }).then(function (j) { if (j && j.community) use(URLS[0]); }).catch(function () {}).finally(function () { clearTimeout(tm); });
+    }, 1500);
     // 自动化测试（webdriver）不拦，不然整套测试都进不去
     var SKIP = !!navigator.webdriver || !url();
 
@@ -32,7 +61,7 @@
         var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
         var tm = setTimeout(function () { try { ctl && ctl.abort(); } catch (e) {} }, ms || 8000);
         var h = { 'Content-Type': 'application/json' }; if (st.tok) h['X-Gy-Token'] = st.tok;
-        return fetch(url() + path, { method: body ? 'POST' : 'GET', headers: h, body: body ? JSON.stringify(body) : undefined, signal: ctl ? ctl.signal : undefined })
+        return tryFetch(path, { method: body ? 'POST' : 'GET', headers: h, body: body ? JSON.stringify(body) : undefined, signal: ctl ? ctl.signal : undefined }, cur)
             .then(function (r) { return r.json().then(function (j) { j.__s = r.status; return j; }); })
             .finally(function () { clearTimeout(tm); });
     }
@@ -103,9 +132,9 @@
         box.querySelector('#ggGo').onclick = function () {
             var t = box.querySelector('#ggK').value.trim(), i = t.indexOf('#'), err = box.querySelector('#ggErr');
             if (i < 0) { err.textContent = '格式不对'; return; }
-            if (t.slice(0, i).replace(/\/+$/, '') !== url()) { err.textContent = '这把钥匙不是谷雨社区的'; return; }
+            if (!official(t.slice(0, i))) { err.textContent = '这把钥匙不是谷雨社区的'; return; }
             var old = { url: st.url, tok: st.tok };
-            st.url = t.slice(0, i); st.tok = t.slice(i + 1);
+            st.tok = t.slice(i + 1);
             req('/whoami').then(function (j) {
                 if (j.status === 'none' || j.status === 'left') { st.url = old.url; st.tok = old.tok; err.textContent = '钥匙不对'; return; }
                 API.set(st.tok, st.url);

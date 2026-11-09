@@ -23,7 +23,7 @@
         const h = { 'Content-Type': 'application/json' };
         if (window.gyGate.tok) h['X-Gy-Token'] = window.gyGate.tok;
         const a = acc(src || body.src); if (a && a.ck) h['X-Mu-Ck'] = a.ck;
-        const r = await fetch(base().replace(/\/+$/, '') + path, { method: 'POST', headers: h, body: JSON.stringify(body || {}) });
+        const r = await window.gyGate.fetch(path, { method: 'POST', headers: h, body: JSON.stringify(body || {}) });   /* 291：连不上会自动换备用地址 */
         const j = await r.json().catch(() => ({}));
         if (!j.ok) throw new Error(j.err || ('服务器返回 ' + r.status));
         return j;

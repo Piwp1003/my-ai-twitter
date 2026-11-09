@@ -3,7 +3,9 @@
    角色同桌里每个角色用它主人自己的 API 说话。 */
 if (window.__gysComm) return; window.__gysComm = 1;
 const G = window.GYS, APP = 'community', esc = G.esc;
-const DEFAULT_URL = 'https://guyu-community.3040831326.workers.dev';   // 部署好以后填群主的社区地址（js/61 内置时一起带上）
+const DEFAULT_URL = 'https://api.guyu.pw';   // 291：真正用哪个地址听开屏登录（js/92 gyGate）的，它会在 api.guyu.pw 和 workers.dev 之间自动换
+const gurl = () => (window.gyGate && window.gyGate.url) || DEFAULT_URL;
+const isOfficial = u => window.gyGate && window.gyGate.official ? window.gyGate.official(u) : String(u || '').replace(/\/+$/, '') === DEFAULT_URL;
 X.feat('gyComm', { n: '🌱 社区', desc: '跟别的谷雨用户聊天：频道、私聊、好友、角色同桌（大家的角色凑一桌聊）、角色卡分享；群主 / 管理员 / 身份组。关掉就没有这个入口，也不再连社区服务器' });
 X.feat('gyCommTable', { n: '🎭 社区 · 角色同桌自动接话', desc: '你带进「角色同桌」的角色，看到有人说话 / 有人按 ▶ 时，用你自己的 API 接一句。关掉就只有你手动让 TA 说' });
 G.APPS.community = { n: '社区', ico: '🌱', feat: 'gyComm' };
@@ -32,7 +34,8 @@ const hm = t => G.hm(t);
 /* ---------------- 网络 ---------------- */
 async function api(path, body, quiet) {
     if (!S.url) throw new Error('还没填社区地址');
-    const r = await fetch(S.url.replace(/\/+$/, '') + path, { method: body ? 'POST' : 'GET', headers: Object.assign({ 'Content-Type': 'application/json' }, S.tok ? { 'X-Gy-Token': S.tok } : {}), body: body ? JSON.stringify(body) : undefined });
+    const o = { method: body ? 'POST' : 'GET', headers: Object.assign({ 'Content-Type': 'application/json' }, S.tok ? { 'X-Gy-Token': S.tok } : {}), body: body ? JSON.stringify(body) : undefined };
+    const r = window.gyGate && window.gyGate.fetch ? await window.gyGate.fetch(path, o) : await fetch(S.url.replace(/\/+$/, '') + path, o); S.url = gurl();
     let j = null; try { j = await r.json(); } catch (e) {}
     if (!j) throw new Error('社区服务器没回应（HTTP ' + r.status + '）');
     if (!j.ok) { if (r.status === 401 && S.tok) { try { window.gyGate && window.gyGate.clear(); } catch (e) {} } if (!quiet) X.toast(j.err || '出错了', ''); const e = new Error(j.err || 'error'); e.status = r.status; throw e; }
@@ -94,7 +97,7 @@ function notifyDms(L) {
 }
 
 /* ---------------- 页面：没加入 ---------------- */
-async function loadInfo() { if (!S.url) { INFO = null; return; } try { const r = await fetch(S.url.replace(/\/+$/, '') + '/info'); INFO = await r.json(); } catch (e) { INFO = { err: '连不上：' + e.message }; } G.repaint(APP); }
+async function loadInfo() { if (!S.url) { INFO = null; return; } try { const r = window.gyGate && window.gyGate.fetch ? await window.gyGate.fetch('/info') : await fetch(S.url.replace(/\/+$/, '') + '/info'); S.url = gurl(); INFO = await r.json(); } catch (e) { INFO = { err: '连不上：' + e.message }; } G.repaint(APP); }
 function joinHtml() {
     if (!INFO && S.url && !BUSY.info) { BUSY.info = 1; loadInfo().finally(() => { BUSY.info = 0; }); }
     const I = INFO || {}, mode = I.join || 'invite';
@@ -103,7 +106,7 @@ function joinHtml() {
       ${I.empty ? '' : mode === 'invite' ? `<label class="cm-row"><span>邀请码</span><input id="cmJCode" placeholder="GY-XXXX"></label>` : mode === 'apply' ? `<label class="cm-row col"><span>${esc(I.applyQ || '说一句你怎么知道谷雨的')}</span><textarea id="cmJApply" rows="3"></textarea></label>` : ''}</div>
       <div class="cm-btn" onclick="gysComm.join()">${BUSY.join ? '⏳' : mode === 'apply' && !I.empty ? '提交申请' : '加入'}</div>`;
 }
-C.setUrl = () => { S.url = DEFAULT_URL; INFO = null; save(); loadInfo(); };   /* 288：只连群主的社区，地址改不了 */
+C.setUrl = () => { S.url = gurl(); INFO = null; save(); loadInfo(); };   /* 288：只连群主的社区，地址改不了 */
 C.join = async () => {
     if (BUSY.join) return; const v = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
     if (!v('cmJNick')) return X.toast('起个昵称', '');
@@ -356,7 +359,7 @@ function meTab() {
       <div class="cm-gh">连接</div><div class="cm-grp"><div class="cm-r" onclick="gysComm.backup()"><div class="t"><b>备份我的钥匙</b><small>换手机 / 清了数据用它找回这个账号</small></div><span class="chev">›</span></div><div class="cm-r" onclick="gysComm.restore()"><div class="t"><b>用钥匙登录</b></div><span class="chev">›</span></div><div class="cm-r red" onclick="gysComm.leave()"><div class="t"><b>退出社区</b></div></div></div>`;
 }
 C.backup = async () => { try { await navigator.clipboard.writeText(S.url + '#' + S.tok); X.toast('钥匙复制了', '存好，别给别人'); } catch (e) { await G.input('你的钥匙（存好，别给别人）', S.url + '#' + S.tok); } };
-C.restore = async () => { const v = await G.input('粘贴备份的钥匙', ''); if (!v) return; const i = v.indexOf('#'); if (i < 0) return X.toast('格式不对', ''); if (v.slice(0, i).replace(/\/+$/, '') !== DEFAULT_URL) return X.toast('这把钥匙不是谷雨社区的', ''); S.url = DEFAULT_URL; S.tok = v.slice(i + 1); B = null; save(); try { await boot(); gateSync(); X.toast('登录了', me().nick); } catch (e) { X.toast('钥匙不对', ''); S.tok = ''; save(); } G.repaint(APP); };
+C.restore = async () => { const v = await G.input('粘贴备份的钥匙', ''); if (!v) return; const i = v.indexOf('#'); if (i < 0) return X.toast('格式不对', ''); if (!isOfficial(v.slice(0, i))) return X.toast('这把钥匙不是谷雨社区的', ''); S.url = gurl(); S.tok = v.slice(i + 1); B = null; save(); try { await boot(); gateSync(); X.toast('登录了', me().nick); } catch (e) { X.toast('钥匙不对', ''); S.tok = ''; save(); } G.repaint(APP); };
 C.leave = async () => { if (!(await G.confirm('退出社区？（账号会离开，想回来要重新加入）'))) return; try { await api('/leave', {}); } catch (e) {} S.tok = ''; try { window.gyGate && window.gyGate.clear(); } catch (e) {} B = null; MSGS = {}; DMS = []; S.read = {}; S.dmLast = 0; save(); G.tab(APP, 'ch'); };
 C.editMe = () => {
     const m = me(), V = { avatar: m.avatar, bg: m.bg };
@@ -511,8 +514,9 @@ body.dark-theme .gys-community{--cb:#000;--cc:#1c1c1e;--ct:#fff;--cl:rgba(84,84,
 // 280：跟开屏登录（js/92）共用一把钥匙——哪边登录的，另一边都算登录了
 function gateSync() { try { window.gyGate && S.tok && window.gyGate.set(S.tok, S.url); } catch (e) {} }
 window.addEventListener('gy-gate-logout', () => { S.tok = ''; B = null; save(); });
-window.addEventListener('gy-gate-login', e => { const d = e.detail || {}; if (!d.tok || d.tok === S.tok) return; S.tok = d.tok; S.url = DEFAULT_URL; B = null; save(); });
-(async () => { await G.ready(); S = Object.assign(S, await ST.get('s', {}) || {}); S.url = DEFAULT_URL;
-    try { const g = window.gyGate; if (g && (g.tok !== S.tok)) { S.tok = g.tok; S.url = DEFAULT_URL; save(); } } catch (e) {}   /* 钥匙以开屏登录那边为准 */
+window.addEventListener('gy-gate-url', () => { S.url = gurl(); save(); });
+window.addEventListener('gy-gate-login', e => { const d = e.detail || {}; if (!d.tok || d.tok === S.tok) return; S.tok = d.tok; S.url = gurl(); B = null; save(); });
+(async () => { await G.ready(); S = Object.assign(S, await ST.get('s', {}) || {}); S.url = gurl();
+    try { const g = window.gyGate; if (g && (g.tok !== S.tok)) { S.tok = g.tok; S.url = gurl(); save(); } } catch (e) {}   /* 钥匙以开屏登录那边为准 */
     S.read = S.read || {}; S.lastSeen = S.lastSeen || {}; S.said = S.said || []; })();
 window.gysCommState = () => ({ S, B, MSGS, DMS });

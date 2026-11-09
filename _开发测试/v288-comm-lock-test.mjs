@@ -13,14 +13,23 @@ const page = await ctx.newPage(); const errs = []; page.on('pageerror', e => err
 await page.goto(fileUrl(path.join(root, 'index.html')));
 await page.evaluate(() => localStorage.setItem('gyGate', JSON.stringify({ url: 'https://evil.example.workers.dev', tok: 'a.b', ok: 1 })));
 await page.reload(); await page.waitForFunction(() => window.__guyuBooted, { timeout: 25000 }); await page.waitForTimeout(1500);
-check('存着别的地址：开机改回群主的社区', await page.evaluate(W => gyGate.url === W && JSON.parse(localStorage.getItem('gyGate')).url === W, W));
+check('存着别的地址：开机改回群主的社区（api.guyu.pw 或备用的 workers.dev）', await page.evaluate(() => gyGate.official(gyGate.url) && gyGate.official(JSON.parse(localStorage.getItem('gyGate')).url) && !/evil/.test(localStorage.getItem('gyGate'))));
 await page.evaluate(() => gyGate.set('c.d', 'https://evil.example.workers.dev'));
-check('gyGate.set 传别的地址也不认', await page.evaluate(W => gyGate.url === W, W));
+check('gyGate.set 传别的地址也不认', await page.evaluate(() => gyGate.official(gyGate.url)));
 await page.waitForTimeout(800);
-check('社区那边地址也是群主的', await page.evaluate(W => gysCommState().S.url === W, W));
+check('社区那边地址也是群主的', await page.evaluate(() => gyGate.official(gysCommState().S.url)));
 const src = fs.readFileSync(path.join(root, 'js/61-soft.js'), 'utf8');
 check('加入页没有「社区地址」输入框', src && !src.includes('cmJUrl'));
 check('指南里没有「自己搭社区」', !fs.readFileSync(path.join(root, 'js/94-guide-help.js'), 'utf8').includes("id: 'comm_self'"));
+// 291：两个地址自动换
+await ctx.unroute(/^https?:\/\//);
+let apiUp = false;
+await ctx.route(/^https?:\/\//, r => { const u = r.request().url(); const ok = u.startsWith(W) || (apiUp && u.startsWith('https://api.guyu.pw')); if (!ok) return r.abort(); return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ ok: true, community: true, from: u.startsWith(W) ? 'w' : 'api' }) }); });
+const f1 = await page.evaluate(async () => { localStorage.setItem('gyGate', JSON.stringify({ url: 'https://api.guyu.pw', tok: '' })); const j = await (await gyGate.fetch('/info')).json(); return { from: j.from, url: gyGate.url }; });
+check('主地址连不上：自动换到备用的 workers.dev', f1.from === 'w' && f1.url === W, JSON.stringify(f1));
+apiUp = true;
+await page.reload(); await page.waitForFunction(() => window.__guyuBooted, { timeout: 25000 }); await page.waitForTimeout(3500);
+check('主地址通了：开机后台探到就换回 api.guyu.pw', await page.evaluate(() => gyGate.url === 'https://api.guyu.pw'), await page.evaluate(() => gyGate.url));
 check('没有页面报错', !errs.length, errs.join(' | '));
 await browser.close();
 for (const r of results) console.log((r.ok ? '✅ ' : '❌ ') + r.n + (r.ok ? '' : '  ' + r.e));

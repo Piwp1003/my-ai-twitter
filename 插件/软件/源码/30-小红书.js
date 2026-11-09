@@ -203,7 +203,7 @@ R.open = id => {
     const n = noteOf(id); if (!n) return X.toast('这篇笔记不见了', '');
     REPLY = null;
     if (!n.cmtGen && !countC(n.cmts) && n.vis !== 'self') genCmts(n, 5);
-    G.push(APP, { id: 'note_' + id, title: '', cls: 'rd-nb', right: `<span onclick="gysRd.share('${id}')">↗</span><span onclick="gysRd.noteMenu('${id}')">⋯</span>`, html: () => noteHtml(id), foot: () => noteFoot(id), after: r => { const h = r.querySelector('.gys-hd'); if (h && !h.querySelector('.rd-au')) { const b = h.querySelector('b'); if (b) b.outerHTML = `<div class="rd-au" onclick="gysRd.prof('${n.by}')">${G.av(APP, n.by, 30)}<span>${esc(nameOf(n.by))}</span></div>${n.by !== 'me' ? `<span class="rd-fbtn${isFollow(n.by) ? ' on' : ''}" onclick="gysRd.follow('${n.by}')">${isFollow(n.by) ? '已关注' : '关注'}</span>` : ''}`; } } });
+    G.push(APP, { id: 'note_' + id, title: '', get cls() { return 'rd-nb' + (pfSt() === 'classic' ? '' : ' rdx-n ' + pfSt()); }, get hdCls() { return pfSt() === 'dark' ? 'rdx-hdk' : ''; }, right: `<span onclick="gysRd.share('${id}')">↗</span><span onclick="gysRd.noteMenu('${id}')">⋯</span>`, html: () => noteHtml(id), foot: () => noteFoot(id), after: r => { const h = r.querySelector('.gys-hd'); if (h && !h.querySelector('.rd-au')) { const b = h.querySelector('b'); if (b) b.outerHTML = `<div class="rd-au" onclick="gysRd.prof('${n.by}')">${G.av(APP, n.by, 30)}<span>${esc(nameOf(n.by))}</span></div>${n.by !== 'me' ? `<span class="rd-fbtn${isFollow(n.by) ? ' on' : ''}" onclick="gysRd.follow('${n.by}')">${isFollow(n.by) ? '已关注' : '关注'}</span>` : ''}`; } } });
 };
 function noteHtml(id) {
     const n = noteOf(id); if (!n) return '<div class="gys-empty">笔记没了</div>';
@@ -367,8 +367,57 @@ let PT = {};
 R.prof = w => {
     if (!w) return; PT[w] = PT[w] || 'notes';
     if (!G.prof(APP, w).gen && w !== 'me' && G.base(w)) G.genProfiles(APP, [w], STYLE).then(() => G.repaint(APP));
-    G.push(APP, { id: 'prof_' + w, title: '', cls: 'rd-pfb', html: () => profHtml(w) });
+    G.push(APP, { id: 'prof_' + w, title: '', get cls() { return pfSt() === 'classic' ? 'rd-pfb' : 'rdx-body ' + pfSt(); }, get hdCls() { return pfSt() === 'classic' ? '' : 'pf-ov ' + pfSt(); },
+        get right() { return pfSt() === 'classic' ? '' : `<span class="pf-ic${PE[w] ? ' on' : ''}" onclick="gysRd.pfEditMode('${w}')">✎</span><span class="pf-ic" onclick="gysRd.pfMenu('${w}')">⋯</span>`; },
+        html: () => pfSt() === 'classic' ? profHtml(w) : profHtmlX(w) });
 };
+/* ---------------- 🖤🤍 主页新样式（290）：白 / 黑 / 经典 ----------------
+   · D.cfg.pf：'light' | 'dark' | 'classic'（默认白）。设置里、主页右上 ⋯ 都能换。笔记详情跟着换色，评论区头像变黑白。
+   · 右上 ✎ = 编辑模式：封面、头像点了换图；昵称、小红书号、IP、签名、标签点了改字。 */
+const pfSt = () => ['dark', 'light', 'classic'].includes(D.cfg.pf) ? D.cfg.pf : 'light';
+const PE = {};
+R.pfStyle = async () => { const L = [['light', '🤍 白'], ['dark', '🖤 黑'], ['classic', '经典（原来的样子）']]; const i = await chooser(L.map(x => (pfSt() === x[0] ? '✓ ' : '') + x[1]), '主页样式'); if (i == null) return; D.cfg.pf = L[i][0]; saveD(); G.repaint(APP); };
+R.pfEditMode = w => { PE[w] = !PE[w]; if (PE[w]) X.toast('✎ 编辑模式', '点封面、头像换图；点文字改字。再点 ✎ 退出'); G.repaint(APP); };
+R.pfImg = (w, k) => G.pickImg(k === 'bg' ? 1.2 : 1, url => { G.prof(APP, w)[k] = url; G.save(); G.repaint(APP); });
+const RF = { nick: '昵称', handle: '小红书号', loc: 'IP 属地', bio: '签名', tagstr: '标签（空格隔开，比如：射手座 上海 摄影）' };
+R.pfTxt = async (w, k) => { const p = G.prof(APP, w); const v = await G.input(RF[k] || k, k === 'handle' ? redId(w) : p[k] || ''); if (v == null) return; p[k] = String(v).trim().slice(0, k === 'bio' ? 300 : 60); if (k === 'nick' && !p.nick) p.nick = G.base(w) ? G.base(w).name : '用户'; G.save(); G.repaint(APP); };
+R.pfMenu = async w => {
+    const me = w === 'me', o = me ? ['编辑全部资料', '主页样式（白 / 黑 / 经典）', '📊 年度报告'] : ['改 TA 的小红书主页（全部资料）', '主页样式（白 / 黑 / 经典）', isFollow(w) ? '取消关注' : '关注'].concat(isX(w) && D.xacc[w].kind === 'alt' && !D.xacc[w].found ? ['🕵️ 猜猜是谁的小号'] : []);
+    const i = await chooser(o); if (i == null) return; const t = o[i];
+    if (t.startsWith('主页样式')) R.pfStyle(); else if (/资料/.test(t)) R.editMe(w); else if (t.startsWith('📊')) R.yearReport(); else if (/关注/.test(t)) R.follow(w); else if (t.startsWith('🕵️')) R.guess(w);
+};
+const SVG = { heart: '<svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z"/></svg>', dots: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>' };
+function profHtmlX(w) {
+    const st = pfSt(), p = G.prof(APP, w), me = w === 'me', s = profStats(w), links = G.linksOf(APP, w), c = charOfW(w), ed = !!PE[w];
+    const tabs = me ? [['notes', '笔记'], ['favs', '收藏'], ['likes', '赞过']] : [['notes', '笔记'], ['favs', c ? '收藏（偷看）' : '收藏']];
+    const t = PT[w] || 'notes';
+    const E = (k, html) => ed ? `<span class="rdx-ed" onclick="event.stopPropagation();gysRd.pfTxt('${w}','${k}')">${html}</span>` : html;
+    const tags = myTags(w), g = p.gender ? (p.gender === '女' ? '♀' : '♂') : '';
+    const body = profBody(w, me, c, s, t);
+    return `<div class="rdx ${st}${ed ? ' editing' : ''}">
+      <div class="rdx-hero" style="${p.bg ? `background-image:url('${p.bg}')` : ''}" onclick="${ed ? `gysRd.pfImg('${w}','bg')` : ''}">
+        ${ed ? '<i class="rdx-camb" >🖼️ 换背景</i>' : ''}
+        <div class="rdx-uh"><span class="rdx-avw" onclick="${ed ? `event.stopPropagation();gysRd.pfImg('${w}','avatar')` : ''}">${G.av(APP, w, 76, 'rdx-av')}${ed ? '<i class="rdx-cam">📷</i>' : ''}</span>
+          <div class="rdx-ut"><div class="rdx-un">${E('nick', esc(p.nick))}</div><div class="rdx-uid">${E('handle', '小红书号：' + esc(redId(w)))}</div><div class="rdx-uid">${E('loc', 'IP：' + esc(ipOf(w)))}</div></div></div>
+        <div class="rdx-sr"><div><b>${G.fmtN(me ? following().length : p.following)}</b><span>关注</span></div><div><b>${G.fmtN(p.followers)}</b><span>粉丝</span></div><div><b>${G.fmtN(s.got)}</b><span>获赞与收藏</span></div></div>
+        <div class="rdx-sig">${E('bio', esc(p.bio || (me ? '还没有简介，点 ✎ 写一句' : '这个人很懒，什么都没写')))}</div>
+        ${tags.length || g || ed ? `<div class="rdx-tags">${g ? `<span>${g}</span>` : ''}${E('tagstr', tags.length ? tags.map(x => `<span>${esc(x)}</span>`).join('') : '<span>+ 标签</span>')}</div>` : ''}
+        ${links.length ? `<div class="rdx-tags">${links.map(([k, h]) => `<span>${G.APPS[k].ico} ${esc(h)}</span>`).join('')}</div>` : ''}
+        <div class="rdx-bg" onclick="event.stopPropagation()">${me ? `<span class="rdx-bm gl" onclick="gysRd.pfEditMode('me')">${ed ? '✓ 改好了' : '编辑资料'}</span><span class="rdx-bm gl" onclick="gysRd.yearReport()">📊 年度报告</span>` : `<span class="rdx-bm ${isFollow(w) ? 'gl' : 'red'}" onclick="gysRd.follow('${w}')">${isFollow(w) ? '已关注' : '关注'}</span><span class="rdx-bm gl" onclick="gysRd.dm('${w}')">发私信</span>`}<span class="rdx-bi" onclick="gysRd.pfMenu('${w}')">${SVG.dots}</span></div>
+        ${ed ? `<div class="rdx-edtip">编辑模式：点背景 / 头像换图，点文字改字。粉丝数这些在 ⋯ →「全部资料」里改</div>` : ''}
+      </div>
+      <div class="rdx-panel"><div class="rdx-th">${tabs.map(([k, n]) => `<span class="${t === k ? 'on' : ''}" onclick="gysRd.pt('${w}','${k}')">${n}</span>`).join('')}</div>${body}</div>
+    </div>`;
+}
+function profBody(w, me, c, s, t) {
+    if (t === 'notes') { const L = s.notes.filter(n => me || n.vis !== 'self').sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || b.at - a.at); return grid(L) || `<div class="gys-empty">${me ? '还没发过笔记<br><span class="gys-btn sm" onclick="gysRd.compose()">去发一篇</span>' : 'TA 还没发过笔记'}</div>`; }
+    if (t === 'favs') {
+        if (me) return `<div class="rd-boards"><div onclick="gysRd.board('')"><b>⭐ 全部收藏</b><em>${D.notes.filter(faved).length} 篇</em></div>${D.boards.map(b => `<div onclick="gysRd.board('${b.id}')"><b>📁 ${esc(b.name)}</b><em>${b.ids.length} 篇</em></div>`).join('')}<div onclick="gysRd.newBoard()"><b>＋ 新建专辑</b></div></div>`;
+        if (c) { const L = D.notes.filter(n => (n.favBy || {})[c.id]); return `<div class="rd-tip">${X.v('偷看一下 TA 收藏了什么……', 'TA 收藏的东西，往往跟你有关。')}</div>${L.map(n => `<div class="rd-favrow" onclick="gysRd.open('${n.id}')"><b>${esc(n.title)}</b><em>TA 心里想：${esc(n.favBy[c.id])}</em></div>`).join('') || '<div class="gys-empty">TA 还没收藏过</div>'}<div class="gys-acts"><span class="gys-btn sm ghost" onclick="gysRd.taFav('${c.id}')">${BUSY['fav' + c.id] ? '⏳ TA 在刷…' : '让 TA 刷一会儿'}</span></div>`; }
+        return '<div class="gys-empty">🔒 TA 的收藏没有公开</div>';
+    }
+    return grid(D.notes.filter(liked)) || '<div class="gys-empty">还没赞过</div>';
+}
 function profStats(w) {
     const mine = D.notes.filter(n => n.by === w);
     const got = mine.reduce((k, n) => k + likeAll(n) + favAll(n), 0) + (G.prof(APP, w).likes || 0);
@@ -463,8 +512,9 @@ R.taFavs = () => G.push(APP, { title: '🕵️ TA 们偷偷收藏的', html: () 
 R.settings = () => G.push(APP, { title: '小红书设置', html: () => `
   <label class="gys-f"><span>最多留多少篇笔记（你的、收藏的、TA 收藏的不会被删）</span><input id="rdC_keep" type="number" min="100" value="${D.cfg.keep}"></label>
   <label class="gys-f"><span>每次刷新刷出几篇</span><input id="rdC_feedN" type="number" min="2" max="12" value="${D.cfg.feedN}"></label>
+  <label class="gys-f"><span>主页样式（自己和 TA 的主页、笔记详情都用这个）</span><select id="rdC_pf">${[['light', '🤍 白'], ['dark', '🖤 黑'], ['classic', '经典（原来的样子）']].map(([v, n]) => `<option value="${v}" ${pfSt() === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
   <div class="gys-acts"><button class="gys-btn" onclick="gysRd.saveCfg()">保存</button></div>` });
-R.saveCfg = () => { const g = k => Number((document.getElementById('rdC_' + k) || {}).value) || 0; D.cfg.keep = Math.max(100, g('keep') || 500); D.cfg.feedN = Math.max(2, Math.min(12, g('feedN') || 6)); saveD(); X.toast('💾 存好了', ''); G.back(APP); };
+R.saveCfg = () => { const g = k => Number((document.getElementById('rdC_' + k) || {}).value) || 0; D.cfg.keep = Math.max(100, g('keep') || 500); D.cfg.feedN = Math.max(2, Math.min(12, g('feedN') || 6)); const pf = document.getElementById('rdC_pf'); if (pf) D.cfg.pf = pf.value; saveD(); X.toast('💾 存好了', ''); G.back(APP); };
 R.export = () => {
     const L = D.notes.filter(n => n.by === 'me' || faved(n) || charOfW(n.by) || Object.keys(n.favBy || {}).length).map(n => `【${n.title}】${nameOf(n.by)} · ${new Date(n.at).toLocaleString()}\n${n.body}\n${n.tags.map(t => '#' + t).join(' ')}\n${flat(n.cmts).map(c => '  · ' + nameOf(c.by) + '：' + c.text).join('\n')}${Object.keys(n.favBy || {}).map(id => '\n  ⭐ ' + ((X.char(id) || {}).name || '') + ' 偷偷收藏：' + n.favBy[id]).join('')}`);
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([L.join('\n\n')], { type: 'text/plain' })); a.download = '小红书记录.txt'; a.click();
@@ -723,6 +773,56 @@ body.dark-theme .gys-red{background:#0b0b0b}
 .rd-hot{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;padding:0 16px;font-size:14px}.rd-hot div{padding:7px 0;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rd-hot b{display:inline-block;width:20px;color:#999}.rd-hot b.r{color:#ff2442}.rd-hot i{font-style:normal;font-size:10px;color:#fff;background:#ff2442;border-radius:3px;padding:0 3px}
 .rd-urow{display:flex;align-items:center;gap:12px;padding:11px 16px;background:#fff;cursor:pointer;border-bottom:.5px solid #f2f2f2}body.dark-theme .rd-urow{background:#141414;border-color:#222}.rd-urow>div{flex:1;min-width:0}.rd-urow b{font-size:15px;font-weight:500}.rd-urow em{display:block;font-style:normal;font-size:12.5px;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rd-urow small{font-size:11px;color:#bbb;display:flex;flex-direction:column;align-items:flex-end;gap:3px}.rd-urow sup{background:#ff2442;color:#fff;border-radius:999px;padding:0 6px;font-size:10px}
 .rd-pfb{background:#fff}body.dark-theme .rd-pfb{background:#141414}
+/* 290 主页新样式：白 / 黑 */
+.rdx-body.light{background:#fff}.rdx-body.dark{background:#121212}
+.rdx{--r-bg:#fff;--r-fg:#1a1a1a;--r-sub:#666;--r-dim:#999;--r-line:#f0f0f0;--r-card:#fff;min-height:100%;background:var(--r-bg);color:var(--r-fg)}
+.rdx.dark{--r-bg:#121212;--r-fg:#f2f2f2;--r-sub:#a8a8a8;--r-dim:#777;--r-line:#262626;--r-card:#1c1c1e}
+.rdx-hero{position:relative;background:#4b4f5a center/cover no-repeat;padding:calc(56px + env(safe-area-inset-top,0px)) 16px 26px;color:#fff}
+.gys-root.sbon .rdx-hero{padding-top:56px}
+.rdx-hero:before{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.18),rgba(0,0,0,.28) 40%,rgba(0,0,0,.5));pointer-events:none}
+.rdx.dark .rdx-hero{background-color:#2a2c31}
+.rdx-hero>*{position:relative}
+.rdx-uh{display:flex;align-items:center;gap:16px;margin:4px 0 14px}
+.rdx-avw{position:relative;flex-shrink:0;display:flex}
+.rdx-av{border:3px solid rgba(255,255,255,.9)!important;box-shadow:0 4px 14px rgba(0,0,0,.35);box-sizing:border-box}
+.rdx-cam{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-style:normal;font-size:20px;background:rgba(0,0,0,.45);border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center}
+.rdx-camb{position:absolute;right:12px;top:calc(52px + env(safe-area-inset-top,0px));font-style:normal;font-size:12px;background:rgba(0,0,0,.5);border-radius:14px;padding:4px 10px}
+.rdx-ut{min-width:0}
+.rdx-un{font-size:20px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.45);word-break:break-all}
+.rdx-uid{font-size:11.5px;color:rgba(255,255,255,.85);margin-top:5px;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.rdx-sr{display:flex;gap:20px;margin-bottom:12px}.rdx-sr b{font-size:15px;margin-right:3px}.rdx-sr span{font-size:12px;color:rgba(255,255,255,.85)}
+.rdx-sig{font-size:13px;line-height:1.5;margin-bottom:10px;white-space:pre-wrap;word-break:break-word;text-shadow:0 1px 4px rgba(0,0,0,.55)}
+.rdx-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.rdx-tags span{font-size:10.5px;background:rgba(255,255,255,.18);border-radius:10px;padding:2px 8px}
+.rdx-tags .rdx-ed{display:contents}
+.rdx-bg{display:flex;gap:10px;margin-top:4px}
+.rdx-bm{flex:1;height:36px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;cursor:pointer}
+.rdx-bm.red{background:#ff2442}
+.rdx-bm.gl,.rdx-bi{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.rdx-bi{width:36px;height:36px;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box}
+.rdx-bi svg{width:18px;height:18px;fill:#fff}
+.rdx-edtip{margin-top:12px;font-size:11.5px;line-height:1.6;background:rgba(0,0,0,.35);border-radius:8px;padding:8px 10px}
+.rdx .rdx-ed{outline:1px dashed #ffd1d8;outline-offset:2px;border-radius:4px;cursor:pointer}
+.rdx.editing .rdx-hero{outline:2px dashed #ff2442;outline-offset:-6px;cursor:pointer}
+.rdx-panel{background:var(--r-bg);border-radius:12px 12px 0 0;margin-top:-12px;position:relative;padding-top:8px;min-height:360px}
+.rdx-th{display:flex;gap:24px;padding:0 16px;margin-bottom:8px;position:sticky;top:0;background:var(--r-bg);z-index:2;border-radius:12px 12px 0 0}
+.rdx-th span{font-size:15px;color:var(--r-sub);padding:8px 0;position:relative;cursor:pointer}
+.rdx-th span.on{color:var(--r-fg);font-weight:600}
+.rdx-th span.on:after{content:"";position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:20px;height:2px;background:#ff2442;border-radius:2px}
+.rdx .rd-grid{padding:0 10px 20px;column-gap:8px}
+.rdx .rd-card{background:var(--r-card);border:1px solid var(--r-line);margin-bottom:8px;box-sizing:border-box}
+.rdx.dark .rd-ct,.rdx.dark .rd-cb,.rdx.dark .rd-cb span,.rdx.dark .rd-cb i{color:var(--r-fg)}
+.rdx.dark .rd-boards>div,.rdx.dark .rd-favrow{background:var(--r-card)!important;color:var(--r-fg)}
+.rdx .gys-empty{color:var(--r-dim)}
+/* 笔记详情跟着换 */
+.rdx-n .rd-cm>.gys-av,.rdx-n .rd-kids .gys-av{filter:grayscale(1) contrast(1.15) brightness(.95)}
+.rdx-n.dark{background:#121212!important;color:#f2f2f2}
+.rdx-n.dark .rd-nx,.rdx-n.dark .rd-nt,.rdx-n.dark .rd-cx{color:#eaeaea}
+.rdx-n.dark .rd-meta,.rdx-n.dark .rd-cmeta,.rdx-n.dark .rd-cn{color:#888}
+.rdx-n.dark .rd-ch{color:#eaeaea;border-color:#262626}
+.rdx-n.dark .rd-tg{color:#8fb0e0}
+.gys-hd.rdx-hdk{background:#121212!important;color:#f2f2f2;border-bottom-color:#262626}
+.gys-root:has(.rdx-n.dark) .rd-bar{background:#121212;border-color:#262626;color:#eee}
+.gys-root:has(.rdx-n.dark) .rd-bar input{background:#262626;color:#eee}
 .rd-pfbg{background-size:cover;background-position:center}
 .rd-pfin{background:linear-gradient(rgba(0,0,0,.25),rgba(0,0,0,.55));color:#fff;padding:20px 16px 14px}
 .rd-pfr{display:flex;align-items:center;gap:14px}.rd-pfr b{font-size:20px}.rd-pfr em{display:block;font-style:normal;font-size:11.5px;opacity:.85;margin-top:4px}
