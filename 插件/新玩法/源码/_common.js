@@ -9,7 +9,7 @@ if (!window.GYX) (function () {
             const _si = window.setInterval.bind(window), _ci = window.clearInterval.bind(window);
             window.setInterval = function (fn, ms, ...a) {
                 if (typeof fn !== 'function') return _si(fn, ms, ...a);
-                let who = null; try { const m = String(new Error().stack || '').split('\n').slice(2).join('\n').match(/gyx-plugin\/([^:)\s]+?)\.js/); /* 跳过第一行（Error）和第二行（这个包装函数自己） */ if (m) { try { who = decodeURIComponent(m[1]); } catch (e) { who = m[1]; } } } catch (e) {}
+                let who = null; try { const m = String(new Error().stack || '').split('\n').slice(2).join('\n').match(/gyx-(?:plugin|builtin)\/([^:)\s]+?)\.js/); /* 跳过第一行（Error）和第二行（这个包装函数自己） */ if (m) { try { who = decodeURIComponent(m[1]); } catch (e) { who = m[1]; } } } catch (e) {}
                 if (!who) return _si(fn, ms, ...a);
                 const T = { who, ms: +ms || 0, runs: 0, cost: 0, last: 0, skip: 0, at: Date.now() };
                 const w = function () { const sv = window.__gyxSaver; if (sv && sv.on) { const f = document.hidden ? +sv.hid || 1 : +sv.fac || 1; if (f > 1 && Date.now() - T.last < T.ms * f - 50) { T.skip++; return; } } T.last = Date.now(); const t0 = performance.now(); try { return fn.apply(this, a); } finally { T.cost += performance.now() - t0; T.runs++; } };

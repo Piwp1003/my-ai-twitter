@@ -4,7 +4,7 @@ X.feat('gyx3dRoom', { n: '🧊 3D 小屋', desc: '小屋的 3D 版：两个小�
 const S = X.store('room3d');
 let R3 = { log: [], st: {}, cfg: { chat: false, night: 'auto', talkChat: true } };
 const save = () => S.set('d', R3);
-let ROOM = null, CID = null, OPEN = 0, BUSY = false;
+let ROOM = null, CID = null, OPEN = 0, BUSY = false, AWAY = '';   // AWAY：294 TA 在 3D 地图上别的地方（不在家）
 const SPOT_CN = { bed: '床上', bed2: '床上', bedside: '床边', table1: '餐桌', table2: '餐桌', sofa: '沙发上', sofa2: '沙发上', window: '窗边', shelf: '书架前', rug: '地毯上', door: '门口' };
 const STATE_CN = { idle: '待着', sleep: '睡觉', eat: '吃饭', read: '看书', daze: '发呆', phone: '玩手机', think: '想事情', dance: '自己跳舞', sit: '坐着', walk: '走来走去' };
 const PAIR = { bed: 'bed2', bed2: 'bed', table1: 'table2', table2: 'table1', sofa: 'sofa2', sofa2: 'sofa' };
@@ -42,7 +42,7 @@ async function decide(c) {
     return { spot, state, say: X.plain(String(j.say || '')).slice(0, 40), why: X.plain(String(j.why || '')).slice(0, 20), by: 'auto' };
 }
 async function refreshTA(force) {
-    const c = X.char(CID); if (!c) return;
+    const c = X.char(CID); if (!c || AWAY) return;
     const old = nowSt(c.id), auto = X.auto(c);
     let n;
     if (auto) { if (!force && old && old.by === 'auto' && Date.now() - old.at < 7 * 60000) return; if (BUSY) return; BUSY = true; try { n = await decide(c); } finally { BUSY = false; } }
@@ -66,6 +66,7 @@ const LOGT = { hi: '跟 TA 打了个招呼', hug: '抱了抱 TA', poke: '戳了�
 const TOGETHER = { eat: ['table1', 'table2', 'eat'], read: ['sofa', 'sofa2', 'read'], sleep: ['bed', 'bed2', 'sleep'], dance: [null, null, 'dance'] };
 function walkTo(key, to, then) { return new Promise(r => ROOM.go(key, to, Object.assign({}, then || {}, { fn: () => { try { then && then.fn && then.fn(); } catch (e) {} r(); } }))); }
 window.gyx3dRoomDo = async function (kind) {
+    if (ROOM && !ROOM.avs.ta && AWAY) return X.toast(`${X.name(X.char(CID))} 不在家`, `在${AWAY}。可以「叫 TA 回来」，或者去 3D 地图上找 TA`);
     if (!ROOM || !ROOM.avs.ta || BUSY) return; const c = X.char(CID); if (!c) return;
     let text = '';
     if (kind === 'talk') { const inp = document.getElementById('g3rSay'); text = (inp && inp.value || '').trim(); if (!text) return inp && inp.focus(); inp.value = ''; }
@@ -119,16 +120,19 @@ function paintLog() {
     const L = R3.log.filter(x => x.cid === String(CID)).slice(-6).reverse();
     b.innerHTML = L.map(x => `<div class="g3r-l"><i>${new Date(x.at).toTimeString().slice(0, 5)}</i>${X.esc(x.t)}</div>`).join('') || '<div class="gyx-tip">点地板你就走过去；点床、餐桌、沙发、书架、窗户，你就去用它；点 TA 是戳 TA。走到 TA 旁边用下面的按钮跟 TA 玩。</div>';
     const st = document.getElementById('g3rSt'), c = X.char(CID), s = nowSt(CID);
+    if (st && c && AWAY) { st.innerHTML = `${X.esc(X.name(c))} 不在家：在${X.esc(AWAY)} <button class="gyx-btn lite" style="padding:3px 10px;font-size:12px" onclick="gyx3dRoomCallHome()">叫 TA 回来</button>`; return; }
     if (st && c) st.innerHTML = `${X.esc(X.name(c))} ${s ? '在' + (s.spot === 'her' ? '你身边' : SPOT_CN[s.spot] || '屋里') + (STATE_CN[s.state] ? STATE_CN[s.state] : '') : ''} <em>${X.auto(c) ? '🤖 自主行动中，TA 自己决定干嘛' : '🕒 日常作息（开了自主行动就会自己决定）'}</em>`;
 }
 let keyH = null, tickT = null;
+window.gyx3dRoomState = cid => { const s = R3.st[String(cid)]; return s ? (s.spot === 'her' ? '在你身边' : '在' + (SPOT_CN[s.spot] || '屋里')) + (STATE_CN[s.state] || '') : ''; };
+window.gyx3dRoomCallHome = async () => { if (!CID || !window.gysMap3dGoHome) return; await window.gysMap3dGoHome(CID); const c = X.char(CID); X.toast(`${X.name(c)} 回家了`, ''); window.gyx3dRoomOpen(CID); };
 window.gyx3dRoomOpen = async function (who) {
     const c = X.char(who) || X.cur(); if (!c) return X.toast('先选一个角色', '');
     if (typeof window.gyx3dLib !== 'function') return X.toast('还差「🧊 3D 小人」', '在「📱 小手机」合集里，装上才能进 3D 小屋');
     let G; try { G = await window.gyx3dLib(); } catch (e) { return X.toast('3D 引擎没加载出来', e.message); }
-    closeRoom(); CID = String(c.id);
+    closeRoom(); CID = String(c.id); AWAY = window.gysMap3dAway ? window.gysMap3dAway(CID) : '';
     const walls = window.gyxHomeWalls ? window.gyxHomeWalls() : [['#f6efe6', '#d9c3a5', '暖木']], w = window.gyxHomeWallNow ? window.gyxHomeWallNow() : walls[0];
-    X.panel('gyx3dRoomOv', '🏠 我们的小屋 · 3D', `<div class="gyx-row">${X.whoSel(CID, 'gyx3dRoomOpen')}${walls.map((x, i) => `<span class="gyx-chip" onclick="gyx3dRoomWall(${i})">${x[2]}</span>`).join('')}<span class="gyx-chip" onclick="gyx3dRoomNight()">🌙 / ☀️</span>${window.gyxHomeOpen ? `<span class="gyx-chip" onclick="document.getElementById('gyx3dRoomOv').remove();gyxHomeOpen('${CID}',true)">回平面小屋</span>` : ''}<label class="gyx-tip" style="margin:0"><input type="checkbox" ${window.gyxHomeCfg && window.gyxHomeCfg('open3d') ? 'checked' : ''} onchange="gyxHomeCfg&&gyxHomeCfg('open3d',this.checked)"> 每次直接进 3D</label></div>
+    X.panel('gyx3dRoomOv', '🏠 我们的小屋 · 3D', `<div class="gyx-row">${X.whoSel(CID, 'gyx3dRoomOpen')}${walls.map((x, i) => `<span class="gyx-chip" onclick="gyx3dRoomWall(${i})">${x[2]}</span>`).join('')}<span class="gyx-chip" onclick="gyx3dRoomNight()">🌙 / ☀️</span>${window.gysMap3dOpen ? `<span class="gyx-chip" onclick="document.getElementById('gyx3dRoomOv').remove();gysMap3dOpen()">🗺️ 出门</span>` : ''}${window.gyxHomeOpen ? `<span class="gyx-chip" onclick="document.getElementById('gyx3dRoomOv').remove();gyxHomeOpen('${CID}',true)">回平面小屋</span>` : ''}<label class="gyx-tip" style="margin:0"><input type="checkbox" ${window.gyxHomeCfg && window.gyxHomeCfg('open3d') ? 'checked' : ''} onchange="gyxHomeCfg&&gyxHomeCfg('open3d',this.checked)"> 每次直接进 3D</label></div>
         <div class="g3r-st"><canvas id="g3rC"></canvas><div id="g3rOv" class="g3r-ov"></div><div id="g3rSt" class="g3r-top"></div><div id="g3rLoad" class="g3r-load">小人们在进门…</div></div>
         <div id="g3rBar" class="gyx-row">${[['hi', '👋 打招呼'], ['hug', '🤗 抱抱'], ['poke', '👆 戳戳'], ['pat', '🫳 摸摸头'], ['heart', '🫶 比心'], ['dance', '💃 一起跳舞'], ['eat', '🍚 一起吃饭'], ['read', '📖 一起看书'], ['sleep', '🛌 一起睡']].map(([k, n]) => `<button class="gyx-btn lite" onclick="gyx3dRoomDo('${k}')">${n}</button>`).join('')}</div>
         <div class="gyx-row"><input id="g3rSay" class="gyx-who" style="flex:1" placeholder="走过去跟 TA 说句话…" onkeydown="if(event.key==='Enter')gyx3dRoomDo('talk')"><button class="gyx-btn" onclick="gyx3dRoomDo('talk')">说</button></div>
@@ -144,7 +148,7 @@ window.gyx3dRoomOpen = async function (who) {
     try {
         const [ta, me] = await Promise.all([window.gyx3dAvFor(c), window.gyx3dAvFor('me')]);
         if (!ROOM) { ta.dispose(); me.dispose(); return; }
-        ROOM.add('ta', ta); ROOM.add('me', me);
+        if (AWAY) ta.dispose(); else ROOM.add('ta', ta); ROOM.add('me', me);
     } catch (e) { const l = document.getElementById('g3rLoad'); if (l) l.textContent = '小人没做出来：' + e.message; return; }
     const l = document.getElementById('g3rLoad'); if (l) l.remove();
     let s = nowSt(CID); if (!s || (s.by !== 'auto' && s.by !== 'you') || Date.now() - s.at > 30 * 60000) { s = Object.assign(routine(CID), { by: 'routine' }); setSt(CID, s); }
@@ -169,7 +173,7 @@ X.ctx(id => { const s = R3.st[String(id)]; const L = R3.log.filter(x => x.cid ==
 X.inj('gyx3dRoom', [['小屋里', '🧊 3D 小屋', 'TA 在小屋里在哪、在干嘛，你们刚在小屋里做了什么']]);
 // 自主行动：TA 自己去小屋里干点什么
 X.action({ key: 'gyx_room3d', label: '去你们的 3D 小屋里待一会儿，做点想做的事（吃饭 / 看书 / 发呆 / 睡觉……）', hint: '🧊 3D 小屋', need: c => { const s = R3.st[String(c.id)]; return !s || Date.now() - s.at > 40 * 60000; },
-    run: async c => { const n = await decide(c); if (!n) return null; setSt(c.id, n); log(c.id, `${X.name(c)} 去了${SPOT_CN[n.spot] || '屋里'}${STATE_CN[n.state] ? STATE_CN[n.state] : ''}${n.say ? '：「' + n.say + '」' : ''}`); if (OPEN && String(c.id) === CID) applyTA(n, true); return `在小屋里${SPOT_CN[n.spot] || ''}${STATE_CN[n.state] || ''}${n.say ? '，说：' + n.say : ''}`; } }, 'gyx3dRoom');
+    run: async c => { const n = await decide(c); if (!n) return null; setSt(c.id, n); try { if (window.gysMap3dGoHome) await window.gysMap3dGoHome(c.id); } catch (e) {} log(c.id, `${X.name(c)} 去了${SPOT_CN[n.spot] || '屋里'}${STATE_CN[n.state] ? STATE_CN[n.state] : ''}${n.say ? '：「' + n.say + '」' : ''}`); if (OPEN && String(c.id) === CID) applyTA(n, true); return `在小屋里${SPOT_CN[n.spot] || ''}${STATE_CN[n.state] || ''}${n.say ? '，说：' + n.say : ''}`; } }, 'gyx3dRoom');
 X.today(() => { const rows = R3.log.filter(x => X.day(new Date(x.at)) === X.day()).slice(-6).map(x => ({ t: '🏠', x: X.esc(x.t), go: `gyx3dRoomOpen('${x.cid}')` })); return { title: '🧊 3D 小屋', rows }; }, 'gyx3dRoom');
 X.widget('gyx3dRoomW', { n: '3D 小屋', sizes: ['s', 'm'], tap: () => window.gyx3dRoomOpen(), r: w => { const c = X.cur(), s = c && R3.st[String(c.id)]; return X.gw(w, '🏠', '3D 小屋', [s ? `${X.esc(X.name(c))} 在${SPOT_CN[s.spot] || '屋里'}${STATE_CN[s.state] || ''}` : '进去看看 TA 在干嘛', s && s.why ? X.esc(s.why) : '']); } }, 'gyx3dRoom');
 X.mem({ k: 'gyx3dRoom', ico: '🏠', n: '3D 小屋里发生的事', d: '你们在 3D 小屋里做过什么', items: c => R3.log.filter(x => x.cid === String(c.id)), text: x => x.t, edit: (x, v) => { x.t = v; }, del: (c, i) => { const L = R3.log.filter(x => x.cid === String(c.id)), it = L[i], j = R3.log.indexOf(it); if (j >= 0) R3.log.splice(j, 1); }, meta: x => new Date(x.at).toLocaleString(), save }, 'gyx3dRoom');

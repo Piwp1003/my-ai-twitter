@@ -401,6 +401,7 @@ async function rtParseFile(file, ext){
     return { title: null, chapters: rtSplitChapters(text, file.name.replace(/\.[^.]+$/, '')) };
   }
   if(ext==='docx'){
+    if(typeof mammoth==='undefined' && window.gyNeedLib){ try { await window.gyNeedLib('mammoth'); } catch(e){} }   // 293：开机不加载了，用到再等
     if(typeof mammoth==='undefined'){ throw new Error('文档解析库加载失败，请检查网络'); }
     var arrayBuffer = await file.arrayBuffer();
     var result = await mammoth.extractRawText({arrayBuffer: arrayBuffer});

@@ -1,1 +1,1 @@
-package android.app; public class NotificationManager { public boolean isNotificationPolicyAccessGranted(){return false;} public void setInterruptionFilter(int f){} public int getCurrentInterruptionFilter(){return 0;} }
+package android.app; public class NotificationManager { public boolean isNotificationPolicyAccessGranted(){return false;} public void setInterruptionFilter(int f){} public int getCurrentInterruptionFilter(){return 0;} public void createNotificationChannel(NotificationChannel c){} }

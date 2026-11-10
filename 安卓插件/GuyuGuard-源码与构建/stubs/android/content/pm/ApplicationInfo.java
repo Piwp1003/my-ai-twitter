@@ -1,1 +1,1 @@
-package android.content.pm; public class ApplicationInfo { public int flags; public static final int FLAG_SYSTEM=1; }
+package android.content.pm; public class ApplicationInfo { public int flags; public int icon; public static final int FLAG_SYSTEM=1; }

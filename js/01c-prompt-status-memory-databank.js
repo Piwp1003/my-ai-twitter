@@ -1354,6 +1354,7 @@ async function handleDataBankFileUpload(event) {
                 reader.readAsText(file, 'UTF-8');
             });
         } else if (ext === 'docx') {
+            if (typeof mammoth === 'undefined' && window.gyNeedLib) await window.gyNeedLib('mammoth');   // 293：开机不加载了，用到再等
             if (typeof mammoth === 'undefined') throw new Error('库加载失败，请检查网络');
             const arrayBuffer = await new Promise((resolve, reject) => {
                 const reader = new FileReader();

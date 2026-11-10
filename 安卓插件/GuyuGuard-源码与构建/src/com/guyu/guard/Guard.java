@@ -14,7 +14,7 @@ import java.util.*;
  * 所有方法都不抛错：出错返回空串 / false / "{}"。
  */
 public class Guard {
-    public static final String VERSION = "1.0.0";
+    public static final String VERSION = "1.1.0";
     static volatile String fg = "", fgCls = "";
     static volatile long fgAt = 0;
     static final Set<String> blocked = Collections.synchronizedSet(new HashSet<String>());
@@ -232,4 +232,20 @@ public class Guard {
     /* ---------- 通知 ---------- */
     static void pushNotif(String json) { synchronized (notifs) { notifs.add(json); while (notifs.size() > 200) notifs.removeFirst(); } }
     public static String pollNotifs() { synchronized (notifs) { StringBuilder b = new StringBuilder("["); int i = 0; for (String s : notifs) { if (i++ > 0) b.append(','); b.append(s); } notifs.clear(); return b.append(']').toString(); } }
+
+    /* ---------- 后台常驻（前台服务，1.1.0） ---------- */
+    static volatile String keepErr = "";
+    public static boolean keepStart(Context c, String title, String text) {
+        try {
+            hold(c); keepErr = "";
+            Intent it = new Intent(c, GuardKeep.class);
+            if (title != null) it.putExtra("title", title);
+            if (text != null) it.putExtra("text", text);
+            if (android.os.Build.VERSION.SDK_INT >= 26) c.startForegroundService(it); else c.startService(it);
+            return true;
+        } catch (Throwable e) { keepErr = String.valueOf(e); return false; }
+    }
+    public static boolean keepStop(Context c) { try { c.stopService(new Intent(c, GuardKeep.class)); GuardKeep.on = false; return true; } catch (Throwable e) { keepErr = String.valueOf(e); return false; } }
+    public static boolean keepOn() { return GuardKeep.on; }
+    public static String keepError() { return keepErr; }
 }

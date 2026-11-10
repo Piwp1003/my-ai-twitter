@@ -28,7 +28,7 @@
     };
 
     // 不当成页面的：全屏动画 / 通话 / 看图 / 裁剪 / 菜单 / 加载中…
-    const DENY = /^(gyWx|gyPm|gyph|chatContextMenu|gyCallModal|gyxHugOv|gyPmSheet|gyBackInd|scheduleLoadingModal|emoticonPickerModal|factionCharPickerModal)$|crop|viewer|lightbox|imgView|loading|splash|toast|intro(?!Ov)|opening/i;
+    const DENY = /^(gyWx|gyPm|gyph|chatContextMenu|gyCallModal|gyxHugOv|gyPmSheet|gyBackInd|scheduleLoadingModal|emoticonPickerModal|factionCharPickerModal)$|^gysMap3d|crop|viewer|lightbox|imgView|loading|splash|toast|intro(?!Ov)|opening/i;   // 294：3D 地图整屏自己画，不变成页面
     const SMALL_H = 300;
     const CAND = '.modal-overlay, .gyx-ov, [data-gy-overlay], [id$="Ov"], [id$="Modal"], [id$="Pl"], [id$="Set"], [id$="Res"], [id$="Read"], [id$="Al"]';
     const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden'; };

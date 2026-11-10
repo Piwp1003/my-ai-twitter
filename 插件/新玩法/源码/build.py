@@ -106,9 +106,20 @@ js = """/* =====================================================================
     window.__gyPlayMods = MODS.map(m => m[0]);
     function run() {
         const X = window.GYX; if (!X) return setTimeout(run, 200);
-        MODS.forEach(([n, b]) => { try { new Function('X', 'applyMacros', b + '\\n//# sourceURL=gyx-builtin/' + n + '.js')(X, typeof applyMacros !== 'undefined' ? applyMacros : undefined); } catch (e) { console.error('[内置新玩法] ' + n + ' 出错：', e); } });
-        window.__gyPlayReady = 1;
-        try { window.dispatchEvent(new CustomEvent('gy-play-ready')); } catch (e) {}
+        // 293 ⚡ 开机减负：分批跑，每跑 25 毫秒让一下（顺序不变）；关掉「开机减负」就跟以前一样一口气跑完
+        X.feat('gyFastBoot', { n: '⚡ 开机减负', desc: '打开谷雨时少卡一点：文档解析库等用到再加载，新玩法分批启动，不会一打开就卡住点不动。关掉就回到以前一口气全加载' });
+        const fast = X.on('gyFastBoot'), ap = typeof applyMacros !== 'undefined' ? applyMacros : undefined;
+        let i = 0;
+        (function step() {
+            const t0 = performance.now();
+            while (i < MODS.length) {
+                const [n, b] = MODS[i++];
+                try { new Function('X', 'applyMacros', b + '\\n//# sourceURL=gyx-builtin/' + n + '.js')(X, ap); } catch (e) { console.error('[内置新玩法] ' + n + ' 出错：', e); }
+                if (fast && i < MODS.length && performance.now() - t0 > 25) return setTimeout(step, 0);
+            }
+            window.__gyPlayReady = 1;
+            try { window.dispatchEvent(new CustomEvent('gy-play-ready')); } catch (e) {}
+        })();
     }
     (function wait() { if (window.__guyuBooted) run(); else setTimeout(wait, 80); })();
 })();

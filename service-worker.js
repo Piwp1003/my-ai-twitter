@@ -98,6 +98,7 @@ const CORE_ASSETS = [
     './js/59-online-res.js?v=' + V,
     './js/60-act-notify.js?v=' + V,
     './js/61-soft.js?v=' + V,
+    './js/map3d.js?v=' + V,   // 294：3D 地图，打开才加载，离线也要能用
     './js/62-play.js?v=' + V,
     './js/72-char-sprite.js?v=' + V,
     './js/62-phone-mode.js?v=' + V,
@@ -140,6 +141,7 @@ const CORE_ASSETS = [
     './js/96-game-hall.js?v=' + V,
     './js/97-api-test.js?v=' + V,
     './js/98-push-keepalive.js?v=' + V,
+    './js/98b-native-notify.js?v=' + V,
     './js/99-mcp.js?v=' + V,
     './js/99b-sub-login.js?v=' + V
 ];

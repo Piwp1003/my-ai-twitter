@@ -17,9 +17,10 @@ rm -f "$here/GuyuGuard.aar"
 zip -q -r "$here/GuyuGuard.aar" AndroidManifest.xml classes.jar R.txt res
 cd "$here"
 echo "④ 放到插件目录…"
-cp -f GuyuGuard.aar plugin/GuyuGuard/android/GuyuGuard.aar
+P="$here/../nativeplugins/GuyuGuard"; [ -d "$P" ] || P="$here/plugin/GuyuGuard"; mkdir -p "$P/android"
+cp -f GuyuGuard.aar "$P/android/GuyuGuard.aar"
 # 源码也同步一份到插件里，方便查看
-mkdir -p plugin/GuyuGuard/源码-java
-cp -rf src/com plugin/GuyuGuard/源码-java/
-echo "✅ 打包好了：plugin/GuyuGuard/android/GuyuGuard.aar"
+mkdir -p "$P/源码-java"
+cp -rf src/com "$P/源码-java/"
+echo "✅ 打包好了：$P/android/GuyuGuard.aar"
 echo "   把 plugin/GuyuGuard 这个文件夹放进 HBuilderX 项目的 nativeplugins/ 里，重新云打包即可。"

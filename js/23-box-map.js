@@ -1404,6 +1404,13 @@ body.dark-theme .gf-box[data-skin="t-dark"]{background:#0c0e12;}
     }
     // 给 js/87 用：你所在的城市 / 时区只存这一份
     window.gymapUser = () => !window.__gymapLoaded ? null :  ({ city: S.user.city || '', tz: S.user.tz || '', lat: S.user.lat, lon: S.user.lon });
+    // 294 🗺️ 3D 地图（📱 软件）只读这里的地点和「谁在哪」，挪人也走这里，两边永远是同一份
+    window.gymap3dData = () => !window.__gymapLoaded ? null : ({
+        spots: allSpots().map(sp => ({ id: sp.id, name: sp.name, desc: sp.desc || '', cat: sp.cat || '', x: +sp.x, y: +sp.y, faction: sp.faction, mapId: sp.mapId, mapName: sp.mapName })),
+        charLoc: Object.assign({}, S.charLoc), cats: (S.cats || []).map(c => Object.assign({}, c)),
+        wcode: S.weather && S.weather.real ? S.weather.real.code : null, wdesc: S.weather && S.weather.real ? wDesc(S.weather.real.code) : '', city: S.user.city || ''
+    });
+    window.gymap3dSetLoc = async (cid, sid) => { if (!window.__gymapLoaded) return false; cid = String(cid); if (sid) S.charLoc[cid] = sid; else delete S.charLoc[cid]; await save(); return true; };
     window.gymapSetUserTz = async v => { if (!window.__gymapLoaded) return; S.user.tz = String(v || ''); await save(); renderPanel(); };
     window.gymapSetUserCityText = async v => { if (!window.__gymapLoaded) return; v = String(v || '').trim(); if (!v || v === (S.user.city || '').split('（')[0]) return; S.user = { city: v, lat: null, lon: null, tz: S.user.tz || '' }; S.weather.real = null; await save(); renderPanel(); };
     window.gymapOpenTab = function (t) { tab = t || 'map'; if (typeof window.gyOpenFeaturePage === 'function' && document.getElementById('view-feature-page')) { try { window.gyOpenFeaturePage('map'); } catch (e) { window.gymapOpen(); } } else window.gymapOpen(); setTimeout(() => { tab = t || 'map'; renderPanel(); }, 60); };

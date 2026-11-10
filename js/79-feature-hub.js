@@ -495,7 +495,7 @@
             if (cur) cur.remove();
             const d = document.createElement('div'); d.className = 'gyhub-in'; d.dataset.sig = sig;
             d.innerHTML = `<em>${h.host === 'intro' ? '更多开场' : '这里也有'}</em>` + kids.map(k => `<button type="button" onclick="gyOpenMiniFeature('${k.id}')">${k.icon || '🧩'} ${esc(k.title)}</button>`).join('');
-            at.parentNode.insertBefore(d, at);
+            if (at.parentNode) at.parentNode.insertBefore(d, at);   // 293：分批启动时插入点可能刚被挪走
         });
     }
     // 改名：「日子」→「我们的日子」、「图库」→「相册」

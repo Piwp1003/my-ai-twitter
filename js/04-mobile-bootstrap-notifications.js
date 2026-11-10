@@ -514,7 +514,9 @@ function saveCloudSyncSettings() {
 //    头像现画成一张小圆图（js/98 的 gyNotifIcon），没拿到就用谷雨的图标，不耽误弹。
 function sendBrowserNotification(title, body, opt) {
     if (!enableBrowserNotifications) return;
-    if (document.visibilityState === 'visible' && document.hasFocus()) return; // 用户正盯着看呢，不用再弹系统通知
+    // 296：以前谷雨开在最前面一律不弹（所以看起来「只有刚打开那一下会弹」）。现在看开关「正在用谷雨时也弹」（js/98b，App 里默认开）
+    const fgAlso = window.__gyNnForce || (typeof window.gyNotifFgOn === 'function' && window.gyNotifFgOn());
+    if (document.visibilityState === 'visible' && document.hasFocus() && !fgAlso) return; // 用户正盯着看呢、又没开那个开关：不弹
     const plainTitle = (title || '').replace(/<[^>]+>/g, '').trim() || '新消息';
     const plainBody = (body || '').replace(/<[^>]+>/g, '').trim().slice(0, 200);
     if (typeof window.gyNotifIcon === 'function' && !(opt && opt.__icon)) {
@@ -530,6 +532,10 @@ function sendBrowserNotification(title, body, opt) {
     // 而"静默不生效"（不报错，就是不显示），我们没法从JS里检测到，所以下面继续尝试 Service Worker 通知
     // 作为并行兜底，两条路都试一遍，只要有一条成功就能收到提醒。
     if (window.plus && plus.push) {
+        // 296：先用 js/98b 的「重要」级别通知（会从屏幕顶上弹横幅、锁屏显示、带头像、点了能跳）；弹成了就不用再走下面的老办法（免得一条变两条）
+        let nativeDone = false;
+        try { if (typeof window.gyNativeNotify === 'function') nativeDone = !!window.gyNativeNotify(plainTitle, plainBody, Object.assign({}, opt || {}, { appPath: appIcon })); } catch (e) {}
+        if (nativeDone) return;
         try { plus.push.createMessage(plainBody, {}, Object.assign({ title: plainTitle, cover: false }, appIcon ? { icon: appIcon } : {})); } catch (e) { /* 静默失败，继续往下试其它方式 */ }
     }
     // 普通浏览器环境 / APK内置WebView：走标准 Web Notification API
