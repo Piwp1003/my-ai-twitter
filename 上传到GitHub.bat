@@ -102,12 +102,13 @@ echo.
 echo ==========================================
 echo   DONE. Uploaded version !VER!.
 echo   Code:    https://github.com/Piwp1003/my-ai-twitter
-echo   Website: https://piwp1003.github.io/my-ai-twitter/
+echo   Website: https://guyu.pw/
 echo.
-echo   The website needs 1-3 minutes to rebuild.
+echo   The website ^(Cloudflare Pages^) needs 1-3 minutes to rebuild.
 echo   Build status: https://github.com/Piwp1003/my-ai-twitter/actions
 echo     green = ok, red = failed ^(click it to see why^)
-echo   Then open the website and refresh once.
+echo   Then open the website and refresh once; in the App tap
+echo   Settings - bottom - "check update".
 echo   Settings page bottom shows the version - it should say !VER!.
 echo ==========================================
 echo.
@@ -118,6 +119,10 @@ exit /b 0
 :PUSHFAIL
 echo.
 echo [X] Push failed. Read the git message above, then:
+echo.
+echo   * "Failed to connect" / "timed out" / "Connection was reset"
+echo     Cannot reach GitHub. Turn on your VPN, make sure github.com
+echo     opens in the browser, then rerun this bat. Nothing is lost.
 echo.
 echo   * "rejected" / "non-fast-forward"
 echo     The remote has commits you do not have locally.
