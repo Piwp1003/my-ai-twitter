@@ -373,20 +373,32 @@ ipcMain.handle('gy-hot', async (e, op, a) => {
     GY_HOT.total = keys.length; GY_HOT.done = 0;
     const sha = b => gyCrypto.createHash('sha1').update(b).digest('hex');
     let n = 0;
-    for (const k of keys) {
+    // 297：以前一个一个排队下，文件多的时候很慢；现在 6 个一起下。校验对不上（刚部署完偶尔拿到旧文件）自动重下，最多 3 次。
+    const getOne = async k => {
       const want = files[k][0], dst = path.join(tmp, k);
       fs.mkdirSync(path.dirname(dst), { recursive: true });
       let got = null;
       for (const src of [path.join(gyHotDir(), k), path.join(GY_APP_DIR, k)]) { try { const b = fs.readFileSync(src); if (sha(b) === want) { got = b; break; } } catch (er) {} }
       if (!got) {
-        const r = await gyNet.fetch(baseUrl + k.split('/').map(encodeURIComponent).join('/') + '?v=' + L.ver);
-        if (!r.ok) throw new Error(k + ' 下载失败（HTTP ' + r.status + '）');
-        got = Buffer.from(await r.arrayBuffer());
-        if (sha(got) !== want) throw new Error(k + ' 校验没对上');
+        let lastErr = null;
+        for (let i = 0; i < 3 && !got; i++) {
+          try {
+            const r = await gyNet.fetch(baseUrl + k.split('/').map(encodeURIComponent).join('/') + '?v=' + L.ver + (i ? '&r=' + Date.now() : ''), i ? { cache: 'no-store' } : undefined);
+            if (!r.ok) throw new Error(k + ' 下载失败（HTTP ' + r.status + '）');
+            const b = Buffer.from(await r.arrayBuffer());
+            if (sha(b) !== want) throw new Error(k + ' 校验没对上');
+            got = b;
+          } catch (er) { lastErr = er; await new Promise(res => setTimeout(res, 600 * (i + 1))); }
+        }
+        if (!got) throw lastErr || new Error(k + ' 没下下来');
         n++;
       }
       fs.writeFileSync(dst, got); GY_HOT.done++;
-    }
+    };
+    let qi = 0, failed = null;
+    const worker = async () => { while (qi < keys.length && !failed) { const k = keys[qi++]; try { await getOne(k); } catch (er) { failed = er; } } };
+    await Promise.all(Array.from({ length: 6 }, worker));
+    if (failed) throw failed;
     fs.rmSync(gyHotDir(), { recursive: true, force: true });
     fs.renameSync(tmp, gyHotDir());
     logBoot(`热更新：下好了 v${L.ver}（新下载 ${n} 个文件）`);

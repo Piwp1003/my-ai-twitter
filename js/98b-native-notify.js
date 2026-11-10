@@ -130,10 +130,70 @@
     }
     window.gyNativeNotify = nativeNotify;
 
+
+    /* ---------------- 297：带进度条的通知（后台更新用，跟应用商店更新时通知栏那条一样） ----------------
+       gyNativeProgress(key, 标题, 说明, 百分比, { ongoing, jump, alert })：百分比 0~100 画进度条，-1 = 来回滚动的那种，null = 不画（下好了 / 失败了）。
+       用单独的安静渠道 gy_update（不响、不弹横幅，只在通知栏里走进度）；alert:true 的那一条（下好了）走「重要」渠道弹一下。
+       gyNativeCancel(key) 收掉。返回 false = 这台弹不了。 */
+    const CH_UPD = 'gy_update';
+    let updChanOk = false;
+    function ensureUpdChannel() {
+        if (updChanOk) return true;
+        const m = mgr(); if (!m) return false;
+        try {
+            if (sdkInt() >= 26) {
+                const ch = A().newObject('android.app.NotificationChannel', CH_UPD, '更新进度', 2);   // 2 = IMPORTANCE_LOW：不响不弹
+                try { inv(ch, 'setDescription', '谷雨在后台下载更新时，在通知栏显示进度条。'); } catch (e) {}
+                try { inv(ch, 'setShowBadge', false); } catch (e) {}
+                inv(m, 'createNotificationChannel', ch);
+            }
+            updChanOk = true;
+        } catch (e) { lastErr = String(e && e.message || e); }
+        return updChanOk;
+    }
+    function nativeProgress(key, title, text, pct, opt) {
+        opt = opt || {};
+        if (!isApp()) return false;
+        try {
+            const c = ctx(), m = mgr(); if (!c || !m) return false;
+            const loud = !!opt.alert;
+            if (loud ? !ensureChannel() : !ensureUpdChannel()) return false;
+            const s = sdkInt(), chId = loud ? CH : CH_UPD;
+            const b = s >= 26 ? A().newObject('android.app.Notification$Builder', c, chId) : A().newObject('android.app.Notification$Builder', c);
+            let icon = 0;
+            try { icon = plus.android.getAttribute(inv(c, 'getApplicationInfo'), 'icon') || 0; } catch (e) {}
+            inv(b, 'setSmallIcon', pct == null ? (icon || 17301634) : 17301633);   // 下载中用系统的「下载」小箭头（会动）
+            inv(b, 'setContentTitle', String(title || '谷雨更新'));
+            inv(b, 'setContentText', String(text || ''));
+            inv(b, 'setOngoing', !!opt.ongoing);
+            inv(b, 'setAutoCancel', !opt.ongoing);
+            try { inv(b, 'setOnlyAlertOnce', true); } catch (e) {}
+            try { inv(b, 'setShowWhen', false); } catch (e) {}
+            if (pct != null) { const p = Math.max(0, Math.min(100, Math.round(pct))); inv(b, 'setProgress', 100, pct < 0 ? 0 : p, pct < 0); if (s >= 24 && pct >= 0) { try { inv(b, 'setSubText', p + '%'); } catch (e) {} } }
+            else { try { inv(b, 'setProgress', 0, 0, false); } catch (e) {} }
+            if (s < 26) { try { inv(b, 'setPriority', loud ? 1 : -1); if (loud) inv(b, 'setDefaults', -1); } catch (e) {} }
+            const id = idOf('p:' + key);
+            try {
+                const it = inv(inv(c, 'getPackageManager'), 'getLaunchIntentForPackage', pkg());
+                if (it) {
+                    if (opt.jump) { inv(it, 'setAction', ACT); inv(it, 'putExtra', 'gyJump', JSON.stringify(opt.jump)); }
+                    inv(it, 'addFlags', 0x10000000 | 0x20000000);
+                    const pi = imp('android.app.PendingIntent').getActivity(c, id, it, s >= 23 ? 0x0C000000 : 0x08000000);
+                    if (pi) inv(b, 'setContentIntent', pi);
+                }
+            } catch (e) {}
+            inv(m, 'notify', id, inv(b, 'build'));
+            return true;
+        } catch (e) { lastErr = String(e && e.message || e); return false; }
+    }
+    function nativeCancel(key) { try { const m = mgr(); if (m) inv(m, 'cancel', idOf('p:' + key)); return true; } catch (e) { return false; } }
+    window.gyNativeProgress = nativeProgress; window.gyNativeCancel = nativeCancel;
+
     /* ---------------- 点通知回来 ---------------- */
     function go(j) {
         if (!j) return;
         try {
+            if (j.fn && typeof window[j.fn] === 'function' && /^gyUpd/.test(j.fn)) return window[j.fn].apply(null, j.args || []);
             if (j.nid != null && typeof window.gyOpenNotif === 'function' && window.gyOpenNotif(j.nid) !== false) return;
             if (j.chat != null && typeof window.gyJump === 'function') return window.gyJump({ chat: j.chat });
             if (typeof window.gyPushGo === 'function') return window.gyPushGo(j);

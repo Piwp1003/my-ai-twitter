@@ -38,6 +38,9 @@ const fakePlus = (o) => {
   window.plus = {
     push: { getClientInfo: () => ({ clientid: 'CID9' }), addEventListener() {}, createMessage() { window.__created++; } },
     device: { setWakelock() {} },
+    runtime: { version: '1.52', appid: 'H5TEST', arguments: '', install: (f, o, ok) => { window.__inst = f; setTimeout(ok, 30); }, restart: () => { window.__restart = 1; }, openURL() {} },
+    downloader: { createDownload: (url, opt, cb) => { let st = null; return { addEventListener(t, f) { st = f; }, start() { window.__dl = (window.__dl || 0) + 1; window.__dlUrl = url; setTimeout(() => st && st({ downloadedSize: 1e6, totalSize: 4e6 }), 20); setTimeout(() => cb({ filename: opt.filename }, 200), 80); } }; } },
+    networkinfo: { CONNECTION_WIFI: 3, getCurrentType: () => (window.__net == null ? 3 : window.__net) },
     io: { convertLocalFileSystemURL: p => 'file:///data/' + p, resolveLocalFileSystemURL(a, ok, no) { no && no(); } },
     android: {
       runtimeMainActivity: () => ACT,
@@ -105,7 +108,7 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; PJD110) AppleWebKit/537.36 Chrome/12
     globalChats[9993] = globalChats[9993] || []; globalChats[9993].push({ sender: 9993, text: '旧的', timestamp: Date.now() - 5000 }); renderChatMessages(); await sleep(100);
     const a0 = cnt(); window.__gyNnSetPaused(true);
     globalChats[9993].push({ sender: 9993, text: '我回来了<i>～</i>', timestamp: Date.now() }); renderChatMessages(); await sleep(1900);
-    o.awayPop = cnt() - a0; const lastBody = window.__calls.filter(c => c[2] === 'setContentText').pop(); o.awayBody = lastBody && lastBody[3];
+    o.awayPop = cnt() - a0; { const cs = window.__calls; let i = cs.length - 1; while (i >= 0 && !(cs[i][2] === 'setContentTitle' && /Mia/.test(cs[i][3]))) i--; const nb = cs.slice(i).find(c => c[2] === 'setContentText'); o.awayBody = nb && nb[3]; }   // Mia 那条的正文（客服可能也弹了一条，不看它）
     renderChatMessages(); await sleep(300); o.awayOnce = cnt() - a0;
     globalChats[9993].push({ sender: 'me', text: '我说的', timestamp: Date.now() }); renderChatMessages(); await sleep(400); o.awayMe = cnt() - a0; o.dbg = window.__calls.filter(c => c[2] === 'setContentText' || c[2] === 'setContentTitle').slice(-4).map(c => c[3]);
     window.__gyNnSetPaused(false); const here = document.visibilityState === 'visible' && document.hasFocus();
@@ -140,6 +143,31 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; PJD110) AppleWebKit/537.36 Chrome/12
     const n2 = window.__calls.length; o.open = gyNnOpen('channel'); const c2 = window.__calls.slice(n2);
     o.openCh = c2.some(c => c[0] === 'new' && c[2] === 'android.settings.CHANNEL_NOTIFICATION_SETTINGS') && c2.some(c => c[2] === 'putExtra' && c[4] === 'gy_msg_v1') && c2.some(c => c[2] === 'startActivity');
     const n3 = window.__calls.length; gyNnOpen('battery'); o.openBat = window.__calls.slice(n3).some(c => c[0] === 'new' && c[2] === 'android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS');
+    // 297：自动查到新版本 → Wi-Fi 下先悄悄下好再问；点「现在更新」不再下载，直接装、重启
+    window.fetch = async () => ({ ok: true, json: async () => ({ ver: 99999, at: Date.now(), wgt: 'update/guyu.wgt', wgtSize: 4.5e6, notes: [{ v: 99999, d: '', t: '新的', items: ['x'] }] }) });
+    await window.__gyUpdAuto(true); await sleep(500);
+    o.preDl = window.__dl; o.preAsk = (document.getElementById('gyUpdS') || {}).textContent || '';
+    const goBtn = document.getElementById('gyUpdGo'); if (goBtn) goBtn.click(); await sleep(1100);
+    o.preInst = window.__inst; o.preDl2 = window.__dl; o.preRestart = window.__restart === 1;
+    { const u = document.getElementById('gyUpd'); if (u) u.remove(); }
+    // 297：后台更新——没连 Wi-Fi（不提前下），点「现在更新」后切走：通知栏走进度条；下好了不突然重启，留一条「下好了」；回来才装
+    window.__net = 0; window.__restart = 0;
+    window.fetch = async () => ({ ok: true, json: async () => ({ ver: 100000, at: Date.now(), wgt: 'update/guyu.wgt', wgtSize: 4.5e6, notes: [{ v: 100000, d: '', t: '更新的', items: ['x'] }] }) });
+    await window.__gyUpdAuto(true); await sleep(300);
+    o.bgNoPre = window.__dl === 1 && !/提前下好/.test((document.getElementById('gyUpdS') || {}).textContent || '');
+    const c0 = window.__calls.length; const inst0 = window.__inst;
+    document.getElementById('gyUpdGo').click(); await sleep(10); window.__gyNnSetPaused(true); await sleep(40);
+    o.bgLater = (document.getElementById('gyUpdLater') || {}).textContent;
+    await sleep(350);
+    const cc = window.__calls.slice(c0);
+    o.bgChan = window.__calls.some(c => c[0] === 'new' && c[1] === 'android.app.NotificationChannel' && c[2] === 'gy_update' && c[4] === 2);
+    o.bgBar = cc.filter(c => c[2] === 'setProgress').map(c => c.slice(3).join('/'));
+    o.bgTitles = cc.filter(c => c[2] === 'setContentTitle').map(c => c[3]);
+    o.bgHeld = window.__inst === inst0 && window.__restart === 0;
+    o.bgJump = (cc.filter(c => c[2] === 'putExtra' && c[3] === 'gyJump').pop() || [])[4];
+    window.__gyNnSetPaused(false); window.__gyNnGo(JSON.parse(o.bgJump || '{}')); await sleep(1100);
+    o.bgInst = window.__inst; o.bgRestart = window.__restart === 1; o.bgCancel = window.__calls.slice(c0).some(c => c[2] === 'cancel');
+    { const u = document.getElementById('gyUpd'); if (u) u.remove(); } window.__net = 3;
     // 换个牌子看
     gyNnPickBrand('xiaomi'); o.mi = document.getElementById('gyNnSteps').innerText;
     // 使用指南有这一条
@@ -159,6 +187,9 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; PJD110) AppleWebKit/537.36 Chrome/12
   check('📌 后台常驻：默认关；打开先要通知权限，再起前台服务（带标题和说明），面板显示正挂着', !r.svcDef.on && r.svcDef.has && /^\["start","[^"]+","[^"]+"\]$/.test(r.keepStart) && r.svcOn && r.asked && /通知栏/.test(r.svcTxt), r.keepStart + ' ' + r.svcTxt);
   check('从「全部开关」关掉后台常驻：服务停了，设置里的勾也掉', r.stopped);
   check('「⚙️ 通知设置」跳到这个渠道那一页，「🔋 电池不限制」跳到电池那一页', r.open && r.openCh && r.openBat);
+  check('297：App 自动查到新版本，Wi-Fi 下先悄悄下好再问；点「现在更新」不再下载，直接装好重启', r.preDl === 1 && /提前下好/.test(r.preAsk) && r.preInst === '_doc/update/guyu-99999.wgt' && r.preDl2 === 1 && r.preRestart, JSON.stringify([r.preDl, r.preAsk, r.preInst, r.preDl2, r.preRestart]));
+  check('297：后台更新——通知栏进度条（安静渠道，先滚动、再 25%），窗口里能「放到后台」', r.bgNoPre && r.bgChan && r.bgBar.includes('100/0/true') && r.bgBar.includes('100/25/false') && r.bgLater === '放到后台' && r.bgTitles.some(t => /正在下载/.test(t)), JSON.stringify([r.bgNoPre, r.bgChan, r.bgBar, r.bgLater, r.bgTitles]));
+  check('297：下好时人不在 → 不突然重启，通知变成「下好了」；点通知回来才装上、重启，进度通知收掉', r.bgHeld && r.bgTitles.some(t => /下好了/.test(t)) && /gyUpdResume/.test(r.bgJump || '') && r.bgInst === '_doc/update/guyu-100000.wgt' && r.bgRestart && r.bgCancel, JSON.stringify([r.bgHeld, r.bgTitles, r.bgJump, r.bgInst, r.bgRestart, r.bgCancel]));
   check('可以自己换牌子看（小米：省电策略选无限制）', /无限制/.test(r.mi) && /悬浮通知/.test(r.mi), r.mi.slice(0, 50));
   check('使用指南有「📣 手机横幅弹窗」这一条，挂着两个新开关', /id: 'cfg_banner'[^\n]*c:gyNotifFg[^\n]*c:gyKeepSvc/.test(fs.readFileSync(path.join(root, 'js/94-guide-help.js'), 'utf8')));
   check('App（新包）没有页面报错', !errs.length, errs.join(' | '));
@@ -194,10 +225,25 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; PJD110) AppleWebKit/537.36 Chrome/12
     o.panel = !!document.getElementById('gyNnBox'); o.fgDef = gyNotifFgOn(); o.appPart = document.getElementById('gyNnApp').style.display;
     o.native = gyNativeNotify('a', 'b', {}); o.open = gyNnOpen('channel');
     gyKeepSvcSet(true); await sleep(100); o.svc = gyKeepSvcState(); setAutoFeature('gyKeepSvc', false, true);
+    // 297：开着的时候自己查更新——有新版本就弹；点「下次再说」后马上再查不重复弹
+    window.fetch = async () => ({ ok: true, json: async () => ({ ver: 99999, at: Date.now(), notes: [{ v: 99999, d: '', t: '新的', items: ['x'] }] }) });
+    await window.__gyUpdAuto(true); await sleep(200); o.updPop = !!document.getElementById('gyUpd');
+    const later = document.getElementById('gyUpdLater'); if (later) later.click(); await sleep(100);
+    await window.__gyUpdAuto(true); await sleep(200); o.updAgain = !!document.getElementById('gyUpd');
+    // 自己点检查更新：查的时候顶上有「正在检查更新」小条，查完收走；已经最新会说一声
+    const seenT = []; const st0 = window.showToast; window.showToast = function (av, t) { seenT.push(String(t)); return st0.apply(this, arguments); };
+    let rel; window.fetch = () => new Promise(r => { rel = () => r({ ok: true, json: async () => ({ ver: 1, notes: [] }) }); });
+    const btn = [...document.querySelectorAll('button, a, span')].find(b => /检查更新/.test(b.textContent || '') && b.onclick);
+    o.hasBtn = !!btn; if (btn) btn.click(); await sleep(150);
+    o.chkOn = !!document.getElementById('gyUpdChk') && /更新|新版/.test(document.getElementById('gyUpdChk').innerText);
+    rel && rel(); await sleep(300); o.chkOff = !document.getElementById('gyUpdChk');
+    o.latestToast = seenT.some(x => /已经是最新/.test(x)); window.showToast = st0;
     return o;
   });
   check('网页：面板在，「正在用谷雨时也弹」默认关（跟以前一样），安卓那一块藏起来', r.panel && r.fgDef === false && r.appPart === 'none', JSON.stringify(r));
   check('网页：原生横幅 / 跳设置 / 后台常驻都安静地做不了，不报错', r.native === false && r.open === false && !r.svc.running && !errs.length, errs.join(' | '));
+  check('297：自己点「检查更新」：查的时候顶上挂「正在检查更新…」，查完收走，并说一声「已经是最新的了」', r.hasBtn && r.chkOn && r.chkOff && r.latestToast, JSON.stringify([r.hasBtn, r.chkOn, r.chkOff, r.latestToast]));
+  check('297：开着的时候自己查更新，有新版本就弹；点了「下次再说」不会马上又弹', r.updPop && !r.updAgain, JSON.stringify([r.updPop, r.updAgain]));
   await ctx.close();
 }
 await browser.close();

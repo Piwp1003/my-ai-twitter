@@ -7,6 +7,8 @@ import hashlib, json, os, re, sys, zipfile, time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILES = ['index.html', 'style.css']
 DIRS = ['js', 'icons', 'img', 'media']
+# 297：没有任何地方在用的旧文件不进更新包（黑白杂志风 220 就删了，图和脚本还留在文件夹里；多出来的图标）——包小 0.8MB 左右
+SKIP = ('img/mag/', 'js/93-phone-mag.js', 'icons/icon-512-1.png')
 OUT = os.path.join(ROOT, 'update')
 os.makedirs(OUT, exist_ok=True)
 
@@ -19,6 +21,7 @@ def walk():
             for n in sorted(fn):
                 p = os.path.relpath(os.path.join(dp, n), ROOT).replace(os.sep, '/')
                 if re.search(r'[^\x00-\x7f]', p): continue   # 中文名的文件不进包
+                if p.startswith(SKIP): continue
                 yield p
 
 html = open(os.path.join(ROOT, 'index.html'), encoding='utf-8').read()
@@ -42,7 +45,7 @@ man = {}
 try: man = json.load(open(os.path.join(ROOT, 'android-build', 'www-manifest.json'), encoding='utf-8'))
 except Exception as e: print('没有 www-manifest.json：', e)
 wgt = os.path.join(OUT, 'guyu.wgt')
-with zipfile.ZipFile(wgt, 'w', zipfile.ZIP_DEFLATED) as z:
+with zipfile.ZipFile(wgt, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     if man: z.writestr('manifest.json', json.dumps(man, ensure_ascii=False, indent=2))
     for p in files: z.write(os.path.join(ROOT, p), p)
 
