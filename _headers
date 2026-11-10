@@ -8,3 +8,7 @@
   Cache-Control: no-cache
 /pwa-manifest.json
   Cache-Control: no-cache
+# 292：App / 电脑版检查更新、下载更新包（latest.json 每次都要最新的；能跨域读）
+/update/*
+  Cache-Control: no-cache
+  Access-Control-Allow-Origin: *

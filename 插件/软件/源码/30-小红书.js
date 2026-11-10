@@ -182,6 +182,7 @@ let TOP = 'find', CHN = '推荐';
 function head(tab) {
     if (tab === 'home') return `<div class="gys-hd rd-hd"><span class="gys-bk" onclick="GYS.close('${APP}')">${G.ic('back', 22)}</span><div class="rd-top">${[['follow', '关注'], ['find', '发现'], ['near', '附近']].map(([k, n]) => `<span class="${TOP === k ? 'on' : ''}" onclick="gysRd.top('${k}')">${n}</span>`).join('')}</div><span class="gys-hr"><span onclick="gysRd.searchPage()">${G.ic('search', 22)}</span></span></div>`;
     const t = { post: '发布笔记', msg: '消息', me: '' }[tab];
+    if (tab === 'me' && pfSt() !== 'classic') return `<div class="gys-hd pf-ov ${pfSt()}"><span class="gys-bk" onclick="GYS.close('${APP}')">${G.ic('back', 22)}</span><b></b><span class="gys-hr"><span class="pf-ic${PE.me ? ' on' : ''}" onclick="gysRd.pfEditMode('me')">✎</span><span class="pf-ic" onclick="gysRd.menu()">⋯</span></span></div>`;
     return `<div class="gys-hd"><span class="gys-bk" onclick="GYS.close('${APP}')">${G.ic('back', 22)}</span><b>${t}</b><span class="gys-hr">${tab === 'me' ? '<span onclick="gysRd.menu()">' + G.ic('more', 24) + '</span>' : ''}</span></div>`;
 }
 R.top = k => { TOP = k; G.repaint(APP); const b = document.querySelector('#gys_red .gys-body'); if (b) b.scrollTop = 0; if (k === 'near' && !D.notes.some(n => n.ch === '附近')) genFeed('推荐', true); };
@@ -490,9 +491,9 @@ R.dmSend = async w => {
 
 /* ---------------- 我 / 菜单 / 现实小红书 / 设置 ---------------- */
 R.menu = async () => {
-    const ops = ['📎 现实小红书（去真的搜 / 粘真笔记进来）', '🕵️ 偷看 TA 们的收藏', '⚙️ 设置', '📤 导出小红书记录（TXT）'];
+    const ops = ['📎 现实小红书（去真的搜 / 粘真笔记进来）', '🕵️ 偷看 TA 们的收藏', '🖤🤍 主页样式（白 / 黑 / 经典）', '⚙️ 设置', '📤 导出小红书记录（TXT）'];
     const i = await chooser(ops); if (i == null) return;
-    if (i === 0) R.realPage(); else if (i === 1) R.taFavs(); else if (i === 2) R.settings(); else R.export();
+    if (i === 0) R.realPage(); else if (i === 1) R.taFavs(); else if (i === 2) R.pfStyle(); else if (i === 3) R.settings(); else R.export();
 };
 R.real = q => {
     q = String(q || '').trim(); const web = 'https://www.xiaohongshu.com/search_result?keyword=' + encodeURIComponent(q || '约会');
@@ -519,7 +520,7 @@ R.export = () => {
     const L = D.notes.filter(n => n.by === 'me' || faved(n) || charOfW(n.by) || Object.keys(n.favBy || {}).length).map(n => `【${n.title}】${nameOf(n.by)} · ${new Date(n.at).toLocaleString()}\n${n.body}\n${n.tags.map(t => '#' + t).join(' ')}\n${flat(n.cmts).map(c => '  · ' + nameOf(c.by) + '：' + c.text).join('\n')}${Object.keys(n.favBy || {}).map(id => '\n  ⭐ ' + ((X.char(id) || {}).name || '') + ' 偷偷收藏：' + n.favBy[id]).join('')}`);
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([L.join('\n\n')], { type: 'text/plain' })); a.download = '小红书记录.txt'; a.click();
 };
-function meTab() { PT.me = PT.me || 'notes'; return profHtml('me'); }
+function meTab() { PT.me = PT.me || 'notes'; return pfSt() === 'classic' ? profHtml('me') : profHtmlX('me'); }   // 290：「我」这一页也跟着主页样式走
 
 /* ---------------- TA 做的事 ---------------- */
 async function taPost(c, req, alt) {
@@ -820,6 +821,8 @@ body.dark-theme .gys-red{background:#0b0b0b}
 .rdx-n.dark .rd-meta,.rdx-n.dark .rd-cmeta,.rdx-n.dark .rd-cn{color:#888}
 .rdx-n.dark .rd-ch{color:#eaeaea;border-color:#262626}
 .rdx-n.dark .rd-tg{color:#8fb0e0}
+body .gys-root:has(.rdx.dark) .gys-tabs{background:rgba(28,28,30,.92)!important;color:#eee;border-color:#262626!important}
+body .gys-root:has(.rdx.dark) .gys-tb{color:#bbb}
 .gys-hd.rdx-hdk{background:#121212!important;color:#f2f2f2;border-bottom-color:#262626}
 .gys-root:has(.rdx-n.dark) .rd-bar{background:#121212;border-color:#262626;color:#eee}
 .gys-root:has(.rdx-n.dark) .rd-bar input{background:#262626;color:#eee}

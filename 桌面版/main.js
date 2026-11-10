@@ -155,7 +155,8 @@ contextBridge.exposeInMainWorld('gyDesk', {
   onPet: cb => ipcRenderer.on('gy-pet-ev', (e, ev) => { try { cb(ev); } catch (er) {} }),
   showMain: () => ipcRenderer.send('gy-pet', 'main'),
   oauthLoopback: o => ipcRenderer.invoke('gy-oauth', o),
-  mcp: (op, a) => ipcRenderer.invoke('gy-mcp', op, a)
+  mcp: (op, a) => ipcRenderer.invoke('gy-mcp', op, a),
+  hot: (op, a) => ipcRenderer.invoke('gy-hot', op, a)
 });`;
 const PET_PRELOAD = `const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('pet', {
@@ -327,6 +328,75 @@ ipcMain.on('gy-pet-in', (e, what, v) => {
   }
 });
 app.on('before-quit', () => { quitting = true; });
+
+// ⬆️ 292 热更新：网页那边（js/92c）发现 guyu.pw 上有新版本 → 这里按 latest.json 的清单只下载变了的文件，
+//    放进存档目录的 hot-www；下次启动时如果 hot-www 的版本比 exe 自带的新，就拦下 file:// 请求，app/ 里的文件优先读 hot-www 的。
+//    页面地址不变（还是 app/index.html），所以 localStorage / 存档都还是原来那份。exe 重新打包成更新的版本后，自动用回自带的。
+const { protocol: gyProtocol, net: gyNet } = require('electron');
+const { pathToFileURL: gyToUrl, fileURLToPath: gyFromUrl } = require('url');
+const gyCrypto = require('crypto');
+const GY_APP_DIR = path.join(__dirname, 'app');
+const gyHotDir = () => path.join(app.getPath('userData'), 'hot-www');
+const gyVerOf = f => { try { const m = fs.readFileSync(f, 'utf8').match(/GY_VERSION\s*=\s*(\d+)/); return m ? +m[1] : 0; } catch (e) { return 0; } };
+const GY_HOT = { done: 0, total: 0, busy: false };
+function gyHotInstall() {
+  const hv = gyVerOf(path.join(gyHotDir(), 'index.html')), bv = gyVerOf(path.join(GY_APP_DIR, 'index.html'));
+  logBoot(`热更新：exe 自带 v${bv}，下载的 v${hv || '无'}`);
+  if (!hv || hv <= bv) return;
+  const base = path.normalize(GY_APP_DIR).toLowerCase() + path.sep;
+  gyProtocol.handle('file', req => {
+    try {
+      const n = path.normalize(gyFromUrl(req.url));
+      if (n.toLowerCase().startsWith(base)) {
+        const h = path.join(gyHotDir(), n.slice(base.length));
+        if (fs.existsSync(h)) return gyNet.fetch(gyToUrl(h).toString(), { bypassCustomProtocolHandlers: true });
+      }
+    } catch (e) {}
+    return gyNet.fetch(req, { bypassCustomProtocolHandlers: true });
+  });
+  logBoot('热更新：用 hot-www 里的 v' + hv);
+}
+ipcMain.handle('gy-hot', async (e, op, a) => {
+  if (op === 'progress') return { done: GY_HOT.done, total: GY_HOT.total };
+  if (op === 'restart') { app.relaunch(); app.exit(0); return true; }
+  if (op === 'latest') { const r = await gyNet.fetch(String(a)); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); }
+  if (op !== 'apply') return null;
+  if (GY_HOT.busy) return { ok: false, err: '已经在更新了' };
+  GY_HOT.busy = true;
+  const tmp = gyHotDir() + '-new';
+  try {
+    const baseUrl = String((a && a.base) || 'https://guyu.pw/').replace(/\/?$/, '/');
+    const L = await (await gyNet.fetch(baseUrl + 'update/latest.json?fresh=' + Date.now())).json();
+    const files = L.files || {}, keys = Object.keys(files);
+    if (!keys.length) throw new Error('更新清单是空的');
+    fs.rmSync(tmp, { recursive: true, force: true });
+    GY_HOT.total = keys.length; GY_HOT.done = 0;
+    const sha = b => gyCrypto.createHash('sha1').update(b).digest('hex');
+    let n = 0;
+    for (const k of keys) {
+      const want = files[k][0], dst = path.join(tmp, k);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      let got = null;
+      for (const src of [path.join(gyHotDir(), k), path.join(GY_APP_DIR, k)]) { try { const b = fs.readFileSync(src); if (sha(b) === want) { got = b; break; } } catch (er) {} }
+      if (!got) {
+        const r = await gyNet.fetch(baseUrl + k.split('/').map(encodeURIComponent).join('/') + '?v=' + L.ver);
+        if (!r.ok) throw new Error(k + ' 下载失败（HTTP ' + r.status + '）');
+        got = Buffer.from(await r.arrayBuffer());
+        if (sha(got) !== want) throw new Error(k + ' 校验没对上');
+        n++;
+      }
+      fs.writeFileSync(dst, got); GY_HOT.done++;
+    }
+    fs.rmSync(gyHotDir(), { recursive: true, force: true });
+    fs.renameSync(tmp, gyHotDir());
+    logBoot(`热更新：下好了 v${L.ver}（新下载 ${n} 个文件）`);
+    return { ok: true, n, ver: L.ver };
+  } catch (err) {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (er) {}
+    logBoot('热更新失败：' + ((err && err.message) || err));
+    return { ok: false, err: (err && err.message) || String(err) };
+  } finally { GY_HOT.busy = false; }
+});
 
 function createWindow() {
   const state = loadWindowState();
@@ -687,6 +757,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     logBoot('app ready');
+    try { gyHotInstall(); } catch (e) { logBoot('热更新没装上：' + ((e && e.message) || e)); }
     try {
       buildMenu();
       createWindow();
