@@ -514,9 +514,13 @@ function saveCloudSyncSettings() {
 //    头像现画成一张小圆图（js/98 的 gyNotifIcon），没拿到就用谷雨的图标，不耽误弹。
 function sendBrowserNotification(title, body, opt) {
     if (!enableBrowserNotifications) return;
+    // 297：按种类的开关（js/98b）——哪些弹、哪些不弹；点完按钮的小回执不弹
+    try { if (typeof window.gyNnAllow === 'function' && !window.gyNnAllow(title, body, opt)) return; } catch (e) {}
     // 296：以前谷雨开在最前面一律不弹（所以看起来「只有刚打开那一下会弹」）。现在看开关「正在用谷雨时也弹」（js/98b，App 里默认开）
     const fgAlso = window.__gyNnForce || (typeof window.gyNotifFgOn === 'function' && window.gyNotifFgOn());
-    if (document.visibilityState === 'visible' && document.hasFocus() && !fgAlso) return; // 用户正盯着看呢、又没开那个开关：不弹
+    // 297：App 切到后台时网页自己不一定知道（visibilityState 可能还是 visible），所以还要问一下 js/98b 记的「是不是切走了」
+    const awayNow = typeof window.gyAway === 'function' ? window.gyAway() : !(document.visibilityState === 'visible' && document.hasFocus());
+    if (!awayNow && !fgAlso) return; // 用户正盯着看呢、又没开那个开关：不弹
     const plainTitle = (title || '').replace(/<[^>]+>/g, '').trim() || '新消息';
     const plainBody = (body || '').replace(/<[^>]+>/g, '').trim().slice(0, 200);
     if (typeof window.gyNotifIcon === 'function' && !(opt && opt.__icon)) {

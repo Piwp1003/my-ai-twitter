@@ -99,6 +99,35 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; PJD110) AppleWebKit/537.36 Chrome/12
     window.__intent = { __cls: 'IntentN', extra: JSON.stringify({ chat: 9993 }) };
     document.dispatchEvent(new Event('newintent')); await sleep(700);
     o.chat = String(typeof currentChatSessionId !== 'undefined' ? currentChatSessionId : ''); o.cleared = window.__intent.extra === null;
+    // 297：停在 TA 的聊天页，人切走了（App pause），TA 新说的话也要弹；人在的时候不多弹
+    gyJump({ chat: 9993 }); await sleep(500); gyNotifFgSet(false); await sleep(50);
+    const cnt = () => window.__calls.filter(c => c[2] === 'setContentTitle' && /Mia/.test(c[3])).length;   // 只数 Mia 的（没接 API 时客服也会弹一条，不算）
+    globalChats[9993] = globalChats[9993] || []; globalChats[9993].push({ sender: 9993, text: '旧的', timestamp: Date.now() - 5000 }); renderChatMessages(); await sleep(100);
+    const a0 = cnt(); window.__gyNnSetPaused(true);
+    globalChats[9993].push({ sender: 9993, text: '我回来了<i>～</i>', timestamp: Date.now() }); renderChatMessages(); await sleep(1900);
+    o.awayPop = cnt() - a0; const lastBody = window.__calls.filter(c => c[2] === 'setContentText').pop(); o.awayBody = lastBody && lastBody[3];
+    renderChatMessages(); await sleep(300); o.awayOnce = cnt() - a0;
+    globalChats[9993].push({ sender: 'me', text: '我说的', timestamp: Date.now() }); renderChatMessages(); await sleep(400); o.awayMe = cnt() - a0; o.dbg = window.__calls.filter(c => c[2] === 'setContentText' || c[2] === 'setContentTitle').slice(-4).map(c => c[3]);
+    window.__gyNnSetPaused(false); const here = document.visibilityState === 'visible' && document.hasFocus();
+    globalChats[9993].push({ sender: 9993, text: '你在看', timestamp: Date.now() + 1 }); renderChatMessages(); await sleep(1800); o.herePop = cnt() - a0; o.here = here;
+    gyNotifFgSet(true);
+    // 297：按种类的开关。帖子回复 → 弹；关掉「帖子」→ 不弹；小回执不弹；分类认得对
+    const titles = () => window.__calls.filter(c => c[2] === 'setContentTitle').map(c => c[3]);
+    const mia = myCharacters.find(x => x.id === 9993);
+    let t0 = titles().length;
+    addNotification('<b>Mia</b> 回复了您的评论', 'p1', null, mia, '说得对'); await sleep(1900);
+    o.postPop = titles().slice(t0).filter(x => /回复了您的评论/.test(x)).length;
+    showToast('', '已收藏', '这条聊天已经存进回忆相册啦～', null, null); await sleep(1700);
+    o.receipt = titles().slice(t0).filter(x => /已收藏/.test(x)).length;
+    gyNnCatSet('post', false); t0 = titles().length;
+    addNotification('<b>Mia</b> 赞了您的帖子 ❤️', 'p1', null, mia, ''); await sleep(1700);
+    o.postOff = titles().slice(t0).filter(x => /赞了您/.test(x)).length; gyNnCatSet('post', true);
+    o.cats = [gyNnCatOf('Mia 发来消息', '', { charId: 9993 }), gyNnCatOf('Mia 回复了您', '', { postId: 'p' }), gyNnCatOf('Mia 正在呼叫你 📞', '', { charId: 9993 }), gyNnCatOf('Mia 约你看电影', '', { charId: 9993 }),
+      gyNnCatOf('Mia 写了信', '', { notif: { text: 'x', jump: { diary: 9993 } } }), gyNnCatOf('微信', '', { notif: { text: 'x', jump: { fn: 'gysWxOpen' } }, charId: 9993 }),
+      gyNnCatOf('快递到了', '', { notif: { text: '快递到了', view: 'mall' } }), gyNnCatOf('Mia 换了签名', '', { charId: 9993 }), gyNnCatOf('接口测试', '', {})].join(',');
+    switchMainView('settings'); openSettingsPanel('notify'); await sleep(100);
+    o.catBoxes = document.querySelectorAll('#gyNnCats input[type=checkbox]').length; o.catDefs = AUTO_FEATURE_DEFS.filter(f => /^gyNnCat_/.test(f.key)).length;
+    gyJump({ chat: 9993 }); await sleep(300);
     // 后台常驻：默认关；打开 → 起前台服务（要过通知权限）；从「全部开关」关 → 停
     switchMainView('settings'); openSettingsPanel('notify'); await sleep(80);
     o.svcDef = gyKeepSvcState();
@@ -124,6 +153,9 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; PJD110) AppleWebKit/537.36 Chrome/12
   check('通知带着「点了去哪」：动作 com.guyu.NOTIFY + 去 TA 的聊天', r.act === 'com.guyu.NOTIFY' && r.pi && JSON.parse(r.jump || '{}').chat === 9993, r.jump);
   check('关掉「正在用谷雨时也弹」：盯着看的时候不弹' + (r.vis ? '' : '（这次窗口没焦点，跳过判断）'), !r.vis || r.quiet);
   check('点通知回来：打开 TA 的聊天，去处只用一次', r.chat === '9993' && r.cleared, r.chat);
+  check('297：停在聊天页、人切走了，TA 新说的话弹一条（不重复弹、自己说的不弹）；人在看着时不多弹', r.awayPop === 1 && r.awayBody === '我回来了～' && r.awayOnce === 1 && r.awayMe === 1 && (!r.here || r.herePop === 1), JSON.stringify([r.awayPop, r.awayBody, r.awayOnce, r.awayMe, r.here, r.herePop, r.dbg]));
+  check('297：帖子有人回复 → 弹手机通知；关掉「📝 帖子」就不弹；「已收藏」这种小回执不弹', r.postPop === 1 && r.postOff === 0 && r.receipt === 0, JSON.stringify([r.postPop, r.postOff, r.receipt]));
+  check('297：九类各一个勾（面板 + 全部开关），分类认得对', r.catBoxes === 9 && r.catDefs === 9 && r.cats === 'chat,post,call,invite,letter,soft,play,life,sys', r.cats + ' ' + r.catBoxes + ' ' + r.catDefs);
   check('📌 后台常驻：默认关；打开先要通知权限，再起前台服务（带标题和说明），面板显示正挂着', !r.svcDef.on && r.svcDef.has && /^\["start","[^"]+","[^"]+"\]$/.test(r.keepStart) && r.svcOn && r.asked && /通知栏/.test(r.svcTxt), r.keepStart + ' ' + r.svcTxt);
   check('从「全部开关」关掉后台常驻：服务停了，设置里的勾也掉', r.stopped);
   check('「⚙️ 通知设置」跳到这个渠道那一页，「🔋 电池不限制」跳到电池那一页', r.open && r.openCh && r.openBat);

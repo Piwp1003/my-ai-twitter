@@ -109,7 +109,7 @@
                 }
             } catch (e) {}
             // 点了回到谷雨，并且知道该跳到哪
-            const key = opt.key != null ? opt.key : (opt.charId != null ? 'c:' + opt.charId : 'n:' + (++seq) + ':' + Date.now());
+            const key = opt.key != null ? opt.key : (opt.charId != null ? 'c:' + catOf(title, body, opt) + ':' + opt.charId : 'n:' + (++seq) + ':' + Date.now());
             const id = idOf(key);
             try {
                 const it = inv(inv(c, 'getPackageManager'), 'getLaunchIntentForPackage', pkg());
@@ -155,6 +155,91 @@
         } catch (e) {}
     }
     window.__gyNnGo = go;
+
+
+    /* ---------------- 297：人不在的时候，正开着的那个聊天来了新消息也要弹 ----------------
+       以前：你停在和 TA 的聊天页时，TA 回了话只刷新页面、不出气泡——所以「发完就切出去 / 锁屏」等回复，手机一声不响。
+       现在：谷雨不在最前面（切走了、锁屏了、电脑上窗口不在前面）时，这个聊天里 TA 新说的话照样弹系统通知。
+       做法：包一层 renderChatMessages（各条回复路径在聊天页开着时都会调它），不用一处处改。 */
+    let paused = false;
+    try { document.addEventListener('pause', () => { paused = true; }, false); document.addEventListener('resume', () => { paused = false; }, false); } catch (e) {}
+    const away = () => paused || document.visibilityState !== 'visible' || !document.hasFocus();
+    window.gyAway = away;
+    window.__gyNnSetPaused = v => { paused = !!v; };   // 测试用
+    const seenTs = {};
+    function watchOpenChat() {
+        try {
+            if (typeof currentChatSessionId === 'undefined' || currentChatSessionId == null || typeof globalChats === 'undefined') return;
+            const sid = currentChatSessionId, list = globalChats[sid];
+            if (!Array.isArray(list) || !list.length) return;
+            const vc = $('view-chat'); if (!vc || vc.style.display === 'none') return;
+            const m = list[list.length - 1], ts = +m.timestamp || 0;
+            const first = !(sid in seenTs), last = seenTs[sid] || 0;
+            seenTs[sid] = Math.max(last, ts);
+            if (first || ts <= last) return;                              // 第一次看到这个聊天只记位置，不补弹以前的
+            if (!m || m.sender === 'me' || m.sender === 'system' || m.isSystem) return;
+            if (Date.now() - ts > 20000) return;                          // 只管刚刚到的
+            if (!away()) return;
+            if (typeof sendBrowserNotification !== 'function') return;
+            const c = (typeof myCharacters !== 'undefined' && myCharacters || []).find(x => String(x.id) === String(m.sender));
+            let title = (c ? c.name : 'TA') + ' 发来消息';
+            try { const g = typeof groupChats !== 'undefined' && groupChats && groupChats.find(x => String(x.id) === String(sid)); if (g && g.name) title = '[' + g.name + '] ' + (c ? c.name : ''); } catch (e) {}
+            const body = String(m.text || '').replace(/<[^>]+>/g, '').trim() || '[图片/表情/拍一拍]';
+            sendBrowserNotification(title, body, { charId: c ? c.id : sid, jump: { chat: sid }, key: 'c:chat:' + sid, cat: 'chat' });
+        } catch (e) {}
+    }
+    function hookRender() {
+        try {
+            if (typeof renderChatMessages !== 'function' || renderChatMessages.__gyNn) return;
+            const o = renderChatMessages;
+            const w = function () { const r = o.apply(this, arguments); watchOpenChat(); return r; };
+            w.__gyNn = true; renderChatMessages = w;
+        } catch (e) {}
+    }
+
+
+    /* ---------------- 297：哪些弹、哪些不弹（按种类分开关） ----------------
+       谷雨里出的每一条通知（进通知页的那种）都会走到 sendBrowserNotification；这里给它分个类，每类一个开关（默认都开）。
+       只是「已收藏」「已修改」这种点完按钮的小回执（不进通知页、点了也没处去）不弹手机通知。 */
+    const CATS = [
+        ['chat', '💬', '聊天消息', 'TA 发来消息、群里说话、拍一拍'],
+        ['post', '📝', '帖子', '评论、回复、点赞你的帖子和评论'],
+        ['call', '📞', '来电', 'TA 打来电话、未接来电'],
+        ['invite', '🤝', '邀请和约定', '约你出去、一起听歌看电影、想换头像这类要你回话的'],
+        ['letter', '💌', '信和日记', 'TA 写了信、写了日记、回了你的信'],
+        ['soft', '📱', '软件里的', '微信、微博、小红书、抖音、网易云、拼多多……里的动静'],
+        ['play', '🎲', '小功能和新玩法', '商城快递外卖、行程天气、各种新玩法里的提醒'],
+        ['life', '🌿', 'TA 自己做的事', 'TA 自己发了推、换了签名、去了哪……不属于上面几类的'],
+        ['sys', '🛟', '谷雨的提醒', '客服发现的问题、接口测试结果、更新这类不是角色发的'],
+    ];
+    const catKey = k => 'gyNnCat_' + k;
+    function catOf(title, body, opt) {
+        opt = opt || {};
+        if (opt.cat) return opt.cat;
+        let n = opt.notif; if (n != null && typeof n !== 'object') { try { n = typeof window.gyNotifFind === 'function' ? window.gyNotifFind(n) : null; } catch (e) { n = null; } }
+        n = n || {};
+        const t = String(title || '') + ' ' + String(n.text || '').replace(/<[^>]+>/g, '');
+        const j = n.jump || opt.jump || {}, fn = typeof j.fn === 'string' ? j.fn : '';
+        const cid = opt.charId != null ? opt.charId : (n.chatCharId != null ? n.chatCharId : n.charId);
+        if (/呼叫你|打过电话|来电|没接/.test(t)) return 'call';
+        if (/^gys/i.test(fn) || j.app) return 'soft';
+        if (n.postId != null || opt.postId != null || j.postId != null || /赞了您|评论了您|回复了您|赞了你|评论了你|回复了你/.test(t)) return 'post';
+        if (j.diary != null || /^gyOpenMyDiary/.test(fn)) return 'letter';
+        if (/约你|邀请|拉你一起|想换|婉拒|答应了|约在了/.test(t)) return 'invite';
+        if (/发来消息|想私下跟你聊|说了句话|拍了拍/.test(t)) return 'chat';
+        if (fn || n.feature || n.view || j.feature || j.view) return 'play';
+        return cid != null ? 'life' : 'sys';
+    }
+    function allow(title, body, opt) {
+        opt = opt || {};
+        if (opt.__icon) return true;                                   // 第二趟（头像画好了）不用再判
+        // 小回执：从气泡来的、既不是通知页里的一条、也没有帖子 / 聊天可去
+        if (opt.toast && opt.notif == null && opt.postId == null && opt.charId == null && !opt.jump) return false;
+        const k = catOf(title, body, opt); if (k === 'test') return true;
+        return isOn(catKey(k));
+    }
+    window.gyNnAllow = allow; window.gyNnCatOf = catOf; window.gyNnCats = CATS;
+    window.gyNnCatSet = function (k, on) { try { if (typeof setAutoFeature === 'function') setAutoFeature(catKey(k), !!on, true); } catch (e) {} paint(); };
 
     /* ---------------- 正在用谷雨时也弹 ---------------- */
     function fgOn() { return isOn(FG); }
@@ -232,7 +317,7 @@
         const title = c0 ? c0.name + pick(['：在吗', '：测试一下', ' 发来消息']) : pick(['谷雨测试横幅', '测试一下：能看到吗']);
         const body = pick(['看到这条从屏幕顶上弹下来，就说明横幅好了', '能弹出来就没问题了，点一下回到谷雨', '以后我找你就是这样弹出来的']);
         const fire = () => {
-            const opt = { charId: c0 ? c0.id : null, jump: c0 ? { chat: c0.id } : { view: 'notifications' }, key: 'test' };
+            const opt = { charId: c0 ? c0.id : null, jump: c0 ? { chat: c0.id } : { view: 'notifications' }, key: 'test', cat: 'test' };
             const send = ic => {
                 if (isApp()) { const ok = nativeNotify(title, body, Object.assign({ appPath: ic && ic.appPath }, opt)); if (!ok) toast('📣 没弹出来', lastErr || '看看下面「通知总开关」是不是关着'); }
                 else { try { const keep = window.__gyNnForce; window.__gyNnForce = true; if (typeof sendBrowserNotification === 'function') sendBrowserNotification(title, body, { charId: opt.charId }); window.__gyNnForce = keep; } catch (e) {} }
@@ -318,9 +403,10 @@
                 AUTO_FEATURE_DEFS.push({ key: FG, label: '正在用谷雨时也弹手机横幅', group: '通知', defaultOff: !(uaApp || window.plus), desc: '以前谷雨开在最前面时，TA 来消息只出谷雨里的小气泡，不弹手机自带的通知。打开以后不管你在不在谷雨里，都会从屏幕顶上弹一条。安卓 App 里默认开，网页 / 电脑默认关。', cost: '不调用 API', where: '设置 → 通知与云端' });
             if (!AUTO_FEATURE_DEFS.some(f => f.key === SVC))
                 AUTO_FEATURE_DEFS.push({ key: SVC, label: '后台常驻：通知栏挂一条，别让手机冻住谷雨（安卓 App）', group: '通知', defaultOff: true, desc: '打开后通知栏会一直挂着一条「谷雨在后台陪着你」，手机就把谷雨当成正在干活的软件，切到后台、锁屏以后也不容易冻住，TA 到点了能照常说话、弹横幅。不放声音、不抢音乐，可以跟「后台保活」一起开。代价：多耗一点电。要 1.52 以上的安卓安装包。', cost: '不调用 API（耗电多一点）', where: '设置 → 通知与云端' });
+            CATS.forEach(c => { if (!AUTO_FEATURE_DEFS.some(f => f.key === catKey(c[0]))) AUTO_FEATURE_DEFS.push({ key: catKey(c[0]), label: '手机通知：' + c[1] + ' ' + c[2], group: '通知', desc: c[3] + '。关掉以后这一类只在谷雨里出气泡、进通知页，不弹手机通知。', cost: '不调用 API', where: '设置 → 通知与云端' }); });
             if (typeof window.setAutoFeature === 'function' && !window.setAutoFeature.__gyNn) {
                 const o = window.setAutoFeature;
-                const w = function (key, on) { const r = o.apply(this, arguments); if (key === SVC) { on ? svcStart() : svcStop(); } if (key === SVC || key === FG) setTimeout(paint, 50); return r; };
+                const w = function (key, on) { const r = o.apply(this, arguments); if (key === SVC) { on ? svcStart() : svcStop(); } if (key === SVC || key === FG || /^gyNnCat_/.test(String(key))) setTimeout(paint, 50); return r; };
                 Object.keys(o).forEach(k => { try { w[k] = o[k]; } catch (e) {} });
                 w.__gyNn = true; window.setAutoFeature = w;
             }
@@ -338,6 +424,9 @@
 <div class="form-hint" style="margin-bottom:8px;">要先把上面的「🔔 系统推送通知」勾上。安卓 App 里谷雨会用「重要」级别发通知：弹横幅、会响、锁屏上能看到、带 TA 的头像，点一下回到谷雨。</div>
 <div class="input-group checkbox-group" style="margin-bottom:4px;"><input type="checkbox" id="gyNnFg" onchange="gyNotifFgSet(this.checked)"><label style="margin:0;">正在用谷雨时也弹</label></div>
 <div class="form-hint" style="margin-bottom:8px;">关着：只有切到别的软件、锁屏时才弹。开着：谷雨开在最前面时也弹。</div>
+<div style="font-size:14px; font-weight:600; margin:6px 0 2px;">哪些弹、哪些不弹</div>
+<div class="form-hint" style="margin-bottom:4px;">谷雨里出的每一种通知都能弹到手机上；不想被哪一类打扰就把它的勾去掉（谷雨里的气泡和通知页不受影响）。</div>
+<div id="gyNnCats" style="margin-bottom:8px;">${CATS.map(c => `<div class="input-group checkbox-group" style="margin-bottom:2px;"><input type="checkbox" id="gyNnCat_${c[0]}" onchange="gyNnCatSet('${c[0]}', this.checked)"><label style="margin:0;">${c[1]} ${esc(c[2])}<span class="form-hint" style="margin-left:6px;">${esc(c[3])}</span></label></div>`).join('')}</div>
 <div id="gyNnSt" class="form-hint" style="margin-bottom:8px;"></div>
 <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
   <button type="button" class="btn-secondary" style="padding:8px; flex:1 1 45%;" onclick="gyNnTest(0)">📣 现在弹一条试试</button>
@@ -366,6 +455,7 @@
         const st = state();
         $('gyNnFg').checked = st.fg;
         $('gyNnSvc').checked = st.svc;
+        CATS.forEach(c => { const el = $('gyNnCat_' + c[0]); if (el) el.checked = isOn(catKey(c[0])); });
         const on = typeof enableBrowserNotifications !== 'undefined' ? !!enableBrowserNotifications : true;
         const L = [];
         if (!on) L.push('⚠️ 上面的「🔔 系统推送通知」还没勾，勾上才会弹');
@@ -390,6 +480,7 @@
     function boot() {
         regSwitch();
         ensurePanel();
+        hookRender(); setTimeout(hookRender, 1500);
         try { const o = window.openSettingsPanel; if (typeof o === 'function' && !o.__gyNn) { const w = function (k) { const r = o.apply(this, arguments); if (k === 'notify') { ensurePanel(); paint(); } return r; }; Object.keys(o).forEach(k => { try { w[k] = o[k]; } catch (e) {} }); w.__gyNn = true; window.openSettingsPanel = w; } } catch (e) {}
     }
     function plusBoot() {
