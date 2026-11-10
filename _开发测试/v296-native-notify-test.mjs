@@ -32,13 +32,14 @@ const fakePlus = (o) => {
     'android.app.PendingIntent': { getActivity: (c, id, it, f) => { calls.push(['pi', id, it && it.__cls, f]); return { __cls: 'PI' }; } },
     'android.graphics.BitmapFactory': { decodeFile: p => ({ __cls: 'bmp', p }) },
     'android.net.Uri': { parse: s => ({ __cls: 'uri', s }) },
+    'java.lang.System': { exit: c => { window.__exit = (window.__exit || 0) + 1; window.__restart = 1; } },
     'com.guyu.guard.Guard': o.guard ? { version: () => o.guard, keepStart: (c, t, x) => { window.__keep.push(['start', t, x]); window.__kon = true; return true; }, keepStop: () => { window.__keep.push(['stop']); window.__kon = false; return true; }, keepOn: () => window.__kon, keepError: () => '' } : null,
   };
   const name = x => (x && typeof x === 'object') ? (x.__cls || 'obj') : x;
   window.plus = {
     push: { getClientInfo: () => ({ clientid: 'CID9' }), addEventListener() {}, createMessage() { window.__created++; } },
     device: { setWakelock() {} },
-    runtime: { version: '1.52', appid: 'H5TEST', arguments: '', install: (f, o, ok) => { window.__inst = f; setTimeout(ok, 30); }, restart: () => { window.__restart = 1; }, openURL() {} },
+    runtime: { version: '1.52', appid: 'H5TEST', arguments: '', getProperty: (id, cb) => cb({ version: window.__mver || '1.53.9' }), install: (f, o, ok) => { window.__inst = f; setTimeout(ok, 30); }, restart: () => { window.__restart = 1; }, openURL() {} },
     downloader: { createDownload: (url, opt, cb) => { let st = null; return { addEventListener(t, f) { st = f; }, start() { window.__dl = (window.__dl || 0) + 1; window.__dlUrl = url; setTimeout(() => st && st({ downloadedSize: 1e6, totalSize: 4e6 }), 20); setTimeout(() => cb({ filename: opt.filename }, 200), 80); } }; } },
     networkinfo: { CONNECTION_WIFI: 3, getCurrentType: () => (window.__net == null ? 3 : window.__net) },
     io: { convertLocalFileSystemURL: p => 'file:///data/' + p, resolveLocalFileSystemURL(a, ok, no) { no && no(); } },
@@ -148,7 +149,8 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; PJD110) AppleWebKit/537.36 Chrome/12
     await window.__gyUpdAuto(true); await sleep(500);
     o.preDl = window.__dl; o.preAsk = (document.getElementById('gyUpdS') || {}).textContent || '';
     const goBtn = document.getElementById('gyUpdGo'); if (goBtn) goBtn.click(); await sleep(1100);
-    o.preInst = window.__inst; o.preDl2 = window.__dl; o.preRestart = window.__restart === 1;
+await sleep(300);     o.preInst = window.__inst; o.preDl2 = window.__dl; o.preRestart = window.__restart === 1;
+    o.rsExit = window.__exit || 0; { const cs = window.__calls; const i = cs.map(c => c[2]).lastIndexOf('startActivity'); o.rsStart = i > 0 && cs.slice(Math.max(0, i - 3), i).some(c => c[2] === 'addFlags' && c[3] === (0x10000000 | 0x8000)) && cs[i][3] === 'LaunchIntent'; }
     { const u = document.getElementById('gyUpd'); if (u) u.remove(); }
     // 297：后台更新——没连 Wi-Fi（不提前下），点「现在更新」后切走：通知栏走进度条；下好了不突然重启，留一条「下好了」；回来才装
     window.__net = 0; window.__restart = 0;
@@ -165,9 +167,23 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; PJD110) AppleWebKit/537.36 Chrome/12
     o.bgTitles = cc.filter(c => c[2] === 'setContentTitle').map(c => c[3]);
     o.bgHeld = window.__inst === inst0 && window.__restart === 0;
     o.bgJump = (cc.filter(c => c[2] === 'putExtra' && c[3] === 'gyJump').pop() || [])[4];
-    window.__gyNnSetPaused(false); window.__gyNnGo(JSON.parse(o.bgJump || '{}')); await sleep(1100);
+    window.__gyNnSetPaused(false); window.__gyNnGo(JSON.parse(o.bgJump || '{}')); await sleep(1600);
     o.bgInst = window.__inst; o.bgRestart = window.__restart === 1; o.bgCancel = window.__calls.slice(c0).some(c => c[2] === 'cancel');
     { const u = document.getElementById('gyUpd'); if (u) u.remove(); } window.__net = 3;
+    // 299：差量更新（试验，默认关）——关着下整包；打开且版本对得上就下小包；小包装不上自动改下整包
+    const mkL = v => ({ ver: v, at: Date.now(), wgt: 'update/guyu.wgt', wgtSize: 4.5e6, notes: [{ v, d: '', t: 'd', items: ['x'] }], patches: { [String(GY_VERSION)]: { u: 'update/p/a-b.wgtu', size: 100300, basis: '1.53.9', n: 3 } } });
+    const runUpd = async v => { window.fetch = async () => ({ ok: true, json: async () => mkL(v) }); window.__net = 0; await window.__gyUpdAuto(true); await sleep(250); const how = (document.getElementById('gyUpdS') || {}).textContent || ''; document.getElementById('gyUpdGo').click(); await sleep(1300); const u = document.getElementById('gyUpd'); if (u) u.remove(); return how; };
+    o.diffDef = window.__gyUpdDiff.on();
+    await runUpd(100001); o.diffOffUrl = window.__dlUrl;
+    GYX.set('gyUpdDiff', true); await sleep(50);
+    o.diffHow = await runUpd(100002); o.diffOnUrl = window.__dlUrl; o.diffInst = window.__inst;
+    window.__mver = '1.53.9'; { const st = JSON.parse(localStorage.getItem('gyUpd')); o.diffWay = st.lastWay; }
+    // 版本对不上（这台是别的包装的）→ 整包
+    // 小包装不上 → 自动整包
+    const inst0f = plus.runtime.install; let tried = [];
+    plus.runtime.install = (f, op, ok, no) => { tried.push(f); if (/wgtu$/.test(f)) setTimeout(() => no({ message: 'bad wgtu' }), 20); else { window.__inst = f; setTimeout(ok, 20); } };
+    await runUpd(100003); o.diffFallback = tried.map(x => x.split('.').pop()).join('>'); o.diffNo = JSON.parse(localStorage.getItem('gyUpd')).noDiff;
+    plus.runtime.install = inst0f; GYX.set('gyUpdDiff', false); window.__net = 3;
     // 换个牌子看
     gyNnPickBrand('xiaomi'); o.mi = document.getElementById('gyNnSteps').innerText;
     // 使用指南有这一条
@@ -187,9 +203,12 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; PJD110) AppleWebKit/537.36 Chrome/12
   check('📌 后台常驻：默认关；打开先要通知权限，再起前台服务（带标题和说明），面板显示正挂着', !r.svcDef.on && r.svcDef.has && /^\["start","[^"]+","[^"]+"\]$/.test(r.keepStart) && r.svcOn && r.asked && /通知栏/.test(r.svcTxt), r.keepStart + ' ' + r.svcTxt);
   check('从「全部开关」关掉后台常驻：服务停了，设置里的勾也掉', r.stopped);
   check('「⚙️ 通知设置」跳到这个渠道那一页，「🔋 电池不限制」跳到电池那一页', r.open && r.openCh && r.openBat);
+  check('299：装好后重启——先让系统重新打开谷雨（startActivity，带 NEW_TASK|CLEAR_TASK），再结束自己；不再只靠 plus.runtime.restart', r.rsStart && r.rsExit >= 1, JSON.stringify([r.rsStart, r.rsExit]));
   check('297：App 自动查到新版本，Wi-Fi 下先悄悄下好再问；点「现在更新」不再下载，直接装好重启', r.preDl === 1 && /提前下好/.test(r.preAsk) && r.preInst === '_doc/update/guyu-99999.wgt' && r.preDl2 === 1 && r.preRestart, JSON.stringify([r.preDl, r.preAsk, r.preInst, r.preDl2, r.preRestart]));
   check('297：后台更新——通知栏进度条（安静渠道，先滚动、再 25%），窗口里能「放到后台」', r.bgNoPre && r.bgChan && r.bgBar.includes('100/0/true') && r.bgBar.includes('100/25/false') && r.bgLater === '放到后台' && r.bgTitles.some(t => /正在下载/.test(t)), JSON.stringify([r.bgNoPre, r.bgChan, r.bgBar, r.bgLater, r.bgTitles]));
   check('297：下好时人不在 → 不突然重启，通知变成「下好了」；点通知回来才装上、重启，进度通知收掉', r.bgHeld && r.bgTitles.some(t => /下好了/.test(t)) && /gyUpdResume/.test(r.bgJump || '') && r.bgInst === '_doc/update/guyu-100000.wgt' && r.bgRestart && r.bgCancel, JSON.stringify([r.bgHeld, r.bgTitles, r.bgJump, r.bgInst, r.bgRestart, r.bgCancel]));
+  check('299：差量更新默认关（下整包）；打开且版本对得上 → 下小包、弹窗写明只下几个文件多大', r.diffDef === false && /guyu\.wgt/.test(r.diffOffUrl) && /p\/a-b\.wgtu/.test(r.diffOnUrl) && /只下改过的 3 个文件/.test(r.diffHow) && /98 KB/.test(r.diffHow) && /\.wgtu$/.test(r.diffInst) && r.diffWay === 'diff', JSON.stringify([r.diffDef, r.diffOffUrl, r.diffOnUrl, r.diffHow, r.diffInst, r.diffWay]));
+  check('299：小包装不上 → 自动改下整包装上，这一版不再试小包', r.diffFallback === 'wgtu>wgt' && r.diffNo === 100003, JSON.stringify([r.diffFallback, r.diffNo]));
   check('可以自己换牌子看（小米：省电策略选无限制）', /无限制/.test(r.mi) && /悬浮通知/.test(r.mi), r.mi.slice(0, 50));
   check('使用指南有「📣 手机横幅弹窗」这一条，挂着两个新开关', /id: 'cfg_banner'[^\n]*c:gyNotifFg[^\n]*c:gyKeepSvc/.test(fs.readFileSync(path.join(root, 'js/94-guide-help.js'), 'utf8')));
   check('App（新包）没有页面报错', !errs.length, errs.join(' | '));

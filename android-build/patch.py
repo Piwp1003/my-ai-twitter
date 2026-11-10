@@ -75,3 +75,16 @@ for folder, img in SPLASH.items():
         (d / 'src/main/res' / folder).mkdir(parents=True, exist_ok=True)
         shutil.copyfile(sp / img, d / 'src/main/res' / folder / 'splash.png')
         print('启动图', folder, '←', img)
+
+# 299：安装包里自带的网页 manifest 版本号写成「安装包版本.网页版本」（跟 tools/make_update.py 的更新包一个写法），
+#      App 内的差量更新靠它对上「这台手机现在是哪一版」。出什么岔子都不拦打包。
+try:
+    www = d / 'src/main/assets/apps' / appid / 'www'
+    gv = re.search(r'GY_VERSION\s*=\s*(\d+)', (www / 'index.html').read_text(encoding='utf-8'))
+    wm = json.loads((www / 'manifest.json').read_text(encoding='utf-8'))
+    if gv:
+        wm['version']['name'] = f'{ver_name}.{gv.group(1)}'
+        (www / 'manifest.json').write_text(json.dumps(wm, ensure_ascii=False, indent=2), encoding='utf-8')
+        print('www/manifest.json 版本号 →', wm['version']['name'])
+except Exception as e:
+    print('⚠️ 没改 www/manifest.json 的版本号（不影响打包）：', e)

@@ -69,3 +69,7 @@ _开发测试/3d-shots/
 
 # 292：Cloudflare 部署时生成的热更新包（tools/make_update.py），不进仓库
 update/
+
+# Python 编译缓存
+__pycache__/
+*.pyc

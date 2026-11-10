@@ -90,23 +90,42 @@
     }
     function nFail(L, why) { if (typeof window.gyNativeProgress === 'function' && on('gyUpdBar')) window.gyNativeProgress('upd', '谷雨 v' + L.ver + ' 没下完', String(why || '') + '，回到谷雨再点一次', null, { ongoing: false, jump: { fn: 'gyUpdResume' } }); }
     function nClear() { try { if (typeof window.gyNativeCancel === 'function') window.gyNativeCancel('upd'); } catch (e) {} }
+    /* ---------- 299：差量更新（只下改过的那几个文件，试验中，开关 gyUpdDiff 默认关） ----------
+       latest.json 里的 patches = { 旧网页版本: { u, size, basis } }。只有：开关开着 + 有「我这一版 → 最新版」的包 +
+       这台 App 现在的资源版本号（manifest 的 version）正好等于包里的 basis，才用小包；别的情况一律下整包。
+       小包装不上（格式不对 / 手机不认）会自动改下整包，并且这一版不再试小包（S.noDiff）。 */
+    var CUR = '';
+    function curVer(cb) {
+        if (CUR) return cb(CUR);
+        try { plus.runtime.getProperty(plus.runtime.appid, function (w) { CUR = String((w && w.version) || ''); cb(CUR); }); } catch (e) { cb(''); }
+    }
+    function diffOn() { try { return !!(X && X.on && X.FEATS && X.FEATS.some(function (f) { return f.id === 'gyUpdDiff'; }) && X.on('gyUpdDiff')); } catch (e) { return false; } }
+    function patchOf(L) { var p = L && L.patches && L.patches[String(VER)]; return (p && p.u && p.basis && diffOn() && S.noDiff !== L.ver) ? p : null; }
+    function pickSrc(L, cb) {
+        var full = { url: BASE + (L.wgt || 'update/guyu.wgt') + '?v=' + L.ver, file: '_doc/update/guyu-' + L.ver + '.wgt', patch: false };
+        var p = patchOf(L); if (!p) return cb(full);
+        curVer(function (c) { cb(c && c === p.basis ? { url: BASE + p.u + '?v=' + L.ver, file: '_doc/update/guyu-' + VER + '-' + L.ver + '.wgtu', patch: true } : full); });
+    }
+    window.__gyUpdDiff = { on: diffOn, patchOf: patchOf, cur: function () { return CUR; } };
+    try { document.addEventListener('plusready', function () { curVer(function () {}); }, false); if (window.plus) curVer(function () {}); } catch (e) {}
+
     var dlBusy = false, dlWait = [];
     function download(L, onProg, onOk, onFail) {
         if (dlBusy) { dlWait.push([onProg, onOk, onFail]); return; }   // 已经在下了（比如后台提前下的那次）：搭同一趟车
         dlBusy = true; dlWait = [[onProg, onOk, onFail]];
         var each = function (i, a, b) { var w = dlWait.slice(); for (var k = 0; k < w.length; k++) { try { if (w[k][i]) w[k][i](a, b); } catch (e) {} } };
         nLast = 0; nPct = -9; nProg(L, 0, 0);
-        cleanDir(function () {
+        cleanDir(function () { pickSrc(L, function (src) {
             try {
-                var dl = plus.downloader.createDownload(BASE + (L.wgt || 'update/guyu.wgt') + '?v=' + L.ver, { filename: '_doc/update/guyu-' + L.ver + '.wgt', timeout: 30, retry: 3 }, function (d, st) {
+                var dl = plus.downloader.createDownload(src.url, { filename: src.file, timeout: 30, retry: 3 }, function (d, st) {
                     dlBusy = false;
                     if (st !== 200) { nFail(L, '下载失败（' + st + '）'); return each(2, '下载失败（' + st + '）'); }
-                    S.pre = { ver: L.ver, file: d.filename }; wr(S); nDone(L); each(1, d.filename);
+                    S.pre = { ver: L.ver, file: d.filename, patch: !!src.patch }; wr(S); nDone(L); each(1, d.filename);
                 });
                 dl.addEventListener('statechanged', function (d) { if (d.totalSize) { nProg(L, d.downloadedSize, d.totalSize); each(0, d.downloadedSize, d.totalSize); } });
                 dl.start();
             } catch (e) { dlBusy = false; nFail(L, (e && e.message) || '下载没开始'); each(2, (e && e.message) || '下载没开始'); }
-        });
+        }); });
     }
     function preGet(L, then) {
         if (preHas(L)) return then();
@@ -136,7 +155,8 @@
         return (L || []).map(function (n) { return '<div class="u-v"><b>v' + esc(n.v) + '</b>' + esc(n.d || '') + (n.t ? ' · ' + esc(n.t) : '') + '</div><ul>' + (n.items || []).map(function (i) { return '<li>' + esc(i) + '</li>'; }).join('') + '</ul>'; }).join('');
     }
     function ask(L) {
-        var how = (isApp() && preHas(L)) ? '更新包已经提前下好了，点「现在更新」马上装好、自动重启' : isApp() ? '下载更新包（约 ' + Math.max(1, Math.round((L.wgtSize || 5e6) / 1048576)) + ' MB），装好自动重启' : isDesk() ? '只下载变了的文件，下好重启一下' : isWeb() ? '刷新一下就是新版' : window.gyDesk ? '这个 exe 是旧的，还不能在里面更新：重新打包一次 exe（一键打包exe.bat）以后就可以了' : '这个版本还不能在里面更新，要去下新的安装包';
+        var pz = isApp() ? patchOf(L) : null; if (pz && !(CUR && CUR === pz.basis)) pz = null;
+        var how = (isApp() && preHas(L)) ? '更新包已经提前下好了，点「现在更新」马上装好、自动重启' : pz ? '只下改过的 ' + (pz.n || '几') + ' 个文件（约 ' + (pz.size > 1048576 ? Math.round(pz.size / 1048576 * 10) / 10 + ' MB' : Math.max(1, Math.round(pz.size / 1024)) + ' KB') + '），装好自动重启' : isApp() ? '下载更新包（约 ' + Math.max(1, Math.round((L.wgtSize || 5e6) / 1048576)) + ' MB），装好自动重启' : isDesk() ? '只下载变了的文件，下好重启一下' : isWeb() ? '刷新一下就是新版' : window.gyDesk ? '这个 exe 是旧的，还不能在里面更新：重新打包一次 exe（一键打包exe.bat）以后就可以了' : '这个版本还不能在里面更新，要去下新的安装包';
         box('<div class="u-h"><small>发现新版本 v' + esc(L.ver) + '（你现在是 v' + VER + '）</small><b>' + esc((L.notes && L.notes[0] && L.notes[0].t) || '谷雨有更新了') + '</b></div>'
             + '<div class="u-b">' + notesHtml((L.notes || []).filter(function (n) { return n.v > VER; })) + '<div class="u-s" id="gyUpdS">' + esc(how) + '</div><div class="u-p" id="gyUpdP" style="display:none"><i></i></div></div>'
             + '<div class="u-f"><span id="gyUpdLater">下次再说</span><span class="ok" id="gyUpdGo">' + (isWeb() ? '刷新' : (isApp() || isDesk()) ? '现在更新' : window.gyDesk ? '知道了' : '去下载') + '</span></div>');
@@ -161,6 +181,28 @@
         if (window.gyDesk) return close();
         try { (window.plus && plus.runtime) ? plus.runtime.openURL('https://github.com/Piwp1003/my-ai-twitter/releases/tag/apk') : window.open('https://github.com/Piwp1003/my-ai-twitter/releases/tag/apk', '_blank'); } catch (e) {}
     }
+    // 299：装好以后重启。以前只用 plus.runtime.restart()——它是「先把自己关掉，再托系统过一会儿把谷雨叫起来」，
+    //      OPPO / vivo / 小米这些手机会把「后台自己弹出来」拦掉，结果就是关掉以后再也不开。
+    //      现在趁谷雨还在最前面，先让系统「重新打开谷雨」（这时候是允许的），再结束自己；系统会马上带着新版本把它开起来。
+    //      这条路走不通（不是安卓 / 调用出错）才用老办法。
+    function restartApp() {
+        try {
+            if (window.plus && plus.android && /android/i.test(navigator.userAgent)) {
+                var act = plus.android.runtimeMainActivity();
+                var pm = plus.android.invoke(act, 'getPackageManager');
+                var it = plus.android.invoke(pm, 'getLaunchIntentForPackage', plus.android.invoke(act, 'getPackageName'));
+                if (it) {
+                    plus.android.invoke(it, 'addFlags', 0x10000000 | 0x00008000);   // NEW_TASK | CLEAR_TASK：整个重来，不留旧页面
+                    plus.android.invoke(act, 'startActivity', it);
+                    setTimeout(function () { try { plus.android.importClass('java.lang.System').exit(0); } catch (e) { try { plus.runtime.restart(); } catch (e2) {} } }, 250);
+                    return;
+                }
+            }
+        } catch (e) {}
+        try { plus.runtime.restart(); } catch (e) {}
+    }
+    window.__gyUpdRestart = restartApp;
+
     var pendInst = null;   // 你点过「现在更新」、包也下好了，但当时人不在：回来就装
     function runApp(L) {
         busy(true);
@@ -169,10 +211,12 @@
             if (!document.getElementById('gyUpd')) ask(L);
             busy(true); prog(1, '正在安装…');
             plus.runtime.install(file, { force: true }, function () {
-                S.from = VER; S.pre = null; wr(S);
-                prog(1, '装好了，马上重启…');
-                setTimeout(function () { plus.runtime.restart(); }, 800);
+                S.from = VER; S.lastWay = (S.pre && S.pre.patch) ? 'diff' : 'full'; S.pre = null; wr(S);
+                prog(1, '装好了，马上重启…（要是关掉后没自己打开，点一下桌面上的谷雨就是新版）');
+                setTimeout(restartApp, 900);
             }, function (e) {
+                var wasPatch = !!(S.pre && S.pre.patch);
+                if (wasPatch) { S.noDiff = L.ver; S.diffErr = String((e && e.message) || e || ''); S.pre = null; wr(S); prog(0, '小包没装上，改下完整的包…'); return fresh(); }   // 差量包这台手机不认：这一版改下整包
                 if (retry) { S.pre = null; wr(S); return fresh(); }   // 提前下的包坏了 / 被清了：现下一份
                 fail('安装失败：' + ((e && e.message) || ''));
             });
@@ -229,6 +273,7 @@
     /* ---------- 开关、今天、小组件 ---------- */
     try {
         if (X && X.feat) {
+            X.feat('gyUpdDiff', { n: '🧪 更新只下改过的文件（试验，安卓 App）', def: false, desc: '打开后，App 内更新只下载这一版改过的那几个文件（一般几百 KB），比下整包快很多。还在试验：小包装不上会自动改下整包。默认关' });
             X.feat('gyUpdBar', { n: '📊 下载更新时通知栏显示进度条（安卓 App）', desc: '下载更新包的时候，通知栏里有一条带进度条的通知，切到别的软件也看得到下到哪了；下好了提醒你回来装。关掉就只在谷雨里的更新窗口显示进度' });
             X.feat('gyUpdPre', { n: '⬇️ 有新版本先悄悄下好（安卓 App，只在 Wi-Fi 下）', desc: '自动查到新版本时，连着 Wi-Fi 就先在后台把更新包下好再问你，点「现在更新」不用等下载。不连 Wi-Fi 不会提前下，不走流量。关掉就是点了才开始下' });
             X.feat('gyHotUpd', { n: '⬆️ 自动检查更新', desc: '打开谷雨时、切回谷雨时、开着每半小时自己查一次，有新版本会问你要不要更新；App 和电脑版点「现在更新」就在里面更新完重启，不用重新装安装包' });
@@ -264,6 +309,14 @@
         setTimeout(function () {
             var shown = false;
             if (on('gyUpdNote')) { if (S.seen == null) { S.seen = VER - 1; } if ((+S.seen || 0) < VER) shown = showNotes(false); } else { S.seen = VER; wr(S); }
+            // 299：刚更新完，说一声这次是怎么装上的（试验差量更新时好知道成没成）
+            try {
+                if (S.lastWay && (+S.from || 0) < VER) {
+                    if (S.lastWay === 'diff') toast('更新好了：这次只下了改过的文件', '小包装上了，现在是 v' + VER);
+                    else if (S.diffErr) toast('更新好了：小包没装上，下的是完整的包', '手机说的是：' + S.diffErr + '（把这句告诉 Claude）');
+                }
+                if (S.lastWay) { S.lastWay = ''; if (S.diffErr) { S.diffErrLast = S.diffErr; S.diffErr = ''; } wr(S); }
+            } catch (e) {}
             setTimeout(function () { check(false); }, shown ? 1500 : 0);
         }, 4000);
     };
