@@ -191,9 +191,21 @@
             const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('pull') : { err: '真手机没加载上' };
             if (r.err) throw new Error(r.err); return '把她拉回谷雨了';
         }],
-        lock_apps: ['临时锁住她常用的那几个娱乐软件一会儿（她答应让你管的时候）。要装谷雨守护插件 + 她把「锁你的软件」设成了「TA 直接做」', O({ minutes: { type: 'integer', description: '锁多少分钟，默认 30' } }), async a => {
-            const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('lock', '', { min: Math.max(1, Math.min(180, +a.minutes || 30)) }) : { err: '真手机没加载上' };
-            if (r.err) throw new Error(r.err); return '锁上了';
+        lock_apps: ['把她手机上的软件锁住一会儿（她说「帮我把抖音锁了」「别让我刷小红书了」「管管我」，或者你觉得她该歇歇了）。apps 填软件名字，可以好几个（抖音、小红书、微博、王者荣耀……）；不填 apps 就锁她今天用得最多的那几个娱乐软件。她开口让你锁的时候必须调用这个工具——只在嘴上说「锁了」而不调用，等于没锁', O({ apps: { type: 'array', items: { type: 'string' }, description: '要锁的软件名字，照她说的填，比如 ["抖音"]' }, minutes: { type: 'integer', description: '锁多少分钟，默认 30' }, all: { type: 'boolean', description: '除了谷雨全都锁（她明确要「全锁」才用）' }, reason: { type: 'string', description: '为什么锁（会写在拦截页上给她看，像你会说的话）' } }), async (a, env) => {
+            a = a || {}; env = env || {};
+            const M = window.gysPh && gysPh.mcp;
+            if (!M) throw new Error('真手机没加载上');
+            if (!M.lock) { const r0 = await M.act('lock', '', { min: Math.max(1, Math.min(180, +a.minutes || 30)) }); if (r0.err) throw new Error(r0.err); return '锁上了'; }
+            const apps = [].concat(a.apps || a.app || a.name || []).filter(Boolean);
+            const r = await M.lock({ apps, minutes: a.minutes, all: !!a.all, why: a.reason || '', cid: env.cid, asked: !!env.asked });
+            if (r.err) throw new Error(r.err);
+            if (r.asked) return r.note;
+            return `锁上了：${r.names}，到 ${r.until}。` + (r.miss && r.miss.length ? `（没找到：${r.miss.join('、')}）` : '') + (r.weak ? `\n要老实告诉她的一点：${r.weak}` : '');
+        }],
+        unlock_apps: ['把你之前锁住的软件解开（她好好求你了 / 时间差不多了 / 她有正事要用）。apps 不填就全部解开', O({ apps: { type: 'array', items: { type: 'string' }, description: '只解开这几个；不填 = 全解开' } }), async a => {
+            const M = window.gysPh && gysPh.mcp; if (!M || !M.unlock) throw new Error('真手机没加载上');
+            const r = M.unlock({ apps: [].concat((a && (a.apps || a.app || a.name)) || []).filter(Boolean) });
+            if (r.err) throw new Error(r.err); return '解开了：' + r.names;
         }]
     };
     async function builtinConn() {
@@ -203,7 +215,7 @@
                 if (method === 'tools/list') return { tools: Object.keys(BUILTIN).map(k => ({ name: k, description: BUILTIN[k][0], inputSchema: BUILTIN[k][1] })) };
                 if (method === 'tools/call') {
                     const t = BUILTIN[p && p.name]; if (!t) throw new Error('没有这个工具：' + (p && p.name));
-                    try { return { content: [{ type: 'text', text: String(await t[2]((p && p.arguments) || {})) }] }; }
+                    try { return { content: [{ type: 'text', text: String(await t[2]((p && p.arguments) || {}, (p && p._gy) || {})) }] }; }
                     catch (e) { return { content: [{ type: 'text', text: String(e && e.message || e) }], isError: true }; }
                 }
                 return {};
@@ -306,6 +318,37 @@
         const calls = (m.tool_calls || []).map(tc => { let a = {}; try { a = JSON.parse(tc.function.arguments || '{}'); } catch (e) {} return { id: tc.id, fn: tc.function.name, args: a }; });
         return { calls, append: calls.length ? [{ role: 'assistant', content: m.content || '', tool_calls: m.tool_calls }] : [], result: outs => outs.map(o => ({ role: 'tool', tool_call_id: o.id, content: o.out })) };
     }
+    // 304：这句话像不像「要 TA 动手做点什么 / 查点什么」（只用来决定要不要多问一次，不直接执行）
+    const wantsTool = t => /锁|解锁|解开|闹钟|手电|音量|亮度|震一下|震动|打开|提醒我|叫我起|电量|屏幕时间|玩了多久|用了多久|几点|剪贴板|通知|拉我回|搜一下|查一下|查查|帮我看看|记一下|记住/.test(String(t || ''));
+    async function plainChat(api, msgs) {
+        const anth = typeof isAnthropicApiUrl === 'function' && isAnthropicApiUrl(api.url);
+        const __gyCall = typeof gyDetectCall === 'function' ? gyDetectCall() : null, t0 = Date.now();
+        let body, d, text = '';
+        if (anth) {
+            body = { model: api.model, max_tokens: 600, system: msgs.filter(m => m.role === 'system').map(m => m.content).join('\n'), messages: msgs.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content })) };
+            const res = await doFetch(`${api.url}/v1/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': api.key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body) });
+            d = await res.json(); if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
+            text = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+        } else {
+            body = { model: api.model, messages: msgs };
+            const res = await doFetch(`${api.url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.key}` }, body: JSON.stringify(body) });
+            d = await res.json().catch(() => ({ error: { message: 'HTTP ' + res.status } })); if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
+            text = String(((d.choices && d.choices[0] && d.choices[0].message) || {}).content || '');
+        }
+        try { if (typeof recordTokenUsage === 'function') recordTokenUsage(d, { inChars: JSON.stringify(body).length, outChars: text.length }, __gyCall, { api, t0, kind: 'chat' }); } catch (e) {}
+        return text;
+    }
+    // 不靠「工具调用」这项本事：把工具清单写成字给模型看，让它回一段 JSON
+    async function callApiText(api, msgs, tools) {
+        const list = tools.map(x => `- ${x.fn}：${((x.t.title ? x.t.title + '：' : '') + x.t.description).slice(0, 260)}　参数：${JSON.stringify((x.t.inputSchema && x.t.inputSchema.properties) || {}).slice(0, 360)}`).join('\n');
+        const ask = `【你手边的工具】\n${list}\n\n看她最后说的话：要是她让你做的事、或者你回她之前需要知道的东西，上面有工具能办到，就只输出一段 JSON：{"calls":[{"tool":"工具名","args":{参数}}]}（可以好几个）。真的一个都用不上，只输出：无。别的什么都不要写。`;
+        const text = await plainChat(api, msgs.concat([{ role: 'user', content: ask }]));
+        const m = String(text || '').match(/\{[\s\S]*\}/); if (!m) return [];
+        let j = null; try { j = JSON.parse(m[0]); } catch (e) { try { j = JSON.parse(m[0].replace(/，/g, ',').replace(/[“”]/g, '"')); } catch (e2) {} }
+        const arr = j && Array.isArray(j.calls) ? j.calls : (j && j.tool ? [j] : []);
+        return arr.filter(x => x && x.tool).map((x, i) => ({ id: 'tx' + Date.now() + i, fn: String(x.tool), args: (x.args && typeof x.args === 'object') ? x.args : {} })).filter(x => tools.some(t => t.fn === x.fn || t.t.name === x.fn));
+    }
+    window.__gyMcpText = callApiText;
     async function gyMcpDecide(sessionId, triggerText) {
         const c = charOf(sessionId);
         if (!on('mcpOn') || !c || !charAllowed(c)) return null;
@@ -313,33 +356,52 @@
         const api = typeof getApiConfig === 'function' ? getApiConfig(C.api === 'sub') : null;
         if (!api || !api.key) return null;
         const me = (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || '她';
-        const msgs = [{ role: 'system', content: `你是${c.name}。${String(c.persona || '').slice(0, 800)}\n现在${me}给你发了消息。你手边有一些工具。只有回她真的用得上工具的时候才调用（查资料、看日程、读写记忆……），用不上就直接回一个字：无。工具结果会交给你，之后你再正常回她——这一步不用写回复。现在是 ${new Date().toLocaleString()}。` }];
+        const msgs = [{ role: 'system', content: `你是${c.name}。${String(c.persona || '').slice(0, 800)}\n现在${me}给你发了消息。你手边有一些工具，能真的去查、真的去做。\n· 她让你做一件工具做得到的事（锁软件、设闹钟、开手电筒、调音量、打开某个软件、提醒她、查东西……），或者你自己想这么做 → 现在就调用对应的工具。只在嘴上答应「好，锁了」却不调用工具 = 什么都没发生，她一试就知道你在哄她。\n· 回她之前需要知道点什么（现在几点、电量、她在用什么、屏幕时间、网上的资料、记下的东西……）→ 调用工具去看，别猜。\n· 一次可以调好几个。参数照她说的填（她说的软件名、几分钟，原样填）。\n· 这句话真的用不上任何工具（纯聊天）→ 只回一个字：无。\n这一步不用写回复：工具结果会交给你，之后你再正常回她。现在是 ${new Date().toLocaleString()}。` }];
         lastMsgs(String(sessionId), 12).forEach(m => { if (m.sender === 'system') return; msgs.push({ role: m.sender === 'me' ? 'user' : 'assistant', content: String(m.text).slice(0, 800) }); });
         if (triggerText && !(msgs.length > 1 && msgs[msgs.length - 1].content === triggerText)) msgs.push({ role: 'user', content: String(triggerText).slice(0, 1500) });
         if (msgs[msgs.length - 1].role !== 'user') msgs.push({ role: 'user', content: '（她刚发了消息，看上面）' });
+        const userText = String(triggerText || (msgs.filter(m => m.role === 'user').slice(-1)[0] || {}).content || '');
+        const env = { cid: String(c.id), text: userText.slice(0, 500), asked: /锁|禁用|封了|封掉|别让我|不让我|不许我|管住|管管我|没收/.test(userText) };
+        const base = msgs.slice();
         const items = [];
+        const runCall = async call => {
+            const x = tools.find(t => t.fn === call.fn) || tools.find(t => t.t.name === call.fn);
+            let out; const t0 = Date.now();
+            if (!x) out = '［没有这个工具］';
+            else {
+                try { const conn = await connect(x.s); const p = { name: x.t.name, arguments: call.args || {} }; if (x.s.kind === 'builtin') p._gy = env; out = toolText(await conn.rpc('tools/call', p)); }
+                catch (e) { out = '［调用失败：' + String(e && e.message || e).slice(0, 160) + '］'; try { delete CONN[x.s.id]; } catch (e2) {} }
+            }
+            out = String(out).slice(0, 4000);
+            const argsText = JSON.stringify(call.args || {}).slice(0, 300);
+            const item = { id: call.id, tool: x ? (x.t.title || x.t.name) : call.fn, name: x ? x.t.name : call.fn, bad: /^［(调用失败|工具报错|没有这个工具)/.test(out), server: x ? (x.s.name || x.s.url || x.s.command) : '', argsText, out, ms: Date.now() - t0 };
+            items.push(item);
+            L.unshift({ at: Date.now(), cid: String(c.id), who: c.name, tool: item.tool, server: item.server, args: argsText, out: out.slice(0, 800), ms: item.ms, err: item.bad });
+            return out;
+        };
+        let firstErr = null;
         for (let round = 0; round < Math.max(1, Math.min(6, Number(C.rounds) || 3)); round++) {
-            const r = await callApi(api, msgs, tools);
+            let r = null;
+            try { r = await callApi(api, msgs, tools); } catch (e) { if (round === 0) firstErr = e; else console.warn('[MCP] 第 ' + (round + 1) + ' 轮没问成：', e); break; }
             if (!r.calls.length) break;
             const outs = [];
-            for (const call of r.calls.slice(0, 5)) {
-                const x = tools.find(t => t.fn === call.fn);
-                let out;
-                const t0 = Date.now();
-                if (!x) out = '［没有这个工具］';
-                else {
-                    try { const conn = await connect(x.s); out = toolText(await conn.rpc('tools/call', { name: x.t.name, arguments: call.args || {} })); }
-                    catch (e) { out = '［调用失败：' + String(e && e.message || e).slice(0, 160) + '］'; try { delete CONN[x.s.id]; } catch (e2) {} }
-                }
-                out = String(out).slice(0, 4000);
-                const argsText = JSON.stringify(call.args || {}).slice(0, 300);
-                const item = { id: call.id, tool: x ? (x.t.title || x.t.name) : call.fn, server: x ? (x.s.name || x.s.url || x.s.command) : '', argsText, out, ms: Date.now() - t0 };
-                items.push(item); outs.push({ id: call.id, out });
-                L.unshift({ at: Date.now(), cid: String(c.id), who: c.name, tool: item.tool, server: item.server, args: argsText, out: out.slice(0, 800), ms: item.ms, err: /^［(调用失败|工具报错|没有这个工具)/.test(out) });
-            }
+            for (const call of r.calls.slice(0, 5)) outs.push({ id: call.id, out: await runCall(call) });
             msgs.push(...r.append);
             const res = r.result(outs); if (Array.isArray(res)) msgs.push(...res); else msgs.push(res);
         }
+        // 304 兜底①：这个模型 / 中转不支持「工具调用」（报错了），或者这句话明明像是要用工具却回了「无」→ 换成纯文字的问法再问一次
+        if (!items.length && (firstErr || wantsTool(userText))) {
+            try { const calls = await callApiText(api, base, tools); for (const call of calls.slice(0, 5)) await runCall(call); }
+            catch (e) { console.warn('[MCP] 换文字问法也没问成：', e, firstErr || ''); }
+        }
+        // 兜底②：她明明说了「锁 XX」，上面还是没锁成 → 直接照她说的锁
+        try {
+            if (env.asked && !items.some(i => i.name === 'lock_apps' && !i.bad)) {
+                const lk = tools.find(t => t.s.kind === 'builtin' && t.t.name === 'lock_apps');
+                const g = lk && window.gysPh && gysPh.mcp && gysPh.mcp.guess ? gysPh.mcp.guess(userText) : null;
+                if (g && g.lock && g.apps.length) await runCall({ id: 'fb' + Date.now(), fn: lk.fn, args: { apps: g.apps, minutes: g.minutes || 30 } });
+            }
+        } catch (e) { console.warn('[MCP] 兜底锁软件出错：', e); }
         if (!items.length) return null;
         saveLog();
         CTX[String(c.id)] = { at: Date.now(), items };

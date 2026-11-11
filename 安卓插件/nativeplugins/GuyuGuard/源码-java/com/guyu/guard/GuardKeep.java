@@ -8,7 +8,9 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 
 /**
@@ -22,6 +24,23 @@ public class GuardKeep extends Service {
     static volatile boolean on = false;
     static volatile String title = "谷雨在后台陪着你", text = "TA 有消息会叫你";
     PowerManager.WakeLock wl;
+    static volatile GuardKeep inst;
+    Handler h;
+    boolean armed = false;
+    final Runnable tick = new Runnable() { public void run() {
+        armed = false;
+        if (!on || Guard.beatMs <= 0) return;
+        try { Guard.beat(); } catch (Throwable e) {}
+        arm();
+    } };
+    /** 按 Guard.beatMs 安排下一次心跳（改了间隔 / 关掉也走这里） */
+    void arm() {
+        try {
+            if (h == null) h = new Handler(Looper.getMainLooper());
+            h.removeCallbacks(tick); armed = false;
+            if (on && Guard.beatMs > 0) { h.postDelayed(tick, Guard.beatMs); armed = true; }
+        } catch (Throwable e) { Guard.beatErr = String.valueOf(e); }
+    }
 
     @Override public IBinder onBind(Intent i) { return null; }
 
@@ -40,6 +59,7 @@ public class GuardKeep extends Service {
                 wl.setReferenceCounted(false);
             }
             if (!wl.isHeld()) wl.acquire();
+            inst = this; Guard.hold(this); arm();
         } catch (Throwable e) { Guard.keepErr = String.valueOf(e); }
         return START_STICKY;
     }
@@ -69,7 +89,8 @@ public class GuardKeep extends Service {
     }
 
     @Override public void onDestroy() {
-        on = false;
+        on = false; inst = null;
+        try { if (h != null) h.removeCallbacks(tick); } catch (Throwable e) {}
         try { if (wl != null && wl.isHeld()) wl.release(); } catch (Throwable e) {}
         wl = null;
         try { stopForeground(true); } catch (Throwable e) {}

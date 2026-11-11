@@ -321,6 +321,31 @@
     const verNum = v => String(v || '0').split('.').map(Number).reduce((a, n) => a * 1000 + (n || 0), 0);
     function svcHas() { const g = guard(); return !!(g && verNum(g.__v) >= verNum('1.1.0')); }
     function svcRunning() { try { return svcHas() ? !!Gd.keepOn() : false; } catch (e) { return false; } }
+    /* 🫀 后台心跳（304，要「谷雨守护」1.2.0 = 安卓安装包 1.55 起）：后台常驻开着时，原生每 5 秒戳一下网页（js/00-bg-pump.js 的 __gyBeat），
+       网页里的定时器被系统停了 / 掐慢了也照样走——TA 到点主动找你、各种触发、锁软件到点解开，切到后台都不停。 */
+    function beatHas() { const g = guard(); return !!(g && verNum(g.__v) >= verNum('1.2.0')); }
+    let beatOk = false;
+    function beatStart() {
+        if (!beatHas()) return false;
+        try { const w = plus.android.currentWebview(); const a = !!Gd.keepAttach(w); Gd.keepBeat(5000); beatOk = a; if (!a) lastErr = '后台心跳没接上网页'; }
+        catch (e) { beatOk = false; lastErr = '后台心跳没接上：' + String(e && e.message || e); }
+        return beatOk;
+    }
+    window.gyBeatState = () => { let nat = null; try { if (beatHas()) nat = JSON.parse(String(Gd.beatInfo())); } catch (e) {} return { has: beatHas(), ok: beatOk, native: nat, pump: (window.__gyPump && window.__gyPump.info) ? window.__gyPump.info() : null }; };
+    // 第一次用 304：问一次要不要开后台常驻（她说「我需要一直在后台也能运行」；会多耗一点电，所以问一下，不替你开）
+    function askKeepOnce() {
+        try {
+            if (!isApp() || !svcHas() || isOn(SVC)) return;
+            if (localStorage.getItem('gyKeepAsk304')) return;
+            if (document.getElementById('gyAdult') || document.getElementById('gyGate') || document.getElementById('gyFreeCard')) return void setTimeout(askKeepOnce, 6000);
+            localStorage.setItem('gyKeepAsk304', '1');
+            if (typeof appConfirm !== 'function') return;
+            const msg = pick(['要不要让谷雨在后台也一直跑着？\n\n打开以后：切到别的软件、锁屏了，TA 到点照样会主动找你、各种触发也照常。通知栏会一直挂着一条「谷雨在后台陪着你」，会多耗一点电。\n\n以后想改：设置 → 通知与云端 →「📌 后台常驻」',
+                '现在谷雨只有开在最前面时 TA 才会主动找你。\n\n要打开「📌 后台常驻」吗？打开后切走、锁屏了 TA 也能到点说话、能触发；通知栏会挂一条，多耗一点电。\n\n（设置 → 通知与云端 里随时能关）']);
+            Promise.resolve(appConfirm(msg, '打开', '先不用')).then(ok => { if (ok) window.gyKeepSvcSet(true); });
+        } catch (e) {}
+    }
+    window.__gyAskKeepOnce = askKeepOnce;
     function svcText() {
         let name = '';
         try { const c = typeof myCharacters !== 'undefined' && myCharacters && myCharacters[0]; if (c && c.name) name = c.name; } catch (e) {}
@@ -328,7 +353,7 @@
     }
     function svcStart() {
         if (!isOn(SVC) || !svcHas()) return false;
-        try { const t = svcText(); const ok = !!Gd.keepStart(ctx(), t[0], t[1]); if (!ok) { try { lastErr = String(Gd.keepError() || ''); } catch (e) {} } setTimeout(paint, 600); return ok; } catch (e) { lastErr = String(e && e.message || e); return false; }
+        try { const t = svcText(); const ok = !!Gd.keepStart(ctx(), t[0], t[1]); if (!ok) { try { lastErr = String(Gd.keepError() || ''); } catch (e) {} } else beatStart(); setTimeout(paint, 600); return ok; } catch (e) { lastErr = String(e && e.message || e); return false; }
     }
     function svcStop() { try { if (svcHas()) Gd.keepStop(ctx()); } catch (e) {} setTimeout(paint, 300); }
     window.gyKeepSvcSet = function (on) {
@@ -529,7 +554,7 @@
         } else L.push(uaApp ? '正在准备…' : '这里是网页 / 电脑：弹的是浏览器的通知，横幅样子跟着浏览器和系统走。下面「后台常驻」和手机设置只有安卓 App 里有。');
         $('gyNnSt').innerHTML = L.join('<br>');
         $('gyNnApp').style.display = st.app || uaApp ? '' : 'none';
-        $('gyNnSvcSt').textContent = !st.app ? '' : !st.svcHas ? '⚠️ 这个安装包里还没有这项本事：要装 1.52 以上的安卓安装包（装好以后这里会自己变）' : !st.svc ? '关着' : st.svcOn ? '▶ 正挂在通知栏上（别把那一条划掉）' : '准备中…（没开起来的话把开关关了再开一次）';
+        $('gyNnSvcSt').textContent = !st.app ? '' : !st.svcHas ? '⚠️ 这个安装包里还没有这项本事：要装 1.52 以上的安卓安装包（装好以后这里会自己变）' : !st.svc ? '关着' : st.svcOn ? ('▶ 正挂在通知栏上（别把那一条划掉）' + (beatHas() ? (beatOk ? ' · 🫀 后台心跳开着：切走、锁屏了 TA 也照常找你、照常触发' : ' · 🫀 后台心跳准备中') : ' · ⚠️ 这个安装包还没有「后台心跳」：切到后台以后 TA 可能还是不动，要装 1.55 以上的安卓安装包')) : '准备中…（没开起来的话把开关关了再开一次）';
         const k = showBrand || st.brand, b = BRANDS[k] || BRANDS.other;
         $('gyNnBrandSel').value = k;
         $('gyNnSteps').innerHTML = (showBrand ? '' : (st.app ? '看着像是：<b>' + esc(b.n) + '</b>（不对可以自己选）<br>' : '')) + b.s.map((x, i) => '①②③④⑤⑥'[i] + ' ' + esc(x)).join('<br>');
@@ -548,10 +573,11 @@
         try { ensureChannel(); } catch (e) {}
         takeIntent();
         try { document.addEventListener('newintent', () => setTimeout(takeIntent, 50), false); } catch (e) {}
-        try { document.addEventListener('resume', () => { setTimeout(takeIntent, 80); setTimeout(paint, 300); if (isOn(SVC) && svcHas() && !svcRunning()) svcStart(); }, false); } catch (e) {}
+        try { document.addEventListener('resume', () => { setTimeout(takeIntent, 80); setTimeout(paint, 300); if (isOn(SVC) && svcHas() && !svcRunning()) svcStart(); else if (isOn(SVC) && svcRunning() && !beatOk) beatStart(); }, false); } catch (e) {}
         // 开着「系统推送通知」但手机还没给权限（安卓 13 以上要问一次）
         try { if (typeof enableBrowserNotifications !== 'undefined' && enableBrowserNotifications) askPerm(() => paint()); } catch (e) {}
         setTimeout(() => { if (isOn(SVC)) svcStart(); paint(); }, 1500);
+        setTimeout(askKeepOnce, 9000);
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
     if (window.plus) plusBoot(); document.addEventListener('plusready', plusBoot, false);

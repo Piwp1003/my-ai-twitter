@@ -1,5 +1,7 @@
 /* 🧊 3D小屋：「我们的小屋」的 3D 版——床、餐桌、沙发、书架、窗户，屋里的小物件照样摆着。你操控自己的小人走来走去（点地板走过去、点家具就去用它），走到 TA 旁边能打招呼、抱抱、戳戳、摸头、说话、叫 TA 一起吃饭看书睡觉跳舞。TA 开了自主行动就自己决定想干嘛；没开就按作息过日子：饭点吃饭、晚上睡觉、平时看书发呆玩手机 */
 if (window.__gyx3dRoom) return; window.__gyx3dRoom = 1;
+// 304：小屋里 TA 开口时，顺便交给「🗣️ 小人的声音」（开了才出声）
+const roomSay = t => { ROOM.say('ta', t); try { if (window.gyx3dVoiceSay) window.gyx3dVoiceSay(typeof CID !== 'undefined' ? CID : null, t, 'room'); } catch (e) {} };
 X.feat('gyx3dRoom', { n: '🧊 3D 小屋', desc: '小屋的 3D 版：两个小人在屋里走动、互动；TA 自己过日子' });
 const S = X.store('room3d');
 let R3 = { log: [], st: {}, cfg: { chat: false, night: 'auto', talkChat: true } };
@@ -34,7 +36,7 @@ function doing(s) { return s ? '，' + (STATE_CN[s.state] || s.state || '') : ''
 async function decide(c) {
     const s = nowSt(c.id) || {}, me = ROOM && OPEN ? (() => { const a = ROOM.avs.me; if (!a) return '不在小屋里'; const ss = Object.keys(window.GY3D.SPOTS).find(k => { const p = window.GY3D.SPOTS[k].pos; return Math.hypot(p[0] - a.av.holder.position.x, p[1] - a.av.holder.position.z) < 0.5; }); return '也在小屋里' + (ss ? '，在' + SPOT_CN[ss] : '') + (a.av.state && a.av.state !== 'idle' ? '，' + (STATE_CN[a.av.state] || '') : ''); })() : '现在不在小屋里（在外面用手机）';
     if (X.bailu()) { const r = routine(c.id); return Object.assign(r, { say: X.cards(['小屋', '聊天'], c, 1)[0] || '', by: 'auto' }); }
-    const d = new Date(), j = X.json(await X.ask(X.pl('3d.room.self', '', { who: X.who(c), recent: X.recent(c, 10) || '（还没聊）', time: `${d.getHours()} 点 ${d.getMinutes()} 分`, where: where(s), doing: doing(s), her: me, spots: Object.keys(window.GY3D.SPOTS).filter(k => !/2$/.test(k)).map(k => k + '(' + window.GY3D.SPOTS[k].n + ')').join(' / '), states: Object.keys(STATE_CN).filter(k => k !== 'walk').map(k => k + '(' + STATE_CN[k] + ')').join(' / ') })));
+    const d = new Date(), j = X.json(await X.ask(X.pl('3d.room.self', '', { who: X.who(c) + (window.gyx3dStyleHint ? window.gyx3dStyleHint(c) : ''), recent: X.recent(c, 10) || '（还没聊）', time: `${d.getHours()} 点 ${d.getMinutes()} 分`, where: where(s), doing: doing(s), her: me, spots: Object.keys(window.GY3D.SPOTS).filter(k => !/2$/.test(k)).map(k => k + '(' + window.GY3D.SPOTS[k].n + ')').join(' / '), states: Object.keys(STATE_CN).filter(k => k !== 'walk').map(k => k + '(' + STATE_CN[k] + ')').join(' / ') })));
     if (!j) return Object.assign(routine(c.id), { by: 'routine' });
     let spot = String(j.go || '').trim(), state = String(j.do || '').trim();
     if (!STATE_CN[state]) state = Object.keys(STATE_CN).find(k => STATE_CN[k] === state) || 'idle';
@@ -49,7 +51,7 @@ async function refreshTA(force) {
     else { n = Object.assign(routine(c.id), { by: 'routine' }); if (!force && old && old.by === 'routine' && old.spot === n.spot && old.state === n.state) return; }
     if (!n) return;
     setSt(c.id, n);
-    if (OPEN && ROOM) { applyTA(n, true); if (n.say) ROOM.say('ta', n.say); }
+    if (OPEN && ROOM) { applyTA(n, true); if (n.say) roomSay(n.say); }
     if (n.by === 'auto' && n.say || n.spot !== (old && old.spot)) log(c.id, `${X.name(c)} 去了${n.spot === 'her' ? '你身边' : SPOT_CN[n.spot] || '屋里'}${STATE_CN[n.state] ? '，' + STATE_CN[n.state] : ''}${n.why ? '（' + n.why + '）' : ''}${n.say ? '：「' + n.say + '」' : ''}`);
 }
 function applyTA(n, walk) {
@@ -81,13 +83,13 @@ window.gyx3dRoomDo = async function (kind) {
         const ask = TOGETHER[kind] ? '她在叫你一起，你去不去？' : '';
         let j = null;
         if (X.bailu()) j = { say: X.cards(['小屋', '聊天'], c, 1)[0] || X.pick(['嗯？', '好呀', '你干嘛啦']), act: X.pick(['shy', 'nod', 'heart', 'wave']), go: true };
-        else j = X.json(await X.ask(X.pl('3d.room.react', '', { who: X.who(c), recent: X.recent(c, 8) || '（还没聊）', where: where(s), doing: doing(s) + (sleeping ? '（睡着了，被她弄醒）' : ''), event: '她' + EV[kind][0] + (text ? `：「${text}」` : '。'), acts: ACT_CN(), ask, askKey: ask ? ',"go":true' : '' })));
+        else j = X.json(await X.ask(X.pl('3d.room.react', '', { who: X.who(c) + (window.gyx3dStyleHint ? window.gyx3dStyleHint(c) : ''), recent: X.recent(c, 8) || '（还没聊）', where: where(s), doing: doing(s) + (sleeping ? '（睡着了，被她弄醒）' : ''), event: '她' + EV[kind][0] + (text ? `：「${text}」` : '。'), acts: ACT_CN(), ask, askKey: ask ? ',"go":true' : '' })));
         if (!j) j = { say: X.pick(['嗯？', '在呢', '干嘛呀']), act: 'tilt' };
         if (sleeping && kind !== 'sleep') { A.ta.av.setState('idle'); A.ta.av.holder.position.y = 0; }
         ROOM.face('ta', 'me');
         const act = window.GY3D.ACT_CN[j.act] ? j.act : (Object.keys(window.GY3D.ACT_CN).find(k => window.GY3D.ACT_CN[k] === j.act) || 'nod');
         A.ta.av.play(act); if (j.face && window.GY3D.FACES[j.face]) A.ta.av.lockFace(j.face, 5);
-        const say = X.plain(String(j.say || '')).slice(0, 60); if (say) ROOM.say('ta', say);
+        const say = X.plain(String(j.say || '')).slice(0, 60); if (say) roomSay(say);
         log(c.id, `你${LOGT[kind]}${text ? '：「' + text + '」' : ''} → ${X.name(c)}${say ? '：「' + say + '」' : window.GY3D.ACT_CN[act]}`);
         if (R3.cfg.chat) { if (text) { (globalChats[String(c.id)] = globalChats[String(c.id)] || []).push({ sender: 'me', text, timestamp: Date.now(), readBy: [], gyx: 1, gyx3dRoom: 1 }); } if (say) X.say(c, say, { gyx3dRoom: 1 }); }
         // 一起做
@@ -153,7 +155,7 @@ window.gyx3dRoomOpen = async function (who) {
     const l = document.getElementById('g3rLoad'); if (l) l.remove();
     let s = nowSt(CID); if (!s || (s.by !== 'auto' && s.by !== 'you') || Date.now() - s.at > 30 * 60000) { s = Object.assign(routine(CID), { by: 'routine' }); setSt(CID, s); }
     applyTA(s.spot === 'her' ? Object.assign({}, s, { spot: 'rug' }) : s, false);
-    ROOM.place('me', 3.3, 2.4, -2.4); ROOM.go('me', { x: 1.6, z: 1.6 }, { fn: () => { if (ROOM && ROOM.avs.ta && ROOM.avs.ta.av.state !== 'sleep') { ROOM.face('ta', 'me'); ROOM.avs.ta.av.play('wave'); ROOM.say('ta', X.v('你回来啦', '回来啦？', '嗨～', '等你好久了')); } } });
+    ROOM.place('me', 3.3, 2.4, -2.4); ROOM.go('me', { x: 1.6, z: 1.6 }, { fn: () => { if (ROOM && ROOM.avs.ta && ROOM.avs.ta.av.state !== 'sleep') { ROOM.face('ta', 'me'); ROOM.avs.ta.av.play('wave'); roomSay(X.v('你回来啦', '回来啦？', '嗨～', '等你好久了')); } } });
     paintLog();
     keyH = e => { if (!ROOM || /INPUT|TEXTAREA|SELECT/.test((e.target || {}).tagName || '')) return; const K = { ArrowUp: [0, -1], w: [0, -1], W: [0, -1], ArrowDown: [0, 1], s: [0, 1], S: [0, 1], ArrowLeft: [-1, 0], a: [-1, 0], A: [-1, 0], ArrowRight: [1, 0], d: [1, 0], D: [1, 0] }[e.key]; if (!K) return; e.preventDefault(); const yaw = ROOM.camYaw, p = ROOM.avs.me.av.holder.position; const x = K[0] * Math.cos(yaw) + K[1] * Math.sin(yaw), z = -K[0] * Math.sin(yaw) + K[1] * Math.cos(yaw); ROOM.go('me', { x: p.x + x * 0.9, z: p.z + z * 0.9 }); };
     addEventListener('keydown', keyH);
@@ -165,7 +167,7 @@ function closeRoom() { OPEN = 0; if (ROOM) { try { ROOM.dispose(); } catch (e) {
 window.gyx3dRoomWall = i => { const W = window.gyxHomeWalls ? window.gyxHomeWalls() : []; const w = W[i]; if (!w || !ROOM) return; ROOM.setColors(w[0], w[1]); window.gyxHomeSetWall && window.gyxHomeSetWall(i); };
 window.gyx3dRoomNight = () => { if (!ROOM) return; ROOM.__n = !(ROOM.__n == null ? (new Date().getHours() >= 19 || new Date().getHours() < 6) : ROOM.__n); ROOM.setNight(ROOM.__n); };
 window.gyx3dRoomCfg = (k, v) => { R3.cfg[k] = v; save(); };
-window.gyx3dRoomGift = async btn => { if (!window.gyxHomeGift3d) return X.toast('要装「🏠 我们的小屋」', ''); btn.disabled = true; const it = await window.gyxHomeGift3d(CID); btn.disabled = false; if (!it || !ROOM) return; ROOM.setItems(window.gyxHomeItems(CID).map(x => ({ id: x.id, ico: x.ico, img: x.img, x: x.x, y: x.y }))); ROOM.avs.ta && ROOM.avs.ta.av.play('cheer'); ROOM.say('ta', String(it.story || it.name).slice(0, 50)); onTap({ type: 'item', id: it.id }); log(CID, `${X.name(X.char(CID))} 给小屋添了「${it.name}」`); };
+window.gyx3dRoomGift = async btn => { if (!window.gyxHomeGift3d) return X.toast('要装「🏠 我们的小屋」', ''); btn.disabled = true; const it = await window.gyxHomeGift3d(CID); btn.disabled = false; if (!it || !ROOM) return; ROOM.setItems(window.gyxHomeItems(CID).map(x => ({ id: x.id, ico: x.ico, img: x.img, x: x.x, y: x.y }))); ROOM.avs.ta && ROOM.avs.ta.av.play('cheer'); roomSay(String(it.story || it.name).slice(0, 50)); onTap({ type: 'item', id: it.id }); log(CID, `${X.name(X.char(CID))} 给小屋添了「${it.name}」`); };
 window.gyx3dRoomThink = async btn => { btn.disabled = true; try { await refreshTA(true); } finally { btn.disabled = false; paintLog(); } };
 
 // 让角色知道小屋里刚发生了什么

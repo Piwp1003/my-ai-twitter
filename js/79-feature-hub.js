@@ -79,7 +79,7 @@
             pg('记忆', '❄️', ['gyxRoll', 'gyxNotes', 'promptLib'])] },
         { id: 'hub_custom', icon: '⚙️', title: '个性化', set: true, desc: '美化、小手机、声音和文件、开关和后台', pages: [
             pg('美化', '🎨', ['gySkinBox', 'gyxBubble', 'gyxStTheme', 'gyxDayNight', 'gyxMoodSkin', 'charSprite', 'gyxSwipe', 'intro']),
-            pg('小手机', '📱', ['gyxPhoneW', 'gyxPet', 'gyx3d', 'gyxCall', 'gyxPing']),
+            pg('小手机', '📱', ['gyxPhoneW', 'gyxPet', 'gyx3d', 'gyx3dVoice', 'gyxCall', 'gyxPing']),
             pg('声音和文件', '🎙️', ['voice', 'folder', 'chatstat']),
             pg('开关和后台', '🎛️', ['@allsw', 'gyxSwitch', 'gyxSaver', 'gyxVary', 'gyxGen'])] }
     ];

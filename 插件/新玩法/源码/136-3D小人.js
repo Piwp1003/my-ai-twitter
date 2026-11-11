@@ -455,7 +455,7 @@ async function onPage(name) {
         const c = X.char(PET.cid); if (!c) return;
         let j = null;
         if (X.bailu()) j = { say: X.cards(['桌宠', '聊天'], c, 1)[0] || '', act: X.pick(['look', 'tilt', 'nod', 'wave']) };
-        else j = X.json(await X.ask(X.pl('3d.page', '', { who: X.who(c), recent: X.recent(c, 6) || '（还没聊）', page: name, acts: window.gyx3dActList(), faces: Object.keys(FACES).map(k => k + '(' + FACES[k] + ')').join(' / ') })));
+        else j = X.json(await X.ask(X.pl('3d.page', '', { who: X.who(c) + (window.gyx3dStyleHint ? window.gyx3dStyleHint(c) : ''), recent: X.recent(c, 6) || '（还没聊）', page: name, acts: window.gyx3dActList(), faces: Object.keys(FACES).map(k => k + '(' + FACES[k] + ')').join(' / ') })));
         if (!j) { window.gyx3dPetAct({ act: X.pick(['look', 'tilt']) }); return; }
         window.gyx3dPetAct({ act: j.act, face: j.face });
         const say = X.plain(String(j.say || '')).slice(0, 40);

@@ -668,6 +668,12 @@
     ]
    ],
    [
+    "🗣️ 小人的声音",
+    [
+     "gyx3dVoice"
+    ]
+   ],
+   [
     "📤 角标和分享",
     [
      "gyxPing"
@@ -1282,6 +1288,7 @@
   "📱 小手机": [
    "gyx3d",
    "gyx3dPage",
+   "gyx3dVoice",
    "gyxApps",
    "gyxCallPlus",
    "gyxMemo",
@@ -1309,6 +1316,9 @@
   "🧊 3D小人": [
    "gyx3d",
    "gyx3dPage"
+  ],
+  "🗣️ 小人的声音": [
+   "gyx3dVoice"
   ],
   "📤 角标和分享": [
    "gyxPing"

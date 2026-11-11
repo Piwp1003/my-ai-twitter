@@ -69,6 +69,7 @@ function bubble(t, ms) {
     clearTimeout(b.__t); b.__t = setTimeout(() => b.classList.remove('on'), ms || Math.max(4000, t.length * 280));
 }
 window.gyxPetSay = bubble;
+window.gyxPetWho = () => who();   // 304：🗣️ 小人的声音要知道桌面上是谁
 window.gyxPetImgOf = c => { try { return imgOf(c) || (c && c.avatarImg) || ''; } catch (e) { return (c && c.avatarImg) || ''; } };   // 合照等插件用：这个角色此刻的立绘
 function goChat() {
     const c = who(); if (!c) return;
@@ -86,7 +87,7 @@ async function poke() {
         let say, mood, act;
         if (X.bailu()) { say = X.cards(['拍一拍', '桌宠', '聊天'], c, 1)[0] || X.pick(['嗯？叫我？', '在呢', '干嘛戳我～', '我在这儿']); }
         else {
-            const j = X.json(await X.ask(`${X.who(c)}\n最近的聊天：\n${X.recent(c, 8) || '（还没聊）'}\n\n你是待在她屏幕角落里的小小的你。她刚刚伸手点了你一下（理了你一下）${pokeN > 1 ? `，一分钟里已经第 ${pokeN} 次了` : ''}。当场回她一句（口语，20 字以内，按你的性格和此刻的心情），再选一个你现在的情绪：${MOODS.join('/')}${is3d() ? `，再选一个动作（${window.gyx3dActList()}）` : ''}。\n只输出 JSON：{"say":"一句话","mood":"情绪"${is3d() ? ',"act":"动作"' : ''}}`));
+            const j = X.json(await X.ask(`${X.who(c)}\n最近的聊天：\n${X.recent(c, 8) || '（还没聊）'}\n\n你是待在她屏幕角落里的小小的你。她刚刚伸手点了你一下（理了你一下）${pokeN > 1 ? `，一分钟里已经第 ${pokeN} 次了` : ''}。当场回她一句（口语，20 字以内，按你的性格和此刻的心情）${window.gyx3dStyleHint ? window.gyx3dStyleHint(c) : ''}，再选一个你现在的情绪：${MOODS.join('/')}${is3d() ? `，再选一个动作（${window.gyx3dActList()}）` : ''}。\n只输出 JSON：{"say":"一句话","mood":"情绪"${is3d() ? ',"act":"动作"' : ''}}`));
             act = j && j.act;
             say = j && j.say ? X.plain(String(j.say)).slice(0, 40) : X.pick(['嗯？叫我？', '在呢', '干嘛戳我～']); mood = j && MOODS.includes(j.mood) ? j.mood : null;
         }

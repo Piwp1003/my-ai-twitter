@@ -14,7 +14,7 @@ import java.util.*;
  * 所有方法都不抛错：出错返回空串 / false / "{}"。
  */
 public class Guard {
-    public static final String VERSION = "1.1.0";
+    public static final String VERSION = "1.2.0";
     static volatile String fg = "", fgCls = "";
     static volatile long fgAt = 0;
     static final Set<String> blocked = Collections.synchronizedSet(new HashSet<String>());
@@ -248,4 +248,66 @@ public class Guard {
     public static boolean keepStop(Context c) { try { c.stopService(new Intent(c, GuardKeep.class)); GuardKeep.on = false; return true; } catch (Throwable e) { keepErr = String.valueOf(e); return false; } }
     public static boolean keepOn() { return GuardKeep.on; }
     public static String keepError() { return keepErr; }
+
+    /* ---------- 后台心跳（1.2.0）：谷雨切到后台以后，网页里的定时器会被系统掐慢甚至停掉——
+       前台服务每隔几秒从原生这边「戳」一下网页（resumeTimers + 执行 window.__gyBeat()），TA 到点了照样能说话、能触发。
+       顺手：无障碍没开的时候，在这里兜底拦被锁的软件（用「使用情况」看前台是谁，是被锁的就把谷雨拉上来）。 ---------- */
+    static volatile java.lang.ref.WeakReference<Object> web = null;
+    static volatile int beatMs = 0;
+    static volatile long beatN = 0, beatAt = 0;
+    static volatile String beatErr = "";
+    static volatile String fgQuickLast = "";
+    /** 网页把自己的 WebView 交过来（plus.android.currentWebview()） */
+    public static boolean keepAttach(Object webview) {
+        try {
+            if (webview == null) return false;
+            web = new java.lang.ref.WeakReference<Object>(webview);
+            // 网页不在屏幕上时，别把渲染进程的优先级降下去（降下去就会被厂商的省电冻住）
+            // （WebView 的方法只能在主线程调，所以丢给主线程去做）
+            final Object w = webview;
+            try { new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() { public void run() {
+                try { if (sdk(26)) w.getClass().getMethod("setRendererPriorityPolicy", int.class, boolean.class).invoke(w, 2, false); } catch (Throwable e) {}
+                try { w.getClass().getMethod("resumeTimers").invoke(w); } catch (Throwable e) {}
+            } }); } catch (Throwable e) {}
+            return true;
+        } catch (Throwable e) { beatErr = String.valueOf(e); return false; }
+    }
+    /** 多久戳一次（毫秒）；0 = 不戳。只在后台常驻开着的时候才真的在跳 */
+    public static boolean keepBeat(int ms) { beatMs = ms <= 0 ? 0 : Math.max(2000, ms); GuardKeep k = GuardKeep.inst; if (k != null) k.arm(); return k != null; }
+    public static String beatInfo() { return "{\"n\":" + beatN + ",\"at\":" + beatAt + ",\"ms\":" + beatMs + ",\"web\":" + (web != null && web.get() != null) + ",\"err\":" + q(beatErr) + "}"; }
+    static void beat() {
+        beatN++; beatAt = System.currentTimeMillis();
+        try {
+            Object w = web == null ? null : web.get();
+            if (w != null) {
+                try { w.getClass().getMethod("resumeTimers").invoke(w); } catch (Throwable e) {}
+                Class<?> vc = Class.forName("android.webkit.ValueCallback");
+                w.getClass().getMethod("evaluateJavascript", String.class, vc).invoke(w, "try{window.__gyBeat&&window.__gyBeat(" + beatN + ")}catch(e){}", null);
+            }
+        } catch (Throwable e) { beatErr = String.valueOf(e); }
+        guardTick();
+    }
+    /** 无障碍没开时的兜底拦截：前台是被锁的软件 → 记一笔 + 把谷雨拉上来 */
+    static void guardTick() {
+        try {
+            if (GuardAccess.inst != null || app == null || blocked.isEmpty() || !hasUsage(app)) return;
+            String f = fgQuick(app);
+            if (f.length() == 0 || f.equals(self) || !blocked.contains(f) || isNever(f) || GuardAccess.SAFE.contains(f)) return;
+            long now = System.currentTimeMillis();
+            if (f.equals(lastBlocked) && now - lastBlockedAt < 1500) return;
+            lastBlocked = f; lastBlockedAt = now;
+            bringFront(app);
+        } catch (Throwable e) {}
+    }
+    /** 轻一点的「现在谁在前台」：只翻最近 20 分钟的记录，翻不到就用上次的 */
+    static String fgQuick(Context c) {
+        try {
+            android.app.usage.UsageStatsManager um = (android.app.usage.UsageStatsManager) c.getSystemService("usagestats");
+            long now = System.currentTimeMillis(); android.app.usage.UsageEvents ev = um.queryEvents(now - 20 * 60 * 1000L, now);
+            android.app.usage.UsageEvents.Event e = new android.app.usage.UsageEvents.Event(); String last = "";
+            while (ev.hasNextEvent()) { ev.getNextEvent(e); if (e.getEventType() == 1) last = e.getPackageName(); }
+            if (last != null && last.length() > 0) fgQuickLast = last;
+        } catch (Throwable e) {}
+        return fgQuickLast;
+    }
 }

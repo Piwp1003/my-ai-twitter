@@ -29,6 +29,7 @@ const CORE_ASSETS = [
     // 角色卡前端页面（开场白菜单/状态栏）里用到 $ 的那些，会由 js/03 往 iframe 里挂这个 <script src>；
     // 不预缓存的话离线时那些卡片会报 "$ is not defined" 整张卡死掉
     './js/vendor/jquery.min.js?v=' + V,
+    './js/00-bg-pump.js?v=' + V,
     './js/01-core-state-infra.js?v=' + V,
     './js/01b-switches-stream-regex-reasoning.js?v=' + V,
     './js/01c-prompt-status-memory-databank.js?v=' + V,
@@ -145,7 +146,8 @@ const CORE_ASSETS = [
     './js/98b-native-notify.js?v=' + V,
     './js/99-mcp.js?v=' + V,
     './js/99b-sub-login.js?v=' + V,
-    './js/99c-sticker-search.js?v=' + V
+    './js/99c-sticker-search.js?v=' + V,
+    './js/99d-scrollbar.js?v=' + V
 ];
 
 self.addEventListener('install', (event) => {

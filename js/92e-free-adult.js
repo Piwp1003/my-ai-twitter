@@ -10,7 +10,7 @@
 (function () {
     'use strict';
     var AK = 'gyAdult', FK = 'gyFree';
-    var OFFICIAL = { site: 'guyu.pw', gh: 'github.com/Piwp1003/my-ai-twitter' };
+    var OFFICIAL = { site: 'guyu.pw', qq: '1106222317' };
     function rd(k) { try { return JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch (e) { return {}; } }
     function wr(k, o) { try { localStorage.setItem(k, JSON.stringify(o)); } catch (e) {} }
     function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
@@ -55,7 +55,7 @@
             + '<p><b>谷雨不收任何钱</b>：没有会员、没有激活码、没有付费解锁，以后也不会有。\n'
             + '要是有人卖你谷雨、卖「谷雨会员」「谷雨激活码」「谷雨破解版」，<b>那是骗子</b>，钱别给。\n\n'
             + '你唯一可能花的钱，是 AI 模型的钱——你自己去模型那家（DeepSeek、硅基流动……）充，钱直接给它们，不经过谷雨。\n\n'
-            + '<b>只认这两个地方：</b>\n· 网页版：' + OFFICIAL.site + '\n· 安卓安装包 / 源码：' + OFFICIAL.gh + '\n别的地方下载的可能被人改过。</p>'
+            + '<b>只认这两个地方：</b>\n· 网页版：' + OFFICIAL.site + '\n· 安卓安装包：QQ 群 ' + OFFICIAL.qq + '（群文件里自取）\n别的地方下载的可能被人改过。</p>'
             + '<button class="y" id="gyFreeOk">知道了</button></div>';
     }
     function showFree() { var b = mount('gyFreeCard', freeHtml()); b.querySelector('#gyFreeOk').onclick = function () { b.remove(); }; b.onclick = function (e) { if (e.target === b) b.remove(); }; }

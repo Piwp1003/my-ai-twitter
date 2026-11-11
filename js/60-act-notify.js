@@ -94,6 +94,13 @@
         if (!isVisible('view-notifications')) switchMainView('notifications');
     }
 
+    function gyJumpWait(j) {
+        const t0 = Date.now();
+        try { if (typeof showToast === 'function') showToast('', ['马上就好', '正在打开…', '稍等一下下'][Math.floor(Math.random() * 3)], '谷雨刚启动，这个功能还在准备', null, null, false); } catch (e) {}
+        const iv = setInterval(() => {
+            if (typeof window[j.fn] === 'function' || window.__gyPlayReady || Date.now() - t0 > 25000) { clearInterval(iv); window.gyJump(Object.assign({}, j, { __waited: 1 })); }
+        }, 150);
+    }
     window.gyJump = function (j) {
         if (!j) return;
         try {
@@ -101,6 +108,9 @@
             if (j.ref && window.__gyJumpRef && typeof window.__gyJumpRef[j.ref] === 'function') { window.__gyJumpRef[j.ref](); return; }
             if (typeof j.fn === 'function') { j.fn(); return; }
             if (j.fn && typeof window[j.fn] === 'function') { window[j.fn].apply(null, j.args || []); return; }
+            // 304：刚打开谷雨（比如点手机通知进来）时，新玩法还在一批批启动，要去的那个功能可能还没到——
+            // 以前这时候就当成「找不到」，把你丢到通知页（「TA 讲的梦点了打不开」就是这么来的）。现在等它启动好再开。
+            if (j.fn && typeof j.fn === 'string' && !j.__waited && window.__gyPlayBuiltin && !window.__gyPlayReady) { gyJumpWait(j); return; }
             if (j.chat != null) { openChat(j.chat); return; }
             if (j.postId != null) { openPost(j.postId, j.anon); return; }
             if (j.feature) { openFeature(j.feature, { charId: j.charId }); return; }

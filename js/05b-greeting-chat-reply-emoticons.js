@@ -1171,6 +1171,51 @@ function gyPaintReplyBtn() {
     }
 }
 
+/* 304：「我只发了一句，TA 回了好几条，意思都一样」
+   默认模式的提示词让模型「回 1~5 条」，有的模型为了凑条数，把同一个意思换着说法拆成好几条。
+   ① 提示词里写明：每一条都得是新内容，同一个意思只留一条，没那么多话就少发，条数不用凑。
+   ② 发出去之前再筛一遍：跟这一轮前面某条太像的（换了几个字、加了语气词那种）不发。
+   全部开关 →「聊天：别重复说同一件事」能关（关了就跟以前完全一样）。 */
+try {
+    if (typeof AUTO_FEATURE_DEFS !== 'undefined' && !AUTO_FEATURE_DEFS.some(f => f.key === 'gyNoRepeat'))
+        AUTO_FEATURE_DEFS.push({ key: 'gyNoRepeat', label: '聊天：别重复说同一件事', group: '主动', desc: '你只说了一句，TA 却回好几条意思一样的——打开后提示词里会要求「每一条都得是新内容，没话就少发」，发出去之前还会把跟前面太像的那几条筛掉。关掉就跟以前一样。', cost: '不多调用 API', where: '私聊 / 群聊' });
+} catch (e) {}
+const gyNoRepeatOn = () => !(typeof isAutoOn === 'function' && !isAutoOn('gyNoRepeat'));
+const GY_NOREPEAT_DEF = '\n【别重复 · 很重要】你发的每一条消息都必须带来新的东西（新的信息、新的反应、新的问题、新的动作）。不要把同一个意思换个说法、换个语气词、换个称呼拆成好几条发——同一个意思只留说得最好的那一条。发之前自己检查一遍：后面的哪一条如果只是在重复前面某条的意思，就删掉它。没那么多话可说就少发几条，只发一条也完全可以：条数不用凑，上面写的条数范围只是上限。上面聊天记录里你已经说过、答过的内容，这次也不要再说一遍。\n';
+function gyNoRepeatNote() {
+    if (!gyNoRepeatOn()) return '';
+    try {
+        if (typeof window.gyPLGroupAdd === 'function' && !gyNoRepeatNote.__reg) { gyNoRepeatNote.__reg = 1; window.gyPLGroupAdd({ g: '💬 聊天：别重复', items: [['chat.norepeat', '一件事只说一次', '私聊 / 群聊每次回复时，接在「多段回复指令」后面', '']] }); }
+        if (typeof gyPL === 'function') return gyPL('chat.norepeat', GY_NOREPEAT_DEF) || GY_NOREPEAT_DEF;
+    } catch (e) {}
+    return GY_NOREPEAT_DEF;
+}
+function gyReplyNorm(t) {
+    return String(t || '').replace(/\[[A-Za-z_]+(?::[^\]]*)?\]/g, '').replace(/[（(【][^）)】]{0,80}[）)】]/g, '').replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase();
+}
+function gyReplySim(a, b) {
+    if (a === b) return 1;
+    if (a.length < 2 || b.length < 2) return 0;
+    const m = new Map();
+    for (let i = 0; i < a.length - 1; i++) { const k = a.substr(i, 2); m.set(k, (m.get(k) || 0) + 1); }
+    let hit = 0;
+    for (let i = 0; i < b.length - 1; i++) { const k = b.substr(i, 2); const n = m.get(k); if (n) { hit++; m.set(k, n - 1); } }
+    return 2 * hit / (a.length - 1 + b.length - 1);
+}
+// 这一条是不是在重复：跟这一轮前面某条有一半以上是一样的字（换说法、加语气词那种），或者跟 TA 3 分钟内说过的几乎一字不差。「嗯」「好」这种短的不管
+function gyReplyIsDup(said, text, sessionId, char) {
+    if (!gyNoRepeatOn()) return false;
+    const n = gyReplyNorm(text);
+    if (n.length < 6) return false;
+    let dup = said.some(p => p && p.length >= 6 && (p === n || gyReplySim(p, n) >= 0.55));
+    if (!dup) {
+        const now = Date.now();
+        try { dup = (globalChats[sessionId] || []).slice(-12).some(m => { if (!(m && m.text && char && String(m.sender) === String(char.id) && now - (m.timestamp || 0) < 3 * 60000)) return false; const p = gyReplyNorm(m.text); return p.length >= 6 && !said.includes(p) && (p === n || gyReplySim(p, n) >= 0.86); }); } catch (e) {}
+    }
+    if (!dup) said.push(n);
+    return dup;
+}
+window.gyReplyIsDup = gyReplyIsDup;
 async function triggerAIBatchReply(sessionId, triggerText, aliveCatchUp) {
     // 🫀 TA 不总是在线：睡着/在忙的时候先把消息挂起来，等 TA 那段过去了再一次性回（见 js/06）
     //    aliveCatchUp 有值＝这一轮就是"补回"，门卫直接放行，不要再挂一次。
@@ -1303,7 +1348,7 @@ async function triggerAIBatchReply(sessionId, triggerText, aliveCatchUp) {
             ? `\n【重要格式要求】：你可以且应该适度使用括号（如()或【】）穿插动作、神态、心理描写，让对话更有画面感——这和"像真人一样自然聊天"并不冲突，不要因为追求聊天感就完全省略掉这些描写。\n`
             : `\n【重要格式要求】：绝对不要有任何动作、神态或心理描写，不要使用括号()或【】，只输出你直接说出的话。\n`;
         
-        let multiReplyBlock = getChatMultiReplyBlock();
+        let multiReplyBlock = getChatMultiReplyBlock() + gyNoRepeatNote();
 
         // 群聊转私聊：角色看完群里的对话，可以自己决定要不要私下来找用户说这件事。
         // 只在**群聊**里给这个选项——1v1本来就是私聊，再"转私聊"没有意义，白占提示词。
@@ -1442,6 +1487,7 @@ ${multiReplyBlock}${(typeof aliveMoodFormatNote === 'function') ? aliveMoodForma
             let privateChain = Promise.resolve(), privateSent = 0;
 
             let gotFirstReply = false;
+            const __gySaid = [];   // 304：这一轮里已经说过的（筛掉几乎一样的）
             while (true) {
                 if (replyQueue.length === 0) {
                     if (queueClosed) break;
@@ -1451,6 +1497,7 @@ ${multiReplyBlock}${(typeof aliveMoodFormatNote === 'function') ? aliveMoodForma
                 let replyObj = replyQueue.shift();
                 if (!gotFirstReply) { gotFirstReply = true; currentlyTypingChars.delete(char.name); updateTypingIndicator(); }
                 let repText = replyObj.text || "";
+                if (gyReplyIsDup(__gySaid, repText, sessionId, char)) continue;   // 304：跟刚说过的几乎一样，这条不发
                 let delaySec = replyObj.delay || 1;
 
                 // 群聊转私聊：角色给某条回复加了 [MOVETOCHAT] 前缀，表示这句不想当着群里说。

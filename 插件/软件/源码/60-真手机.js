@@ -387,13 +387,19 @@ const DO = {
     async lock(c, why, opt) {
         opt = opt || {};
         const u = usageToday(); const fun = (u && u.apps || []).filter(a => !D.safe.includes(a.pkg) && !D.never.includes(a.pkg)).slice(0, 3).map(a => a.pkg);
-        const pkgs = opt.pkgs || (fun.length ? fun : 'all'); const h = new Date().getHours();
-        const until = opt.until || (h >= 23 || h < 5 ? (() => { const d = new Date(); if (h >= 23) d.setDate(d.getDate() + 1); const w = hm2min(D.bed.wake) || 450; d.setHours(Math.floor(w / 60), w % 60, 0, 0); return d.getTime(); })() : Date.now() + (opt.min || 30) * 60e3);
-        D.rules.temp = { pkgs, until, by: String(c.id), why: opt.say || why || '' }; saveD(); pushRules();
+        let pkgs = opt.pkgs || (fun.length ? fun : 'all'); const h = new Date().getHours();
+        let until = opt.until || (!opt.fixed && (h >= 23 || h < 5) ? (() => { const d = new Date(); if (h >= 23) d.setDate(d.getDate() + 1); const w = hm2min(D.bed.wake) || 450; d.setHours(Math.floor(w / 60), w % 60, 0, 0); return d.getTime(); })() : Date.now() + (opt.min || 30) * 60e3);
+        // 304：前面锁着的还没到点，这次又锁别的 → 合在一起，别把前面的顶掉
+        const old = D.rules.temp;
+        if (opt.merge && old && old.until > Date.now() && Array.isArray(old.pkgs) && Array.isArray(pkgs)) { pkgs = [...new Set(old.pkgs.concat(pkgs))]; until = Math.max(until, old.until); }
+        D.rules.temp = { pkgs, until, by: String(c.id), why: opt.say || why || '' };
+        if (Array.isArray(pkgs)) pkgs.forEach(p => { delete D.grant[p]; });   // 之前「再玩 10 分钟」的通融作废
+        saveD(); lastSet = null; pushRules();
+        const kicked = kickNow();   // 她这会儿正开着被锁的软件：马上请出去
         const names = pkgs === 'all' ? '除了谷雨的所有软件' : pkgs.map(labelOf).join('、');
         log('lock', `TA 锁了 ${names}，到 ${G.hm(until)}`, { cid: String(c.id) });
-        X.reach(c, `你刚把她手机上的${names}锁到 ${G.hm(until)}（${why || '你觉得她该歇歇了'}），跟她说一声`);
-        return { until };
+        if (!opt.quiet) X.reach(c, `你刚把她手机上的${names}锁到 ${G.hm(until)}（${why || '你觉得她该歇歇了'}），跟她说一声`);
+        return { until, names, kicked };
     },
     async pull(c, why) { if (!native()) return null; N.front(); log('pull', 'TA 把你拉回了谷雨'); X.reach(c, `你刚把她从别的软件拉回了谷雨（${why || '想她了'}）`); return {}; },
     async screen(c, why) { if (!native()) return null; await X.reach(c, `你要让她的手机锁屏了（${why || '该睡觉了'}），锁之前跟她说一句`); setTimeout(() => { if (N.lock()) log('screen', 'TA 让你的手机锁屏了'); else log('screen', '想锁屏但没锁成（要安卓 9 以上 + 无障碍）'); }, 6000); return {}; },
@@ -424,10 +430,163 @@ const DO = {
 };
 P.do = async (k, ...a) => { const c = who(); if (!c) return X.toast('还没有角色', ''); if (!native()) return X.toast('要在安卓 App 里用', '还要装「谷雨守护」插件'); if (needPlugin(k)) return X.toast('这一项要装「谷雨守护」插件', '免插件版做不了截屏 / 读屏 / 读通知 / 锁屏'); if (perm(k) === 'no') return X.toast('这一项设成了「不许」', '去设置里改'); const r = await DO[k](c, ...a); if (r) X.toast('✓ 好了', ''); G.repaint(APP); return r; };
 
+/* ---------------- 304：按名字找软件 + 软锁兜底 ----------------
+   「我让角色锁抖音就锁不上」查下来有三个原因：
+   ① 以前 TA 只能「锁你今天用得最多的那几个」，没法点名锁某一个；
+   ② 你设的是「先问我」时，聊天里让 TA 锁，TA 直接被挡回来（现在：你自己在聊天里开口要锁的，算你同意了）；
+   ③ 真正拦软件靠的是「无障碍」。无障碍没开 / 被手机清后台时关掉了，规则虽然记下了，却没人去拦。
+      现在：无障碍不在的时候，谷雨自己每 4 秒看一眼前台是谁，是被锁的就把谷雨拉上来盖住（后台常驻 + 安装包 1.55 起原生那边也会拦）。 */
+const ALIAS = (() => {
+    const A = {};
+    const put = (names, pkgs) => names.forEach(n => { A[n] = pkgs; });
+    put(['抖音', 'douyin'], ['com.ss.android.ugc.aweme', 'com.ss.android.ugc.aweme.lite', 'com.ss.android.ugc.live']);
+    put(['快手'], ['com.smile.gifmaker', 'com.kuaishou.nebula']);
+    put(['小红书'], ['com.xingin.xhs']);
+    put(['微博'], ['com.sina.weibo', 'com.weico.international', 'com.sina.weibolite']);
+    put(['b站', 'bilibili', '哔哩哔哩'], ['tv.danmaku.bili', 'com.bilibili.app.in', 'tv.danmaku.bilibilihd']);
+    put(['微信'], ['com.tencent.mm']);
+    put(['qq'], ['com.tencent.mobileqq', 'com.tencent.tim']);
+    put(['王者荣耀', '王者'], ['com.tencent.tmgp.sgame']);
+    put(['和平精英'], ['com.tencent.tmgp.pubgmhd']);
+    put(['原神'], ['com.miHoYo.Yuanshen']);
+    put(['崩坏星穹铁道', '星穹铁道', '星铁'], ['com.miHoYo.hkrpg']);
+    put(['蛋仔派对', '蛋仔'], ['com.netease.party']);
+    put(['光遇'], ['com.netease.sky']);
+    put(['恋与深空'], ['com.papegames.lysk.cn']);
+    put(['淘宝'], ['com.taobao.taobao']);
+    put(['拼多多'], ['com.xunmeng.pinduoduo']);
+    put(['京东'], ['com.jingdong.app.mall']);
+    put(['闲鱼'], ['com.taobao.idlefish']);
+    put(['知乎'], ['com.zhihu.android']);
+    put(['贴吧', '百度贴吧'], ['com.baidu.tieba']);
+    put(['豆瓣'], ['com.douban.frodo']);
+    put(['今日头条', '头条'], ['com.ss.android.article.news', 'com.ss.android.article.lite']);
+    put(['西瓜视频'], ['com.ss.android.article.video']);
+    put(['番茄小说'], ['com.dragon.read']);
+    put(['晋江'], ['com.jjwxc.reader']);
+    put(['起点'], ['com.qidian.QDReader']);
+    put(['爱奇艺'], ['com.qiyi.video']);
+    put(['腾讯视频'], ['com.tencent.qqlive']);
+    put(['优酷'], ['com.youku.phone']);
+    put(['芒果tv'], ['com.hunantv.imgo.activity']);
+    put(['网易云音乐', '网易云'], ['com.netease.cloudmusic']);
+    put(['qq音乐'], ['com.tencent.qqmusic']);
+    put(['美团'], ['com.sankuai.meituan']);
+    put(['饿了么'], ['me.ele']);
+    put(['youtube', '油管'], ['com.google.android.youtube']);
+    put(['tiktok'], ['com.zhiliaoapp.musically', 'com.ss.android.ugc.trill']);
+    put(['instagram', 'ins'], ['com.instagram.android']);
+    put(['推特', 'twitter'], ['com.twitter.android']);
+    put(['telegram', '电报'], ['org.telegram.messenger']);
+    return A;
+})();
+function appList() {
+    if (!D.apps.length && native()) { try { const L = N.apps(); if (L.length) { D.apps = L.sort((a, b) => a.label.localeCompare(b.label, 'zh')); L.forEach(a => { D.labels[a.pkg] = a.label; }); saveD(); } } catch (e) {} }
+    return D.apps || [];
+}
+const normName = s => String(s || '').toLowerCase().replace(/\s+/g, '').replace(/(app|软件|应用)$/i, '');
+function findApps(names) {
+    const L = appList(), hit = [], miss = [];
+    const qs = [].concat(names || []).map(x => String(x || '').split(/[,，、;；\/]+/)).reduce((a, b) => a.concat(b), []).map(normName).filter(Boolean);
+    qs.forEach(q => {
+        const got = new Set();
+        (ALIAS[q] || []).forEach(p => { if (!L.length || L.some(a => a.pkg === p)) got.add(p); });
+        L.forEach(a => { const lb = normName(a.label); if (lb && (lb === q || lb.includes(q) || String(a.pkg).toLowerCase() === q)) got.add(a.pkg); });
+        if (got.size) got.forEach(p => { hit.push(p); if (!D.labels[p]) { const a = L.find(x => x.pkg === p); D.labels[p] = a ? a.label : q; } }); else miss.push(q);
+    });
+    return { pkgs: [...new Set(hit)].filter(p => !D.safe.includes(p) && !D.never.includes(p)), miss };
+}
+// 她这会儿正开着被锁的软件 → 回桌面 + 把谷雨拉上来
+function kickNow() {
+    try { if (!native()) return ''; const f = N.fg(); if (f && blockedNow()[f]) { try { N.home(); } catch (e) {} setTimeout(() => { try { N.front(); } catch (e) {} }, 350); return f; } } catch (e) {}
+    return '';
+}
+let permAt = 0, permC = {};
+const permsC = () => { if (Date.now() - permAt > 30e3) { try { permC = N.perms() || {}; } catch (e) { permC = {}; } permAt = Date.now(); } return permC; };
+const hardLock = () => N.mode() === 'plugin' && !!permsC().access;
+// 现在这把锁有多牢：空串 = 无障碍开着，锁得死；否则是一句给 TA / 给你看的实话
+function lockWeak() {
+    permAt = 0;   // 这里要现看一眼，不用半分钟前的
+    if (hardLock()) return '';
+    const p = permsC();
+    return (N.mode() === 'plugin' ? '「谷雨守护」的无障碍现在没开着（有些手机清后台以后会自己把它关掉）' : '这台手机没装「谷雨守护」插件') + '，所以现在是软锁：靠谷雨在后台盯着，她一打开被锁的软件就把谷雨拉上来盖住'
+        + (p.overlay === false ? '；还得给谷雨开「显示在其他应用上层 / 后台弹出界面」权限才拉得上来' : '') + (p.usage === false ? '；还得开「使用情况访问权限」才看得到她开了什么' : '') + '。想锁得死：真手机 → 设置 里把无障碍「谷雨守护」打开，再开「📌 后台常驻」';
+}
+const softAt = {};
+function softTick() {
+    if (!X.on('gysPhone') || !native()) return;
+    const bl = blockedNow(); if (!Object.keys(bl).length || hardLock()) return;
+    const f = N.fg(); if (!f || !bl[f]) return;
+    if (Date.now() - (softAt[f] || 0) < 4000) return; softAt[f] = Date.now();
+    try { N.home(); } catch (e) {}
+    setTimeout(() => { try { N.front(); } catch (e) {} }, 300);
+    setTimeout(() => { try { D.seenBlock = Date.now(); log('block', `拦下了 ${labelOf(f)}`, { pkg: f }); G.open(APP, 'guard'); P.blockPage(f, bl[f]); } catch (e) {} }, 700);
+}
+setInterval(() => { try { softTick(); } catch (e) {} }, 4000);
+P.__soft = softTick; P.__find = findApps;
+
 /* ---------------- 给「🧰 我的 MCP」用的口子：严格照用户在上面定的档（不许 = 碰不到） ----------------
    读类（看屏幕的字、读通知）要插件才有；动作类（锁软件、拉回、锁屏）只在用户把那项设成「TA 直接做」时才执行，
    设成「先问我」的，MCP 这边不弹窗、不替用户点头，只告诉 TA 需要用户先授权。不走这里的 X.reach，省得和 MCP 的回复重复。 */
 P.mcp = {
+    // 304：点名锁（「锁抖音 30 分钟」）。o = { apps:[名字…], minutes, all, why, cid, asked }
+    // asked = 是她自己在聊天里开口让 TA 锁的 → 就算设的是「先问我」也直接锁（她已经开口了，不用再问一遍）
+    async lock(o) {
+        o = o || {};
+        if (!X.on('gysPhone')) return { err: '「📲 真手机」这个功能还没打开：让她去 全部开关 里把「📲 真手机」打开' };
+        if (!native()) return { err: '只有安卓 App 里能用（网页 / 电脑上管不了手机）' };
+        const m = perm('lock');
+        if (m === 'no') return { err: '她把「锁你的软件」设成了不许' };
+        const c = X.char(o.cid) || who(); if (!c) return { err: '还没有角色' };
+        let pkgs = null, miss = [];
+        if (o.all) pkgs = 'all';
+        else if (o.apps && [].concat(o.apps).filter(Boolean).length) {
+            const r = findApps(o.apps); pkgs = r.pkgs; miss = r.miss;
+            if (!pkgs.length) return { err: `她手机上没找到「${miss.join('、') || [].concat(o.apps).join('、')}」（也可能是银行 / 支付 / 电话这类永远不锁的）。她手机上装着的有：${appList().slice(0, 40).map(a => a.label).join('、') || '（读不到软件列表）'}` };
+        }
+        const opt = { min: Math.max(1, Math.min(24 * 60, Math.round(+o.minutes) || 30)), say: String(o.why || '').slice(0, 60), fixed: !!(+o.minutes), merge: true, quiet: true };
+        if (pkgs) opt.pkgs = pkgs;
+        const fin = r => r ? { ok: true, names: r.names, until: G.hm(r.until), miss, weak: lockWeak() } : { err: '没锁成' };
+        try {
+            if (m !== 'auto' && !o.asked) {
+                const r = await request(c, 'lock', () => DO.lock(c, o.why || '', Object.assign({}, opt, { quiet: false })), o.why || '想锁你的软件');
+                return r && r.asked ? { asked: true, note: '她设的是「先问我」：已经给她弹了一条请求，她点「给」才会真的锁上。先别说已经锁了' } : fin(r);
+            }
+            return fin(await DO.lock(c, o.why || '', opt));
+        } catch (e) { return { err: String(e && e.message || e).slice(0, 120) }; }
+    },
+    // 解开 TA 临时锁的（apps 不写 = 全解开）
+    unlock(o) {
+        o = o || {};
+        if (!X.on('gysPhone') || !native()) return { err: '只有安卓 App 里、开着「📲 真手机」才能用' };
+        const T = D.rules.temp; if (!T || T.until <= Date.now()) return { err: '现在没有你临时锁着的软件' };
+        let names = '';
+        if (o.apps && [].concat(o.apps).filter(Boolean).length && Array.isArray(T.pkgs)) {
+            const r = findApps(o.apps); const left = T.pkgs.filter(p => !r.pkgs.includes(p));
+            if (left.length === T.pkgs.length) return { err: `「${[].concat(o.apps).join('、')}」本来就没锁着。现在锁着的：${T.pkgs.map(labelOf).join('、')}` };
+            names = T.pkgs.filter(p => r.pkgs.includes(p)).map(labelOf).join('、');
+            if (left.length) T.pkgs = left; else D.rules.temp = null;
+        } else { names = T.pkgs === 'all' ? '所有软件' : T.pkgs.map(labelOf).join('、'); D.rules.temp = null; }
+        saveD(); lastSet = null; pushRules(); log('lock', `TA 解开了 ${names}`);
+        return { ok: true, names };
+    },
+    // 从她的一句话里猜：是不是要锁、锁哪几个、锁多久（模型没调用工具时的兜底）
+    guess(text) {
+        const t = String(text || ''), low = t.toLowerCase();
+        const lock = /锁|禁用|封了|封掉|别让我|不让我|不许我|没收/.test(t) && !/解锁|解开|别锁|不要锁|不用锁|开锁|锁屏/.test(t);
+        let names = [];
+        Object.keys(ALIAS).forEach(k => { if (k.length >= 2 && low.includes(k)) names.push(k); });
+        appList().forEach(a => { const lb = String(a.label || '').toLowerCase(); if (lb.length >= 2 && low.includes(lb)) names.push(a.label); });
+        names = [...new Set(names)]; names = names.filter(n => !names.some(x => x !== n && x.toLowerCase().includes(n.toLowerCase())));
+        let minutes = 0, m;
+        if ((m = t.match(/(\d+(?:\.\d+)?)\s*个?(?:小时|钟头|h)/i))) minutes = Math.round(parseFloat(m[1]) * 60);
+        else if ((m = t.match(/(\d+)\s*(?:分钟|分|min)/i))) minutes = +m[1];
+        else if (/半个?(?:小时|钟头)/.test(t)) minutes = 30;
+        else if (/[一1]个?(?:小时|钟头)/.test(t)) minutes = 60;
+        else if (/[两二2]个?(?:小时|钟头)/.test(t)) minutes = 120;
+        return { lock, apps: names, minutes };
+    },
+    weak: () => lockWeak(),
     on: () => X.on('gysPhone') && native(),
     // 能力清单：给 TA 的工具描述用
     caps: () => CAPS.map(([k, ico, n, , grp]) => ({ k, n, grp, mode: perm(k), needPlugin: !!needPlugin(k) })),
