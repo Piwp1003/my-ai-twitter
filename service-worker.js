@@ -143,7 +143,8 @@ const CORE_ASSETS = [
     './js/98-push-keepalive.js?v=' + V,
     './js/98b-native-notify.js?v=' + V,
     './js/99-mcp.js?v=' + V,
-    './js/99b-sub-login.js?v=' + V
+    './js/99b-sub-login.js?v=' + V,
+    './js/99c-sticker-search.js?v=' + V
 ];
 
 self.addEventListener('install', (event) => {
