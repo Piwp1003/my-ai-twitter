@@ -6,6 +6,8 @@
    · 图片（头像、背景、频道图标、社区封面…）：存在 D1 的 files 表，GET /f/<id> 公开读，
      改了换一个新 id，所有人下一次同步就看到新的。
    · 第一个加入的人自动是群主。
+   · 303：🔞 加入时要确认年满 18 岁（body.adult=1，第一个人除外）；📝 审核处：等审核的人有一个只有自己和管理员能看的房间（频道 id = 'ap:<用户id>'），
+     能发文字、图片、视频，管理员在里面跟 TA 聊、决定通过还是拒绝；🎬 视频切块存在 fparts，GET /f/<id> 拼起来给。
    · 每个用户一把自己的钥匙（加入时发的），放在请求头 X-Gy-Token: <用户id>.<密钥>。
    · ☁️ 云端备份（/bk/*）：存在另一个 D1（绑定名 BK，没绑就用 DB）。内容是在用户手机上**先加密**再传上来的，
      服务器（包括群主）看不到里面是什么；解密要用那个人的钥匙。分块上传、每块校验，传完整了才替换旧的，留最近几份。
@@ -29,8 +31,8 @@ const parse = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e) { retu
 async function sha(s) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
 
 // 权限：群主全部都有
-const PERMS = ['del', 'mute', 'kick', 'ban', 'pin', 'channel', 'roles', 'approve', 'table', 'invite', 'cfg'];
-const PERM_NAMES = { del: '删别人的消息', mute: '禁言', kick: '踢人', ban: '封号', pin: '发公告、置顶', channel: '建 / 改频道', roles: '发身份组（比自己低的）', approve: '审核入群申请、处理举报', table: '带角色进同桌', invite: '发邀请码', cfg: '改社区资料' };
+const PERMS = ['del', 'mute', 'kick', 'ban', 'pin', 'channel', 'roles', 'approve', 'table', 'invite', 'cfg', 'video'];
+const PERM_NAMES = { video: '在频道 / 私聊里发视频', del: '删别人的消息', mute: '禁言', kick: '踢人', ban: '封号', pin: '发公告、置顶', channel: '建 / 改频道', roles: '发身份组（比自己低的）', approve: '审核入群申请、处理举报', table: '带角色进同桌', invite: '发邀请码', cfg: '改社区资料' };
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS cfg (k TEXT PRIMARY KEY, v TEXT)`,
@@ -46,6 +48,8 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT, by TEXT, kind TEXT, ref TEXT, who TEXT, reason TEXT, excerpt TEXT, at INTEGER, state TEXT DEFAULT 'open')`,
   `CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, by TEXT, act TEXT, target TEXT, note TEXT, at INTEGER)`,
   `CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, owner TEXT, mime TEXT, data TEXT, at INTEGER)`,
+  // 303：视频太大，一行放不下，切成几块存在这里（files.data 写 'parts:块数'）
+  `CREATE TABLE IF NOT EXISTS fparts (fid TEXT, i INTEGER, data TEXT, PRIMARY KEY (fid, i))`,
 ];
 let ready = false;
 async function init(db) {
@@ -347,6 +351,13 @@ export default {
     const fm = /^\/f\/([a-z0-9]+)$/.exec(p);
     if (fm && req.method === 'GET') {
       const f = await db.prepare(`SELECT mime, data FROM files WHERE id=?`).bind(fm[1]).first(); if (!f) return new Response('not found', { status: 404, headers: CORS });
+      if (/^parts:\d+$/.test(f.data || '')) {
+        const P = ((await db.prepare(`SELECT data FROM fparts WHERE fid=? ORDER BY i`).bind(fm[1]).all()).results || []);
+        if (P.length !== +f.data.slice(6)) return new Response('not ready', { status: 404, headers: CORS });
+        const bufs = P.map(x => { const bin = atob(x.data), b = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i); return b; });
+        const all = new Uint8Array(bufs.reduce((n, b) => n + b.length, 0)); let o = 0; bufs.forEach(b => { all.set(b, o); o += b.length; });
+        return new Response(all, { headers: Object.assign({ 'Content-Type': f.mime, 'Content-Length': String(all.length), 'Accept-Ranges': 'none', 'Cache-Control': 'public, max-age=31536000, immutable' }, CORS) });
+      }
       const bin = atob(f.data), b = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
       return new Response(b, { headers: Object.assign({ 'Content-Type': f.mime, 'Cache-Control': 'public, max-age=31536000, immutable' }, CORS) });
     }
@@ -355,6 +366,7 @@ export default {
       const nick = clip(body.nick, 24).trim(); if (!nick) return E('起个昵称');
       const cnt = await db.prepare(`SELECT COUNT(*) n FROM users`).first(); const first = !cnt || !cnt.n;
       let status = 'ok';
+      if (!first && +body.adult !== 1) return E('谷雨只给年满 18 周岁的人用。要是你已经满 18 岁：把谷雨更新到最新版，确认一下再加入');
       if (!first) {
         if (c.join === 'invite') {
           const code = clip(body.code, 40).trim().toUpperCase(); const iv = code && await db.prepare(`SELECT * FROM invites WHERE code=?`).bind(code).first();
@@ -378,9 +390,11 @@ export default {
     if (p.startsWith('/mu/')) { try { return await muRoute(p, req, q, body); } catch (e) { return E('一起听出错：' + (e.message || e), 500); } }
     if (p.startsWith('/bk/')) { try { return await bkRoute(p, req, q, body, me, db, env.BK || db); } catch (e) { return E('云端备份出错：' + (e.message || e), 500); } }
     if (me.status === 'banned') return E('你被封号了', 403);
+    // 303：被踢 / 申请没通过的（status = left）：只能看自己审核处里那句「为什么没通过」，别的都不行（以前漏了，踢出去的人还能接着发消息）
+    if (me.status === 'left' && p !== '/ap/msgs') return E('你已经不在社区里了，重新加入一次', 403);
     const roles = await rolesOf(db), P = permsOf(me, roles);
     const pending = me.status === 'pending';
-    if (pending && !['/boot', '/me', '/poll', '/f'].includes(p)) return E('还在等管理员审核', 403);
+    if (pending && !['/boot', '/me', '/poll', '/f', '/ap/msgs', '/ap/send', '/fv/begin', '/fv/part', '/fv/done'].includes(p)) return E('还在等管理员审核', 403);
     const chOf = async id => await db.prepare(`SELECT * FROM channels WHERE id=?`).bind(id).first();
     const pubCh = ch => ({ id: ch.id, name: ch.name, icon: ch.icon, color: ch.color, kind: ch.kind, topic: ch.topic, see: parse(ch.see, []), talk: parse(ch.talk, []), meta: parse(ch.meta, {}), pos: ch.pos, canTalk: canTalk(ch, P) });
     const chans = async () => ((await db.prepare(`SELECT * FROM channels ORDER BY pos`).all()).results || []).filter(c => canSee(c, P)).map(pubCh);
@@ -391,6 +405,54 @@ export default {
       if (m[2].length > 1500000) return E('太大了（图片压小一点，角色卡别超过 1MB）');
       const id = rid('f').toLowerCase(); await db.prepare(`INSERT INTO files VALUES (?,?,?,?,?)`).bind(id, me.id, m[1], m[2], now()).run();
       return J({ ok: true, id, url: url.origin + '/f/' + id });
+    }
+    // ---------- 🎬 视频：先 begin（说多大、几块），再一块块 part，最后 done ----------
+    if (p === '/fv/begin' && req.method === 'POST') {
+      const c = await cfgOf(db); const max = Math.max(1, +c.vidMax || 20) * 1048576;
+      const mime = /^video\/(mp4|webm|quicktime|3gpp|x-matroska)$/.test(body.mime || '') ? body.mime : '';
+      if (!mime) return E('只能传 mp4 / webm / mov 这几种视频');
+      const size = +body.size || 0, parts = +body.parts || 0;
+      if (!size || size > max) return E('视频太大了（最大 ' + Math.round(max / 1048576) + ' MB），剪短一点或者压一下再发');
+      if (!parts || parts > 60) return E('分块不对');
+      if (!pending && !can(P, 'video') && !can(P, 'approve')) return E('你还不能发视频（要群主给「发视频」权限）');
+      const id = rid('v').toLowerCase();
+      await db.prepare(`INSERT INTO files VALUES (?,?,?,?,?)`).bind(id, me.id, mime, 'up:' + parts, now()).run();
+      return J({ ok: true, id });
+    }
+    if (p === '/fv/part' && req.method === 'POST') {
+      const f = await db.prepare(`SELECT * FROM files WHERE id=?`).bind(clip(body.id, 40)).first();
+      if (!f || f.owner !== me.id || !/^up:\d+$/.test(f.data || '')) return E('找不到这个视频');
+      const i = +body.i; const d = String(body.data || '');
+      if (!(i >= 0 && i < +f.data.slice(3)) || !d || d.length > 1500000 || /[^A-Za-z0-9+/=]/.test(d)) return E('这一块不对');
+      await db.prepare(`INSERT OR REPLACE INTO fparts VALUES (?,?,?)`).bind(f.id, i, d).run();
+      return J({ ok: true });
+    }
+    if (p === '/fv/done' && req.method === 'POST') {
+      const f = await db.prepare(`SELECT * FROM files WHERE id=?`).bind(clip(body.id, 40)).first();
+      if (!f || f.owner !== me.id || !/^up:\d+$/.test(f.data || '')) return E('找不到这个视频');
+      const n = +f.data.slice(3); const got = await db.prepare(`SELECT COUNT(*) n FROM fparts WHERE fid=?`).bind(f.id).first();
+      if (!got || got.n !== n) return E('还没传完（' + (got ? got.n : 0) + ' / ' + n + '）');
+      await db.prepare(`UPDATE files SET data=? WHERE id=?`).bind('parts:' + n, f.id).run();
+      return J({ ok: true, id: f.id, url: url.origin + '/f/' + f.id });
+    }
+    // ---------- 📝 审核处：等审核的人 + 管理员 ----------
+    const apOk = u => u && (u === me.id || can(P, 'approve'));
+    if (p === '/ap/msgs') {
+      const u = clip(q.get('u') || me.id, 40); if (!apOk(u)) return E('看不了');
+      const after = +q.get('after') || 0;
+      const L = ((await db.prepare(`SELECT * FROM msgs WHERE ch=? AND id>? ORDER BY id LIMIT 200`).bind('ap:' + u, after).all()).results || []);
+      const who = await db.prepare(`SELECT * FROM users WHERE id=?`).bind(u).first();
+      const c = await cfgOf(db);
+      return J({ ok: true, msgs: L, user: who ? Object.assign(pubUser(who), { apply: who.apply }) : null, intro: c.apIntro || '', name: c.name, icon: c.icon, vidMax: Math.max(1, +c.vidMax || 20) });
+    }
+    if (p === '/ap/send' && req.method === 'POST') {
+      const u = clip(body.u || me.id, 40); if (!apOk(u)) return E('不能在这里说话');
+      const who = await db.prepare(`SELECT status FROM users WHERE id=?`).bind(u).first(); if (!who) return E('找不到这个人');
+      if (u === me.id && who.status !== 'pending') return E('你已经通过审核了');
+      const text = clip(body.text, 2000).trim(), img = clip(body.img, 60); if (!text && !img) return E('空的');
+      if (img && !/^[a-z0-9]+$/.test(img)) return E('附件不对');
+      const r = await db.prepare(`INSERT INTO msgs (ch,uid,chr,text,card,img,reply,kind,at) VALUES (?,?,?,?,?,?,?,?,?)`).bind('ap:' + u, me.id, null, text, null, img, 0, '', now()).run();
+      return J({ ok: true, id: r.meta.last_row_id });
     }
     if (p === '/boot') {
       const c = await cfgOf(db);
@@ -411,7 +473,7 @@ export default {
       const dmAfter = +q.get('dm') || 0;
       out.dms = ((await db.prepare(`SELECT * FROM dms WHERE (pair LIKE ? OR pair LIKE ?) AND id>? ORDER BY id LIMIT 300`).bind(me.id + '|%', '%|' + me.id, dmAfter).all()).results || []).map(m => Object.assign(m, { card: parse(m.card, null) }));
       out.friends = ((await db.prepare(`SELECT * FROM friends WHERE a=? OR b=?`).bind(me.id, me.id).all()).results || []);
-      if (can(P, 'approve')) { const r = await db.prepare(`SELECT COUNT(*) n FROM reports WHERE state='open'`).first(); const a = await db.prepare(`SELECT COUNT(*) n FROM users WHERE status='pending'`).first(); out.staff = { reports: r ? r.n : 0, applies: a ? a.n : 0 }; }
+      if (can(P, 'approve')) { const r = await db.prepare(`SELECT COUNT(*) n FROM reports WHERE state='open'`).first(); const a = await db.prepare(`SELECT COUNT(*) n FROM users WHERE status='pending'`).first(); const al = await db.prepare(`SELECT MAX(m.id) id FROM msgs m JOIN users u ON u.id = m.uid WHERE u.status='pending' AND m.ch = 'ap:' || u.id`).first(); out.staff = { reports: r ? r.n : 0, applies: a ? a.n : 0, apLast: al && al.id || 0 }; }
       return J(out);
     }
     if (p === '/history') {
@@ -425,6 +487,7 @@ export default {
       const C = await chOf(body.ch); if (!C || !canSee(C, P) || !canTalk(C, P)) return E('这个频道你不能说话');
       const text = clip(body.text, 4000).trim(), card = body.card ? JSON.stringify(body.card).slice(0, 4000) : null, img = clip(body.img, 60);
       if (!text && !card && !img) return E('空的');
+      if (/^v/.test(img) && !can(P, 'video')) return E('你还不能在频道里发视频（要群主给「发视频」权限）');
       let chr = null;
       if (body.chr) { if (!can(P, 'table')) return E('你没有「带角色进同桌」的权限'); chr = JSON.stringify({ name: clip(body.chr.name, 30), avatar: clip(body.chr.avatar, 60), cid: clip(body.chr.cid, 40) }); }
       const kind = body.kind === 'round' ? 'round' : (body.kind === 'sys' ? 'sys' : '');
@@ -456,6 +519,7 @@ export default {
       const to = await db.prepare(`SELECT * FROM users WHERE id=?`).bind(body.to).first(); if (!to || to.status !== 'ok') return E('找不到这个人');
       const blk = await db.prepare(`SELECT state FROM friends WHERE a=? AND b=?`).bind(to.id, me.id).first(); if (blk && blk.state === 'block') return E('对方不收你的私聊');
       const text = clip(body.text, 4000).trim(), card = body.card ? JSON.stringify(body.card).slice(0, 4000) : null, img = clip(body.img, 60); if (!text && !card && !img) return E('空的');
+      if (/^v/.test(img) && !can(P, 'video')) return E('你还不能在私聊里发视频（要群主给「发视频」权限）');
       const r = await db.prepare(`INSERT INTO dms (pair,uid,text,card,img,at) VALUES (?,?,?,?,?,?)`).bind(pairOf(me.id, to.id), me.id, text, card, img, now()).run();
       return J({ ok: true, id: r.meta.last_row_id });
     }
@@ -494,13 +558,14 @@ export default {
         if (!can(P, 'approve')) return E('没权限');
         const rep = ((await db.prepare(`SELECT * FROM reports WHERE state='open' ORDER BY id DESC LIMIT 100`).all()).results || []);
         const app = ((await db.prepare(`SELECT * FROM users WHERE status='pending' ORDER BY joined DESC LIMIT 100`).all()).results || []).map(u => Object.assign(pubUser(u), { apply: u.apply }));
+        for (const u of app) { const m = await db.prepare(`SELECT * FROM msgs WHERE ch=? ORDER BY id DESC LIMIT 1`).bind('ap:' + u.id).first(); u.apLast = m ? { id: m.id, uid: m.uid, text: m.text, img: m.img, at: m.at } : null; const n = await db.prepare(`SELECT COUNT(*) n FROM msgs WHERE ch=?`).bind('ap:' + u.id).first(); u.apN = n ? n.n : 0; }
         const lg = ((await db.prepare(`SELECT * FROM logs ORDER BY id DESC LIMIT 100`).all()).results || []);
         const banned = ((await db.prepare(`SELECT * FROM users WHERE status='banned'`).all()).results || []).map(pubUser);
         return J({ ok: true, reports: rep, applies: app, logs: lg, banned });
       }
       if (p === '/mod' && req.method === 'POST') {
         const a = body.act, t = now();
-        if (a === 'approve' || a === 'reject') { if (!can(P, 'approve')) return E('没权限'); const u = await target(); await db.prepare(`UPDATE users SET status=?, uat=? WHERE id=?`).bind(a === 'approve' ? 'ok' : 'left', t, u.id).run(); await log(db, me.id, a, u.id, u.nick); return J({ ok: true }); }
+        if (a === 'approve' || a === 'reject') { if (!can(P, 'approve')) return E('没权限'); const u = await target(); await db.prepare(`UPDATE users SET status=?, uat=? WHERE id=?`).bind(a === 'approve' ? 'ok' : 'left', t, u.id).run(); await db.prepare(`INSERT INTO msgs (ch,uid,chr,text,card,img,reply,kind,at) VALUES (?,?,?,?,?,?,?,?,?)`).bind('ap:' + u.id, me.id, null, a === 'approve' ? '审核通过了' : '没有通过审核' + (body.why ? '：' + clip(body.why, 200) : ''), null, '', 0, 'sys', t).run(); const vids = ((await db.prepare(`SELECT f.id FROM files f WHERE f.owner=? AND f.mime LIKE 'video/%'`).bind(u.id).all()).results || []).map(x => x.id); for (const v of vids) { await db.prepare(`DELETE FROM fparts WHERE fid=?`).bind(v).run(); await db.prepare(`DELETE FROM files WHERE id=?`).bind(v).run(); } await log(db, me.id, a, u.id, u.nick); return J({ ok: true }); }
         if (a === 'mute') { if (!can(P, 'mute')) return E('没权限'); const u = await target(); const mins = Math.max(0, +body.mins || 0); await db.prepare(`UPDATE users SET mute=?, uat=? WHERE id=?`).bind(mins ? t + mins * 60e3 : 0, t, u.id).run(); await log(db, me.id, mins ? 'mute' : 'unmute', u.id, mins ? mins + ' 分钟' : ''); return J({ ok: true }); }
         if (a === 'kick') { if (!can(P, 'kick')) return E('没权限'); const u = await target(); await db.prepare(`UPDATE users SET status='left', uat=? WHERE id=?`).bind(t, u.id).run(); await log(db, me.id, 'kick', u.id, u.nick); return J({ ok: true }); }
         if (a === 'ban' || a === 'unban') { if (!can(P, 'ban')) return E('没权限'); const u = await target(); await db.prepare(`UPDATE users SET status=?, uat=? WHERE id=?`).bind(a === 'ban' ? 'banned' : 'ok', t, u.id).run(); await log(db, me.id, a, u.id, u.nick); return J({ ok: true }); }
@@ -534,7 +599,8 @@ export default {
         await log(db, me.id, 'channel', c.id || '', c.name || ''); await bump(db); return J({ ok: true, channels: await chans() });
       }
       if (p === '/cfg' && req.method === 'POST') {
-        if (!can(P, 'cfg')) return E('没权限'); const x = {}; ['name', 'icon', 'cover', 'intro', 'applyQ', 'rules'].forEach(k => { if (body[k] != null) x[k] = clip(body[k], k === 'rules' || k === 'intro' ? 1000 : 60); });
+        if (!can(P, 'cfg')) return E('没权限'); const x = {}; ['name', 'icon', 'cover', 'intro', 'applyQ', 'rules', 'apIntro'].forEach(k => { if (body[k] != null) x[k] = clip(body[k], k === 'rules' || k === 'intro' || k === 'apIntro' ? 1000 : 60); });
+        if (body.vidMax != null) x.vidMax = Math.max(1, Math.min(50, Math.floor(+body.vidMax || 20)));   // 303：视频最大几 MB
         if (body.join) { if (!P.all) return E('加入方式只有群主能改'); if (['invite', 'open', 'apply'].includes(body.join)) x.join = body.join; }
         // 开屏登录 / 最低版本 / 更新地址：只有群主能改
         if (body.gate != null || body.minVer != null || body.updUrl != null || body.updMsg != null) {

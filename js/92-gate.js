@@ -72,7 +72,18 @@
         + '#gyGate .gg-i{font-size:44px;line-height:1;margin-bottom:10px}#gyGate h1{font-size:22px;margin:0 0 4px;font-weight:700}#gyGate p{margin:0 0 18px;color:#8e8e93;font-size:13.5px;white-space:pre-wrap}'
         + '#gyGate input,#gyGate textarea{display:block;width:100%;box-sizing:border-box;margin:0 0 10px;padding:12px 14px;border:1px solid #e5e5ea;border-radius:12px;font:inherit;background:#f9f9fb;outline:none}#gyGate textarea{min-height:70px;resize:vertical}'
         + '#gyGate .gg-b{display:block;width:100%;padding:13px;border:0;border-radius:14px;background:#34c759;color:#fff;font:inherit;font-weight:600;cursor:pointer;margin-top:6px}#gyGate .gg-b[disabled]{opacity:.5}'
-        + '#gyGate .gg-l{display:inline-block;margin-top:14px;color:#007aff;font-size:13.5px;cursor:pointer;background:none;border:0;font-family:inherit}#gyGate .gg-e{color:#ff3b30;font-size:13px;min-height:18px;margin:2px 0 4px}';
+        + '#gyGate .gg-l{display:inline-block;margin-top:14px;color:#007aff;font-size:13.5px;cursor:pointer;background:none;border:0;font-family:inherit}#gyGate .gg-e{color:#ff3b30;font-size:13px;min-height:18px;margin:2px 0 4px}'
+        // 303：📝 审核处（等审核时）
+        + '#gyGate .gg-c.gg-room{max-width:480px;height:min(92vh,760px);display:flex;flex-direction:column;padding:16px 14px 12px;text-align:left}'
+        + '#gyGate .gg-rh{display:flex;align-items:center;gap:10px;padding:0 4px 10px;border-bottom:1px solid rgba(60,60,67,.15)}#gyGate .gg-rh .gg-i{font-size:28px;margin:0}#gyGate .gg-rh b{font-size:16px;display:block}#gyGate .gg-rh small{color:#8e8e93;font-size:12.5px}'
+        + '#gyGate .gg-rl{flex:1;overflow-y:auto;padding:10px 2px;-webkit-overflow-scrolling:touch}#gyGate .gg-intro{background:rgba(0,122,255,.08);border-radius:12px;padding:10px 12px;font-size:13.5px;margin:0 0 10px;white-space:pre-wrap;color:inherit}'
+        + '#gyGate .gg-m{display:flex;margin:6px 0}#gyGate .gg-m.me{justify-content:flex-end}#gyGate .gg-m .bb{max-width:78%;background:#e9e9eb;color:#1c1c1e;border-radius:16px;padding:8px 12px;font-size:14.5px;word-break:break-word;white-space:pre-wrap}'
+        + '#gyGate .gg-m.me .bb{background:#007aff;color:#fff}#gyGate .gg-m .nm{font-size:11.5px;color:#8e8e93;margin:0 0 2px}#gyGate .gg-m img,#gyGate .gg-m video{display:block;max-width:100%;max-height:260px;border-radius:10px;margin-top:2px;background:#000}'
+        + '#gyGate .gg-sys{text-align:center;color:#8e8e93;font-size:12.5px;margin:8px 0}'
+        + '#gyGate .gg-rf{display:flex;gap:6px;align-items:center;padding-top:8px;border-top:1px solid rgba(60,60,67,.15)}#gyGate .gg-rf input[type=text]{margin:0;flex:1;min-width:0;padding:10px 12px}'
+        + '#gyGate .gg-rf .rb{flex:none;width:38px;height:38px;border-radius:50%;border:0;background:rgba(120,120,128,.14);font-size:18px;cursor:pointer;padding:0}#gyGate .gg-rf .go{flex:none;border:0;border-radius:19px;background:#007aff;color:#fff;padding:9px 14px;font:inherit;cursor:pointer}'
+        + '#gyGate .gg-up{font-size:12.5px;color:#8e8e93;min-height:16px;padding:2px 4px}#gyGate .gg-rk{display:flex;justify-content:space-between;align-items:center}#gyGate .gg-rk .gg-l{margin-top:6px}'
+        + '@media (prefers-color-scheme:dark){#gyGate .gg-m .bb{background:#2c2c2e;color:#f2f2f7}#gyGate .gg-m.me .bb{background:#0a84ff;color:#fff}}';
     var box = null;
     function mount(html) {
         if (!box) {
@@ -82,7 +93,7 @@
         box.innerHTML = '<div class="gg-c">' + html + '</div>';
         return box;
     }
-    function done() { if (box) { box.remove(); box = null; } }
+    function done() { try { stopRoom(); } catch (e) {} if (box) { box.remove(); box = null; } }
     function head(i) { var n = (i && i.name) || '谷雨'; return '<div class="gg-i">🌱</div><h1>' + esc(n) + '</h1>'; }
 
     function wait() { mount(head(API.info) + '<p>连接中…</p>'); }
@@ -97,9 +108,112 @@
         box.querySelector('#ggRe').onclick = function () { location.reload(); };
     }
     function blocked(t) { mount(head(API.info) + '<p>' + esc(t) + '</p><button class="gg-l" id="ggKey">用钥匙登录别的账号</button>'); box.querySelector('#ggKey').onclick = keyLogin; }
+    /* ---------------- 303：上传图片 / 视频（审核处和社区都用这个） ---------------- */
+    var fileUrl = function (id) { return !id ? '' : /^https?:|^data:/.test(id) ? id : cur + '/f/' + id; };
+    function shrinkImg(file, max) {
+        return new Promise(function (res, rej) {
+            var fr = new FileReader();
+            fr.onload = function () {
+                var d = String(fr.result);
+                if (/^data:image\/gif/.test(d) && d.length < 1400000) return res(d);   // 动图不压（压了就不动了）
+                var im = new Image();
+                im.onload = function () { var k = Math.min(1, max / Math.max(im.width, im.height)); var c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.82)); };
+                im.onerror = function () { rej(new Error('这张图打不开')); }; im.src = d;
+            };
+            fr.onerror = function () { rej(new Error('读不出这张图')); }; fr.readAsDataURL(file);
+        });
+    }
+    function upImg(file) {
+        return shrinkImg(file, 1280).then(function (d) { return req('/f', { data: d }, 30000); }).then(function (j) { if (!j.ok) throw new Error(j.err || '没传上去'); return j.id; });
+    }
+    // 视频：读成 base64，切成 1MB 左右一块，begin → part × n → done
+    function upVideo(file, vidMaxMb, prog) {
+        var max = (vidMaxMb || 20) * 1048576;
+        var mime = file.type || (/\.mov$/i.test(file.name) ? 'video/quicktime' : /\.webm$/i.test(file.name) ? 'video/webm' : 'video/mp4');
+        if (!/^video\//.test(mime)) return Promise.reject(new Error('这不是视频文件'));
+        if (file.size > max) return Promise.reject(new Error('视频 ' + (Math.round(file.size / 104857.6) / 10) + ' MB，超过了 ' + vidMaxMb + ' MB 的上限，剪短一点再发'));
+        return new Promise(function (res, rej) { var fr = new FileReader(); fr.onload = function () { res(String(fr.result).split(',')[1] || ''); }; fr.onerror = function () { rej(new Error('读不出这个视频')); }; fr.readAsDataURL(file); }).then(function (b64) {
+            var parts = []; for (var i = 0; i < b64.length; i += 1400000) parts.push(b64.slice(i, i + 1400000));
+            return req('/fv/begin', { mime: mime, size: file.size, parts: parts.length }, 20000).then(function (j) {
+                if (!j.ok) throw new Error(j.err || '开始不了');
+                var id = j.id, k = 0;
+                var next = function () {
+                    if (k >= parts.length) return req('/fv/done', { id: id }, 20000).then(function (d) { if (!d.ok) throw new Error(d.err || '没传完'); return id; });
+                    prog && prog(k / parts.length);
+                    var tries = 0;
+                    var one = function () { return req('/fv/part', { id: id, i: k, data: parts[k] }, 90000).then(function (r) { if (!r.ok) throw new Error(r.err || '有一块没传上去'); k++; return next(); }, function (e) { if (++tries < 3) return one(); throw e; }); };
+                    return one();
+                };
+                return next();
+            });
+        });
+    }
+    API.fileUrl = fileUrl; API.upImg = upImg; API.upVideo = upVideo;
+
+    /* ---------------- 303：📝 审核处（等审核的时候进这里，不再是一张干等的卡片） ----------------
+       只有你和管理员能看。能说话、发图片、发视频；管理员在社区「管理 → 入群申请」里点进来跟你聊。
+       通过了自动进谷雨；没通过会告诉你，能重新申请。 */
+    var ROOM = null;
     function pending() {
-        mount(head(API.info) + '<p>申请交上去了，等管理员通过就能进。</p><button class="gg-b" id="ggRe">看看过了没</button><button class="gg-l" id="ggKey">用钥匙登录</button>');
-        box.querySelector('#ggRe').onclick = check; box.querySelector('#ggKey').onclick = keyLogin;
+        if (ROOM && ROOM.t) clearInterval(ROOM.t);
+        ROOM = { last: 0, msgs: [], vidMax: 20, intro: '', me: '' , t: 0 };
+        var i = API.info || {};
+        box || mount('');
+        box.innerHTML = '<div class="gg-c gg-room"><div class="gg-rh"><div class="gg-i">📝</div><div style="flex:1;min-width:0"><b>' + esc((i.name || '谷雨社区') + ' · 审核处') + '</b><small id="ggRS">等管理员审核中…</small></div></div>'
+            + '<div class="gg-rl" id="ggRL"><div class="gg-intro" id="ggRI">只有你和管理员能看到这里。可以跟管理员说说话，也能发图片、视频。管理员通过以后，谷雨就能用了。</div></div>'
+            + '<div class="gg-up" id="ggUp"></div>'
+            + '<div class="gg-rf"><button class="rb" id="ggPi" title="发图片">🖼️</button><button class="rb" id="ggPv" title="发视频">🎬</button><input type="text" id="ggRT" maxlength="2000" placeholder="跟管理员说点什么"><button class="go" id="ggRG">发送</button></div>'
+            + '<div class="gg-rk"><button class="gg-l" id="ggRR">刷新</button><button class="gg-l" id="ggKey">用钥匙登录别的账号</button></div>'
+            + '<input type="file" id="ggFi" accept="image/*" style="display:none"><input type="file" id="ggFv" accept="video/*" style="display:none"></div>';
+        var $ = function (id) { return box.querySelector('#' + id); };
+        $('ggKey').onclick = function () { stopRoom(); keyLogin(); };
+        $('ggRR').onclick = function () { roomPoll(true); };
+        var up = $('ggUp');
+        var send = function (body) { return req('/ap/send', body, 15000).then(function (j) { if (!j.ok) throw new Error(j.err || '没发出去'); return roomPoll(); }); };
+        $('ggRG').onclick = function () { var t = $('ggRT').value.trim(); if (!t) return; $('ggRT').value = ''; send({ text: t }).catch(function (e) { $('ggRT').value = t; up.textContent = '没发出去：' + e.message; }); };
+        $('ggRT').onkeydown = function (e) { if (e.key === 'Enter' && !e.isComposing) $('ggRG').onclick(); };
+        $('ggPi').onclick = function () { $('ggFi').click(); };
+        $('ggPv').onclick = function () { $('ggFv').click(); };
+        $('ggFi').onchange = function () { var f = this.files && this.files[0]; this.value = ''; if (!f) return; up.textContent = '图片上传中…'; upImg(f).then(function (id) { up.textContent = ''; return send({ img: id }); }).catch(function (e) { up.textContent = '图片没发出去：' + e.message; }); };
+        $('ggFv').onchange = function () { var f = this.files && this.files[0]; this.value = ''; if (!f) return; up.textContent = '视频上传中… 0%'; upVideo(f, ROOM.vidMax, function (p) { up.textContent = '视频上传中… ' + Math.round(p * 100) + '%（别关谷雨）'; }).then(function (id) { up.textContent = ''; return send({ img: id }); }).catch(function (e) { up.textContent = '视频没发出去：' + e.message; }); };
+        roomPoll(true);
+        ROOM.t = setInterval(function () { roomPoll(); }, 4000);
+    }
+    function stopRoom() { if (ROOM && ROOM.t) { clearInterval(ROOM.t); ROOM.t = 0; } }
+    function roomPoll(first) {
+        if (!ROOM || !box) return Promise.resolve();
+        var R = ROOM;
+        return Promise.all([req('/ap/msgs?after=' + R.last, null, 10000).catch(function () { return null; }), req('/whoami', null, 8000).catch(function () { return null; })]).then(function (x) {
+            var j = x[0], w = x[1];
+            if (R !== ROOM) return;
+            if (w && w.status === 'ok') { stopRoom(); st.ok = Date.now(); wr(st); done(); try { if (typeof showToast === 'function') showToast('', '🎉 审核通过了', '欢迎来到谷雨', null, null, false); } catch (e) {} return; }
+            if (w && (w.status === 'left' || w.status === 'none')) { stopRoom(); if (j && j.msgs) R.msgs = R.msgs.concat(j.msgs); return rejected(R); }
+            if (w && w.status === 'banned') { stopRoom(); return blocked('这个账号被封了'); }
+            if (!j || !j.ok) { var s0 = box.querySelector('#ggRS'); if (s0) s0.textContent = w && w.status === 'pending' ? '等管理员审核中…（审核处暂时连不上，过一会儿自己重试）' : '连不上社区，过一会儿自己重试'; return; }
+            R.vidMax = j.vidMax || R.vidMax; if (j.user) R.me = j.user.id;
+            var it = box.querySelector('#ggRI'); if (it && j.intro) it.textContent = j.intro;
+            var s1 = box.querySelector('#ggRS'); if (s1) s1.textContent = '等管理员审核中…（只有你和管理员能看到这里）';
+            var L = box.querySelector('#ggRL'); if (!L) return;
+            var stick = L.scrollHeight - L.scrollTop - L.clientHeight < 60;
+            (j.msgs || []).forEach(function (m) {
+                if (m.id <= R.last) return; R.last = m.id; R.msgs.push(m);
+                var d = document.createElement('div');
+                if (m.kind === 'sys') { d.className = 'gg-sys'; d.textContent = m.text; }
+                else {
+                    var mine = m.uid === R.me; d.className = 'gg-m' + (mine ? ' me' : '');
+                    var media = !m.img ? '' : /^v/.test(m.img) ? '<video controls playsinline preload="metadata" src="' + esc(fileUrl(m.img)) + '"></video>' : '<img src="' + esc(fileUrl(m.img)) + '" alt="">';
+                    d.innerHTML = '<div><div class="nm">' + (mine ? '' : '管理员') + '</div><div class="bb">' + esc(m.text || '') + media + '</div></div>';
+                }
+                L.appendChild(d);
+            });
+            if (first || stick) L.scrollTop = 1e7;
+        });
+    }
+    function rejected(R) {
+        var why = ''; for (var k = R.msgs.length - 1; k >= 0; k--) if (R.msgs[k].kind === 'sys') { why = R.msgs[k].text; break; }
+        mount(head(API.info) + '<p>' + esc(why || '这次没有通过审核') + '\n\n可以重新申请一次。</p><button class="gg-b" id="ggRe">重新申请</button><button class="gg-l" id="ggKey">用钥匙登录别的账号</button>');
+        box.querySelector('#ggRe').onclick = function () { API.clear(); if (API.info) login(API.info); else start(); };
+        box.querySelector('#ggKey').onclick = keyLogin;
     }
     function login(i) {
         var m = i.join || 'open';
@@ -118,7 +232,10 @@
             if (!v('ggNick')) { err.textContent = '起个昵称'; return; }
             b.disabled = true; err.textContent = '';
             st.tok = '';
-            req('/join', { nick: v('ggNick'), handle: v('ggHandle'), code: v('ggCode'), apply: v('ggApply') }).then(function (j) {
+            // 302：年满 18 岁（js/92e 确认过的）一起交上去；申请审核的话写在申请最前面，管理员看得到
+            var adult = typeof window.gyAdultOk === 'function' && window.gyAdultOk();
+            var ap = v('ggApply'); if (m === 'apply' && adult) ap = '【已确认年满 18 岁】' + ap;
+            req('/join', { nick: v('ggNick'), handle: v('ggHandle'), code: v('ggCode'), apply: ap, adult: adult ? 1 : 0 }).then(function (j) {
                 if (!j.ok) { err.textContent = j.err || '没成功'; b.disabled = false; return; }
                 API.set(j.token);
                 try { window.dispatchEvent(new CustomEvent('gy-gate-login', { detail: { url: url(), tok: j.token } })); } catch (e) {}

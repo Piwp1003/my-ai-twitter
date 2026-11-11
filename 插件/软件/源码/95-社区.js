@@ -30,6 +30,23 @@ const colOf = s => { let h = 0; for (const ch of String(s || 'x')) h = (h * 31 +
 const avHtml = (u, sz) => { const im = fileUrl(u.avatar); return `<span class="cm-av" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz * .42)}px;${im ? `background-image:url('${esc(im)}')` : `background:${esc(u.color || colOf(u.id))}`}">${im ? '' : esc(String(u.nick || '?')[0])}</span>`; };
 const chrAv = (c, sz) => { const im = fileUrl(c.avatar); return `<span class="cm-av" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz * .42)}px;${im ? `background-image:url('${esc(im)}')` : `background:${colOf(c.name)}`}">${im ? '' : esc(String(c.name || '?')[0])}</span>`; };
 const hm = t => G.hm(t);
+// 303：附件——v 开头的是视频，别的是图片
+// 视频不直接放 <video>：社区每几秒刷新一次页面，<video> 会被重建、看到一半从头开始。点了在全屏小窗里放
+const mediaHtml = id => !id ? '' : /^v/.test(id) ? `<div class="cm-img cm-vid" onclick="event.stopPropagation();gysCommVid('${esc(fileUrl(id))}')"><b>▶</b><small>视频 · 点开看</small></div>` : `<img class="cm-img" src="${esc(fileUrl(id))}" onclick="event.stopPropagation();GYS.imgView&&GYS.imgView(this.src)">`;
+window.gysCommVid = u => { const o = document.createElement('div'); o.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center'; o.innerHTML = `<video controls autoplay playsinline style="max-width:100%;max-height:100%" src="${esc(u)}"></video><span style="position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:18px;color:#fff;font-size:28px;cursor:pointer">✕</span>`; o.onclick = e => { if (e.target === o || e.target.tagName === 'SPAN') o.remove(); }; document.body.appendChild(o); };
+// 303：挑一个视频传上去（走 js/92 的 gyGate.upVideo：切块上传）。顶上挂一条进度
+const pickVid = () => new Promise(res => {
+    if (!window.gyGate || !window.gyGate.upVideo) { X.toast('🎬 这个版本还不能发视频', '更新一下谷雨'); return res(null); }
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'video/*'; inp.style.display = 'none';
+    inp.onchange = async () => {
+        const f = inp.files && inp.files[0]; inp.remove(); if (!f) return res(null);
+        let bar = document.getElementById('cmUpBar'); if (!bar) { bar = document.createElement('div'); bar.id = 'cmUpBar'; bar.style.cssText = 'position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:2147483000;background:rgba(28,28,30,.92);color:#fff;border-radius:999px;padding:8px 16px;font-size:13.5px'; document.body.appendChild(bar); }
+        bar.textContent = '🎬 视频上传中… 0%';
+        try { const id = await window.gyGate.upVideo(f, +(B && B.cfg && B.cfg.vidMax) || 20, p => { bar.textContent = '🎬 视频上传中… ' + Math.round(p * 100) + '%（别关谷雨）'; }); bar.remove(); res(id); }
+        catch (e) { bar.remove(); X.toast('🎬 视频没发出去', e.message || ''); res(null); }
+    };
+    document.body.appendChild(inp); inp.click();
+});
 
 /* ---------------- 网络 ---------------- */
 async function api(path, body, quiet) {
@@ -71,7 +88,7 @@ async function poll() {
         ONLINE = new Set(j.online || []);
         (j.last || []).forEach(x => { B.last[x.ch] = x.id; });
         B.friends = j.friends || B.friends;
-        if (j.staff) STAFF = j.staff;
+        if (j.staff) { STAFF = j.staff; if (STAFF.apLast && STAFF.apLast > (S.apSeen || 0)) { if (S.apSeen) X.notify(null, '📝 审核处有新消息', G.pick(['有人在等审核，点进去看看', '等审核的人在审核处里说话了']), X.go('gysCommApRooms')); S.apSeen = STAFF.apLast; } }
         let fresh = [];
         if (ch && j.msgs) { const L = MSGS[ch] = MSGS[ch] || []; j.msgs.forEach(m => { const i = L.findIndex(x => x.id === m.id); if (i >= 0) L[i] = m; else { L.push(m); fresh.push(m); } }); if (L.length > 400) L.splice(0, L.length - 400); PINS[ch] = j.pins || []; const c = B.channels.find(x => x.id === ch); if (c && j.chMeta) c.meta = j.chMeta; if (G.isOpen(APP) && G.top(APP) && G.top(APP).id === 'ch_' + ch) { S.read[ch] = B.last[ch] || after; } }
         if (j.dms && j.dms.length) { j.dms.forEach(m => { if (!DMS.some(x => x.id === m.id)) DMS.push(m); }); S.dmLast = Math.max(S.dmLast, ...j.dms.map(m => m.id)); notifyDms(j.dms); }
@@ -110,7 +127,8 @@ C.setUrl = () => { S.url = gurl(); INFO = null; save(); loadInfo(); };   /* 288�
 C.join = async () => {
     if (BUSY.join) return; const v = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
     if (!v('cmJNick')) return X.toast('起个昵称', '');
-    const F = { nick: v('cmJNick'), handle: v('cmJHandle'), code: v('cmJCode'), apply: v('cmJApply') };   /* 先取值再重画（重画会把输入框清空） */
+    const adult = !!(window.gyAdultOk && window.gyAdultOk());   /* 303：服务器要「已确认年满 18 岁」（js/92e 确认过的） */
+    const F = { nick: v('cmJNick'), handle: v('cmJHandle'), code: v('cmJCode'), apply: (adult && v('cmJApply') ? '【已确认年满 18 岁】' : '') + v('cmJApply'), adult: adult ? 1 : 0 };   /* 先取值再重画（重画会把输入框清空） */
     BUSY.join = 1; G.repaint(APP);
     try { const j = await api('/join', F); S.tok = j.token; save(); gateSync(); await boot(); X.toast(j.owner ? '你是群主了' : j.status === 'pending' ? '申请交上去了' : '进来了', ''); }
     catch (e) {} finally { BUSY.join = 0; G.repaint(APP); }
@@ -154,7 +172,7 @@ function msgHtml(m, ch) {
     if (m.kind === 'sys') return `<div class="cm-sys">${esc(m.text)}</div>`;
     const u = U(m.uid), reply = m.reply && (MSGS[ch] || []).find(x => x.id === m.reply);
     const name = m.chr ? `${esc(m.chr.name)}<span class="cm-tag owner">${esc(u.nick)} 的角色</span>` : `${esc(u.nick)}${tags(u)}`;
-    return `<div class="cm-m${m.pin ? ' pin' : ''}" id="cmm${m.id}"><span onclick="gysComm.member('${m.uid}')">${m.chr ? chrAv(m.chr, 36) : avHtml(u, 36)}</span><div class="b" onclick="gysComm.msgMenu('${ch}',${m.id})"><div class="n">${name}<small>${hm(m.at)}</small></div>${reply ? `<div class="cm-rp">↩ ${esc(reply.chr ? reply.chr.name : U(reply.uid).nick)}：${esc((reply.text || '').slice(0, 30))}</div>` : ''}${m.text ? `<div class="t">${esc(m.text).replace(/\n/g, '<br>').replace(/@(\S{1,20})/g, '<u>@$1</u>')}</div>` : ''}${m.img ? `<img class="cm-img" src="${esc(fileUrl(m.img))}" onclick="event.stopPropagation();GYS.imgView&&GYS.imgView(this.src)">` : ''}${cardHtml(m.card)}</div></div>`;
+    return `<div class="cm-m${m.pin ? ' pin' : ''}" id="cmm${m.id}"><span onclick="gysComm.member('${m.uid}')">${m.chr ? chrAv(m.chr, 36) : avHtml(u, 36)}</span><div class="b" onclick="gysComm.msgMenu('${ch}',${m.id})"><div class="n">${name}<small>${hm(m.at)}</small></div>${reply ? `<div class="cm-rp">↩ ${esc(reply.chr ? reply.chr.name : U(reply.uid).nick)}：${esc((reply.text || '').slice(0, 30))}</div>` : ''}${m.text ? `<div class="t">${esc(m.text).replace(/\n/g, '<br>').replace(/@(\S{1,20})/g, '<u>@$1</u>')}</div>` : ''}${mediaHtml(m.img)}${cardHtml(m.card)}</div></div>`;
 }
 function chHtml(ch) {
     const c = B.channels.find(x => x.id === ch); if (!c) return '';
@@ -184,11 +202,11 @@ C.send = async (ch, extra) => {
 };
 C.plus = async ch => {
     const c = B.channels.find(x => x.id === ch);
-    const ops = ['🖼️ 发图片', '🪪 分享我的角色卡'].concat(c.kind === 'table' ? ['🎭 带我的角色坐下'] : []);
-    const i = await G.sheet(ops, ''); if (i == null) return;
-    if (i === 0) { const id = await pickUp(0, 1280); if (id) C.send(ch, { img: id, text: '' }); }
-    else if (i === 1) { const card = await makeCard(); if (card) C.send(ch, { card, text: '' }); }
-    else C.sit(ch);
+    const ops = [['🖼️ 发图片', async () => { const id = await pickUp(0, 1280); if (id) C.send(ch, { img: id, text: '' }); }]];
+    if (can('video')) ops.push(['🎬 发视频', async () => { const id = await pickVid(); if (id) C.send(ch, { img: id, text: '' }); }]);
+    ops.push(['🪪 分享我的角色卡', async () => { const card = await makeCard(); if (card) C.send(ch, { card, text: '' }); }]);
+    if (c && c.kind === 'table') ops.push(['🎭 带我的角色坐下', () => C.sit(ch)]);
+    const i = await G.sheet(ops.map(o => o[0]), ''); if (i == null) return; ops[i][1]();
 };
 C.msgMenu = async (ch, id) => {
     const m = (MSGS[ch] || []).find(x => x.id === id); if (!m || m.del || m.kind) return; const mine = m.uid === me().id;
@@ -322,14 +340,14 @@ function dmTab() {
 }
 C.dm = async id => {
     S.lastSeen[id] = Math.max(0, ...pairWith(id).map(m => m.id)); save();
-    G.push(APP, { id: 'dm_' + id, get title() { return esc(U(id).nick); }, cls: 'cm-chb', html: () => { const mid = me().id; S.lastSeen[id] = Math.max(S.lastSeen[id] || 0, ...pairWith(id).map(m => m.id)); return pairWith(id).sort((a, b) => a.id - b.id).map(m => m.del ? '' : `<div class="cm-dm${m.uid === mid ? ' me' : ''}"><span>${m.text ? esc(m.text).replace(/\n/g, '<br>') : ''}${m.img ? `<img class="cm-img" src="${esc(fileUrl(m.img))}">` : ''}${cardHtml(m.card)}</span></div>`).join('') || '<div class="gys-empty">打个招呼吧</div>'; },
+    G.push(APP, { id: 'dm_' + id, get title() { return esc(U(id).nick); }, cls: 'cm-chb', html: () => { const mid = me().id; S.lastSeen[id] = Math.max(S.lastSeen[id] || 0, ...pairWith(id).map(m => m.id)); return pairWith(id).sort((a, b) => a.id - b.id).map(m => m.del ? '' : `<div class="cm-dm${m.uid === mid ? ' me' : ''}"><span>${m.text ? esc(m.text).replace(/\n/g, '<br>') : ''}${mediaHtml(m.img)}${cardHtml(m.card)}</span></div>`).join('') || '<div class="gys-empty">打个招呼吧</div>'; },
         foot: () => `<div class="cm-bar"><span class="rb" onclick="gysComm.dmPlus('${id}')">＋</span><input id="cmIn" placeholder="发给 ${esc(U(id).nick)}" onkeydown="if(event.key==='Enter'&&!event.isComposing)gysComm.dmSend('${id}')"><span class="rb" onclick="gysComm.dmSend('${id}')">↑</span></div>`,
         after: r => { const b = r.querySelector('.gys-body'); if (b && !r.__dmS) { b.scrollTop = 1e7; r.__dmS = 1; } } });
     if (pairWith(id).length < 5) { try { const j = await api('/dmhistory?with=' + id); j.msgs.forEach(m => { if (!DMS.some(x => x.id === m.id)) DMS.push(m); }); G.repaint(APP); } catch (e) {} }
     setTimeout(() => { const b = document.querySelector('#gys_' + APP + ' .gys-body'); if (b) b.scrollTop = 1e7; }, 60);
 };
 C.dmSend = async (id, extra) => { const inp = document.getElementById('cmIn'); const text = inp ? inp.value.trim() : ''; if (!text && !extra) return; if (inp) inp.value = ''; try { await api('/dm', Object.assign({ to: id, text }, extra || {})); PT = 0; await poll(); const b = document.querySelector('#gys_' + APP + ' .gys-body'); if (b) b.scrollTop = 1e7; } catch (e) { if (inp) inp.value = text; } };
-C.dmPlus = async id => { const i = await G.sheet(['🖼️ 发图片', '🪪 发我的角色卡'], ''); if (i === 0) { const f = await pickUp(0, 1280); if (f) C.dmSend(id, { img: f }); } else if (i === 1) { const card = await makeCard(); if (card) C.dmSend(id, { card }); } };
+C.dmPlus = async id => { const ops = ['🖼️ 发图片', '🪪 发我的角色卡'].concat(can('video') ? ['🎬 发视频'] : []); const i = await G.sheet(ops, ''); if (i === 2) { const v = await pickVid(); if (v) C.dmSend(id, { img: v }); return; } if (i === 0) { const f = await pickUp(0, 1280); if (f) C.dmSend(id, { img: f }); } else if (i === 1) { const card = await makeCard(); if (card) C.dmSend(id, { card }); } };
 function frTab() {
     if (!B) return `<div class="gys-busy">⏳</div>`;
     const mid = me().id, F = B.friends || [];
@@ -375,7 +393,7 @@ C.cfgPage = () => {
     const c = Object.assign({}, B.cfg), owner = me().roles.includes('owner');
     G.push(APP, { id: 'cfg', title: '社区资料', right: `<span onclick="gysComm.__saveCfg()">完成</span>`, html: () => `<div class="cm-ebg" style="${c.cover ? `background-image:url('${esc(fileUrl(c.cover))}')` : ''}" onclick="gysComm.__cpick('cover')"><span>🖼️ ${c.cover ? '换封面' : '加封面'}</span></div><div class="cm-eav" onclick="gysComm.__cpick('icon')"><span class="cm-av" style="width:84px;height:84px;border-radius:22px;font-size:36px;${c.icon ? `background-image:url('${esc(fileUrl(c.icon))}')` : 'background:linear-gradient(135deg,#34c759,#30b0c7)'}">${c.icon ? '' : '🌱'}</span><i>📷</i></div>
       <div class="cm-grp"><label class="cm-row"><span>名字</span><input id="cmCN" value="${esc(c.name || '')}"></label><label class="cm-row col"><span>介绍（加入页能看到）</span><textarea id="cmCI" rows="2">${esc(c.intro || '')}</textarea></label><label class="cm-row col"><span>规则</span><textarea id="cmCR" rows="3">${esc(c.rules || '')}</textarea></label></div>
-      ${owner ? `<div class="cm-gh">怎么加入</div><div class="cm-seg">${[['invite', '邀请码'], ['open', '谁都能进'], ['apply', '申请审核']].map(([k, n]) => `<span class="${c.join === k ? 'on' : ''}" onclick="gysComm.__join('${k}')">${n}</span>`).join('')}</div>${c.join === 'apply' ? `<div class="cm-grp"><label class="cm-row col"><span>申请时要回答的问题</span><input id="cmCQ" value="${esc(c.applyQ || '')}"></label></div>` : ''}
+      ${owner ? `<div class="cm-gh">怎么加入</div><div class="cm-seg">${[['invite', '邀请码'], ['open', '谁都能进'], ['apply', '申请审核']].map(([k, n]) => `<span class="${c.join === k ? 'on' : ''}" onclick="gysComm.__join('${k}')">${n}</span>`).join('')}</div>${c.join === 'apply' ? `<div class="cm-grp"><label class="cm-row col"><span>申请时要回答的问题</span><input id="cmCQ" value="${esc(c.applyQ || '')}"></label><label class="cm-row col"><span>审核处里给等审核的人看的话</span><textarea id="cmCAI" rows="3" placeholder="比如：欢迎！说说你怎么知道谷雨的，管理员看到就会审核">${esc(c.apIntro || '')}</textarea></label></div><div class="cm-foot">申请的人交完会直接进「审核处」：只有 TA 和管理员能看，能发文字、图片、视频。在「管理 → 入群申请 → 💬 审核处」里跟 TA 聊、通过或拒绝。</div>` : ''}<div class="cm-gh">视频</div><div class="cm-grp"><label class="cm-row"><span>一个视频最大几 MB（1~50）</span><input id="cmCVM" type="number" min="1" max="50" value="${+c.vidMax || 20}"></label></div><div class="cm-foot">视频存在社区服务器的免费额度里（一共 5GB），太大会很快用完。审核处里的视频在通过 / 拒绝以后自动删掉。频道和私聊里谁能发视频：在「身份组」里给「在频道 / 私聊里发视频」这个权限（群主默认有）。</div>
       <div class="cm-gh">开屏登录</div><div class="cm-seg">${[[true, '要登录才能用谷雨'], [false, '不用登录']].map(([k, n]) => `<span class="${(c.gate !== false) === k ? 'on' : ''}" onclick="gysComm.__gate(${k})">${n}</span>`).join('')}</div><div class="cm-foot">开着的话，没加入社区的人打开谷雨会先看到登录页，用的是上面选的加入方式。已经登录过的人没网也能进。</div>
       <div class="cm-gh">最低版本</div><div class="cm-grp"><label class="cm-row"><span>低于这个版本不让用（0 = 不限）</span><input id="cmCV" type="number" value="${+c.minVer || 0}" oninput="gysComm.__cv('minVer',this.value)"></label><label class="cm-row col"><span>更新链接（APK / 网页地址）</span><input id="cmCU" value="${esc(c.updUrl || '')}" placeholder="https://…" oninput="gysComm.__cv('updUrl',this.value)"></label><label class="cm-row col"><span>拦下来时显示的话</span><input id="cmCM" value="${esc(c.updMsg || '')}" placeholder="这个版本太旧了，更新一下再用" oninput="gysComm.__cv('updMsg',this.value)"></label></div><div class="cm-foot">你现在用的是 ${window.GY_VERSION || '?'}。改成比别人高的数字，旧版本的人打开就会被拦下来叫他更新——小心别填比自己还高。</div>` : ''}` });
     C.__bk = k => { c.bkOn = k; G.repaint(APP); };
@@ -383,7 +401,7 @@ C.cfgPage = () => {
     C.__cv = (k, v) => { c[k] = v; };
     C.__cpick = async k => { const id = await pickUp(k === 'cover' ? 16 / 9 : 1, k === 'cover' ? 1080 : 400); if (id) { c[k] = id; G.repaint(APP); } };
     C.__join = k => { c.join = k; G.repaint(APP); };
-    C.__saveCfg = async () => { const g = i => { const e = document.getElementById(i); return e ? e.value : undefined; }; const body = { name: g('cmCN'), intro: g('cmCI'), rules: g('cmCR'), icon: c.icon || '', cover: c.cover || '' }; if (owner) { body.join = c.join; if (g('cmCQ') != null) body.applyQ = g('cmCQ'); body.gate = c.gate !== false; body.minVer = +c.minVer || 0; body.updUrl = c.updUrl || ''; body.updMsg = c.updMsg || ''; body.bkOn = c.bkOn !== false; body.bkMax = +c.bkMax || 30; body.bkKeep = +c.bkKeep || 2; body.bkTotal = +c.bkTotal || 450; if (body.minVer > (+window.GY_VERSION || 0) && !(await G.confirm('最低版本比你自己现在用的还高，你自己也会被拦。确定？'))) return; } try { await api('/cfg', body); X.toast('改好了', ''); S.ver = 0; PT = 0; await poll(); G.back(APP); } catch (e) {} };
+    C.__saveCfg = async () => { const g = i => { const e = document.getElementById(i); return e ? e.value : undefined; }; const body = { name: g('cmCN'), intro: g('cmCI'), rules: g('cmCR'), icon: c.icon || '', cover: c.cover || '' }; if (owner) { body.join = c.join; if (g('cmCQ') != null) body.applyQ = g('cmCQ'); if (g('cmCAI') != null) body.apIntro = g('cmCAI'); if (g('cmCVM') != null) body.vidMax = Math.max(1, Math.min(50, +g('cmCVM') || 20)); body.gate = c.gate !== false; body.minVer = +c.minVer || 0; body.updUrl = c.updUrl || ''; body.updMsg = c.updMsg || ''; body.bkOn = c.bkOn !== false; body.bkMax = +c.bkMax || 30; body.bkKeep = +c.bkKeep || 2; body.bkTotal = +c.bkTotal || 450; if (body.minVer > (+window.GY_VERSION || 0) && !(await G.confirm('最低版本比你自己现在用的还高，你自己也会被拦。确定？'))) return; } try { await api('/cfg', body); X.toast('改好了', ''); S.ver = 0; PT = 0; await poll(); G.back(APP); } catch (e) {} };
 };
 C.invites = async () => {
     let L = []; const load = async () => { try { L = (await api('/invites')).invites; } catch (e) {} G.repaint(APP); };
@@ -421,6 +439,23 @@ C.chEdit = id => {
     C.__saveCh = async () => { const g = i => (document.getElementById(i) || {}).value; c.name = g('cmCHN') || c.name; const ic = g('cmCHI'); if (ic) c.icon = ic; c.topic = g('cmCHT'); c.pos = +g('cmCHP') || c.pos; try { await api('/channels', { act: 'upsert', channel: c }); S.ver = 0; PT = 0; await poll(); G.back(APP); } catch (e) {} };
     C.__delCh = async () => { if (!(await G.confirm('删掉「' + c.name + '」？'))) return; await api('/channels', { act: 'delete', channel: { id: c.id } }); S.ver = 0; PT = 0; await poll(); G.back(APP); };
 };
+/* ---------- 303：📝 审核处（管理员这边）：跟等审核的人聊、看 TA 发的图片视频、通过 / 拒绝 ---------- */
+let APR = null;
+C.apRoom = uid => {
+    APR = { uid, msgs: [], user: null, last: 0, t: 0 };
+    const R = APR;
+    const load = async () => { if (APR !== R) return; try { const j = await api('/ap/msgs?u=' + encodeURIComponent(uid) + '&after=' + R.last, null, true); if (APR !== R) return; R.user = j.user || R.user; let n = 0; (j.msgs || []).forEach(m => { if (m.id > R.last) { R.msgs.push(m); R.last = m.id; n++; } }); if (n || !R.drawn) { R.drawn = 1; G.repaint(APP); const b = document.querySelector('#gys_' + APP + ' .gys-body'); if (b) b.scrollTop = 1e7; } } catch (e) {} };
+    G.push(APP, { id: 'ap_' + uid, title: '审核处', cls: 'cm-chb', html: () => {
+        const u = R.user || U(uid), pend = !R.user || R.user.status === 'pending';
+        return `<div class="cm-grp cm-pad"><div class="cm-ah">${avHtml(u, 30)}<b>${esc(u.nick || '')}</b><small>${pend ? '等审核' : R.user.status === 'ok' ? '已通过' : '没通过'}</small></div>${R.user && R.user.apply ? `<p>${esc(R.user.apply)}</p>` : ''}${pend ? `<div class="cm-2b"><span onclick="gysComm.__apDo('${uid}','approve')">通过</span><span class="red" onclick="gysComm.__apDo('${uid}','reject')">拒绝</span></div>` : ''}</div>`
+            + (R.msgs.map(m => m.kind === 'sys' ? `<div class="cm-sys">${esc(m.text)}</div>` : `<div class="cm-dm${m.uid !== uid ? ' me' : ''}"><span>${m.uid !== uid && m.uid !== me().id ? `<small style="display:block;opacity:.7">${esc(U(m.uid).nick)}</small>` : ''}${m.text ? esc(m.text).replace(/\n/g, '<br>') : ''}${mediaHtml(m.img)}</span></div>`).join('') || '<div class="gys-empty">TA 还没在审核处说话。你可以先打个招呼</div>');
+    }, foot: () => `<div class="cm-bar"><span class="rb" onclick="gysComm.__apPlus('${uid}')">＋</span><input id="cmIn" placeholder="跟 TA 说点什么（只有 TA 和管理员看得到）" onkeydown="if(event.key==='Enter'&&!event.isComposing)gysComm.__apSend('${uid}')"><span class="rb" onclick="gysComm.__apSend('${uid}')">↑</span></div>` });
+    load(); R.t = setInterval(() => { if (APR !== R || !G.isOpen(APP)) { clearInterval(R.t); return; } load(); }, 4000);
+    C.__apSend = async (u, extra) => { const inp = document.getElementById('cmIn'); const text = inp ? inp.value.trim() : ''; if (!text && !extra) return; if (inp) inp.value = ''; try { await api('/ap/send', Object.assign({ u, text }, extra || {})); await load(); } catch (e) { if (inp && text) inp.value = text; } };
+    C.__apPlus = async u => { const i = await G.sheet(['🖼️ 发图片', '🎬 发视频'], ''); if (i === 0) { const id = await pickUp(0, 1280); if (id) C.__apSend(u, { img: id }); } else if (i === 1) { const id = await pickVid(); if (id) C.__apSend(u, { img: id }); } };
+    C.__apDo = async (u, act) => { let why = ''; if (act === 'reject') { why = await G.input('拒绝的原因（TA 在审核处能看到，可以不写）', ''); if (why === null || why === undefined) return; } else if (!(await G.confirm('通过 ' + ((R.user && R.user.nick) || '') + ' 的申请？'))) return; try { await api('/mod', { act, uid: u, why }); X.toast(act === 'approve' ? '通过了' : '拒绝了', act === 'approve' ? 'TA 那边会自动进谷雨' : 'TA 在审核处能看到原因'); if (R.user) R.user.status = act === 'approve' ? 'ok' : 'left'; await load(); G.repaint(APP); } catch (e) {} };
+};
+window.gysCommApRooms = () => { window.gysCommOpen(); setTimeout(() => { try { STAB = 'app'; C.staff(); } catch (e) {} }, 300); };
 let STAB = 'rep';
 C.staff = async () => {
     let D = null; const load = async () => { try { D = await api('/staff'); } catch (e) {} G.repaint(APP); };
@@ -428,12 +463,12 @@ C.staff = async () => {
         const seg = `<div class="cm-seg">${[['rep', '举报 ' + D.reports.length], ['app', '入群申请 ' + D.applies.length], ['log', '记录'], ['ban', '封号']].map(([k, n]) => `<span class="${STAB === k ? 'on' : ''}" onclick="gysComm.__st('${k}')">${n}</span>`).join('')}</div>`;
         const ACT = { del: '删了 TA 的消息', pin: '置顶了', unpin: '取消置顶', mute: '禁言了', unmute: '解除禁言', kick: '踢出了', ban: '封号了', unban: '解封了', approve: '通过了申请', reject: '拒绝了申请', role_add: '给了身份组', role_del: '拿掉身份组', roles: '改了身份组', channel: '改了频道', cfg: '改了社区资料', invite: '发了邀请码', report: '处理了举报', join: '加入了', owner: '建了社区', apply: '申请加入' };
         if (STAB === 'rep') return seg + (D.reports.map(r => `<div class="cm-grp cm-pad"><small>${esc(U(r.by).nick)} 举报了 ${esc(U(r.who).nick)} · ${r.kind === 'msg' ? '一条消息' : '这个人'} · ${G.ago(r.at)}</small>${r.excerpt ? `<p>「${esc(r.excerpt)}」</p>` : ''}<p>理由：${esc(r.reason || '（没写）')}</p><div class="cm-2b"><span class="red" onclick="gysComm.__rep(${r.id},'${r.kind}','${esc(r.ref)}','${esc(r.who)}')">处理</span><span onclick="gysComm.__repIgn(${r.id})">忽略</span></div></div>`).join('') || '<div class="gys-empty">没有举报</div>');
-        if (STAB === 'app') return seg + (D.applies.map(u => `<div class="cm-grp cm-pad"><div class="cm-ah">${avHtml(u, 30)}<b>${esc(u.nick)}</b><small>${G.ago(u.joined)}</small></div>${u.apply ? `<p>${esc(u.apply)}</p>` : ''}<div class="cm-2b"><span onclick="gysComm.__ap('${u.id}','approve')">通过</span><span class="red" onclick="gysComm.__ap('${u.id}','reject')">拒绝</span></div></div>`).join('') || '<div class="gys-empty">没有申请</div>');
+        if (STAB === 'app') return seg + (D.applies.map(u => `<div class="cm-grp cm-pad"><div class="cm-ah">${avHtml(u, 30)}<b>${esc(u.nick)}</b><small>${G.ago(u.joined)}</small></div>${u.apply ? `<p>${esc(u.apply)}</p>` : ''}${u.apLast ? `<p style="opacity:.75">审核处 · ${u.apLast.uid === u.id ? 'TA' : '管理员'}：${u.apLast.text ? esc(u.apLast.text.slice(0, 40)) : /^v/.test(u.apLast.img || '') ? '[视频]' : '[图片]'}</p>` : ''}<div class="cm-2b"><span onclick="gysComm.apRoom('${u.id}')">💬 审核处${u.apN ? '（' + u.apN + '）' : ''}</span><span onclick="gysComm.__ap('${u.id}','approve')">通过</span><span class="red" onclick="gysComm.__ap('${u.id}','reject')">拒绝</span></div></div>`).join('') || '<div class="gys-empty">没有申请</div>');
         if (STAB === 'ban') return seg + `<div class="cm-grp">${D.banned.map(u => `<div class="cm-r">${avHtml(u, 30)}<div class="t"><b>${esc(u.nick)}</b></div>${can('ban') ? `<span class="cm-pill" onclick="gysComm.__unban('${u.id}')">解封</span>` : ''}</div>`).join('') || '<div class="cm-r"><div class="t"><small>没有人被封</small></div></div>'}</div>`;
         return seg + `<div class="cm-grp">${D.logs.map(l => `<div class="cm-r"><div class="t"><b>${esc(U(l.by).nick)} ${ACT[l.act] || l.act} ${l.target && users()[l.target] ? esc(U(l.target).nick) : ''}${l.note ? ' · ' + esc(l.note) : ''}</b><small>${new Date(l.at).toLocaleString()}</small></div></div>`).join('')}</div>`;
     } });
     C.__st = k => { STAB = k; G.repaint(APP); };
-    C.__ap = async (uid, act) => { await api('/mod', { act, uid }); load(); };
+    C.__ap = async (uid, act) => { let why = ''; if (act === 'reject') { why = await G.input('拒绝的原因（TA 在审核处能看到，可以不写）', ''); if (why === null || why === undefined) return; } await api('/mod', { act, uid, why }); load(); };
     C.__unban = async uid => { await api('/mod', { act: 'unban', uid }); load(); };
     C.__repIgn = async id => { await api('/mod', { act: 'report_done', id, state: 'ignore' }); load(); };
     C.__rep = async (id, kind, ref, whoId) => { const ops = [kind === 'msg' && can('del') ? ['🗑 删掉那条消息', () => api('/delmsg', { id: +ref })] : null, can('mute') ? ['🔇 禁言 1 天', () => api('/mod', { act: 'mute', uid: whoId, mins: 1440 })] : null, can('kick') ? ['🚪 踢出', () => api('/mod', { act: 'kick', uid: whoId })] : null, can('ban') ? ['⛔ 封号', () => api('/mod', { act: 'ban', uid: whoId })] : null, ['✓ 就标记成处理过了', () => 0]].filter(Boolean); const i = await G.sheet(ops.map(o => o[0]), '处理'); if (i == null) return; try { await ops[i][1](); await api('/mod', { act: 'report_done', id, state: 'done' }); } catch (e) {} load(); };
@@ -497,6 +532,7 @@ body.dark-theme .gys-community{--cb:#000;--cc:#1c1c1e;--ct:#fff;--cl:rgba(84,84,
 .cm-m{display:flex;gap:10px;padding:6px 16px}.cm-m .b{flex:1;min-width:0;cursor:pointer}.cm-m .n{font-size:14px;font-weight:600;display:flex;align-items:center;flex-wrap:wrap}.cm-m .n small{color:var(--cs);font-weight:400;font-size:11.5px;margin-left:6px}.cm-m .t{font-size:16px;line-height:1.5;margin-top:2px;word-break:break-word}.cm-m .t u{color:var(--ck);text-decoration:none}.cm-m.pin .b{border-left:3px solid #ff9500;padding-left:8px}
 .cm-rp{font-size:12.5px;color:var(--cs);margin-top:3px;border-left:2px solid var(--cl);padding-left:6px}
 .cm-img{display:block;max-width:220px;max-height:260px;border-radius:12px;margin-top:6px;cursor:pointer}
+.cm-vid{background:#1c1c1e;color:#fff;width:200px;height:120px;display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer}.cm-vid b{font-size:30px;line-height:1}.cm-vid small{font-size:12px;opacity:.8}
 .cm-sys{text-align:center;font-size:12.5px;color:var(--cs);padding:6px 16px}
 .cm-pinb{margin:6px 16px 8px;padding:8px 12px;border-radius:10px;background:var(--cc);font-size:13px;cursor:pointer;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .cm-seats{display:flex;gap:14px;overflow-x:auto;padding:8px 16px 12px;border-bottom:.5px solid var(--cl);margin-bottom:6px;scrollbar-width:none}.cm-seats>div{display:flex;flex-direction:column;align-items:center;font-size:11px;cursor:pointer;flex:none;width:52px;text-align:center}.cm-seats b{font-weight:500;margin-top:4px;max-width:52px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.cm-seats small{color:var(--cs);max-width:52px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}

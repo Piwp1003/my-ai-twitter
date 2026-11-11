@@ -131,6 +131,7 @@ const CORE_ASSETS = [
     './js/90-ios-look.js?v=' + V,
     './js/91-ios-plugins.js?v=' + V,
     './js/92-gate.js?v=' + V,
+    './js/92e-free-adult.js?v=' + V,
     './js/92b-music-online.js?v=' + V,
     './js/92d-update-notes.js?v=' + V,
     './js/92c-app-update.js?v=' + V,

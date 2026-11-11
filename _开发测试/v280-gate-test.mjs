@@ -10,6 +10,8 @@ const W = 'https://guyu-community.3040831326.workers.dev';
 let M = {};   // 假服务器的状态
 const ctx = await browser.newContext({ viewport: { width: 393, height: 852 } });
 await ctx.addInitScript(() => { try { Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => false }); } catch (e) {} });
+// 302：年满 18 岁那一层（js/92e）当作已经确认过，这里只测开屏登录
+await ctx.addInitScript(() => { try { if (!localStorage.getItem('gyAdult')) localStorage.setItem('gyAdult', JSON.stringify({ ok: 1 })); } catch (e) {} });
 await ctx.route(/^https?:\/\//, async r => {
   const u = r.request().url();
   if (!u.startsWith(W)) return r.abort();
@@ -47,10 +49,11 @@ M.who = 'none'; await go(); t = await ov(); check('钥匙失效 / 被踢：回�
 M.join = 'invite'; await go(() => localStorage.removeItem('gyGate')); check('邀请码模式：多一栏邀请码', !!(await page.$('#ggCode')));
 // 7 申请模式 → 等审核
 M.join = 'apply'; await go(() => localStorage.removeItem('gyGate')); check('申请审核模式：有问题要回答', !!(await page.$('#ggApply')) && /怎么知道谷雨的/.test(await page.getAttribute('#ggApply', 'placeholder')));
+M.who = 'pending';   // 303：审核处每 4 秒会问一次过了没，这时候还没过
 await page.fill('#ggNick', 'A'); await page.fill('#ggApply', '朋友说的'); await page.click('#ggGo'); await page.waitForTimeout(600);
-t = await ov(); check('交了申请 → 等审核页', /等管理员通过/.test(t) && M.joined.apply === '朋友说的', t);
-M.who = 'pending'; await go(); check('还没通过：再打开还是等审核', /等管理员通过/.test(await ov()));
-M.who = 'ok'; await page.click('#ggRe'); await page.waitForTimeout(600); check('通过了 → 点一下就进', !(await ov()));
+t = await ov(); check('交了申请 → 审核处（303）（302 起申请最前面带「【已确认年满 18 岁】」，并交 adult:1）', /审核处/.test(t) && /等管理员审核/.test(t) && M.joined.apply === '【已确认年满 18 岁】朋友说的' && M.joined.adult === 1, t + ' ' + JSON.stringify(M.joined));
+M.who = 'pending'; await go(); check('还没通过：再打开还是进审核处', /审核处/.test(await ov()));
+M.who = 'ok'; await page.click('#ggRR'); await page.waitForTimeout(1500); check('通过了 → 审核处点「刷新」（不点 4 秒内也会自己发现）就进', !(await ov()));
 M.join = 'open';
 // 8 群主关了开屏登录
 M.gate = false; await go(() => localStorage.removeItem('gyGate')); check('群主关掉开屏登录：没登录也直接进', !(await ov())); M.gate = true;

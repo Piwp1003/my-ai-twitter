@@ -14,6 +14,7 @@ const results = []; const check = (n, ok, e = '') => results.push({ n, ok: !!ok,
 const errs = [];
 async function user() {
   const ctx = await browser.newContext({ viewport: { width: 393, height: 852 } });
+  await ctx.addInitScript(() => { try { localStorage.setItem('gyAdult', JSON.stringify({ ok: 1 })); } catch (e) {} });   // 303：服务器要「已确认年满 18 岁」
   await ctx.route(/^https?:\/\//, async r => {
     const u = r.request().url();
     if (!u.startsWith(W)) return r.abort();
@@ -78,8 +79,8 @@ check('普通成员改不了开屏登录', !r2.ok);
 
 // 邀请码
 const code = await A.evaluate(async () => (await (await fetch(gyGate.url + '/invite', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Gy-Token': gyGate.tok }, body: '{}' })).json()).code);
-const j1 = await (await fetch(LOCAL + '/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nick: 'C' }) })).json();
-const j2 = await (await fetch(LOCAL + '/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nick: 'C', code }) })).json();
+const j1 = await (await fetch(LOCAL + '/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nick: 'C', adult: 1 }) })).json();
+const j2 = await (await fetch(LOCAL + '/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nick: 'C', code, adult: 1 }) })).json();
 check('邀请码模式：没码进不来，有码能进', !j1.ok && j2.ok, JSON.stringify([j1, j2]));
 
 // 禁言 / 踢人（群主对成员）
