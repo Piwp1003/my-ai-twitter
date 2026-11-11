@@ -213,6 +213,12 @@
     window.gyHubHiddenIds = () => on() ? hiddenIds() : new Set();
     // 小手机「每个功能一个图标」用：真的不要出现的（八卦网，「日常」里已经有）、合集里那几个 @ 开头的内置东西
     window.gyHubHideIds = () => new Set(HIDE);
+    // 305：给 js/79b 图标桌面用——每个入口每一页有哪些功能（一个功能一个），以及单个功能怎么打开
+    const withColor = m => m ? Object.assign({}, m, { color: APP_COLOR[m.id] || null }) : null;
+    window.gyHubItem = id => withColor(memberOf(id));
+    window.gyHubTree = () => { const h = new Set(HIDE); return FOLDERS.map(F => ({ id: F.id, set: !!F.set, pages: (F.pages || [{ title: F.title, kids: F.kids }]).map(p => ({ t: p.title, items: p.kids.filter(k => !h.has(k)).map(memberOf).filter(Boolean).map(withColor) })) })); };
+    window.gyHubGameIds = () => { let G = []; try { G = typeof registeredMiniGames !== 'undefined' ? registeredMiniGames : []; } catch (e) {} return GAME_IDS.filter(k => featOf(k)); };
+    window.gyHubOpenItem = id => { const F = FOLDERS.find(x => x.kids.includes(id)); if (F) return window.gyHubOpen(F.id, id); const m = memberOf(id); if (m && m.open) return m.open(); if (typeof window.gyOpenMiniFeature === 'function') return window.gyOpenMiniFeature(id); };
     window.gyHubPseudo = () => { const out = []; FOLDERS.forEach(F => F.kids.forEach(k => { if (k[0] !== '@' || out.some(o => o.id === k)) return; const m = memberOf(k); if (m) out.push({ id: k, fid: F.id, icon: m.icon, title: m.title }); })); return out; };
     /* ---------- 282：合集一页 ---------- */
     const PK = 'gyHubPage', CK = 'gyHubCfg';
