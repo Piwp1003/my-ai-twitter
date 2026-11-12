@@ -189,6 +189,7 @@ self.addEventListener('fetch', (event) => {
     if (req.method !== 'GET') return; // POST（比如发给AI的API请求）完全不拦截，原样走网络
     const url = new URL(req.url);
     if (url.origin !== self.location.origin) return; // 跨域请求（AI API中转、CDN脚本等）不拦截，避免影响这些动态/第三方请求
+    if (/^\/(dl|api)\//.test(url.pathname)) return;   // 307：下载安装包（几十 MB，不能塞进缓存）、guyu.pw 自己的小接口：原样走网络
     if (url.searchParams.has('fresh')) return;      // 🔄 检查插件更新（js/95）这类「一定要最新」的请求：不进缓存，直接走网络
 
     // 🆕 打开页面（index.html）改成「先问网络」：以前首页也是先用缓存，刷新一次拿到的永远是上一版的首页——

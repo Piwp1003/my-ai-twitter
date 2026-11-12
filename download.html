@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>谷雨 · 下载</title>
+<meta name="description" content="谷雨完全免费。安卓安装包、电脑版、网页版都在这里。">
+<link rel="icon" href="icons/icon-192.png">
+<style>
+/* 一列：上面一句话说谷雨是什么、完全免费；中间三张卡（安卓 / 电脑 / 网页版），按你在用的设备把那张排第一；下面是注意事项。不用外网字体（国内打不开）。 */
+:root{--bg:#f3f5f1;--card:#ffffff;--ink:#1f2a24;--sub:#66746b;--line:#dbe3dc;--jade:#2f7d62;--jade-ink:#ffffff;--soft:#e3efe8;--warn:#b9772a;
+  --f:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#121815;--card:#18201c;--ink:#e4ece6;--sub:#93a39a;--line:#2a3530;--jade:#6cc3a0;--jade-ink:#0f1a15;--soft:#1f3329;--warn:#e0a35a;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f);font-size:15px;line-height:1.7}
+.wrap{max-width:720px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:calc(28px + env(safe-area-inset-top,0px)) 56px}
+h1{font-size:clamp(30px,8vw,42px);font-weight:900;margin:0;letter-spacing:.04em}
+.lede{color:var(--sub);margin:6px 0 0}
+.free{margin:16px 0 22px;padding:12px 14px;border-radius:14px;background:var(--soft);font-size:14px}
+.free b{color:var(--jade)}
+.cards{display:grid;gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;display:grid;gap:8px}
+.card.me{border-color:var(--jade);box-shadow:0 0 0 2px color-mix(in srgb,var(--jade) 25%,transparent)}
+.card h2{margin:0;font-size:19px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.card h2 em{font-style:normal;font-size:12px;font-weight:500;color:var(--jade);background:var(--soft);border-radius:99px;padding:1px 9px}
+.meta{font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums}
+.card p{margin:0;font-size:14px;color:var(--sub)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;justify-self:start;min-height:44px;padding:0 20px;border-radius:12px;background:var(--jade);color:var(--jade-ink);font-weight:700;text-decoration:none;font-size:16px}
+.btn.ghost{background:transparent;color:var(--jade);border:1px solid var(--jade)}
+.btn:focus-visible{outline:2px solid var(--jade);outline-offset:3px}
+h3{font-size:16px;margin:28px 0 6px}
+ul{margin:0;padding-left:1.2em;display:grid;gap:6px;font-size:14px}
+.qq{font-weight:700;font-variant-numeric:tabular-nums;user-select:all}
+footer{margin-top:28px;font-size:12.5px;color:var(--sub)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>谷雨</h1>
+  <p class="lede">和你的角色聊天、过日子的 AI 小世界。</p>
+  <div class="free"><b>完全免费。</b>没有会员、没有激活码、没有付费解锁；有人卖你谷雨，都是骗子。谷雨只给年满 18 周岁的人用。</div>
+
+  <div class="cards" id="cards">
+    <section class="card" data-os="android">
+      <h2>🤖 安卓手机<em id="aBadge" hidden>你在用的</em></h2>
+      <div class="meta" id="aMeta">正在查最新版本…</div>
+      <p>下载后点开安装。手机可能提示「来自未知来源」，选允许就行。装过的直接覆盖安装，聊天记录不会丢。</p>
+      <a class="btn" href="/dl/android">下载安卓安装包</a>
+    </section>
+    <section class="card" data-os="pc">
+      <h2>💻 电脑（Windows）<em id="pBadge" hidden>你在用的</em></h2>
+      <div class="meta" id="pMeta">正在查最新版本…</div>
+      <p>下载下来是一个 exe，双击就能用，不用安装。Windows 可能提示「已保护你的电脑」，点「更多信息 → 仍要运行」。</p>
+      <a class="btn" href="/dl/pc">下载电脑版</a>
+    </section>
+    <section class="card" data-os="web">
+      <h2>🌐 网页版（苹果手机、平板也用这个）<em id="wBadge" hidden>你在用的</em></h2>
+      <p>不用下载，打开就能用。苹果手机用 Safari 打开，点下面的「分享 → 添加到主屏幕」，就像一个 App。</p>
+      <a class="btn ghost" href="/">打开网页版</a>
+    </section>
+  </div>
+
+  <h3>下载不了的时候</h3>
+  <ul>
+    <li>新版本刚出来时可能还在打包，过十几分钟再试。</li>
+    <li>去 QQ 群 <span class="qq">1106222317</span> 的群文件里拿。</li>
+    <li>装好以后，以后的更新在谷雨里自己会提示，不用每次重新下载。</li>
+  </ul>
+  <h3>只认这些地方</h3>
+  <ul>
+    <li>网页版和下载页：<b>guyu.pw</b></li>
+    <li>QQ 群：<span class="qq">1106222317</span></li>
+    <li>别的地方下的可能被人改过（加了广告、偷你的 API Key）。</li>
+  </ul>
+  <footer>谷雨 · 免费、非商业许可（可以用、改、分享，不能拿来卖）</footer>
+</div>
+<script>
+(function () {
+  var ua = navigator.userAgent || '', os = /Android/i.test(ua) ? 'android' : /iPhone|iPad|iPod|Macintosh.*Mobile/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'web' : /Windows/i.test(ua) ? 'pc' : '';
+  if (os) { var c = document.querySelector('[data-os="' + os + '"]'), box = document.getElementById('cards'); if (c) { c.classList.add('me'); box.insertBefore(c, box.firstChild); var b = document.getElementById({ android: 'aBadge', pc: 'pBadge', web: 'wBadge' }[os]); if (b) b.hidden = false; } }
+  var mb = n => n ? (n / 1048576).toFixed(1) + ' MB' : '';
+  var day = s => { try { var d = new Date(s); return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日'; } catch (e) { return ''; } };
+  var line = (o, what) => o ? '最新 ' + o.v + (o.at ? ' · ' + day(o.at) + '更新' : '') + (o.size ? ' · ' + mb(o.size) : '') : '还没传上来，先去 QQ 群文件里拿';
+  fetch('/dl/info').then(r => r.json()).then(j => { document.getElementById('aMeta').textContent = line(j.android); document.getElementById('pMeta').textContent = line(j.pc); })
+    .catch(() => { document.getElementById('aMeta').textContent = ''; document.getElementById('pMeta').textContent = ''; });
+})();
+</script>
+</body>
+</html>

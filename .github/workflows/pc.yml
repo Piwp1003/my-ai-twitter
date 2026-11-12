@@ -1,0 +1,42 @@
+# 用 GitHub 打谷雨电脑版（exe）：跟你电脑上「一键打包exe.bat」做的一样，打好放进标签为 pc 的 Release，
+# guyu.pw/download 的「电脑版」按钮就会给出这一个。
+# 什么时候跑：电脑版自己的东西（桌面版/main.js、package.json）改了推上去；或者在 Actions 页面点 Run workflow。
+# 只是网页内容变了不用重打：电脑版自己会热更新。
+name: 打包电脑版
+on:
+  workflow_dispatch:
+  push:
+    branches: ['main']
+    paths: ['.github/workflows/pc.yml', '桌面版/main.js', '桌面版/package.json']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: 装依赖
+        working-directory: 桌面版
+        run: npm ci
+      - name: 打包
+        working-directory: 桌面版
+        run: |
+          node sync.js
+          npx electron-builder --win portable --publish never
+      - uses: actions/upload-artifact@v4
+        with: { name: guyu-pc, path: '桌面版/dist/*.exe' }
+      - name: 放进 Release（pc）
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./桌面版/package.json').version")
+          W=$(grep -o 'var GY_VERSION = [0-9]*' index.html | grep -o '[0-9]*$' || echo 0)
+          F=$(ls 桌面版/dist/*.exe | head -1)
+          mkdir -p out && cp "$F" out/guyu-pc.exe && cp "$F" "out/guyu-pc-$V.exe"
+          S=$(wc -c < out/guyu-pc.exe | tr -d ' ')
+          echo "{\"v\":\"$V\",\"web\":$W,\"at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"size\":$S}" > out/pc.json
+          gh release view pc >/dev/null 2>&1 || gh release create pc --title "谷雨 电脑版（最新）" --notes "Actions 自动打的包；guyu.pw/download 给的就是这里的 guyu-pc.exe" --prerelease
+          gh release upload pc out/guyu-pc.exe "out/guyu-pc-$V.exe" out/pc.json --clobber

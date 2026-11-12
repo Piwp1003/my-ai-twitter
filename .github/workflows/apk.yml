@@ -101,4 +101,9 @@ jobs:
           V=$(python3 -c "import json;print(json.load(open('android-build/www-manifest.json'))['version']['name'])")
           cp "$(ls out/*.apk | head -1)" "out/guyu-$V.apk"
           gh release view apk >/dev/null 2>&1 || gh release create apk --title "谷雨 APK（最新）" --notes "Actions 自动打的包" --prerelease
-          gh release upload apk "out/guyu-$V.apk" --clobber
+          # 307：再放一个固定名字的 guyu.apk 和 apk.json（版本、日期、大小），guyu.pw/download 用
+          cp "out/guyu-$V.apk" out/guyu.apk
+          C=$(python3 -c "import json;print(json.load(open('android-build/www-manifest.json'))['version']['code'])")
+          S=$(wc -c < out/guyu.apk | tr -d ' ')
+          echo "{\"v\":\"$V\",\"code\":$C,\"at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"size\":$S}" > out/apk.json
+          gh release upload apk "out/guyu-$V.apk" out/guyu.apk out/apk.json --clobber

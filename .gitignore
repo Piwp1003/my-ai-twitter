@@ -2,7 +2,8 @@
 node_modules/
 桌面版/node_modules/
 桌面版/dist/
-桌面版/build/
+桌面版/build/*
+!桌面版/build/icon.ico
 桌面版/app/
 dist/
 build/
@@ -74,3 +75,8 @@ update/
 __pycache__/
 *.pyc
 部署用-*.js
+
+# 307：GitHub 上打电脑版要用到图标
+!桌面版/build/
+桌面版/build/*
+!桌面版/build/icon.ico
