@@ -55,6 +55,10 @@ for /f "usebackq delims=" %%F in (`git -c core.quotepath^=false ls-files -ci --e
 echo       untracked !N! file^(s^) ^(they stay on your PC^)
 echo.
 
+rem ---- ask (in Chinese) whether to also build a new Android APK; it bumps android-build\www-manifest.json ----
+powershell -NoProfile -ExecutionPolicy Bypass -File "tools\apk_ask.ps1"
+echo.
+
 echo [4/6] Staging files ...
 git add -A
 if errorlevel 1 goto ADDFAIL
@@ -111,6 +115,7 @@ echo   Then open the website and refresh once; in the App tap
 echo   Settings - bottom - "check update".
 echo   Settings page bottom shows the version - it should say !VER!.
 echo ==========================================
+powershell -NoProfile -ExecutionPolicy Bypass -File "tools\apk_ask.ps1" -Done
 echo.
 pause
 exit /b 0
