@@ -44,8 +44,15 @@ function AskPC {
   $m = [regex]::Match($t, '"version":\s*"(\d+)\.(\d+)\.(\d+)"')
   if (-not $m.Success) { return }
   $now = $m.Groups[1].Value + '.' + $m.Groups[2].Value + '.' + $m.Groups[3].Value
-  git diff --quiet HEAD -- $pj '桌面版\main.js' 2>$null
-  if ($LASTEXITCODE -eq 1) { Write-Host ("  电脑版自己的东西这次改过了，上传完会自己打新的电脑版。") -ForegroundColor Yellow; Set-Content $pcflag $now -Encoding UTF8; return }
+  $pcc = @(git status --porcelain -- $pj '桌面版\main.js' 2>$null)
+  if ($pcc.Count -gt 0 -and -not ($pcc -join ' ' -match 'package\.json')) {
+    # 308：main.js 改了但版本号没动 → 自动 +1（电脑版里靠版本号判断要不要换新 exe）
+    $nv0 = $m.Groups[1].Value + '.' + $m.Groups[2].Value + '.' + ([int]$m.Groups[3].Value + 1)
+    $t = ([regex]'"version":\s*"\d+\.\d+\.\d+"').Replace($t, '"version": "' + $nv0 + '"', 1)
+    [IO.File]::WriteAllText((Resolve-Path $pj).Path, $t, (New-Object Text.UTF8Encoding $false))
+    $now = $nv0
+  }
+  if ($pcc.Count -gt 0) { Write-Host ("  电脑版自己的东西这次改过了，上传完会自己打新的电脑版。") -ForegroundColor Yellow; Set-Content $pcflag $now -Encoding UTF8; return }
   Write-Host ''
   Write-Host '  要不要顺便出一个新的电脑版（exe）？' -ForegroundColor Cyan
   Write-Host ("  现在的电脑版是 " + $now + "。电脑版平时自己会更新网页内容，一般不用重打；只有改了电脑版自己的东西才需要。拿不准就选 N。")
@@ -72,11 +79,18 @@ if ($LASTEXITCODE -eq 1) {
   return
 }
 
+# 308：安卓那边自己的东西（谷雨守护、打包脚本）改过了 → 不用问，直接出新安装包；装了谷雨的手机会自己弹「装新安装包」
+$nat = @(git status --porcelain -- '安卓插件' 'android-build/patch.py' 'android-build/sign.py' '.github/workflows/apk.yml' 2>$null)
+if ($nat.Count -gt 0) {
+  Write-Host '  安卓那边自己的东西（谷雨守护 / 权限 / 打包）这次改过了，自动出新的安卓安装包。' -ForegroundColor Yellow
+  $a = 'Y'
+} else {
 Write-Host ''
 Write-Host '  要不要顺便出一个新的安卓安装包？' -ForegroundColor Cyan
 Write-Host ("  现在的安装包是 " + $nameNow + "。大部分更新不用出新安装包：手机上「检查更新」就能拿到。")
 Write-Host '  只有改了安卓那边的东西（谷雨守护、权限、后台这类）才需要。拿不准就选 N。'
 $a = Read-Host '  出新安装包请输入 Y 回车；不出直接回车'
+}
 if ($a -notmatch '^[Yy]') { Write-Host '  不出，只上传。'; return }
 
 $new = $code + 1

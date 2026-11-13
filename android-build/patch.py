@@ -46,7 +46,9 @@ PERMS = ['INTERNET', 'ACCESS_NETWORK_STATE', 'ACCESS_WIFI_STATE', 'CHANGE_NETWOR
          'POST_NOTIFICATIONS', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_MEDIA_PLAYBACK', 'WRITE_SETTINGS',
          # 谷雨守护用到的（aar 清单里也有，这里在主清单再声明一遍，防止合并漏掉）
          'PACKAGE_USAGE_STATS', 'QUERY_ALL_PACKAGES', 'SYSTEM_ALERT_WINDOW', 'ACCESS_NOTIFICATION_POLICY',
-         'SET_WALLPAPER', 'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS']
+         'SET_WALLPAPER', 'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
+         # 308：在谷雨里直接装新安装包（大更新）要它
+         'REQUEST_INSTALL_PACKAGES']
 def perms(s):
     add = ''.join(f'\n    <uses-permission android:name="android.permission.{p}"/>' for p in PERMS if f'permission.{p}"' not in s)
     return re.sub(r'(<manifest[^>]*>)', rf'\1{add}', s, count=1) if add else s

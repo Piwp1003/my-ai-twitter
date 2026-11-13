@@ -156,7 +156,9 @@ contextBridge.exposeInMainWorld('gyDesk', {
   showMain: () => ipcRenderer.send('gy-pet', 'main'),
   oauthLoopback: o => ipcRenderer.invoke('gy-oauth', o),
   mcp: (op, a) => ipcRenderer.invoke('gy-mcp', op, a),
-  hot: (op, a) => ipcRenderer.invoke('gy-hot', op, a)
+  hot: (op, a) => ipcRenderer.invoke('gy-hot', op, a),
+  self: (op, a) => ipcRenderer.invoke('gy-self', op, a),
+  onSelf: cb => ipcRenderer.on('gy-self-prog', (e, p) => { try { cb(p); } catch (er) {} })
 });`;
 const PET_PRELOAD = `const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('pet', {
@@ -356,6 +358,54 @@ function gyHotInstall() {
   });
   logBoot('热更新：用 hot-www 里的 v' + hv);
 }
+// ------------------------------------------------------------------
+// 📦 308：电脑版自己换成新的 exe（大更新：main.js 这类网页更新换不到的东西）
+//   页面里 gyDesk.self('ver') 拿版本号；gyDesk.self('update', 'https://guyu.pw/dl/pc') 下载新 exe 到旧 exe 旁边（.new），
+//   然后起一个隐藏的 PowerShell：等谷雨关掉 → 把新的盖到旧的上面 → 重新打开。存档在 exe 旁边的文件夹里，不动。
+//   只有便携版（PORTABLE_EXECUTABLE_FILE 有值）能换；直接跑 electron . 的开发模式不换。
+// ------------------------------------------------------------------
+ipcMain.handle('gy-self', async (e, op, a) => {
+  const exe = process.env.PORTABLE_EXECUTABLE_FILE || '';
+  if (op === 'ver') return { v: app.getVersion(), canSwap: !!exe };
+  if (op !== 'update') throw new Error('不认识的操作');
+  if (!exe) throw new Error('不是便携版，没法自己换');
+  const tmp = exe + '.new';
+  const send = p => { try { e.sender.send('gy-self-prog', p); } catch (er) {} };
+  let lastErr = null;
+  for (let t = 0; t < 3; t++) {
+    try {
+      const r = await gyNet.fetch(String(a || 'https://guyu.pw/dl/pc'), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const total = +r.headers.get('content-length') || 0;
+      const out = fs.createWriteStream(tmp);
+      const rd = r.body.getReader(); let got = 0, last = 0;
+      for (;;) {
+        const { done, value } = await rd.read(); if (done) break;
+        got += value.length;
+        if (!out.write(Buffer.from(value))) await new Promise(ok => out.once('drain', ok));
+        if (Date.now() - last > 300) { last = Date.now(); send({ got, total }); }
+      }
+      await new Promise((ok, no) => out.end(er => er ? no(er) : ok()));
+      const sz = fs.statSync(tmp).size;
+      if (sz < 5 * 1048576 || (total && sz !== total)) throw new Error('下下来的文件不完整（' + sz + '）');
+      const head = Buffer.alloc(2); const fd = fs.openSync(tmp, 'r'); fs.readSync(fd, head, 0, 2, 0); fs.closeSync(fd);
+      if (head.toString() !== 'MZ') throw new Error('下下来的不是 exe');
+      send({ got: sz, total: sz, done: true });
+      lastErr = null; break;
+    } catch (er) { lastErr = er; try { fs.unlinkSync(tmp); } catch (x) {} }
+  }
+  if (lastErr) throw lastErr;
+  // 换 exe 的小脚本：PowerShell 用 -EncodedCommand（UTF-16），中文路径不会乱码
+  const q = s => "'" + String(s).replace(/'/g, "''") + "'";
+  const ps = `$new=${q(tmp)};$exe=${q(exe)};$ok=$false;` +
+    `for($i=0;$i -lt 120;$i++){Start-Sleep -Milliseconds 500;try{Move-Item -LiteralPath $new -Destination $exe -Force -ErrorAction Stop;$ok=$true;break}catch{}};` +
+    `Start-Process -FilePath $exe`;
+  const enc = Buffer.from(ps, 'utf16le').toString('base64');
+  gySpawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-EncodedCommand', enc], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  logBoot('大更新：新 exe 下好了，退出后换上');
+  setTimeout(() => { quitting = true; app.quit(); }, 600);
+  return { ok: true };
+});
 ipcMain.handle('gy-hot', async (e, op, a) => {
   if (op === 'progress') return { done: GY_HOT.done, total: GY_HOT.total };
   if (op === 'restart') { app.relaunch(); app.exit(0); return true; }

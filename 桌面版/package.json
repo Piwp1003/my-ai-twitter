@@ -1,7 +1,7 @@
 {
   "name": "guyu-desktop",
   "productName": "谷雨",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "谷雨 - AI角色互动/发推/聊天/小说续写应用（桌面版）",
   "main": "main.js",
   "author": "林",
