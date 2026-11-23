@@ -178,7 +178,7 @@
             try { navigator.serviceWorker && navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.update(); }); }); } catch (e) {}
             setTimeout(function () { location.reload(); }, 600); return;
         }
-        if (isApp()) return runApp(L);
+        if (isApp()) { S.inst = { ver: L.ver, at: Date.now() }; wr(S); return runApp(L); }
         if (isDesk()) return runDesk(L);
         if (window.gyDesk) return close();
         try { (window.plus && plus.runtime) ? plus.runtime.openURL('https://github.com/Piwp1003/my-ai-twitter/releases/tag/apk') : window.open('https://github.com/Piwp1003/my-ai-twitter/releases/tag/apk', '_blank'); } catch (e) {}
@@ -213,7 +213,7 @@
             if (!document.getElementById('gyUpd')) ask(L);
             busy(true); prog(1, '正在安装…');
             plus.runtime.install(file, { force: true }, function () {
-                S.from = VER; S.lastWay = (S.pre && S.pre.patch) ? 'diff' : 'full'; S.pre = null; wr(S);
+                S.from = VER; S.lastWay = (S.pre && S.pre.patch) ? 'diff' : 'full'; S.pre = null; S.inst = null; wr(S);
                 prog(1, '装好了，马上重启…（要是关掉后没自己打开，点一下桌面上的谷雨就是新版）');
                 setTimeout(restartApp, 900);
             }, function (e) {
@@ -236,10 +236,21 @@
         };
         if (preHas(L)) inst(S.pre.file, true); else fresh();
     }
+    // 用户点过「现在更新」后，应用可能还没装上就被系统回收。下次打开从这份标记接着装，
+    // 自动预下载只写 S.pre、不写 S.inst，不会因此绕过用户的确认。
+    function resumeSaved() {
+        if (!isApp() || !S.inst) return false;
+        var v = +S.inst.ver || 0;
+        if (v <= VER || !(S.pre && +S.pre.ver === v && S.pre.file)) { S.inst = null; wr(S); return false; }
+        var L = (LATEST && +LATEST.ver === v) ? LATEST : { ver: v };
+        runApp(L);
+        return true;
+    }
     // 从通知点回来 / 切回谷雨：有等着装的就装，没有就看看要不要问
     function resumeUpd() {
         nClear();
         if (pendInst) { var p = pendInst; pendInst = null; if (!document.getElementById('gyUpd')) ask(p.L); return runApp(p.L); }
+        if (resumeSaved()) return;
         if (LATEST && LATEST.ver > VER && !document.getElementById('gyUpd')) { S.checked = 0; check(false); }
     }
     window.gyUpdResume = resumeUpd;
@@ -307,6 +318,10 @@
 
     /* ---------- 开机 ---------- */
     var boot = function () {
+        if (isApp() && S.inst) {
+            setTimeout(function () { if (!resumeSaved()) boot(); }, 1200);
+            return;
+        }
         if (navigator.webdriver) return;   // 自动化测试不弹
         setTimeout(function () {
             var shown = false;

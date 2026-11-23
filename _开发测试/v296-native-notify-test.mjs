@@ -23,6 +23,7 @@ async function open(initScript, arg, ua) {
 
 // 假的安卓：把 Native.js 的每一次调用都记下来
 const fakePlus = (o) => {
+  try { if (o.upd) localStorage.setItem('gyUpd', JSON.stringify(o.upd)); } catch (e) {}
   const calls = window.__calls = [];
   window.__created = 0; window.__keep = []; window.__kon = false; window.__intent = { __cls: 'Intent0', extra: o.extra || null };
   const ACT = { __cls: 'Activity' };
@@ -148,6 +149,7 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; PJD110) AppleWebKit/537.36 Chrome/12
     window.fetch = async () => ({ ok: true, json: async () => ({ ver: 99999, at: Date.now(), wgt: 'update/guyu.wgt', wgtSize: 4.5e6, notes: [{ v: 99999, d: '', t: '新的', items: ['x'] }] }) });
     await window.__gyUpdAuto(true); await sleep(500);
     o.preDl = window.__dl; o.preAsk = (document.getElementById('gyUpdS') || {}).textContent || '';
+    o.preNoInst = !JSON.parse(localStorage.getItem('gyUpd') || '{}').inst;
     const goBtn = document.getElementById('gyUpdGo'); if (goBtn) goBtn.click(); await sleep(1100);
 await sleep(300);     o.preInst = window.__inst; o.preDl2 = window.__dl; o.preRestart = window.__restart === 1;
     o.rsExit = window.__exit || 0; { const cs = window.__calls; const i = cs.map(c => c[2]).lastIndexOf('startActivity'); o.rsStart = i > 0 && cs.slice(Math.max(0, i - 3), i).some(c => c[2] === 'addFlags' && c[3] === (0x10000000 | 0x8000)) && cs[i][3] === 'LaunchIntent'; }
@@ -205,6 +207,7 @@ await sleep(300);     o.preInst = window.__inst; o.preDl2 = window.__dl; o.preRe
   check('「⚙️ 通知设置」跳到这个渠道那一页，「🔋 电池不限制」跳到电池那一页', r.open && r.openCh && r.openBat);
   check('299：装好后重启——先让系统重新打开谷雨（startActivity，带 NEW_TASK|CLEAR_TASK），再结束自己；不再只靠 plus.runtime.restart', r.rsStart && r.rsExit >= 1, JSON.stringify([r.rsStart, r.rsExit]));
   check('297：App 自动查到新版本，Wi-Fi 下先悄悄下好再问；点「现在更新」不再下载，直接装好重启', r.preDl === 1 && /提前下好/.test(r.preAsk) && r.preInst === '_doc/update/guyu-99999.wgt' && r.preDl2 === 1 && r.preRestart, JSON.stringify([r.preDl, r.preAsk, r.preInst, r.preDl2, r.preRestart]));
+  check('313：自动预下载不算用户确认，不会留下待安装标记', r.preNoInst);
   check('297：后台更新——通知栏进度条（安静渠道，先滚动、再 25%），窗口里能「放到后台」', r.bgNoPre && r.bgChan && r.bgBar.includes('100/0/true') && r.bgBar.includes('100/25/false') && r.bgLater === '放到后台' && r.bgTitles.some(t => /正在下载/.test(t)), JSON.stringify([r.bgNoPre, r.bgChan, r.bgBar, r.bgLater, r.bgTitles]));
   check('297：下好时人不在 → 不突然重启，通知变成「下好了」；点通知回来才装上、重启，进度通知收掉', r.bgHeld && r.bgTitles.some(t => /下好了/.test(t)) && /gyUpdResume/.test(r.bgJump || '') && r.bgInst === '_doc/update/guyu-100000.wgt' && r.bgRestart && r.bgCancel, JSON.stringify([r.bgHeld, r.bgTitles, r.bgJump, r.bgInst, r.bgRestart, r.bgCancel]));
   check('299：差量更新默认关（下整包）；打开且版本对得上 → 下小包、弹窗写明只下几个文件多大', r.diffDef === false && /guyu\.wgt/.test(r.diffOffUrl) && /p\/a-b\.wgtu/.test(r.diffOnUrl) && /只下改过的 3 个文件/.test(r.diffHow) && /98 KB/.test(r.diffHow) && /\.wgtu$/.test(r.diffInst) && r.diffWay === 'diff', JSON.stringify([r.diffDef, r.diffOffUrl, r.diffOnUrl, r.diffHow, r.diffInst, r.diffWay]));
@@ -212,6 +215,22 @@ await sleep(300);     o.preInst = window.__inst; o.preDl2 = window.__dl; o.preRe
   check('可以自己换牌子看（小米：省电策略选无限制）', /无限制/.test(r.mi) && /悬浮通知/.test(r.mi), r.mi.slice(0, 50));
   check('使用指南有「📣 手机横幅弹窗」这一条，挂着两个新开关', /id: 'cfg_banner'[^\n]*c:gyNotifFg[^\n]*c:gyKeepSvc/.test(fs.readFileSync(path.join(root, 'js/94-guide-help.js'), 'utf8')));
   check('App（新包）没有页面报错', !errs.length, errs.join(' | '));
+  await ctx.close();
+}
+
+// ---------- 冷启动：用户确认过、包也下好了，但进程在安装前被系统回收 ----------
+{
+  const pending = { seen: 99999, pre: { ver: 99998, file: '_doc/update/guyu-99998.wgt', patch: false },
+    inst: { ver: 99998, at: Date.now() }, latest: { ver: 99998, notes: [] } };
+  const { page, errs, ctx } = await open(fakePlus, { upd: pending }, UA);
+  await page.waitForFunction(() => window.__restart === 1, null, { timeout: 8000 });
+  const r = await page.evaluate(() => ({
+    inst: window.__inst,
+    cleared: !JSON.parse(localStorage.getItem('gyUpd') || '{}').inst,
+    pre: JSON.parse(localStorage.getItem('gyUpd') || '{}').pre || null
+  }));
+  check('313：已确认的更新在冷启动后接着安装并重启，完成后清掉待安装状态', r.inst === '_doc/update/guyu-99998.wgt' && r.cleared && !r.pre, JSON.stringify(r));
+  check('冷启动续装没有页面报错', !errs.length, errs.join(' | '));
   await ctx.close();
 }
 
