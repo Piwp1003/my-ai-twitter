@@ -8,7 +8,8 @@
 // =====================================================================
 (function () {
     'use strict';
-    var SITE = 'https://guyu.pw', QQ = '1106222317';
+    var QQ = '1106222317';
+    var site = function () { return (window.gySite && window.gySite.base()) || 'https://guyu.pw'; };   // 309：guyu.pw 不通就用国内线路
     var isApp = function () { return !!window.plus || /Html5Plus/i.test(navigator.userAgent); };
     var isPC = function () { return /Electron/i.test(navigator.userAgent); };
     var isAndroidWeb = function () { return /Android/i.test(navigator.userAgent); };
@@ -48,9 +49,9 @@
         if (!document.getElementById('gyDlCss')) { var st = document.createElement('style'); st.id = 'gyDlCss'; st.textContent = CSS; document.head.appendChild(st); }
         var now = isApp() ? 'android' : isPC() ? 'pc' : 'web';
         var rows = [
-            { k: 'android', ic: '🤖', t: '安卓安装包', d: '手机上装，能在后台跑、能锁软件', url: SITE + '/dl/android' },
-            { k: 'pc', ic: '💻', t: '电脑版（Windows）', d: '下载下来双击就能用，不用安装', url: SITE + '/dl/pc' },
-            { k: 'web', ic: '🌐', t: '网页版', d: '浏览器打开 guyu.pw，什么都不用装', url: SITE + '/' }
+            { k: 'android', ic: '🤖', t: '安卓安装包', d: '手机上装，能在后台跑、能锁软件', url: site() + '/dl/android' },
+            { k: 'pc', ic: '💻', t: '电脑版（Windows）', d: '下载下来双击就能用，不用安装', url: site() + '/dl/pc' },
+            { k: 'web', ic: '🌐', t: '网页版', d: '浏览器打开 guyu.pw，什么都不用装', url: site() + '/' }
         ];
         // 正在用的排第一；网页版在安卓手机浏览器上，把安卓排第一
         var first = now === 'web' && isAndroidWeb() ? 'android' : now;
@@ -62,7 +63,7 @@
                     + '<div class="mt">' + esc(r.d) + '</div><div class="mt v"></div></div>'
                     + '<button data-u="' + esc(r.url) + '"' + (r.k === now ? ' class="gh"' : '') + '>' + (r.k === 'web' ? '打开' : '下载') + '</button></div>';
             }).join('')
-            + '<div class="ft">下不动或者装不上，去 QQ 群 <b>' + QQ + '</b> 的群文件里拿。也可以把下载页 <span data-u="' + SITE + '/download">guyu.pw/download</span> 发给朋友。</div>'
+            + '<div class="ft">下不动或者装不上，去 QQ 群 <b>' + QQ + '</b> 的群文件里拿。也可以把下载页 <span data-u="' + site() + '/download">guyu.pw/download</span> 发给朋友。</div>'
             + '<button class="cl">关上</button></div>';
         document.body.appendChild(el);
         el.addEventListener('click', function (e) {
@@ -76,7 +77,7 @@
         setV('android', '正在看最新版本…'); setV('pc', '正在看最新版本…');
         var done = false;
         var t = setTimeout(function () { if (!done) { setV('android', '没连上 guyu.pw，点下载试试'); setV('pc', '没连上 guyu.pw，点下载试试'); } }, 8000);
-        fetch(SITE + '/dl/info', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+        (window.gySite ? window.gySite.each(function (b) { return fetch(b + '/dl/info', { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }); }) : fetch(site() + '/dl/info', { cache: 'no-store' }).then(function (r) { return r.json(); })).then(function (j) {
             done = true; clearTimeout(t);
             var a = j && j.android, p = j && j.pc;
             var line = function (o) { return o ? esc([o.v ? o.v + ' 版' : '', day(o.at), size(o.size)].filter(Boolean).join(' · ')) : '还没打好，过一会儿再来'; };

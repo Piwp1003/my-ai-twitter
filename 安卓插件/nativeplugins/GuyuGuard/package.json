@@ -1,7 +1,7 @@
 {
     "name": "谷雨守护",
     "id": "GuyuGuard",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "description": "谷雨里的 TA 看你的手机、管你的手机用的安卓插件（使用时长、在用什么、截屏读屏、锁软件、锁屏、通知、壁纸闹钟震动手电筒剪贴板）",
     "_dp_type": "nativeplugin",
     "_dp_nativeplugin": {

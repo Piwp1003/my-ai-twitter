@@ -9,7 +9,40 @@
     // 291：社区服务器有两个地址，都是群主的同一个服务器（同一个库，钥匙通用）：
     //   api.guyu.pw（自己的域名，国内能直接连）在前；workers.dev（国内被墙，开梯子能连）当备用。
     //   先用上次连得上的；连不上（网络错误）就自动换下一个，换成功了记住。开机后台再探一次，主地址通了就换回主地址。
-    var URLS = ['https://api.guyu.pw', 'https://guyu-community.3040831326.workers.dev'];
+    // 309：国内线路 cn.guyu.pw（腾讯 EdgeOne 的香港节点替你去连 Cloudflare）。国内连 Cloudflare 经常被卡，主地址连不上就走它。
+    //   在 cn.guyu.pw 上打开的网页，国内线路排第一。
+    var ON_CN = /^cn\.guyu\.pw$/i.test(location.hostname || '');
+    var URLS = ON_CN ? ['https://cn.guyu.pw/c', 'https://api.guyu.pw', 'https://guyu-community.3040831326.workers.dev']
+                     : ['https://api.guyu.pw', 'https://cn.guyu.pw/c', 'https://guyu-community.3040831326.workers.dev'];
+
+    // 309：🌐 网站本身（检查更新、下载安装包、搜表情包）也有两个地址：guyu.pw（Cloudflare）和 cn.guyu.pw（国内线路）。
+    //   window.gySite.base() 给现在能用的那个；gySite.each(fn) 先用当前的，网络不通就换另一个，换成了记住。
+    (function () {
+        var SITES = ON_CN ? ['https://cn.guyu.pw', 'https://guyu.pw'] : ['https://guyu.pw', 'https://cn.guyu.pw'];
+        var SK = 'gySite', b = '';
+        try { b = localStorage.getItem(SK) || ''; } catch (e) {}
+        if (SITES.indexOf(b) < 0) b = SITES[0];
+        function use(x) { if (x === b) return; b = x; try { localStorage.setItem(SK, x); } catch (e) {} }
+        function each(fn) {
+            var order = [b].concat(SITES.filter(function (x) { return x !== b; })), i = 0;
+            function next(err) {
+                if (i >= order.length) return Promise.reject(err || new Error('guyu.pw 和国内线路都没连上'));
+                var x = order[i++];
+                return Promise.resolve().then(function () { return fn(x); }).then(function (r) { use(x); return r; }, function (e) { return next(e); });
+            }
+            return next();
+        }
+        window.gySite = { base: function () { return b; }, sites: SITES.slice(), each: each, use: use, onCn: ON_CN };
+        // 开机后台探一下：当前的不通、另一个通 → 换过去（主地址又通了也会换回来）
+        if (!navigator.webdriver) setTimeout(function () {
+            var ping = function (x) {
+                var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                var tm = setTimeout(function () { try { ctl && ctl.abort(); } catch (e) {} }, 6000);
+                return fetch(x + '/dl/info?ping=' + Date.now(), { cache: 'no-store', signal: ctl ? ctl.signal : undefined }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return x; }).finally(function () { clearTimeout(tm); });
+            };
+            ping(SITES[0]).then(use, function () { return ping(SITES[1]).then(use); }).catch(function () {});
+        }, 2000);
+    })();
     var DEFAULT_URL = URLS[0];
     var KEY = 'gyGate';
     function rd() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -24,10 +57,21 @@
     function tryFetch(path, opt, from) {
         var order = [from].concat(URLS.filter(function (x) { return x !== from; }));
         var i = 0;
+        var outer = opt && opt.signal;
+        // 309：每个地址单独限时——国内连 Cloudflare 常常是一直卡着不回话（不是马上报错），不限时就永远轮不到下一个
+        function once(u) {
+            var o = {}; for (var k in opt) if (k !== '__ms') o[k] = opt[k];
+            var big = opt.body && (typeof opt.body !== 'string' || opt.body.length > 200000);
+            var ms = opt.__ms || (big ? 120000 : 7000);
+            var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            if (ctl) { if (outer) { if (outer.aborted) ctl.abort(); else outer.addEventListener('abort', function () { try { ctl.abort(); } catch (e) {} }); } o.signal = ctl.signal; }
+            var tm = setTimeout(function () { try { ctl && ctl.abort(); } catch (e) {} }, ms);
+            return fetch(u + path, o).finally(function () { clearTimeout(tm); });
+        }
         function next(err) {
-            if (i >= order.length) return Promise.reject(err || new Error('连不上社区服务器'));
+            if (i >= order.length || (outer && outer.aborted)) return Promise.reject(err || new Error('连不上社区服务器'));
             var u = order[i++];
-            return fetch(u + path, opt).then(function (r) { use(u); return r; }, function (e) { return next(e); });
+            return once(u).then(function (r) { use(u); return r; }, function (e) { return next(e); });
         }
         return next();
     }
@@ -59,7 +103,7 @@
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
     function req(path, body, ms) {
         var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-        var tm = setTimeout(function () { try { ctl && ctl.abort(); } catch (e) {} }, ms || 8000);
+        var tm = setTimeout(function () { try { ctl && ctl.abort(); } catch (e) {} }, ms || 20000);   // 309：8 秒 → 20 秒（要留时间换国内线路）
         var h = { 'Content-Type': 'application/json' }; if (st.tok) h['X-Gy-Token'] = st.tok;
         return tryFetch(path, { method: body ? 'POST' : 'GET', headers: h, body: body ? JSON.stringify(body) : undefined, signal: ctl ? ctl.signal : undefined }, cur)
             .then(function (r) { return r.json().then(function (j) { j.__s = r.status; return j; }); })
@@ -133,7 +177,7 @@
         if (!/^video\//.test(mime)) return Promise.reject(new Error('这不是视频文件'));
         if (file.size > max) return Promise.reject(new Error('视频 ' + (Math.round(file.size / 104857.6) / 10) + ' MB，超过了 ' + vidMaxMb + ' MB 的上限，剪短一点再发'));
         return new Promise(function (res, rej) { var fr = new FileReader(); fr.onload = function () { res(String(fr.result).split(',')[1] || ''); }; fr.onerror = function () { rej(new Error('读不出这个视频')); }; fr.readAsDataURL(file); }).then(function (b64) {
-            var parts = []; for (var i = 0; i < b64.length; i += 1400000) parts.push(b64.slice(i, i + 1400000));
+            var parts = []; for (var i = 0; i < b64.length; i += 800000) parts.push(b64.slice(i, i + 800000));   /* 309：块改小（国内线路一次最多收 1MB） */
             return req('/fv/begin', { mime: mime, size: file.size, parts: parts.length }, 20000).then(function (j) {
                 if (!j.ok) throw new Error(j.err || '开始不了');
                 var id = j.id, k = 0;

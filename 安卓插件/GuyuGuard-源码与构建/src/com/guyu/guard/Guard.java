@@ -173,6 +173,11 @@ public class Guard {
     public static boolean lock() { GuardAccess a = GuardAccess.inst; return a != null && sdk(28) && a.performGlobalAction(8); }
     public static boolean home() { GuardAccess a = GuardAccess.inst; return a != null && a.performGlobalAction(2); }
     public static boolean back() { GuardAccess a = GuardAccess.inst; return a != null && a.performGlobalAction(1); }
+    /** 页面快照 / 节点动作：MCP 和 JS 只通过这些原子方法操作美团 */
+    public static String inspectScreen(int max) { return GuardAccess.inspectScreen(max); }
+    public static String tapElement(long token, int ref) { return GuardAccess.tapElement(token, ref); }
+    public static String setText(long token, int ref, String value) { return GuardAccess.setText(token, ref, value); }
+    public static String scrollScreen(int direction) { return GuardAccess.scrollScreen(direction); }
     public static boolean isNever(String p) {
         if (p == null) return false; String s = p.toLowerCase();
         if (never.contains(p)) return true;

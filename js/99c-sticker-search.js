@@ -20,7 +20,7 @@
     const on = () => { try { return !X || !X.on || X.on('gyStkSearch'); } catch (e) { return true; } };
     const autoSave = () => cfg.keep !== false;
     const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
-    const API = 'https://guyu.pw/api/stk';
+    const API = () => ((window.gySite && window.gySite.base()) || 'https://guyu.pw') + '/api/stk';   // 309：guyu.pw 不通就用国内线路
     const isApp = () => !!(window.plus && plus.net && plus.net.XMLHttpRequest);
     const lib = () => (typeof globalEmoticons !== 'undefined' && Array.isArray(globalEmoticons)) ? globalEmoticons : [];
 
@@ -60,7 +60,7 @@
         });
     }
     function viaApi(q, first) {
-        return fetch(API + '?q=' + encodeURIComponent(q) + '&first=' + (first || 0), { cache: 'no-store' })
+        return fetch(API() + '?q=' + encodeURIComponent(q) + '&first=' + (first || 0), { cache: 'no-store' })
             .then(r => r.json().catch(() => { throw new Error('guyu.pw 回了 ' + r.status + '，不是结果'); }), e => { throw new Error('连不上 guyu.pw（' + ((e && e.message) || '网络不通') + '）'); })
             .then(j => { if (!j || !j.ok) throw new Error(j && j.none ? 'NONE' : 'guyu.pw 去搜了但没成：' + ((j && j.err) || '没说原因')); return (j.items || []).map(x => Object.assign({ f: x.t }, x)); });
     }

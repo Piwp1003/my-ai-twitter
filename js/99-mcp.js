@@ -132,6 +132,13 @@
     const appLabel = pkg => { try { const a = PN().apps().find(x => x.pkg === pkg); return a ? a.label : pkg; } catch (e) { return pkg; } };
     const notify = (title, body) => { if (typeof sendBrowserNotification === 'function') sendBrowserNotification(title, body); else if (window.plus && plus.push) plus.push.createMessage(body, {}, { title }); };
     const O = (props, req) => ({ type: 'object', properties: props || {}, required: req || [] });
+    const pageTool = async (name, ...a) => {
+        const M = window.gysPh && gysPh.mcp;
+        if (!M || typeof M[name] !== 'function') throw new Error('真手机没加载上');
+        const r = await M[name](...a);
+        if (r && r.err) throw new Error(r.err + (r.error && !String(r.err).includes(r.error) ? '（' + r.error + '）' : ''));
+        return JSON.stringify(r);
+    };
     const BUILTIN = {
         now: ['手机上现在几点、星期几', O(), () => { const n = new Date(); return n.toLocaleString() + ' 星期' + '日一二三四五六'[n.getDay()]; }],
         phone_status: ['看手机现在的状态：电量、在不在充电、音量、有没有戴耳机、亮度、正在用哪个软件', O(), () => {
@@ -187,6 +194,12 @@
             if (r.err) throw new Error(r.err);
             return `她在用「${r.app}」，屏幕上：${r.text}`;
         }],
+        inspect_screen: ['看当前美团页面里能点的文字、输入框和位置，返回这次快照的 token。只读；token 30 秒内有效，页面一换就失效', O({ max: { type: 'integer', minimum: 1, maximum: 160, description: '最多返回多少个节点，默认 80' } }), a => pageTool('inspectScreen', a.max)],
+        wait_screen: ['等当前美团页面出现变化，再返回一份新的完整快照。只读；token 用 inspect_screen 返回的那个，最多等 15 秒', O({ token: { type: 'integer' }, timeout_ms: { type: 'integer', minimum: 300, maximum: 15000, description: '最多等多少毫秒，默认 8000' } }, ['token']), a => pageTool('waitScreen', a.token, a.timeout_ms)],
+        tap_element: ['点当前美团页面快照里的一个元素。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」；支付、提交订单、验证码这类动作会被拦住', O({ token: { type: 'integer' }, ref: { type: 'integer' } }, ['token', 'ref']), a => pageTool('tapElement', a.token, a.ref)],
+        set_text: ['往当前美团页面快照里的输入框写字。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」；密码框写不了', O({ token: { type: 'integer' }, ref: { type: 'integer' }, value: { type: 'string' } }, ['token', 'ref', 'value']), a => pageTool('setText', a.token, a.ref, a.value)],
+        scroll_screen: ['在当前美团页面上下滑。1 = 向下，-1 = 向上。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」', O({ direction: { type: 'integer', enum: [1, -1] } }, ['direction']), a => pageTool('scrollScreen', a.direction)],
+        press_back: ['在当前美团页面按一次系统返回，退出当前页面、弹窗或输入状态。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」', O(), () => pageTool('pressBack')],
         pull_back: ['把她从别的软件拉回谷雨（想她了 / 催她别玩了）。要装谷雨守护插件 + 她把「把你拉回谷雨」设成了「TA 直接做」', O(), async () => {
             const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('pull') : { err: '真手机没加载上' };
             if (r.err) throw new Error(r.err); return '把她拉回谷雨了';
@@ -574,9 +587,9 @@
               const tools = s.tools || [];
               if (!tools.length) return '<div class="gymcp-hint">测试连接成功后，这里会列出它有哪些工具。</div>';
               const row = t => `<label class="gymcp-tool"><input type="checkbox" ${t.on === false ? '' : 'checked'} onchange="gyMcpToolToggle('${s.id}', ${esc(JSON.stringify(t.name))}, this.checked)"><div><b>${esc(t.title || t.name)}</b>${t.title ? `<em>${esc(t.name)}</em>` : ''}<span>${esc(String(t.description || '').slice(0, 160))}</span></div></label>`;
-              // 内置版：要「谷雨守护」插件的（读屏 / 读通知 / 拉回 / 锁软件）单独分一组，其余不用插件
+              // 内置版：要「谷雨守护」插件的（读屏 / 页面操作 / 读通知 / 拉回 / 锁软件）单独分一组，其余不用插件
               if (s.kind === 'builtin') {
-                  const NEED = { read_screen: 1, read_notifications: 1, pull_back: 1, lock_apps: 1 };
+                  const NEED = { read_screen: 1, read_notifications: 1, inspect_screen: 1, wait_screen: 1, tap_element: 1, set_text: 1, scroll_screen: 1, press_back: 1, pull_back: 1, lock_apps: 1 };
                   const base = tools.filter(t => !NEED[t.name]), plug = tools.filter(t => NEED[t.name]);
                   return `<h4 class="gymcp-h">工具（关掉的 TA 就不会用）</h4>`
                       + `<div class="gymcp-hint" style="margin:2px 0 6px;">✅ 下面这些不用装插件，直接能用：</div>${base.map(row).join('')}`

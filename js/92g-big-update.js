@@ -12,7 +12,8 @@
 // =====================================================================
 (function () {
     'use strict';
-    var SITE = 'https://guyu.pw', LK = 'gyBigUpd';
+    var LK = 'gyBigUpd';
+    var site = function () { return (window.gySite && window.gySite.base()) || 'https://guyu.pw'; };   // 309：guyu.pw 不通就用国内线路
     var isApp = function () { return !!(window.plus && plus.runtime && plus.downloader); };
     var isDesk = function () { return !!window.gyDesk; };
     var on = function () { try { return !window.GYX || !GYX.on || GYX.on('gyHotUpd'); } catch (e) { return true; } };
@@ -27,7 +28,11 @@
         return false;
     }
     function getInfo() {
-        var url = SITE + '/dl/info?t=' + Date.now();
+        if (window.gySite) return window.gySite.each(getInfo1);
+        return getInfo1(site());
+    }
+    function getInfo1(b) {
+        var url = b + '/dl/info?t=' + Date.now();
         if (isApp() && plus.net && plus.net.XMLHttpRequest) return new Promise(function (res, rej) {
             var x = new plus.net.XMLHttpRequest(); x.timeout = 15000;
             x.onreadystatechange = function () { if (x.readyState !== 4) return; if (x.status === 200) { try { res(JSON.parse(x.responseText)); } catch (e) { rej(e); } } else rej(new Error('HTTP ' + x.status)); };
@@ -93,7 +98,7 @@
         var file = '_downloads/guyu-' + (info.code || 'new') + '.apk';
         var note = function (p, t) { try { window.gyNativeProgress && gyNativeProgress('bigupd', '谷雨大更新', t, p == null ? null : Math.round(p * 100), { ongoing: p != null && p < 1 }); } catch (e) {} };
         U.later('放到后台');
-        var d = plus.downloader.createDownload(SITE + '/dl/android', { filename: file, timeout: 30, retry: 3 }, function (dl, st) {
+        var d = plus.downloader.createDownload(site() + '/dl/android', { filename: file, timeout: 30, retry: 3 }, function (dl, st) {
             if (st !== 200) { note(null, '没下下来'); return U.again('没下下来（' + st + '），网好一点再试；也可以去 guyu.pw/download 下'); }
             note(1, '下好了，点一下安装'); U.prog(1, '下好了，正在打开安装界面…');
             plus.runtime.install(plus.io.convertLocalFileSystemURL(dl.filename), {}, function () {
@@ -102,7 +107,7 @@
             }, function (e) {
                 // 没有「安装未知应用」权限、或者手机拦了：交给浏览器下载页
                 U.again('手机没让谷雨直接装（' + ((e && e.message) || '被拦了') + '）。去设置里允许谷雨「安装未知应用」再试，或者点下面去下载页。');
-                var ok = document.querySelector('#gyBig .ok'); if (ok) { ok.textContent = '去下载页'; ok.onclick = function () { openUrl(SITE + '/download'); }; }
+                var ok = document.querySelector('#gyBig .ok'); if (ok) { ok.textContent = '去下载页'; ok.onclick = function () { openUrl(site() + '/download'); }; }
             });
         });
         var last = 0;
@@ -117,14 +122,14 @@
     /* ---------------- 电脑版：下 exe → 关掉换上 → 重新打开 ---------------- */
     function goDesk(info, U, canSwap) {
         if (!canSwap) {   // 老 exe：只能浏览器下
-            openUrl(SITE + '/dl/pc');
+            openUrl(site() + '/dl/pc');
             U.say('浏览器已经开始下载新的电脑版了。下好以后关掉谷雨，用新的 exe 把旧的换掉（存档在 exe 旁边的文件夹里，不会丢）。以后的大更新就能自己换了。');
             U.later('知道了'); return;
         }
         U.later('先不了');
         try { gyDesk.onSelf(function (p) { if (p && p.total) U.prog(p.got / p.total, p.done ? '下好了，谷雨马上关掉、换好、自己重新打开…' : '下载中… ' + mb(p.got) + ' / ' + mb(p.total) + ' MB'); }); } catch (e) {}
         U.prog(0, '开始下载…');
-        gyDesk.self('update', SITE + '/dl/pc').then(function () { U.say('换好以后会自己打开。要是几十秒后还没打开，双击原来那个 exe 就是新版。'); })
+        gyDesk.self('update', site() + '/dl/pc').then(function () { U.say('换好以后会自己打开。要是几十秒后还没打开，双击原来那个 exe 就是新版。'); })
             .catch(function (e) { U.again('没换成：' + ((e && e.message) || e) + '。也可以去 guyu.pw/download 下了自己换。'); });
     }
 

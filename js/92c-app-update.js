@@ -7,7 +7,8 @@
    · 今天里有「有新版本」，小组件「谷雨版本」。 */
 (function () {
     'use strict';
-    var BASE = 'https://guyu.pw/';
+    // 309：网址听 gySite 的（guyu.pw 不通就用国内线路 cn.guyu.pw）
+    var site = function () { return ((window.gySite && window.gySite.base()) || 'https://guyu.pw') + '/'; };
     var VER = +(window.GY_VERSION || 0);
     var LK = 'gyUpd';
     var X = window.GYX;
@@ -49,7 +50,8 @@
         if (!manual && !on('gyHotUpd')) return Promise.resolve(null);
         if (manual) { if (chkBusy) return Promise.resolve(null); chkBusy = true; chkShow(); }
         var done = function () { if (manual) { chkBusy = false; chkHide(); } };
-        return getJson(BASE + 'update/latest.json?fresh=' + Date.now()).then(function (L) {
+        var q = 'update/latest.json?fresh=' + Date.now();
+        return (window.gySite ? window.gySite.each(function (b) { return getJson(b + '/' + q); }) : getJson(site() + q)).then(function (L) {
             done();
             if (!L || !L.ver) throw new Error('没拿到版本信息');
             LATEST = { ver: L.ver, at: L.at, notes: L.notes || [] }; S.latest = LATEST; S.checked = Date.now(); wr(S);
@@ -102,9 +104,9 @@
     function diffOn() { try { return !!(X && X.on && X.FEATS && X.FEATS.some(function (f) { return f.id === 'gyUpdDiff'; }) && X.on('gyUpdDiff')); } catch (e) { return false; } }
     function patchOf(L) { var p = L && L.patches && L.patches[String(VER)]; return (p && p.u && p.basis && diffOn() && S.noDiff !== L.ver) ? p : null; }
     function pickSrc(L, cb) {
-        var full = { url: BASE + (L.wgt || 'update/guyu.wgt') + '?v=' + L.ver, file: '_doc/update/guyu-' + L.ver + '.wgt', patch: false };
+        var full = { url: site() + (L.wgt || 'update/guyu.wgt') + '?v=' + L.ver, file: '_doc/update/guyu-' + L.ver + '.wgt', patch: false };
         var p = patchOf(L); if (!p) return cb(full);
-        curVer(function (c) { cb(c && c === p.basis ? { url: BASE + p.u + '?v=' + L.ver, file: '_doc/update/guyu-' + VER + '-' + L.ver + '.wgtu', patch: true } : full); });
+        curVer(function (c) { cb(c && c === p.basis ? { url: site() + p.u + '?v=' + L.ver, file: '_doc/update/guyu-' + VER + '-' + L.ver + '.wgtu', patch: true } : full); });
     }
     window.__gyUpdDiff = { on: diffOn, patchOf: patchOf, cur: function () { return CUR; } };
     try { document.addEventListener('plusready', function () { curVer(function () {}); }, false); if (window.plus) curVer(function () {}); } catch (e) {}
@@ -246,7 +248,7 @@
     function runDesk(L) {
         busy(true); prog(0, '对比文件…');
         var t = setInterval(function () { window.gyDesk.hot('progress').then(function (p) { if (p && p.total) prog(p.done / p.total, '下载中… ' + p.done + ' / ' + p.total + ' 个文件'); }).catch(function () {}); }, 400);
-        window.gyDesk.hot('apply', { base: BASE, ver: L.ver }).then(function (r) {
+        window.gyDesk.hot('apply', { base: site(), ver: L.ver }).then(function (r) {
             clearInterval(t);
             if (!r || !r.ok) return fail((r && r.err) || '没下完');
             S.from = VER; wr(S);

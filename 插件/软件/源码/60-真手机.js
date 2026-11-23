@@ -66,6 +66,12 @@ const N = (() => {
     const j = s => { try { return typeof s === 'string' ? JSON.parse(s || 'null') : s; } catch (e) { return null; } };
     // 调插件：没插件 / 返回 undefined / 出错 → MISS（让外面回退到 JS）
     const cP = (f, ...a) => { if (!havePlugin()) return MISS; try { const r = Gd[f](...a); return r === undefined ? MISS : r; } catch (e) { console.warn('[真手机]', f, e); return MISS; } };
+    const pageCall = (f, ...a) => {
+        const r = cP(f, ...a);
+        if (r === MISS) return { ok: false, error: 'plugin_required', err: '页面操作要装「谷雨守护」插件' };
+        const o = j(r);
+        return o && typeof o === 'object' ? o : { ok: false, error: 'bad_plugin_result', err: '插件返回的页面数据看不懂' };
+    };
 
     /* ---- 不用插件、只用 Native.js(plus.android) 能做的那部分 ---- */
     const JS = (() => {
@@ -209,6 +215,7 @@ const N = (() => {
         shotErr: () => { const r = cP('shotErr'); return r !== MISS ? (r || '') : JS.shotErr(); },
         lock: () => { const r = cP('lock'); return r !== MISS ? r : JS.lock(); },
         home: () => { const r = cP('home'); return r !== MISS ? r : JS.home(); },
+        back: () => { const r = cP('back'); return r !== MISS ? r : false; },
         front: () => { const r = cP('bringFront', ctx); return r !== MISS ? r : JS.front(); },
         openApp: p => { const r = cP('openApp', ctx, p); return r !== MISS ? r : JS.openApp(p); },
         setBlocked: s => { const r = cP('setBlocked', s); if (r === MISS) JS.setBlocked(s); },
@@ -223,7 +230,11 @@ const N = (() => {
         buzz: s => { const r = cP('vibrate', ctx, s); return r !== MISS ? r : JS.vibrate(s); },
         clip: t => { const r = cP('clip', ctx, t); return r !== MISS ? r : JS.clip(t); },
         wall: (p, w) => { const r = cP('wallpaper', ctx, p, w); return r !== MISS ? r : JS.wall(p, w); },
-        alarm: (h, m, s) => { const r = cP('alarm', ctx, h, m, s); return r !== MISS ? r : JS.alarm(h, m, s); }
+        alarm: (h, m, s) => { const r = cP('alarm', ctx, h, m, s); return r !== MISS ? r : JS.alarm(h, m, s); },
+        inspectScreen: max => pageCall('inspectScreen', max),
+        tapElement: (token, ref) => pageCall('tapElement', token, ref),
+        setText: (token, ref, value) => pageCall('setText', token, ref, value),
+        scrollScreen: direction => pageCall('scrollScreen', direction)
     };
 })();
 P.__N = N;
@@ -528,6 +539,37 @@ P.__soft = softTick; P.__find = findApps;
 /* ---------------- 给「🧰 我的 MCP」用的口子：严格照用户在上面定的档（不许 = 碰不到） ----------------
    读类（看屏幕的字、读通知）要插件才有；动作类（锁软件、拉回、锁屏）只在用户把那项设成「TA 直接做」时才执行，
    设成「先问我」的，MCP 这边不弹窗、不替用户点头，只告诉 TA 需要用户先授权。不走这里的 X.reach，省得和 MCP 的回复重复。 */
+function pageReady(acting) {
+    if (!X.on('gysPhone')) return { err: '「📲 真手机」这个功能还没打开' };
+    if (!native()) return { err: '只有安卓 App 里能用（网页 / 电脑上操作不了手机页面）' };
+    if (needPlugin('read')) return { err: '页面操作要装「谷雨守护」插件' };
+    if (perm('read') === 'no') return { err: '她把「读屏幕上的字」设成了不许' };
+    if (acting && perm('read') !== 'auto') return { err: '她把「读屏幕上的字」设成了「先问我」，看看页面可以，点按 / 输入 / 滑动要先改成「TA 直接做」' };
+    return null;
+}
+function pageResult(r) {
+    if (r && r.ok) return r;
+    return { err: (r && (r.err || r.error)) || '页面操作没成功', error: (r && r.error) || '' };
+}
+const pageSigs = new Map();
+function pageSig(r) {
+    return JSON.stringify([String(r.pkg || ''), (Array.isArray(r.nodes) ? r.nodes : []).map(n => [
+        String(n.text || ''), String(n.desc || ''), String(n.id || ''), String(n.cls || ''), String(n.bounds || ''),
+        !!n.clickable, !!n.editable, !!n.scrollable, !!n.enabled
+    ])]);
+}
+function rememberPage(r, max) {
+    const t = Number(r && r.token);
+    if (!Number.isSafeInteger(t)) return;
+    pageSigs.delete(t); pageSigs.set(t, { sig: pageSig(r), max });
+    while (pageSigs.size > 20) pageSigs.delete(pageSigs.keys().next().value);
+}
+function inspectPage(max) {
+    const n = Math.max(1, Math.min(160, parseInt(max, 10) || 80));
+    const r = pageResult(N.inspectScreen(n));
+    if (r.ok) rememberPage(r, n);
+    return r;
+}
 P.mcp = {
     // 304：点名锁（「锁抖音 30 分钟」）。o = { apps:[名字…], minutes, all, why, cid, asked }
     // asked = 是她自己在聊天里开口让 TA 锁的 → 就算设的是「先问我」也直接锁（她已经开口了，不用再问一遍）
@@ -606,6 +648,53 @@ P.mcp = {
         try { notifTick(); } catch (e) {}
         const arr = (D.notifs || []).filter(x => !D.never.includes(x.pkg)).slice(0, Math.max(1, Math.min(40, n || 15)));
         return arr.length ? { list: arr.map(x => ({ app: x.label || x.pkg, title: x.title || '', text: String(x.text || '').slice(0, 200), at: x.at })) } : { list: [], note: '现在没有存着的通知' };
+    },
+    inspectScreen(max) {
+        const bad = pageReady(false); if (bad) return bad;
+        return inspectPage(max);
+    },
+    async waitScreen(token, timeoutMs) {
+        const bad = pageReady(false); if (bad) return bad;
+        const t = Number(token);
+        const base = Number.isSafeInteger(t) ? pageSigs.get(t) : null;
+        if (!base) return { err: '这个页面快照已经过期或不存在，请重新查看页面', error: 'bad_snapshot' };
+        const ms = parseInt(timeoutMs, 10), wait = Math.max(300, Math.min(15000, Number.isFinite(ms) ? ms : 8000));
+        const stop = Date.now() + wait;
+        let transient = null;
+        do {
+            const left = Math.max(30, Math.min(300, stop - Date.now()));
+            await new Promise(r => setTimeout(r, left));
+            const noRead = pageReady(false); if (noRead) return noRead;
+            const r = inspectPage(base.max);
+            if (r.ok) {
+                if (pageSig(r) !== base.sig) return r;
+                transient = null;
+            } else if (r.error === 'no_active_window' || r.error === 'inspect_failed') transient = r;
+            else return r;
+        } while (Date.now() < stop);
+        if (transient) return transient;
+        return { err: `等了 ${(wait / 1000).toFixed(1)} 秒，页面没有变化`, error: 'timeout' };
+    },
+    pressBack() {
+        const bad = pageReady(true); if (bad) return bad;
+        const gate = pageResult(N.inspectScreen(1));
+        if (!gate.ok) return gate;
+        if (!N.back()) return { err: '返回没成功：页面已经不能再返回，或谷雨守护插件需要更新', error: 'action_rejected' };
+        return { ok: true, action: 'back' };
+    },
+    tapElement(token, ref) {
+        const bad = pageReady(true); if (bad) return bad;
+        return pageResult(N.tapElement(Number(token), Number(ref)));
+    },
+    setText(token, ref, value) {
+        const bad = pageReady(true); if (bad) return bad;
+        return pageResult(N.setText(Number(token), Number(ref), String(value == null ? '' : value)));
+    },
+    scrollScreen(direction) {
+        const bad = pageReady(true); if (bad) return bad;
+        const d = Number(direction);
+        if (d !== 1 && d !== -1) return { err: '滑动方向只能是 1（向下）或 -1（向上）', error: 'bad_direction' };
+        return pageResult(N.scrollScreen(d));
     },
     // 动作：只在「TA 直接做」时真做；「先问我」只提示需要授权，不自作主张
     async act(k, ...a) {
