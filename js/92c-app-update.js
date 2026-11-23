@@ -185,7 +185,8 @@
     }
     // 299：装好以后重启。以前只用 plus.runtime.restart()——它是「先把自己关掉，再托系统过一会儿把谷雨叫起来」，
     //      OPPO / vivo / 小米这些手机会把「后台自己弹出来」拦掉，结果就是关掉以后再也不开。
-    //      现在趁谷雨还在最前面，先让系统「重新打开谷雨」（这时候是允许的），再结束自己；系统会马上带着新版本把它开起来。
+    //      现在趁谷雨还在最前面，让系统清掉旧页面并重新打开谷雨。不要把刚启动的新 Activity 再强杀掉：
+    //      新旧 Activity 可能还在同一个进程里，System.exit(0) 会让“只退出、不重启”的情况再次出现。
     //      这条路走不通（不是安卓 / 调用出错）才用老办法。
     function restartApp() {
         try {
@@ -196,7 +197,6 @@
                 if (it) {
                     plus.android.invoke(it, 'addFlags', 0x10000000 | 0x00008000);   // NEW_TASK | CLEAR_TASK：整个重来，不留旧页面
                     plus.android.invoke(act, 'startActivity', it);
-                    setTimeout(function () { try { plus.android.importClass('java.lang.System').exit(0); } catch (e) { try { plus.runtime.restart(); } catch (e2) {} } }, 250);
                     return;
                 }
             }
@@ -213,8 +213,8 @@
             if (!document.getElementById('gyUpd')) ask(L);
             busy(true); prog(1, '正在安装…');
             plus.runtime.install(file, { force: true }, function () {
-                S.from = VER; S.lastWay = (S.pre && S.pre.patch) ? 'diff' : 'full'; S.pre = null; S.inst = null; wr(S);
-                prog(1, '装好了，马上重启…（要是关掉后没自己打开，点一下桌面上的谷雨就是新版）');
+                S.from = VER; S.lastWay = (S.pre && S.pre.patch) ? 'diff' : 'full'; S.inst = { ver: L.ver, at: Date.now() }; wr(S);
+                prog(1, '装好了，正在重新打开…（要是没自己打开，点一下谷雨会接着完成更新）');
                 setTimeout(restartApp, 900);
             }, function (e) {
                 var wasPatch = !!(S.pre && S.pre.patch);
@@ -241,7 +241,13 @@
     function resumeSaved() {
         if (!isApp() || !S.inst) return false;
         var v = +S.inst.ver || 0;
-        if (v <= VER || !(S.pre && +S.pre.ver === v && S.pre.file)) { S.inst = null; wr(S); return false; }
+        if (v <= VER) {
+            S.inst = null;
+            if (S.pre && +S.pre.ver === v) S.pre = null;
+            wr(S);
+            return false;
+        }
+        if (!(S.pre && +S.pre.ver === v && S.pre.file)) { S.inst = null; wr(S); return false; }
         var L = (LATEST && +LATEST.ver === v) ? LATEST : { ver: v };
         runApp(L);
         return true;
