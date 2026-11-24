@@ -646,7 +646,7 @@
             const item = { id: call.id, tool: x ? (x.t.title || x.t.name) : call.fn, name: x ? x.t.name : call.fn, status: result.status, error: result.error, bad: result.ok !== true, summary, server: x ? (x.s.name || x.s.url || x.s.command) : '', argsText, out, ms: Date.now() - t0 };
             items.push(item);
             window.gyMcpTasks.step(task.id, result.ok);
-            L.unshift({ taskId: task.id, at: Date.now(), cid: String(c.id), who: c.name, tool: item.tool, server: item.server, args: argsText, out: out.slice(0, 800), ms: item.ms, status: item.status, error: item.error, err: item.bad });
+            L.unshift({ taskId: task.id, at: Date.now(), cid: String(c.id), who: c.name, tool: item.tool, server: item.server, args: argsText, out: out.slice(0, x && x.s.kind === 'builtin' && ['meituan_inspect', 'meituan_search'].includes(x.t.name) && result.data?.error === 'unknown_layout' ? 3000 : 800), ms: item.ms, status: item.status, error: item.error, err: item.bad });
             saveLog();
             if (x && x.s.kind === 'builtin' && result.data && result.data.error === 'human_required') { window.gyMcpTakeover('human_required'); task.check(); }
             if (call.id) callResults.set(call.id, out);

@@ -5,6 +5,8 @@
     const APPS = ['com.sankuai.meituan.takeoutnew', 'com.sankuai.meituan'];
     const titleId = id => /(?:poi|shop|store|restaurant)[_a-z/]*(?:name|title)|(?:name|title)[_a-z/]*(?:poi|shop|store|restaurant)/i.test(String(id || ''));
     const label = n => String(n.text || n.desc || '').trim();
+    const searchHint = text => /^(?:搜索商家|搜索店铺|搜索商家[、，,\s]+商品(?:名称)?|搜索商品|搜索美食|搜索商家或商品|搜索店铺或商品)$/.test(String(text || '').trim());
+    const searchFieldId = id => { const key = String(id || '').split('/').pop(); return /^[a-z0-9_]+$/i.test(key) && /(?:^|_)search(?:_|box|bar|input|edit|container|layout)/i.test(key) && /box|bar|input|edit|container|layout/i.test(key) && !/(?:^|_)(?:button|btn|history)(?:_|$)/i.test(key); };
     let last = null;
     function classify(s) {
         if (!s || !s.ok || s.snapshotSchema !== 2 || !s.fingerprint || !APPS.includes(s.pkg) || !Array.isArray(s.nodes)) return { page: 'unknown', stores: [] };
@@ -31,19 +33,43 @@
             }
         }
         const menu = words.includes('点菜') && (words.includes('评价') || words.includes('商家'));
-        const submit = nodes.filter(n => n.enabled && n.clickable && label(n) === '搜索');
+        function controls(test) {
+            const targets = new Map();
+            for (const n of nodes.filter(n => n.enabled && test(n))) {
+                let target = n;
+                for (let depth = 0; target && depth < 4; depth++, target = byRef.get(target.parentRef)) {
+                    if (target.enabled && target.clickable) {
+                        const members = nodes.filter(x => below(x, target.ref));
+                        if (target.ref !== 0 && members.length <= 12 && !members.some(x => x !== target && (x.clickable || x.editable || x.scrollable))
+                            && !members.some(x => /提交订单|立即支付|确认支付|付款|验证码/.test(label(x)))) targets.set(target.ref, target);
+                        break;
+                    }
+                    if (target.parentRef === target.ref) break;
+                }
+            }
+            return Array.from(targets.values());
+        }
+        const submit = controls(n => label(n) === '搜索' || String(n.desc || '').trim() === '搜索');
         const inputs = nodes.filter(n => n.enabled && n.editable);
-        const entry = nodes.filter(n => n.enabled && n.clickable && /^(?:搜索|搜索商家|搜索店铺|搜索商家、商品)$/.test(label(n)));
-        const takeout = nodes.filter(n => n.enabled && n.clickable && label(n) === '外卖');
+        const fields = controls(n => searchHint(n.text) || searchHint(n.desc) || (label(n) !== '搜索' && searchFieldId(n.id)));
+        const entry = fields.length ? fields : submit;
+        const takeout = controls(n => label(n) === '外卖');
         return { page: menu ? 'store' : stores.length ? 'results' : inputs.length === 1 && submit.length === 1 ? 'search' : entry.length === 1 || takeout.length === 1 ? 'home' : 'unknown',
             stores, titles: titles.map(label), input: inputs.length === 1 ? inputs[0].ref : null,
             submit: submit.length === 1 ? submit[0].ref : null, entry: entry.length === 1 ? entry[0].ref : null,
-            takeout: takeout.length === 1 ? takeout[0].ref : null, truncated: !!s.truncated };
+            takeout: takeout.length === 1 ? takeout[0].ref : null, truncated: !!s.truncated,
+            diagnostics: { nodeCount: nodes.length, editableCount: inputs.length, submitCount: submit.length, entryCount: entry.length,
+                searchNodes: nodes.filter(n => searchFieldId(n.id) || searchHint(n.text) || searchHint(n.desc) || label(n) === '搜索').slice(0, 8).map(n => ({ ref: n.ref, parentRef: n.parentRef,
+                    id: String(n.id || '').length <= 160 && /^(?:[A-Za-z0-9_.:]+\/[A-Za-z0-9_]{1,80}|[A-Za-z_][A-Za-z0-9_]{0,79})$/.test(String(n.id || '')) ? String(n.id) : '', clickable: !!n.clickable, editable: !!n.editable, enabled: !!n.enabled })) } };
     }
     function phone() { const p = window.gysPh; if (!p || !p.mcp) throw new Error('真手机桥接未加载'); return p; }
     const pause = () => new Promise(resolve => setTimeout(resolve, 200));
     const guard = check => { if (typeof check === 'function') check(); };
     function failure(error, text, accepted) { return { ok: false, error, err: text, actionAccepted: !!accepted }; }
+    function layoutFailure(s, info, accepted, stage) {
+        return Object.assign(failure('unknown_layout', '无法确认唯一的搜索控件，请核对页面；本轮停止', accepted),
+            { diagnostic: Object.assign({ stage, truncated: !!s.truncated }, info.diagnostics || {}) });
+    }
     const READ_ERRORS = Object.freeze({
         accessibility_off: '无障碍服务未连接，请在系统中重新启用谷雨守护无障碍',
         no_active_window: '无障碍没有取得活动窗口',
@@ -116,7 +142,7 @@
         };
         if (!s || !s.ok) return pageFailure(s, false, { stage: 'inspect' });
         const info = classify(s); if (info.page === 'human_required') return failure('human_required', '当前需要登录、验证或涉及交易，请手动处理后重新发起', false);
-        if (info.page === 'unknown') return failure('unknown_layout', '无法可靠识别当前页面，请手动进入美团外卖搜索页', false);
+        if (info.page === 'unknown') return layoutFailure(s, info, false, 'inspect');
         return remember(s, info);
     }
     async function search(args, check) {
@@ -154,7 +180,7 @@
             } else if (info.page === 'home') {
                 const ref = info.entry != null ? info.entry : info.takeout;
                 r = await phone().mcp.tapElement(s.token, ref, check);
-            } else return failure('unknown_layout', '没有识别到唯一的搜索入口或输入框，请手动进入搜索页', accepted);
+            } else return layoutFailure(s, info, accepted, 'search_step_' + step);
             guard(check); accepted = accepted || !!(r && r.actionAccepted);
             if (!r || !r.ok || !r.snapshot) return failure((r && r.error) || 'action_unverified', (r && r.err) || '操作结果未确认，请核对美团，不会重复点击', accepted);
             s = r.snapshot;
