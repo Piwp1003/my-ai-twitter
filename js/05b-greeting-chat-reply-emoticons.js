@@ -1216,7 +1216,7 @@ function gyReplyIsDup(said, text, sessionId, char) {
     return dup;
 }
 window.gyReplyIsDup = gyReplyIsDup;
-async function triggerAIBatchReply(sessionId, triggerText, aliveCatchUp) {
+async function triggerAIBatchReply(sessionId, triggerText, aliveCatchUp, mcpReplyReceipt) {
     // 🫀 TA 不总是在线：睡着/在忙的时候先把消息挂起来，等 TA 那段过去了再一次性回（见 js/06）
     //    aliveCatchUp 有值＝这一轮就是"补回"，门卫直接放行，不要再挂一次。
     let aliveCatch = aliveCatchUp || null;
@@ -1384,6 +1384,10 @@ ${latestEmphasis}
 ${groupMoveToChatOption}${(typeof window.gyChatActsPrompt === 'function') ? window.gyChatActsPrompt(char, isGroup) : ''}${(typeof gyNowAnchorNote === 'function') ? gyNowAnchorNote() : ''}
 ${actionTagReminder}
 ${multiReplyBlock}${(typeof aliveMoodFormatNote === 'function') ? aliveMoodFormatNote() : ''}${(typeof aliveCatchUpPrompt === 'function') ? aliveCatchUpPrompt(aliveCatch) : ''}`;
+        const mcpFacts = !isGroup && typeof window.gyMcpReplyFacts === 'function'
+            ? window.gyMcpReplyFacts(mcpReplyReceipt, sessionId, char.id) : { prompt: '', fixedReply: '' };
+        systemText += '\n' + mcpFacts.prompt;
+        finalUserText += '\n' + mcpFacts.prompt;
         let prompt = buildStructuredMessages(systemText, historyTurns, finalUserText);
 
         try {
@@ -1464,7 +1468,9 @@ ${multiReplyBlock}${(typeof aliveMoodFormatNote === 'function') ? aliveMoodForma
             let rqKeyPending = rqApi.__gyReqKey || '';
             const producing = (async () => {
                 try {
-                    if (useChatStream) {
+                    if (mcpFacts.fixedReply) {
+                        data = { choices: [{ message: { content: JSON.stringify({ replies: [{ delay: 0, text: mcpFacts.fixedReply }] }) } }] };
+                    } else if (useChatStream) {
                         data = await streamCompletionText(rqApi, prompt, (fullSoFar, isDone) => {
                             if (isDone) return; // 收尾那一次交给 finalizeReplies 统一解析，别重复
                             const partial = extractStreamingReplies(fullSoFar);

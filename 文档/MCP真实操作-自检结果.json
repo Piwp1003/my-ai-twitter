@@ -1,201 +1,201 @@
 {
-  "at": "2026-11-24T17:19:20.223Z",
-  "webVersion": 327,
+  "at": "2026-11-24T18:15:30.940Z",
+  "webVersion": 328,
   "androidVersion": "1.63",
   "androidCode": 163,
   "pluginVersion": "1.3.0",
   "environment": "win32",
   "scope": "mocked software interfaces and Android stubs; no real orders, payments, phone install, Cloud deployment or signed APK build",
-  "passed": 50,
-  "total": 50,
+  "passed": 52,
+  "total": 52,
   "results": [
     {
       "name": "native compile",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 3425,
+      "durationMs": 3969,
       "output": ""
     },
     {
       "name": "SnapshotSafetyTest",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 343,
+      "durationMs": 302,
       "output": "22 native snapshot checks passed (stubbed Android)\r\n"
     },
     {
       "name": "OrderSubmitSafetyTest",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 425,
+      "durationMs": 465,
       "output": "24 native order submission checks passed (stubbed Android, no real orders)\r\n"
     },
     {
       "name": "OrderReceiptSafetyTest",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 603,
+      "durationMs": 621,
       "output": "34 native receipt/association checks passed (stubbed Android)\r\n"
     },
     {
       "name": "APK hot-update build checks",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 1513,
-      "output": "test_gradle_patch_adds_dependency_once (__main__.BuildChecks.test_gradle_patch_adds_dependency_once) ... ok\r\ntest_native_module_is_required (__main__.BuildChecks.test_native_module_is_required) ... ok\r\ntest_old_delivered_apk_exposes_the_missing_dependency (__main__.BuildChecks.test_old_delivered_apk_exposes_the_missing_dependency) ... ok\r\ntest_reference_is_not_a_definition (__main__.BuildChecks.test_reference_is_not_a_definition) ... ok\r\ntest_required_classes_are_defined (__main__.BuildChecks.test_required_classes_are_defined) ... ok\r\ntest_wrong_appid_is_rejected (__main__.BuildChecks.test_wrong_appid_is_rejected) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 6 tests in 1.005s\r\n\r\nOK\r\n"
-    },
-    {
-      "name": "apk-install-recovery-test.mjs",
-      "passed": true,
-      "exitCode": 0,
-      "durationMs": 11481,
-      "output": "13 APK install recovery checks passed\n"
+      "durationMs": 1469,
+      "output": "test_gradle_patch_adds_dependency_once (__main__.BuildChecks.test_gradle_patch_adds_dependency_once) ... ok\r\ntest_native_module_is_required (__main__.BuildChecks.test_native_module_is_required) ... ok\r\ntest_old_delivered_apk_exposes_the_missing_dependency (__main__.BuildChecks.test_old_delivered_apk_exposes_the_missing_dependency) ... ok\r\ntest_reference_is_not_a_definition (__main__.BuildChecks.test_reference_is_not_a_definition) ... ok\r\ntest_required_classes_are_defined (__main__.BuildChecks.test_required_classes_are_defined) ... ok\r\ntest_wrong_appid_is_rejected (__main__.BuildChecks.test_wrong_appid_is_rejected) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 6 tests in 0.897s\r\n\r\nOK\r\n"
     },
     {
       "name": "binding-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 12907,
+      "durationMs": 8108,
       "output": "  扫到 1116 个被内联事件调用的函数名\n\n  ✅ 全部都能在全局找到，没有点了没反应的按钮\n\n  ✅ 没有直接调用原生 prompt()（Electron 不支持它，调了会抛异常，表现就是点了没反应）\n\n全部通过\n"
+    },
+    {
+      "name": "apk-install-recovery-test.mjs",
+      "passed": true,
+      "exitCode": 0,
+      "durationMs": 9656,
+      "output": "13 APK install recovery checks passed\n"
     },
     {
       "name": "life-consent-ui-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 6778,
+      "durationMs": 7222,
       "output": "21 life consent UI checks passed (real browser IndexedDB, mobile viewport, trusted clicks, no external services)\n"
     },
     {
       "name": "boot-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 24634,
+      "durationMs": 25819,
       "output": "  ✅ 离线也能启动（不再依赖 cdnjs）\n  ✅ localforage 是本地加载的\n  ✅ 正常启动时不弹自检面板\n  ✅ 侧边栏渲染出来了\n  ✅ 脚本丢失时弹出自检面板\n  ✅ 自检面板指出了缺哪个文件\n  ✅ 启动异常时弹出自检面板\n  ✅ 自检面板带上了报错内容\n  ✅ 远程图片加载失败不弹自检面板\n  ✅ 图挂了 app 照常启动\n  ✅ 用到一半本地图片挂了也不弹面板\n  ✅ 启动之后的脚本报错只进控制台，不弹面板\n  ✅ 启动之后的 promise 失败也不弹面板\n  ✅ PWA manifest 不再叫 manifest.json\n\n14/14 通过\n"
     },
     {
       "name": "mcp-cache-manifest-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 207,
+      "durationMs": 183,
       "output": "132 entry scripts present and listed in Service Worker cache\n"
     },
     {
       "name": "life-foundation-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 4865,
+      "durationMs": 5361,
       "output": "51 local consent/event transaction/backup isolation checks passed (real browser IndexedDB; no external accounts)\n"
     },
     {
       "name": "mcp-cancel-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 260,
+      "durationMs": 214,
       "output": "30 cancellation/deadline checks passed\n"
     },
     {
       "name": "mcp-cloud-package-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 9344,
-      "output": "PASS isolated Cloud full-package build: v327 / 1.63.327; no network; all transaction modules included\n"
+      "durationMs": 10739,
+      "output": "PASS isolated Cloud full-package build: v328 / 1.63.328; no network; all transaction modules included\n"
     },
     {
       "name": "mcp-execution-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 123,
+      "durationMs": 122,
       "output": "12 queue/journal/dedup checks passed\n"
     },
     {
       "name": "mcp-execution-integration-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 219,
+      "durationMs": 222,
       "output": "30 cancellation/deadline checks passed\n12 serialization/dedup integration checks passed\n"
     },
     {
       "name": "mcp-human-takeover-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 224,
+      "durationMs": 226,
       "output": "30 cancellation/deadline checks passed\n20 manual takeover/resume checks passed\n"
     },
     {
       "name": "mcp-human-takeover-ui-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 7389,
+      "durationMs": 7728,
       "output": "PASS takeover UI: explicit review, OTP-checked recovery, preserved controls, pending read detaches and exit button enables, no replay\n"
     },
     {
       "name": "mcp-meituan-cart-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 172,
+      "durationMs": 185,
       "output": "41 item/spec/cart checks passed\n"
     },
     {
       "name": "mcp-meituan-cart-integration-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 242,
+      "durationMs": 252,
       "output": "41 item/spec/cart checks passed\nPASS cart MCP integration: quantity delta, duplicate prevention, unknown add outcome stays blocked without retry\n"
     },
     {
       "name": "mcp-meituan-checkout-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 145,
+      "durationMs": 152,
       "output": "47 checkout parsing/navigation/privacy checks passed\n"
     },
     {
       "name": "mcp-meituan-checkout-integration-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 199,
+      "durationMs": 204,
       "output": "47 checkout parsing/navigation/privacy checks passed\nPASS checkout MCP integration: one navigation, verified cents, redacted model context and persisted logs, no submit/payment\n"
-    },
-    {
-      "name": "mcp-meituan-checkout-ui-test.mjs",
-      "passed": true,
-      "exitCode": 0,
-      "durationMs": 6660,
-      "output": "47 checkout parsing/navigation/privacy checks passed\nPASS local checkout review: mobile fit, full local address, redacted tool response, refreshed amounts, removed stale review, no submit control\n"
     },
     {
       "name": "mcp-meituan-failure-ui-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 6778,
+      "durationMs": 7772,
       "output": "PASS readable failure summary and full stored diagnostic after reload; no task-body duplication, escaped HTML, no page errors\n"
+    },
+    {
+      "name": "mcp-meituan-checkout-ui-test.mjs",
+      "passed": true,
+      "exitCode": 0,
+      "durationMs": 7932,
+      "output": "47 checkout parsing/navigation/privacy checks passed\nPASS local checkout review: mobile fit, full local address, redacted tool response, refreshed amounts, removed stale review, no submit control\n"
     },
     {
       "name": "mcp-meituan-launch-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 166,
+      "durationMs": 165,
       "output": "30 Meituan search/store checks passed\n12 launch read checks passed: delayed window, native cause, bounded polling, cancellation, no relaunch or blind tap\nPASS launch focus preparation, private foreground categories, no policy bypass, cancellation before launch (18 checks total)\n"
     },
     {
       "name": "mcp-meituan-integration-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 199,
+      "durationMs": 210,
       "output": "30 Meituan search/store checks passed\nPASS registered MCP tools: model → validation → queue → Meituan search/store → verified structured result\nPASS opened-app/unknown-layout failure releases idle device, surfaces detail, stops retry and allows a new request\nPASS native launch-read cause appears in failed task; idle device released, no model retry\n"
     },
     {
       "name": "mcp-meituan-layout-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 140,
-      "output": "30 Meituan search/store checks passed\n10 layout checks passed: dynamic recommendation, parent buttons, descriptions, ambiguity/protected controls, private diagnostic metadata\n"
+      "durationMs": 154,
+      "output": "30 Meituan search/store checks passed\n11 layout checks passed: recommendation → field → exact user query → parent submit → results, ambiguity/protected controls and private metadata\n"
     },
     {
       "name": "mcp-meituan-routing-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 214,
+      "durationMs": 231,
       "output": "30 Meituan search/store checks passed\nPASS 6 routing scenarios: inspect → search → results, direct/fallback text rounds, failed launch stops, max rounds, unresolved window pauses, unique IDs\n"
     },
     {
@@ -216,147 +216,161 @@
       "name": "mcp-native-fetch-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 160,
+      "durationMs": 131,
       "output": "12 native network checks passed: abort, late response, no HTTP-error replay, transport fallback, cleanup\n"
     },
     {
       "name": "mcp-order-result-integration-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 178,
+      "durationMs": 177,
       "output": "26 receipt state/privacy/local association checks passed\nPASS receipt MCP integration: observed payment separated from task success; no submit, payment or raw order ID\n"
     },
     {
       "name": "mcp-order-result-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 128,
+      "durationMs": 132,
       "output": "26 receipt state/privacy/local association checks passed\n"
     },
     {
       "name": "mcp-order-result-ui-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 4915,
+      "durationMs": 5102,
       "output": "26 receipt state/privacy/local association checks passed\nPASS order review UI: full ID local only, explicit receipt association, no automatic resubmit/payment; native confirmation mocked\n"
     },
     {
       "name": "mcp-page-safety-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 189,
+      "durationMs": 179,
       "output": "30 page preflight/readback checks passed\n"
     },
     {
       "name": "mcp-phone-capabilities-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 274,
+      "durationMs": 289,
       "output": "PASS web environment\nPASS bridge not loaded\nPASS bridge error\nPASS plugin missing\nPASS old plugin handshake\nPASS invalid handshake\nPASS accessibility off\nPASS app visibility unknown\nPASS missing native action\nPASS read permission ask\nPASS feature off\nPASS MCP off\nPASS server off\nPASS tools disabled\nPASS old page safety protocol\nPASS old order confirmation protocol\nPASS model untested\n21 checks passed; no network or storage writes\n"
     },
     {
       "name": "mcp-protocol-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 125,
+      "durationMs": 146,
       "output": "18 protocol checks passed\n"
     },
     {
       "name": "mcp-phone-capabilities-ui-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 4548,
+      "durationMs": 5572,
       "output": "PASS mobile viewport: visible check button, unsupported environment, honest scope, accessible result, no page errors\n"
     },
     {
       "name": "mcp-readonly-failure-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 217,
+      "durationMs": 220,
       "output": "30 cancellation/deadline checks passed\n8 pure built-in read failure checks passed: structured/throwing errors stop without device lock, new request can run\n"
+    },
+    {
+      "name": "mcp-reply-facts-test.mjs",
+      "passed": true,
+      "exitCode": 0,
+      "durationMs": 225,
+      "output": "30 cancellation/deadline checks passed\n9 reply receipt checks passed: matching scope, immutable provenance, failure facts, partial evidence, expiry, remote spoof rejection, no credentials\n"
     },
     {
       "name": "mcp-resource-update-recovery-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 6925,
+      "durationMs": 8980,
       "output": "20 WGT install/restart/version acknowledgement checks passed (native interfaces mocked)\n"
+    },
+    {
+      "name": "mcp-reply-facts-ui-test.mjs",
+      "passed": true,
+      "exitCode": 0,
+      "durationMs": 19049,
+      "output": "PASS real reply path with tool-result injection OFF, streaming ON/OFF: failed physical task uses fixed verified facts, fabricated completion never requested or displayed\n"
     },
     {
       "name": "mcp-submit-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 154,
+      "durationMs": 150,
       "output": "18 local confirmation/one-attempt checks passed\n"
     },
     {
       "name": "mcp-submit-ui-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 5412,
+      "durationMs": 5446,
       "output": "47 checkout parsing/navigation/privacy checks passed\nPASS local submission UI: review checkbox, trusted click, native-confirmation request once, no MCP submit tool; native action mocked\n"
     },
     {
       "name": "mcp-tasks-integration-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 205,
+      "durationMs": 186,
       "output": "11 task/MCP integration checks passed\n"
     },
     {
       "name": "mcp-takeover-exit-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 238,
+      "durationMs": 217,
       "output": "30 cancellation/deadline checks passed\n9 takeover exit checks passed: detach stopped built-in reads only, no late settlement corruption, writes/remote in-flight held, explicit review required\n"
     },
     {
       "name": "mcp-tasks-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 142,
+      "durationMs": 135,
       "output": "34 task state checks passed\n"
     },
     {
       "name": "mcp-tasks-ui-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 7138,
+      "durationMs": 6973,
       "output": "PASS task panel: empty, live progress, escaped labels, cancel button, reload interruption, retained counts, no page errors\n"
     },
     {
       "name": "mcp-timeout-retry-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 223,
+      "durationMs": 220,
       "output": "30 cancellation/deadline checks passed\n21 phase timeout/safe retry regression checks passed\n"
     },
     {
       "name": "v248-mcp-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 11193,
+      "durationMs": 11258,
       "output": "✅ 打开是一整页；总开关关着时会说\n✅ 🔌 测试连接：Streamable HTTP 握手（带会话 id、带你填的请求头），工具清单翻页拿全\n✅ TA 回之前先问模型要不要用工具（只给开着的工具），调了「查天气」\n✅ 聊天里多一行小字「🧰 立夏 用了「查天气」」，点了能看记录\n✅ 工具结果带进这一轮回复的 prompt，TA 照常回你\n✅ 调用记录：工具、参数、结果都记下了\n✅ 本地形式（桌面版起进程）：能连上、列出工具\n✅ 本地命令找不到：说清楚是「命令找不到」\n✅ 粘贴 Claude 桌面版那种 JSON 配置，一次导进来几个\n✅ 没有页面报错\n\n10/10 通过\n"
     },
     {
       "name": "v308-big-update-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 6405,
+      "durationMs": 6911,
       "output": "✅ 网页版不管\n✅ 安卓 155 < 156 弹大更新\n✅ 下载走 guyu.pw/dl/android\n✅ 有进度\n✅ 下完叫出安装\n✅ 已经最新不弹\n✅ 电脑版 1.0.0 < 1.0.1 弹、能自己换\n✅ 电脑版换的时候说会自己打开\n✅ 老 exe：按钮「去下载新版」、用浏览器下\n✅ 没有报错\n10/10\n"
     },
     {
       "name": "v296-native-notify-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 47286,
+      "durationMs": 48321,
       "output": "✅ 设置 → 通知与云端：多了「📣 手机横幅弹窗」，8 种牌子可选，自己认出 OPPO 并写出要开「横幅通知」\n✅ 状态写清楚：允许通知 ✅、重要级别 ✅、电池还被限制 ⚠️\n✅ 两个新开关都在「全部开关」里：App 里「正在用时也弹」默认开，「后台常驻」默认关\n✅ 谷雨开在最前面也弹：建「重要」渠道（级别 4），用它发，标题正文去掉了标签\n✅ 弹成了就不再走老的 createMessage（不会一条变两条）\n✅ 通知带着「点了去哪」：动作 com.guyu.NOTIFY + 去 TA 的聊天\n✅ 关掉「正在用谷雨时也弹」：盯着看的时候不弹\n✅ 点通知回来：打开 TA 的聊天，去处只用一次\n✅ 297：停在聊天页、人切走了，TA 新说的话弹一条（不重复弹、自己说的不弹）；人在看着时不多弹\n✅ 297：帖子有人回复 → 弹手机通知；关掉「📝 帖子」就不弹；「已收藏」这种小回执不弹\n✅ 297：九类各一个勾（面板 + 全部开关），分类认得对\n✅ 📌 后台常驻：默认关；打开先要通知权限，再起前台服务（带标题和说明），面板显示正挂着\n✅ 从「全部开关」关掉后台常驻：服务停了，设置里的勾也掉\n✅ 「⚙️ 通知设置」跳到这个渠道那一页，「🔋 电池不限制」跳到电池那一页\n✅ 318：安装回调后使用 DCloud 热重启，不重开 Activity 或强杀进程\n✅ 297：App 自动查到新版本，Wi-Fi 下先悄悄下好再问；点「现在更新」不再下载，直接装好重开\n✅ 313：自动预下载不算用户确认，不会留下待安装标记\n✅ 297：后台更新——通知栏进度条（安静渠道，先滚动、再 25%），窗口里能「放到后台」\n✅ 297：下好时人不在 → 不突然重启，通知变成「下好了」；点通知回来才装上、重开，进度通知收掉\n✅ 299：差量更新默认关（下整包）；打开且版本对得上 → 下小包、弹窗写明只下几个文件多大\n✅ 299：小包装不上 → 自动改下整包装上，这一版不再试小包\n✅ 可以自己换牌子看（小米：省电策略选无限制）\n✅ 使用指南有「📣 手机横幅弹窗」这一条，挂着两个新开关\n✅ App（新包）没有页面报错\n✅ 314：更新装好后保留待安装状态，等确认新版本真正启动再清\n✅ 318：重开仍是旧版时保留失败状态，不循环安装或宣告更新成功\n✅ 冷启动续装没有页面报错\n✅ 认出 vivo；渠道被手机调安静了会提醒去改回来\n✅ 老安装包：后台常驻开不了，直说要装 1.52 以上的包，不报错\n✅ 点通知冷启动：启动时就把「去哪」取走了\n✅ App（老包）没有页面报错\n✅ 网页：面板在，「正在用谷雨时也弹」默认关（跟以前一样），安卓那一块藏起来\n✅ 网页：原生横幅 / 跳设置 / 后台常驻都安静地做不了，不报错\n✅ 297：自己点「检查更新」：查的时候顶上挂「正在检查更新…」，查完收走，并说一声「已经是最新的了」\n✅ 297：开着的时候自己查更新，有新版本就弹；点了「下次再说」不会马上又弹\n\n35/35 通过\n"
     },
     {
       "name": "v310-page-tools-test.mjs",
       "passed": true,
       "exitCode": 0,
-      "durationMs": 8442,
+      "durationMs": 9055,
       "output": "✅ 非安卓：inspect_screen 返回清楚的“只有安卓 App”提示\n✅ 安卓无插件：inspect_screen 提示要装谷雨守护插件\n✅ read=no：快照和动作都拒绝\n✅ read=ask：可以看快照，三个动作都拒绝且没有调用动作原生\n✅ 旧插件 read=auto：允许快照，页面写操作要求升级安全协议\n✅ 旧插件非法方向同样不能绕过安全协议，不碰原生\n✅ 读屏保留 not_meituan；旧插件点击在原生调用前拒绝\n✅ 内置工具清单包含 inspect_screen / tap_element / set_text / scroll_screen\n✅ 页面工具在“要装插件”分组里\n✅ gyMcpDecide 实际调用 inspect_screen，并把完整快照 JSON 交回模型\n✅ js/61-soft.js 已生成四个页面桥接\n✅ 这一趟没有页面报错\n\n12/12 通过\n"
     }
   ]
