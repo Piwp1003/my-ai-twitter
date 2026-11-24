@@ -19,7 +19,7 @@
     const chars = () => (typeof myCharacters !== 'undefined' ? myCharacters : []);
     const charOf = id => chars().find(c => String(c.id) === String(id)) || null;
     const uid = () => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-    let C = { servers: [], chars: 'all', api: 'main', rounds: 3, keep: 200 };
+    let C = { servers: [], chars: 'all', api: 'main', mode: 'auto', rounds: 3, keep: 200 };
     try { C = Object.assign(C, JSON.parse(localStorage.getItem(LS) || '{}') || {}); } catch (e) {}
     let L = []; try { L = JSON.parse(localStorage.getItem(LOG) || '[]') || []; } catch (e) { L = []; }
     const save = () => { try { localStorage.setItem(LS, JSON.stringify(C)); } catch (e) {} };
@@ -430,6 +430,25 @@
         return out;
     }
     const lastMsgs = (sid, n) => ((typeof globalChats !== 'undefined' && globalChats[sid]) || []).filter(m => m && m.text && !m.isRecalled).slice(-n);
+    function safeModelMessage(message, api) {
+        let text = String(message || '模型请求失败');
+        if (api.key) text = text.split(api.key).join('[密钥已隐藏]');
+        return text.replace(/https?:\/\/[^\s"'<>]+/gi, '[接口地址]').replace(/Bearer\s+[^\s"'<>]+/gi, 'Bearer [已隐藏]').slice(0, 240);
+    }
+    async function modelResponse(res, api) {
+        const status = Number(res.status) || 0;
+        let data;
+        try { data = await res.json(); } catch (e) { data = null; }
+        if (!data || data.error || res.ok === false) {
+            const detail = data && data.error && (data.error.message || data.error.code) || '接口未返回有效 JSON';
+            const e = new Error('模型请求失败' + (status ? '（HTTP ' + status + '）' : '') + '：' + safeModelMessage(detail, api));
+            e.gyMcpModel = true;
+            e.toolUnsupported = (!status || [400, 404, 405, 422].includes(status))
+                && /(?:tools?|tool_choice|function[ _-]?call(?:ing)?)[\s\S]{0,100}(?:unsupported|not supported|not allowed|unknown|unrecognized|invalid)|(?:unsupported|not supported|unknown|unrecognized|invalid)[\s\S]{0,100}(?:tools?|tool_choice|function[ _-]?call(?:ing)?)/i.test(String(detail));
+            throw e;
+        }
+        return data;
+    }
     async function callApi(api, msgs, tools, signal) {
         const anth = typeof isAnthropicApiUrl === 'function' && isAnthropicApiUrl(api.url);
         const __gyCall = typeof gyDetectCall === 'function' ? gyDetectCall() : null, t0 = Date.now();
@@ -437,16 +456,14 @@
             const sys = msgs.filter(m => m.role === 'system').map(m => m.content).join('\n');
             const body = { model: api.model, max_tokens: 1024, system: sys, messages: msgs.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content })), tools: tools.map(x => ({ name: x.fn, description: (x.t.title ? x.t.title + '：' : '') + x.t.description, input_schema: x.t.inputSchema })) };
             const res = await doFetch(`${api.url}/v1/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': api.key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body), signal });
-            const d = await res.json();
-            if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
+            const d = await modelResponse(res, api);
             try { if (typeof recordTokenUsage === 'function') recordTokenUsage(d, { inChars: JSON.stringify(body).length, outChars: 50 }, __gyCall, { api, t0, kind: 'chat' }); } catch (e) {}
             const calls = (d.content || []).filter(b => b.type === 'tool_use').map(b => ({ id: b.id, fn: b.name, args: b.input || {} }));
             return { calls, append: calls.length ? [{ role: 'assistant', content: d.content }] : [], result: (outs) => ({ role: 'user', content: outs.map(o => ({ type: 'tool_result', tool_use_id: o.id, content: o.out })) }) };
         }
         const body = { model: api.model, messages: msgs, tools: tools.map(x => ({ type: 'function', function: { name: x.fn, description: ((x.t.title ? x.t.title + '：' : '') + x.t.description).slice(0, 1000), parameters: x.t.inputSchema && x.t.inputSchema.type ? x.t.inputSchema : { type: 'object', properties: {} } } })), tool_choice: 'auto' };
         const res = await doFetch(`${api.url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.key}` }, body: JSON.stringify(body), signal });
-        const d = await res.json().catch(() => ({ error: { message: 'HTTP ' + res.status } }));
-        if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
+        const d = await modelResponse(res, api);
         try { if (typeof recordTokenUsage === 'function') recordTokenUsage(d, { inChars: JSON.stringify(body).length, outChars: 50 }, __gyCall, { api, t0, kind: 'chat' }); } catch (e) {}
         const m = (d.choices && d.choices[0] && d.choices[0].message) || {};
         const calls = (m.tool_calls || []).map(tc => { let a = {}; try { a = JSON.parse(tc.function.arguments || '{}'); } catch (e) {} return { id: tc.id, fn: tc.function.name, args: a }; });
@@ -461,12 +478,12 @@
         if (anth) {
             body = { model: api.model, max_tokens: 600, system: msgs.filter(m => m.role === 'system').map(m => m.content).join('\n'), messages: msgs.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content })) };
             const res = await doFetch(`${api.url}/v1/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': api.key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body), signal });
-            d = await res.json(); if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
+            d = await modelResponse(res, api);
             text = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
         } else {
             body = { model: api.model, messages: msgs };
             const res = await doFetch(`${api.url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.key}` }, body: JSON.stringify(body), signal });
-            d = await res.json().catch(() => ({ error: { message: 'HTTP ' + res.status } })); if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
+            d = await modelResponse(res, api);
             text = String(((d.choices && d.choices[0] && d.choices[0].message) || {}).content || '');
         }
         try { if (typeof recordTokenUsage === 'function') recordTokenUsage(d, { inChars: JSON.stringify(body).length, outChars: text.length }, __gyCall, { api, t0, kind: 'chat' }); } catch (e) {}
@@ -600,9 +617,9 @@
             return out;
         };
         let firstErr = null;
-        for (let round = 0; round < Math.max(1, Math.min(6, Number(C.rounds) || 3)); round++) {
+        for (let round = 0; C.mode !== 'text' && round < Math.max(1, Math.min(6, Number(C.rounds) || 3)); round++) {
             let r = null;
-            try { r = await task.wait(() => callApi(api, msgs, tools, task.signal), '等待模型选择工具（第 ' + (round + 1) + ' 轮）', MODEL_TIMEOUT); } catch (e) { if (e.gyMcpStopped) throw e; task.decisionFailed = true; if (round === 0) firstErr = e; else console.warn('[MCP] 第 ' + (round + 1) + ' 轮没问成：', e); break; }
+            try { r = await task.wait(() => callApi(api, msgs, tools, task.signal), '等待模型选择工具（第 ' + (round + 1) + ' 轮）', MODEL_TIMEOUT); } catch (e) { if (e.gyMcpStopped) throw e; task.decisionFailed = true; task.modelFailure = e.gyMcpModel ? e.message : '模型连接失败，请检查所选 API 的网络或服务状态。'; if (round === 0) firstErr = e; else console.warn('[MCP] 第 ' + (round + 1) + ' 轮没问成：', e); break; }
             if (!r.calls.length) break;
             task.limitReached = round + 1 >= Math.max(1, Math.min(6, Number(C.rounds) || 3));
             const outs = [];
@@ -611,10 +628,10 @@
             msgs.push(...r.append);
             const res = r.result(outs); if (Array.isArray(res)) msgs.push(...res); else msgs.push(res);
         }
-        // 304 兜底①：这个模型 / 中转不支持「工具调用」（报错了），或者这句话明明像是要用工具却回了「无」→ 换成纯文字的问法再问一次
-        if (!gate.status().blocked && !items.length && (firstErr || wantsTool(userText))) {
-            try { const calls = await task.wait(() => callApiText(api, base, tools, task.signal), '等待模型兼容模式选择工具', MODEL_TIMEOUT); task.decisionFailed = false; for (const call of calls.slice(0, 5)) { await runCall(call); if (gate.status().blocked || task.decisionFailed) break; } }
-            catch (e) { if (e.gyMcpStopped) throw e; task.decisionFailed = true; console.warn('[MCP] 换文字问法也没问成：', e, firstErr || ''); }
+        // Only capability errors may retry in text mode. Auth, quota, network and server failures stop with their original cause.
+        if (!gate.status().blocked && !items.length && (C.mode === 'text' || (firstErr ? firstErr.toolUnsupported === true || /^(?:function calling unsupported|tools? not supported)$/i.test(firstErr.message || '') : wantsTool(userText)))) {
+            try { task.fallbackCause = firstErr ? task.modelFailure : ''; const calls = await task.wait(() => callApiText(api, base, tools, task.signal), '等待模型兼容模式选择工具', MODEL_TIMEOUT); task.decisionFailed = false; task.modelFailure = ''; for (const call of calls.slice(0, 5)) { await runCall(call); if (gate.status().blocked || task.decisionFailed) break; } }
+            catch (e) { if (e.gyMcpStopped) throw e; task.decisionFailed = true; task.modelFailure = e.gyMcpModel ? e.message : '模型兼容请求连接失败，请检查所选 API 的网络或服务状态。'; console.warn('[MCP] 换文字问法也没问成：', e, firstErr || ''); }
         }
         // 兜底②：她明明说了「锁 XX」，上面还是没锁成 → 直接照她说的锁
         try {
@@ -683,7 +700,8 @@
             reason = why;
             gate.cancelQueued(task.id);
             stopNote = (why === 'handed_over' ? '已交给用户操作' : why === 'timed_out' ? (phase || task.phase || '任务执行') + '超时' : '任务已取消')
-                + (why === 'handed_over' ? '；请先手动恢复，旧任务不会重放。' : task.externalCalls ? '；已发出外部工具请求，结果需核对，不会自动重试。' : '；尚未发出外部工具操作，可重新发起。');
+                + (why === 'handed_over' ? '；请先手动恢复，旧任务不会重放。' : task.externalCalls ? '；已发出外部工具请求，结果需核对，不会自动重试。' : '；尚未发出外部工具操作，可重新发起。')
+                + (task.fallbackCause ? ' 首次工具请求：' + task.fallbackCause.slice(0, 70) : '');
             store.transition(task.id, why, stopNote);
             rejectStop(stoppedError());
             if (ctrl) ctrl.abort();
@@ -719,7 +737,7 @@
             store.transition(task.id, 'running', '正在判断并调用工具。');
             const items = await task.wait(() => executeMcp(sessionId, triggerText, task));
             if (task.decisionFailed || (items || []).some(i => i.bad))
-                store.transition(task.id, 'failed', ((items || []).find(i => i.bad)?.out || '工具或模型请求失败，请核对调用记录。').slice(0, 500) + (gate.status().blocked ? ' 外部操作结果未确认，请核对后解除占用。' : ' 本轮已停止，不会自动重试。'));
+                store.transition(task.id, 'failed', ((items || []).find(i => i.bad)?.out || task.modelFailure || '工具或模型请求失败，请核对调用记录。').slice(0, 100) + (gate.status().blocked ? ' 外部操作结果未确认，请核对后解除占用。' : ' 本轮已停止，不会自动重试。'));
             else if (task.limitReached)
                 store.transition(task.id, 'paused', '达到本轮工具次数上限，未确认目标完成；不会自动继续。');
             else store.transition(task.id, 'completed', items && items.length
@@ -796,6 +814,7 @@
     window.gyMcpToolToggle = function (id, name, v) { const s = get(id); const t = s && (s.tools || []).find(x => x.name === name); if (t) { t.on = !!v; save(); } };
     window.gyMcpSet = function (k, v) {
         if (k === 'api') C.api = v === 'sub' ? 'sub' : 'main';
+        if (k === 'mode') C.mode = v === 'text' ? 'text' : 'auto';
         if (k === 'rounds') C.rounds = Math.max(1, Math.min(6, parseInt(v) || 3));
         if (k === 'keep') { C.keep = Math.max(0, parseInt(v) || 0); saveLog(); }
         if (k === 'charsAll') C.chars = v ? 'all' : [];
@@ -905,6 +924,8 @@
           ${allOn ? '' : `<div class="gymcp-cks">${chars().map(c => `<label class="gymcp-ck"><input type="checkbox" ${(C.chars || []).map(String).includes(String(c.id)) ? 'checked' : ''} onchange="gyMcpSet('char', ['${c.id}', this.checked])"> ${esc(c.name)}</label>`).join('')}</div>`}
           <h4 class="gymcp-h">怎么判断</h4>
           <div class="gymcp-f"><span>判断要不要用工具用哪个 API</span><select onchange="gyMcpSet('api', this.value)"><option value="main" ${C.api !== 'sub' ? 'selected' : ''}>主 API（更聪明）</option><option value="sub" ${C.api === 'sub' ? 'selected' : ''}>副 API（更省）</option></select></div>
+          <div class="gymcp-f"><span>工具选择方式</span><select aria-label="工具选择方式" onchange="gyMcpSet('mode', this.value)"><option value="auto" ${C.mode !== 'text' ? 'selected' : ''}>自动（先标准工具接口）</option><option value="text" ${C.mode === 'text' ? 'selected' : ''}>文字兼容（直接选择一次工具）</option></select></div>
+          <div class="gymcp-hint">普通聊天能回复但工具选择失败时，可尝试文字兼容；它单轮选择工具，仍会校验参数和页面，不保证服务商一定兼容。权限、额度和网络错误不会自动换模式重试。</div>
           <div class="gymcp-f"><span>一次最多连着用几轮工具</span><input type="number" min="1" max="6" value="${Number(C.rounds) || 3}" onchange="gyMcpSet('rounds', this.value)"></div>
           <div class="gymcp-hint">要用的 API 得支持「工具调用 / function calling」（DeepSeek、GPT、Claude、Gemini、Qwen 都支持）。</div>`;
     }
@@ -1038,5 +1059,5 @@
     let memOk = false, wOk = false;
     setTimeout(reg, 600); setTimeout(reg, 2500);
     setInterval(() => { hookReply(); hookToday(); if (!memOk) memOk = regMem(); if (!wOk) wOk = regWidget(); }, 3000);
-    window.gyMcpState = () => ({ servers: C.servers, log: L, cfg: { chars: C.chars, api: C.api, rounds: C.rounds, keep: C.keep } });
+    window.gyMcpState = () => ({ servers: C.servers, log: L, cfg: { chars: C.chars, api: C.api, mode: C.mode, rounds: C.rounds, keep: C.keep } });
 })();

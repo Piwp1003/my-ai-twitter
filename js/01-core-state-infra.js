@@ -1256,27 +1256,45 @@ function convertContentForAnthropic(content) {
 // 这是走原生网络层发起的请求，不经过WebView的跨域限制，是这类问题的标准解法。
 // 这里做特性检测：只有真的跑在打包后的App环境里（window.plus 存在）才会走这条路，
 // 网页版完全不受影响、行为和以前一模一样。
-function plusNetRequest(url, options) {
+function plusNetRequest(url, options = {}) {
     return new Promise((resolve, reject) => {
+        let xhr, finished = false;
+        const signal = options.signal;
+        const abortError = () => { const e = new Error('请求已取消'); e.name = 'AbortError'; return e; };
+        function done(error, value) {
+            if (finished) return;
+            finished = true;
+            if (signal) signal.removeEventListener('abort', abort);
+            if (error) reject(error); else resolve(value);
+        }
+        function abort() {
+            done(abortError());
+            try { if (xhr) xhr.abort(); } catch (e) {}
+        }
+        if (signal && signal.aborted) { done(abortError()); return; }
         try {
-            const xhr = new plus.net.XMLHttpRequest();
+            xhr = new plus.net.XMLHttpRequest();
             xhr.open(options.method || 'GET', url);
             if (options.headers) {
                 Object.keys(options.headers).forEach(k => xhr.setRequestHeader(k, options.headers[k]));
             }
             xhr.onreadystatechange = function () {
                 if (xhr.readyState === 4) {
-                    if (xhr.status >= 200 && xhr.status < 300) {
-                        resolve({ ok: true, status: xhr.status, json: async () => JSON.parse(xhr.responseText), text: async () => xhr.responseText });
+                    if (xhr.status >= 100) {
+                        // Match fetch: HTTP failures are responses, not transport failures to replay.
+                        const text = xhr.responseText;
+                        done(null, { ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, json: async () => JSON.parse(text), text: async () => text });
                     } else {
-                        reject(new Error(`HTTP ${xhr.status}: ${(xhr.responseText || '').slice(0, 200)}`));
+                        done(new Error('plus.net.XMLHttpRequest 未收到服务器响应（HTTP 0）'));
                     }
                 }
             };
-            xhr.onerror = function () { reject(new Error('plus.net.XMLHttpRequest 网络请求失败（可能是域名不可达、证书问题或网络未连接）')); };
-            xhr.ontimeout = function () { reject(new Error('plus.net.XMLHttpRequest 请求超时')); };
+            xhr.onerror = function () { done(new Error('plus.net.XMLHttpRequest 网络请求失败（可能是域名不可达、证书问题或网络未连接）')); };
+            xhr.ontimeout = function () { done(new Error('plus.net.XMLHttpRequest 请求超时')); };
+            xhr.onabort = function () { done(abortError()); };
+            if (signal) signal.addEventListener('abort', abort, { once: true });
             xhr.send(options.body);
-        } catch (e) { reject(e); }
+        } catch (e) { done(e); }
     });
 }
 // ⚠️ 修复"调用某些API/中转站报HTTP 0"：HTTP状态码0一般表示请求在拿到任何服务器响应之前就
@@ -1284,13 +1302,15 @@ function plusNetRequest(url, options) {
 // 这条原生网络通道本身有问题——它和WebView自带的fetch()走的是两套完全不同的底层网络实现，
 // 对DNS/证书/代理的处理方式可能不一样，很可能出现"这条路走不通、换一条路就通了"的情况。
 // 这里改成两条路都试一遍：优先走原生plus.net.XMLHttpRequest（避免file://页面的跨域限制），
-// 失败了（不管什么原因，包括HTTP 0）就自动退一步试原生WebView的fetch()兜底；
+// 传输失败（包括HTTP 0）时退一步试WebView的fetch()；已收到HTTP响应或主动取消时不重发。
 // 两条路都失败，才把两边真实的错误信息都亮出来，方便判断到底是哪一层的问题。
-function smartFetch(url, options) {
+function smartFetch(url, options = {}) {
     if (typeof window !== 'undefined' && window.plus && plus.net && plus.net.XMLHttpRequest) {
         return plusNetRequest(url, options).catch((err1) => {
+            if ((options.signal && options.signal.aborted) || err1.name === 'AbortError') throw err1;
             console.error('[smartFetch] plus.net.XMLHttpRequest 失败，尝试改用WebView自带fetch()兜底：', err1);
             return fetch(url, options).catch((err2) => {
+                if ((options.signal && options.signal.aborted) || err2.name === 'AbortError') throw err2;
                 throw new Error(`两种网络请求方式都失败了。\n方式一(原生plus.net)：${err1 && err1.message ? err1.message : err1}\n方式二(WebView fetch)：${err2 && err2.message ? err2.message : err2}`);
             });
         });
