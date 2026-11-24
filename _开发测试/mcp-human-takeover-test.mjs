@@ -1,0 +1,32 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+import {setup,reach} from './mcp-cancel-test.mjs';
+let n=0;const flush=async()=>{for(let i=0;i<100;i++)await Promise.resolve();};
+function phone(x){x.c.plus={android:{}};let reads=0,invalidations=0,screen={ok:true,pkg:'com.sankuai.meituan',snapshotSchema:2,fingerprint:'fresh',token:9,nodes:[{text:'点菜'},{text:'评价'}]};
+ x.c.gysPh={mcp:{inspectScreen:()=>{reads++;return screen;},invalidateSnapshots:()=>invalidations++}};
+ x.c.gyMeituan={classify:()=>({page:'store'}),invalidate:()=>invalidations++};x.c.gyMeituanCart={invalidate:()=>invalidations++};x.c.gyMeituanCheckout={parse:()=>({ok:false}),invalidate:()=>invalidations++};
+ return {reads:()=>reads,invalidations:()=>invalidations,set:s=>screen=s};}
+let x=setup(),probe=phone(x);let p=x.c.gyMcpDecide('c','你好');await reach(x,'model');let q=x.c.gyMcpDecide('c2','另一个请求');await flush();
+const takeover=x.c.gyMcpTakeover('user');assert(takeover.ok&&takeover.persistent);await Promise.all([p,q]);assert(x.c.gyMcpTasks.list().every(t=>t.state==='handed_over'));assert(x.c.gyMcpExecution.status().human);n++;
+assert(x.c.localStorage.getItem('gyMcpHumanV1'));assert(probe.invalidations()>=4);n++;
+const calls=x.model();await x.c.gyMcpDecide('c','新的请求');assert.equal(x.model(),calls);assert.match(x.c.__gyMcpCtxFor('c'),/人工处理/);n++;
+assert.equal((await x.c.gyMcpResumeHuman(false)).error,'confirmation_required');assert.equal(probe.reads(),0);n++;
+x.release();await flush();assert.equal((await x.c.gyMcpResumeHuman(true)).ok,true);assert.equal(probe.reads(),1);assert(!x.c.gyMcpExecution.status().human);assert.equal(x.model(),calls);assert.equal(x.c.__gyMcpCtxFor('c'),'');n++;
+assert.equal((await x.c.gyMcpResumeHuman(true)).error,'not_in_takeover');n++;
+x=setup('tool');probe=phone(x);p=x.c.gyMcpDecide('c','你好');await reach(x,'tool');x.c.gyMcpTakeover('user');await p;assert.equal((await x.c.gyMcpResumeHuman(true)).error,'in_flight');assert.equal(probe.reads(),0);n++;
+x.release();await flush();assert.equal((await x.c.gyMcpResumeHuman(true)).ok,true);assert.equal(x.calls(),1);n++;
+x=setup();probe=phone(x);x.c.gyMcpTakeover('user');probe.set({ok:true,pkg:'com.sankuai.meituan',snapshotSchema:2,fingerprint:'login',token:4,nodes:[{text:'请输入短信验证码（6位）'}]});assert.equal((await x.c.gyMcpResumeHuman(true)).error,'resume_unverified');assert(x.c.gyMcpExecution.status().human);n++;
+probe.set({ok:true,pkg:'com.android.settings',snapshotSchema:2,fingerprint:'settings',token:4,nodes:[]});assert(!(await x.c.gyMcpResumeHuman(true)).ok);n++;
+probe.set({ok:false,error:'no_active_window'});assert(!(await x.c.gyMcpResumeHuman(true)).ok);n++;
+const copy={window:null,localStorage:x.c.localStorage,dispatchEvent(){},CustomEvent:function(){}};copy.window=copy;vm.runInNewContext(fs.readFileSync('js/99-mcp-execution.js','utf8'),copy);assert(copy.gyMcpExecution.status().human);assert(!copy.gyMcpExecution.acknowledge());n++;
+// Resume probe cannot win a race with a newer takeover.
+x=setup();probe=phone(x);x.c.gyMcpTakeover('user');let release;const gate=new Promise(r=>release=r);x.c.gysPh.mcp.inspectScreen=()=>gate;p=x.c.gyMcpResumeHuman(true);await flush();x.c.gyMcpTakeover('user');release({ok:true,pkg:'com.sankuai.meituan',snapshotSchema:2,fingerprint:'fresh',token:8,nodes:[]});assert(!(await p).ok);assert(x.c.gyMcpExecution.status().human);n++;
+x=setup('auto');probe=phone(x);const server=x.c.gyMcpState().servers[0];server.kind='builtin';server.tools=[{name:'inspect_screen'}];x.c.plus={android:{}};let model=0;
+x.c.gysPh.mcp.inspectScreen=()=>({ok:false,error:'human_required',err:'需要人工处理验证'});x.c.smartFetch=async()=>({json:async()=>({choices:[{message:{tool_calls:++model===1?[{id:'human',type:'function',function:{name:'s0__inspect_screen',arguments:'{}'}}]:[]}}]})});
+await x.c.gyMcpDecide('c','看看页面');assert(x.c.gyMcpExecution.status().human);assert.equal(x.c.gyMcpTasks.list()[0].state,'handed_over');assert.equal(model,1);assert.equal(x.c.gyMcpState().log.length,1);n++;
+x=setup();probe=phone(x);x.c.gyMcpTakeover('user');x.c.gyMeituan.classify=()=>({page:'unknown'});assert(!(await x.c.gyMcpResumeHuman(true)).ok);assert(x.c.gyMcpExecution.status().human);n++;
+x=setup();probe=phone(x);x.c.gyMcpTakeover('user');x.c.gysPh.mcp.inspectScreen=()=>new Promise(()=>{});p=x.c.gyMcpResumeHuman(true);await flush();x.timers.find(t=>t.ms===8000).fn();assert(!(await p).ok);assert(x.c.gyMcpExecution.status().human);n++;
+x=setup();probe=phone(x);x.c.localStorage.setItem=()=>{throw Error('quota');};assert.equal(x.c.gyMcpTakeover('user').persistent,false);assert(x.c.gyMcpExecution.status().human);n++;
+x=setup();probe=phone(x);let opened=0,current=false;x.c.gysPh.__N={apps:()=>[{pkg:'com.sankuai.meituan.takeoutnew'}],openApp:pkg=>{assert.equal(pkg,'com.sankuai.meituan.takeoutnew');opened++;current=true;return true;}};x.c.gysPh.mcp.inspectScreen=()=>current?{ok:true,pkg:'com.sankuai.meituan.takeoutnew',snapshotSchema:2,fingerprint:'fresh',token:9,nodes:[]}:{ok:false,error:'not_meituan'};x.c.gyMcpTakeover('user');assert((await x.c.gyMcpResumeHuman(true)).ok);assert.equal(opened,1);n++;
+x=setup();probe=phone(x);opened=0;x.c.gysPh.__N={apps:()=>[{pkg:'com.sankuai.meituan'},{pkg:'com.sankuai.meituan.takeoutnew'}],openApp:()=>{opened++;return true;}};x.c.gysPh.mcp.inspectScreen=()=>({ok:false,error:'not_meituan'});x.c.gyMcpTakeover('user');assert(!(await x.c.gyMcpResumeHuman(true,'com.android.settings')).ok);assert.equal(opened,0);n++;
+x.c.gysPh.mcp.lastPackage=()=>'com.sankuai.meituan';x.c.gyMcpTakeover('user');assert.equal(x.c.gyMcpExecution.status().humanPackage,'com.sankuai.meituan');n++;
+console.log(n+' manual takeover/resume checks passed');

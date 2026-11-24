@@ -94,30 +94,84 @@
     }
 
     /* ---------------- 安卓：下 APK → 系统安装界面 ---------------- */
-    function goAndroid(info, U) {
-        var file = '_downloads/guyu-' + (info.code || 'new') + '.apk';
-        var note = function (p, t) { try { window.gyNativeProgress && gyNativeProgress('bigupd', '谷雨大更新', t, p == null ? null : Math.round(p * 100), { ongoing: p != null && p < 1 }); } catch (e) {} };
-        U.later('放到后台');
-        var d = plus.downloader.createDownload(site() + '/dl/android', { filename: file, timeout: 30, retry: 3 }, function (dl, st) {
-            if (st !== 200) { note(null, '没下下来'); return U.again('没下下来（' + st + '），网好一点再试；也可以去 guyu.pw/download 下'); }
-            note(1, '下好了，点一下安装'); U.prog(1, '下好了，正在打开安装界面…');
-            plus.runtime.install(plus.io.convertLocalFileSystemURL(dl.filename), {}, function () {
-                try { window.gyNativeCancel && gyNativeCancel('bigupd'); } catch (e) {}
-                U.say('在弹出来的界面里点「安装」。装好以后打开谷雨就是新的。');
-            }, function (e) {
-                // 没有「安装未知应用」权限、或者手机拦了：交给浏览器下载页
-                U.again('手机没让谷雨直接装（' + ((e && e.message) || '被拦了') + '）。去设置里允许谷雨「安装未知应用」再试，或者点下面去下载页。');
-                var ok = document.querySelector('#gyBig .ok'); if (ok) { ok.textContent = '去下载页'; ok.onclick = function () { openUrl(site() + '/download'); }; }
-            });
-        });
-        var last = 0;
-        d.addEventListener('statechanged', function (t) {
-            if (t.state !== 3 || !t.totalSize) return;
-            var p = t.downloadedSize / t.totalSize; U.prog(p, '下载中… ' + mb(t.downloadedSize) + ' / ' + mb(t.totalSize) + ' MB（可以切到别的软件）');
-            if (Date.now() - last > 800) { last = Date.now(); note(p, '下载新安装包 ' + Math.round(p * 100) + '%'); }
-        }, false);
-        d.start(); U.prog(0, '开始下载…');
+    var apkDownloading = false;
+    function foreground() { return document.visibilityState !== 'hidden'; }
+    function apkRetry(U, text, next, label) {
+        U.again(text);
+        var b = document.querySelector('#gyBig .ok');
+        if (b) { b.textContent = label || '继续安装'; b.onclick = function () { b.classList.add('dis'); next(); }; }
     }
+    function installApk(info, U, file) {
+        if (!foreground()) { U.say('安装包已下载，回到谷雨后点「继续安装」。'); return; }
+        var retry = function (text) { apkRetry(U, text, function () { goAndroid(info, U); }); };
+        try {
+            // Android 8+: distinguish permission denial from a broken download.
+            var act = plus.android.runtimeMainActivity();
+            var pm = plus.android.invoke(act, 'getPackageManager');
+            if (plus.android.invoke(pm, 'canRequestPackageInstalls') === false) {
+                apkRetry(U, '安装包已下载，请允许谷雨「安装未知应用」，返回后点「继续安装」。', function () {
+                    try {
+                        var intent = plus.android.newObject('android.content.Intent', 'android.settings.MANAGE_UNKNOWN_APP_SOURCES');
+                        var uri = plus.android.invoke('android.net.Uri', 'parse', 'package:' + plus.android.invoke(act, 'getPackageName'));
+                        plus.android.invoke(intent, 'setData', uri); plus.android.invoke(act, 'startActivity', intent);
+                        retry('授权后回到谷雨，点「继续安装」，无需重新下载。');
+                    } catch (e) { retry('请到系统设置允许谷雨「安装未知应用」，再点「继续安装」。'); }
+                }, '打开安装权限设置');
+                return;
+            }
+        } catch (e) {} // Old Android / runtime: let the platform installer report the error.
+        try {
+            retry('已请求打开系统安装界面，请在弹出来的界面里点「安装」。若未弹出或已取消，可点「继续安装」，无需重新下载。');
+            // APK does not invoke installSuccessCB. Never wait for it to update UI.
+            plus.runtime.install(plus.io.convertLocalFileSystemURL(file), {}, function () {}, function (e) {
+                retry('未能打开安装界面：' + ((e && (e.message || e.code)) || '被系统拦截') + '。请检查安装权限后重试。');
+            });
+        } catch (e) { retry('安装调用失败：' + ((e && e.message) || e) + '。安装包已保留，可重试。'); }
+    }
+    function goAndroid(info, U) {
+        if (apkDownloading) { U.say('安装包正在下载，请稍候。'); return; }
+        var file = '_downloads/guyu-' + (info.code || 'new') + '.apk';
+        var note = function (p, t) { try { window.gyNativeProgress && gyNativeProgress('bigupd', '谷雨大更新', t, p == null ? null : Math.round(p * 100), { ongoing: p != null && p < 1, jump: { fn: 'gyBigUpdResume' } }); } catch (e) {} };
+        var download = function () {
+            apkDownloading = true; U.later('放到后台');
+            try {
+                var d = plus.downloader.createDownload(site() + '/dl/android', { filename: file, timeout: 30, retry: 3 }, function (dl, st) {
+                    apkDownloading = false;
+                    if (st !== 200 || !dl.filename) return U.again('没下下来（' + st + '），请重试');
+                    S.apk = { code: info.code, info: info, file: dl.filename }; wr(S);
+                    note(1, '安装包下好了，回到谷雨继续安装');
+                    if (foreground() && document.getElementById('gyBig')) installApk(info, U, dl.filename);
+                    else U.say('安装包已下载，回到谷雨继续安装。');
+                });
+                var last = 0;
+                d.addEventListener('statechanged', function (t) {
+                    if (t.state !== 3 || !t.totalSize) return;
+                    var p = t.downloadedSize / t.totalSize; U.prog(p, '下载中… ' + mb(t.downloadedSize) + ' / ' + mb(t.totalSize) + ' MB（可以切到别的软件）');
+                    if (Date.now() - last > 800) { last = Date.now(); note(p, '下载新安装包 ' + Math.round(p * 100) + '%'); }
+                }, false);
+                d.start(); U.prog(0, '开始下载…');
+            } catch (e) { apkDownloading = false; U.again('下载未开始：' + ((e && e.message) || e)); }
+        };
+        if (S.apk && +S.apk.code === +info.code && S.apk.file) {
+            try { plus.io.resolveLocalFileSystemURL(S.apk.file, function (entry) {
+                if (!entry || entry.isFile === false) { S.apk = null; wr(S); return download(); }
+                installApk(info, U, S.apk.file);
+            }, function () { S.apk = null; wr(S); download(); }); } catch (e) { download(); }
+        } else download();
+    }
+    window.gyBigUpdResume = function () {
+        if (!isApp() || !foreground() || !S.apk || !S.apk.info) return false;
+        var mine = apkCode();
+        if (mine && mine >= +S.apk.code) { S.apk = null; wr(S); try { window.gyNativeCancel && gyNativeCancel('bigupd'); } catch (e) {} return false; }
+        var el = document.getElementById('gyBig');
+        if (!el) box('android', S.apk.info, function (U) { goAndroid(S.apk.info, U); }, '继续安装');
+        else apkRetry(ui(el), '已下载安卓安装包，点「继续安装」打开系统安装界面。', function () { goAndroid(S.apk.info, ui(el)); });
+        return true;
+    };
+    try {
+        document.addEventListener('resume', function () { window.gyBigUpdResume(); });
+        document.addEventListener('visibilitychange', function () { if (foreground()) window.gyBigUpdResume(); });
+    } catch (e) {}
 
     /* ---------------- 电脑版：下 exe → 关掉换上 → 重新打开 ---------------- */
     function goDesk(info, U, canSwap) {
@@ -138,6 +192,7 @@
     function check(force) {
         if (busy || (!force && !on())) return Promise.resolve(null);
         if (!isApp() && !isDesk()) return Promise.resolve(null);
+        if (isApp() && window.gyBigUpdResume()) return Promise.resolve({ kind: 'android', need: true, downloaded: true });
         if (!force && Date.now() - lastAt < 10 * 60e3) return Promise.resolve(null);
         busy = true; lastAt = Date.now();
         return getInfo().then(function (j) {

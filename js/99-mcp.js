@@ -25,6 +25,51 @@
     const save = () => { try { localStorage.setItem(LS, JSON.stringify(C)); } catch (e) {} };
     const saveLog = () => { const k = Math.max(0, Number(C.keep) || 0); if (k) L = L.slice(0, k); try { localStorage.setItem(LOG, JSON.stringify(L)); } catch (e) { L = L.slice(0, 50); try { localStorage.setItem(LOG, JSON.stringify(L)); } catch (e2) {} } };
 
+    // Only checks metadata. Never launches an app, reads a screen, or calls AI.
+    window.gyMcpPhoneCheck = function () {
+        const checks = [];
+        const add = (id, state, detail) => checks.push({ id, state, detail });
+        add('environment', isApp() ? 'pass' : 'blocked', isApp() ? '安卓 App' : '请在 Android 版谷雨中检查；当前环境不能直接操作手机');
+        let c = null;
+        if (isApp()) {
+            try {
+                const bridge = window.gysPh && window.gysPh.mcp;
+                if (bridge && typeof bridge.capabilities === 'function') c = bridge.capabilities();
+                else add('bridge', 'blocked', '真手机桥接未就绪，请等待启动完成或更新网页资源');
+            } catch (e) { add('bridge', 'unknown', '能力读取失败，请重新检查'); }
+        }
+        if (c) {
+            add('plugin', c.mode === 'plugin' ? 'pass' : 'blocked', c.mode === 'plugin' ? '谷雨守护 ' + (c.version || '版本未知') : '未检测到谷雨守护插件，需要安装含插件的 APK');
+            add('feature', c.featureEnabled ? 'pass' : 'blocked', c.featureEnabled ? '真手机功能已开启' : '请开启「真手机」功能');
+            add('permission', c.readPermission === 'auto' ? 'pass' : 'blocked', c.readPermission === 'auto' ? '页面操作已授权' : '请在真手机设置中将「读屏幕上的字」设为「TA 直接做」');
+            const n = c.native;
+            if (n && n.schema === 1 && typeof n.access === 'boolean' && typeof n.meituanInstalled === 'boolean' && Array.isArray(n.actions)) {
+                add('access', n.access ? 'pass' : 'blocked', n.access ? '无障碍服务已运行' : '无障碍服务未运行，请在系统设置开启或重新启用');
+                add('app', n.meituanInstalled ? 'pass' : 'unknown', n.meituanInstalled ? '检测到美团或美团外卖' : '未检测到可启动的美团；请确认安装情况及系统应用可见性');
+                const missing = ['inspectScreen', 'tapElement', 'setText', 'scrollScreen', 'back'].filter(k => !n.actions.includes(k));
+                add('snapshotSafety', n.pageSafety === 2 ? 'pass' : 'blocked', n.pageSafety === 2 ? '支持整页快照校验与一次性操作' : '旧插件缺少安全快照协议，请安装新 APK');
+                add('orderConfirmation', n.orderConfirmation === 1 ? 'pass' : 'blocked', n.orderConfirmation === 1 ? '支持本机原生订单确认与提交防重' : '缺少原生订单确认能力，请安装新 APK；不会开放提交');
+                add('orderReceipt', n.orderReceipt === 1 ? 'pass' : 'blocked', n.orderReceipt === 1 ? '支持订单身份与结果核验' : '缺少原生订单结果核验，请安装新 APK');
+                add('actions', missing.length ? 'blocked' : 'pass', missing.length ? '插件缺少页面操作能力，请更新 APK：' + missing.join('、') : '插件已声明读取、点击、输入、滚动、返回能力');
+            } else add('handshake', 'unknown', '插件未提供有效的能力握手；旧版本不能仅凭版本号确认，请更新含新插件的 APK');
+        }
+        add('mcp', on('mcpOn') ? 'pass' : 'blocked', on('mcpOn') ? 'MCP 总开关已开启' : 'MCP 总开关未开启');
+        const server = C.servers.find(x => x.kind === 'builtin' && x.on !== false);
+        const needed = ['meituan_order_status','meituan_prepare_checkout','meituan_checkout_summary','meituan_menu','meituan_item_options','meituan_cart','meituan_add_item','meituan_inspect', 'meituan_search', 'meituan_choose_store', 'open_app', 'inspect_screen', 'wait_screen', 'tap_element', 'set_text', 'scroll_screen', 'press_back'];
+        const enabled = server && needed.every(k => (server.tools || []).some(t => t.name === k && t.on !== false));
+        add('tools', enabled ? 'pass' : 'blocked', enabled ? '内置手机页面工具已启用' : '请添加「用这台手机（内置）」、测试连接，并启用页面操作工具');
+        let api = null; try { if (typeof getApiConfig === 'function') api = getApiConfig(C.api === 'sub'); } catch (e) {}
+        add('model', api && api.url && api.key ? 'unknown' : 'blocked', api && api.url && api.key ? '模型已配置；自检未请求模型，工具调用兼容性仍需实测' : '请配置 MCP 所选的主 / 副 API');
+        const required = checks.filter(x => x.id !== 'model');
+        const ready = required.every(x => x.state === 'pass') && !!(api && api.url && api.key);
+        const report = { at: Date.now(), ready, checks };
+        const box = document.getElementById('gyMcpPhoneCheck');
+        if (box) box.innerHTML = '<b>' + (ready ? '设备基础条件已具备，尚未验证实际操作' : '尚不能确认可操作') + '</b>'
+            + checks.map(x => '<div>' + ({ pass: '✅', blocked: '❌', unknown: '❔' })[x.state] + ' ' + esc(x.detail) + '</div>').join('')
+            + '<div>只检查能力和设置，不读取屏幕、不调用模型、不操作其他软件；不代表已经支持自动下单。</div>';
+        return report;
+    };
+
     /* ---------------- 连接 ---------------- */
     const CONN = {};   // serverId → { tools, rpc(method, params), close() }
     const doFetch = (url, opt) => (typeof smartFetch === 'function' ? smartFetch(url, opt) : fetch(url, opt));
@@ -136,10 +181,32 @@
         const M = window.gysPh && gysPh.mcp;
         if (!M || typeof M[name] !== 'function') throw new Error('真手机没加载上');
         const r = await M[name](...a);
-        if (r && r.err) throw new Error(r.err + (r.error && !String(r.err).includes(r.error) ? '（' + r.error + '）' : ''));
-        return JSON.stringify(r);
+        return r;
+    };
+    const meituanTool = (name, args, env) => {
+        if (!window.gyMeituan) throw new Error('美团适配模块未加载，请更新谷雨');
+        return window.gyMeituan[name](args, env.check);
+    };
+    const cartTool = (name, args, env) => {
+        if (!window.gyMeituanCart) throw new Error('美团购物车模块未加载，请更新谷雨');
+        return window.gyMeituanCart[name](args, env.check);
+    };
+    const itemArgs = { token: { type: 'integer', minimum: 1 }, ref: { type: 'integer', minimum: 0 }, store: { type: 'string', minLength: 1, maxLength: 80 }, name: { type: 'string', minLength: 1, maxLength: 80 } };
+    const checkoutTool = (name, args, env) => {
+        if (!window.gyMeituanCheckout) throw new Error('结算摘要模块未加载，请更新谷雨');
+        return window.gyMeituanCheckout[name](args, env.check);
     };
     const BUILTIN = {
+        meituan_order_status: ['只读当前真实订单详情；区分待付款、已支付、失败与未知。只有 confirmedAssociation=true 才能认定对应本次提交；不会支付、取消、退款或重试提交', O(), (a, env) => window.gyMeituanOrders ? window.gyMeituanOrders.read(a,env.check) : {ok:true,state:'unknown',note:'订单核验模块未加载'}],
+        meituan_prepare_checkout: ['从已展开且数量核对完整的购物车进入结算页，读取摘要；只点「去结算」，不提交订单或付款，store 必须是用户指定的店铺', O({store:{type:'string',minLength:1,maxLength:80}}, ['store']), (a, env) => checkoutTool('prepare', a, env)],
+        meituan_checkout_summary: ['只读真实结算页的商品、数量、费用和配送信息；缺失字段标为未确认，完整地址和联系方式仅在本机核对，不上传模型', O(), (a, env) => checkoutTool('read', a, env)],
+        meituan_menu: ['读取当前店铺可见商品及明确加购/选规格入口；候选必须有屏幕证据', O(), (a, env) => cartTool('list', a, env)],
+        meituan_item_options: ['读取指定候选商品的规格并返回菜单；只支持明确的单选规格，未知布局需人工处理，不加购', O(itemArgs, ['token','ref','store','name']), (a, env) => cartTool('options', a, env)],
+        meituan_cart: ['只读已展开的真实购物车明细，不点击结算；数量不明确时停止', O(), (a, env) => cartTool('readCart', a, env)],
+        meituan_add_item: ['按用户指定的商品和规格加购 1～5 份，每份加购后核对同款数量增加 1；不提交订单。规格必须先从 meituan_item_options 获取，必选项不可猜测或省略', O({ ...itemArgs, quantity: { type: 'integer', minimum: 1, maximum: 5 }, specs: { type: 'array', maxItems: 10, items: { type: 'object', required: ['group','option'], additionalProperties: false, properties: { group: { type: 'string', minLength: 1, maxLength: 80 }, option: { type: 'string', minLength: 1, maxLength: 80 } } } } }, ['token','ref','store','name','quantity','specs']), (a, env) => cartTool('add', a, env)],
+        meituan_inspect: ['读取真实美团页面及有屏幕证据的店铺候选；无法识别时停止', O(), (a, env) => meituanTool('inspect', a, env)],
+        meituan_search: ['在真实美团中搜索商家；query 是用户要求的搜索词。只搜索，不加购不下单；识别不清时需人工处理', O({ query: { type: 'string', minLength: 1, maxLength: 80 } }, ['query']), (a, env) => meituanTool('search', a, env)],
+        meituan_choose_store: ['进入当前候选里的指定店铺；token、ref、name 必须来自最近一次美团读取或搜索结果，不得编造', O({ token: { type: 'integer', minimum: 1 }, ref: { type: 'integer', minimum: 0 }, name: { type: 'string', minLength: 1, maxLength: 80 } }, ['token', 'ref', 'name']), (a, env) => meituanTool('chooseStore', a, env)],
         now: ['手机上现在几点、星期几', O(), () => { const n = new Date(); return n.toLocaleString() + ' 星期' + '日一二三四五六'[n.getDay()]; }],
         phone_status: ['看手机现在的状态：电量、在不在充电、音量、有没有戴耳机、亮度、正在用哪个软件', O(), () => {
             const s = PN().status(); const o = {};
@@ -195,11 +262,11 @@
             return `她在用「${r.app}」，屏幕上：${r.text}`;
         }],
         inspect_screen: ['看当前美团页面里能点的文字、输入框和位置，返回这次快照的 token。只读；token 30 秒内有效，页面一换就失效', O({ max: { type: 'integer', minimum: 1, maximum: 160, description: '最多返回多少个节点，默认 80' } }), a => pageTool('inspectScreen', a.max)],
-        wait_screen: ['等当前美团页面出现变化，再返回一份新的完整快照。只读；token 用 inspect_screen 返回的那个，最多等 15 秒', O({ token: { type: 'integer' }, timeout_ms: { type: 'integer', minimum: 300, maximum: 15000, description: '最多等多少毫秒，默认 8000' } }, ['token']), a => pageTool('waitScreen', a.token, a.timeout_ms)],
-        tap_element: ['点当前美团页面快照里的一个元素。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」；支付、提交订单、验证码这类动作会被拦住', O({ token: { type: 'integer' }, ref: { type: 'integer' } }, ['token', 'ref']), a => pageTool('tapElement', a.token, a.ref)],
-        set_text: ['往当前美团页面快照里的输入框写字。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」；密码框写不了', O({ token: { type: 'integer' }, ref: { type: 'integer' }, value: { type: 'string' } }, ['token', 'ref', 'value']), a => pageTool('setText', a.token, a.ref, a.value)],
-        scroll_screen: ['在当前美团页面上下滑。1 = 向下，-1 = 向上。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」', O({ direction: { type: 'integer', enum: [1, -1] } }, ['direction']), a => pageTool('scrollScreen', a.direction)],
-        press_back: ['在当前美团页面按一次系统返回，退出当前页面、弹窗或输入状态。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」', O(), () => pageTool('pressBack')],
+        wait_screen: ['等当前美团页面出现变化，再返回一份新的完整快照。只读；token 用 inspect_screen 返回的那个，最多等 15 秒', O({ token: { type: 'integer', minimum: 1 }, timeout_ms: { type: 'integer', minimum: 300, maximum: 15000, description: '最多等多少毫秒，默认 8000' } }, ['token']), (a, env) => pageTool('waitScreen', a.token, a.timeout_ms, env.check)],
+        tap_element: ['点当前美团页面快照里的一个元素。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」；支付、提交订单、验证码这类动作会被拦住', O({ token: { type: 'integer', minimum: 1 }, ref: { type: 'integer', minimum: 0 } }, ['token', 'ref']), (a, env) => pageTool('tapElement', a.token, a.ref, env.check)],
+        set_text: ['往当前美团页面快照里的输入框写字。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」；密码框写不了', O({ token: { type: 'integer', minimum: 1 }, ref: { type: 'integer', minimum: 0 }, value: { type: 'string' } }, ['token', 'ref', 'value']), (a, env) => pageTool('setText', a.token, a.ref, a.value, env.check)],
+        scroll_screen: ['使用最新快照 token 在美团页面上下滑；操作后返回新快照。1 = 向下，-1 = 向上。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」', O({ direction: { type: 'integer', enum: [1, -1] }, token: { type: 'integer', minimum: 1 } }, ['direction', 'token']), (a, env) => pageTool('scrollScreen', a.direction, a.token, env.check)],
+        press_back: ['使用最新快照 token 在当前美团页面按一次系统返回，退出当前页面、弹窗或输入状态。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」', O({ token: { type: 'integer', minimum: 1 } }, ['token']), (a, env) => pageTool('pressBack', a.token, env.check)],
         pull_back: ['把她从别的软件拉回谷雨（想她了 / 催她别玩了）。要装谷雨守护插件 + 她把「把你拉回谷雨」设成了「TA 直接做」', O(), async () => {
             const r = (window.gysPh && gysPh.mcp) ? await gysPh.mcp.act('pull') : { err: '真手机没加载上' };
             if (r.err) throw new Error(r.err); return '把她拉回谷雨了';
@@ -228,7 +295,7 @@
                 if (method === 'tools/list') return { tools: Object.keys(BUILTIN).map(k => ({ name: k, description: BUILTIN[k][0], inputSchema: BUILTIN[k][1] })) };
                 if (method === 'tools/call') {
                     const t = BUILTIN[p && p.name]; if (!t) throw new Error('没有这个工具：' + (p && p.name));
-                    try { return { content: [{ type: 'text', text: String(await t[2]((p && p.arguments) || {}, (p && p._gy) || {})) }] }; }
+                    try { const args = checkedArgs(p && p.arguments, t[1], true); const value = await t[2](args, (p && p._gy) || {}); const data = value && typeof value === 'object' ? value : null; return { content: [{ type: 'text', text: data ? JSON.stringify(data) : String(value) }], ...(data ? { structuredContent: data, isError: data.ok === false || !!data.err } : {}) }; }
                     catch (e) { return { content: [{ type: 'text', text: String(e && e.message || e) }], isError: true }; }
                 }
                 return {};
@@ -236,7 +303,8 @@
             close() {}
         };
     }
-    async function connect(s, fresh) {
+    async function connect(s, fresh, task) {
+        if (task) task.check();
         if (!fresh && CONN[s.id]) return CONN[s.id];
         if (CONN[s.id]) { try { CONN[s.id].close(); } catch (e) {} delete CONN[s.id]; }
         let c;
@@ -246,10 +314,13 @@
             try { c = await httpConn(s); }
             catch (e) { if (e && (e.status === 404 || e.status === 405 || e.status === 400)) c = await sseConn(s); else throw e; }
         }
+        if (task) task.check();
         // 工具清单（可能分页）
         let tools = [], cursor;
         for (let i = 0; i < 10; i++) {
+            if (task) task.check();
             const r = await c.rpc('tools/list', cursor ? { cursor } : {});
+            if (task) task.check();
             tools = tools.concat((r && r.tools) || []);
             cursor = r && r.nextCursor; if (!cursor) break;
         }
@@ -260,6 +331,47 @@
         CONN[s.id] = c;
         return c;
     }
+    // Validate without coercion: "1" must not turn into a node ref or an amount.
+    function validateArgs(value, schema, path, depth) {
+        path = path || 'arguments'; depth = depth || 0; if (schema == null) schema = {};
+        if (depth > 20) throw new Error(path + '：参数嵌套过深');
+        if (schema === false) throw new Error(path + '：不允许此参数');
+        const type = v => v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v;
+        const types = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
+        if (types.length && !types.some(t => t === 'integer' ? Number.isSafeInteger(value) : t === 'number' ? typeof value === 'number' && Number.isFinite(value) : type(value) === t)) throw new Error(path + '：类型不符合工具声明');
+        if (schema.enum && !schema.enum.some(v => JSON.stringify(v) === JSON.stringify(value))) throw new Error(path + '：值不在允许范围');
+        if (typeof value === 'number') {
+            if (!Number.isFinite(value) || (schema.minimum != null && value < schema.minimum) || (schema.maximum != null && value > schema.maximum)) throw new Error(path + '：数值超出范围');
+        }
+        if (typeof value === 'string' && ((schema.minLength != null && [...value].length < schema.minLength) || (schema.maxLength != null && [...value].length > schema.maxLength))) throw new Error(path + '：文字长度超出范围');
+        if (Array.isArray(value)) {
+            if ((schema.minItems != null && value.length < schema.minItems) || (schema.maxItems != null && value.length > schema.maxItems)) throw new Error(path + '：列表长度超出范围');
+            if (schema.items) value.forEach((v, i) => validateArgs(v, schema.items, path + '[' + i + ']', depth + 1));
+        } else if (value && typeof value === 'object') {
+            (schema.required || []).forEach(k => { if (!Object.prototype.hasOwnProperty.call(value, k)) throw new Error(path + '.' + k + '：缺少必填参数'); });
+            Object.keys(value).forEach(k => {
+                if (['__proto__', 'constructor', 'prototype'].includes(k)) throw new Error(path + '：不允许的参数名');
+                if (Object.prototype.hasOwnProperty.call(schema.properties || {}, k)) validateArgs(value[k], schema.properties[k], path + '.' + k, depth + 1);
+                else if (schema.additionalProperties === false) throw new Error(path + '.' + k + '：未知参数');
+                else if (schema.additionalProperties && typeof schema.additionalProperties === 'object') validateArgs(value[k], schema.additionalProperties, path + '.' + k, depth + 1);
+            });
+        }
+    }
+    function checkedArgs(args, schema, strict) {
+        const value = args === undefined ? {} : args;
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('工具参数必须是对象');
+        // Built-in phone tools accept only their declared fields. Remote tools retain their own schema semantics.
+        validateArgs(value, strict ? Object.assign({}, schema, { additionalProperties: false }) : schema);
+        return value;
+    }
+    function normalizeResult(r) {
+        const text = toolText(r);
+        if (!r || typeof r !== 'object' || (!Array.isArray(r.content) && !r.structuredContent && r.isError !== true)) return { status: 'unknown', ok: null, error: 'empty_result', text };
+        const data = r.structuredContent;
+        const failed = r.isError === true || !!(data && (data.ok === false || data.error));
+        return { status: failed ? 'error' : 'ok', ok: !failed, error: failed ? 'tool_error' : null, text: failed && !r.isError ? '［工具报错］' + text : text, data: data || null };
+    }
+    window.__gyMcpProtocol = { checkedArgs, normalizeResult };
     function toolText(r) {
         if (!r) return '（没有内容）';
         const parts = (r.content || []).map(x => x.type === 'text' ? x.text : x.type === 'resource' ? (x.resource && (x.resource.text || x.resource.uri)) : x.type === 'image' ? '［一张图片］' : x.type === 'resource_link' ? (x.name || x.uri) : '').filter(Boolean);
@@ -302,6 +414,7 @@
     function toolsNow() {
         const out = [];
         C.servers.filter(s => s.on !== false).forEach(s => (s.tools || []).filter(t => t.on !== false).forEach(t => {
+            if (s.kind === 'builtin') { const live = BUILTIN[t.name]; if (!live) return; t = Object.assign({}, t, { description: live[0], inputSchema: live[1] }); }
             if (out.length >= 48) return;
             const fn = ('s' + C.servers.indexOf(s) + '__' + t.name).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
             out.push({ fn, s, t });
@@ -309,13 +422,13 @@
         return out;
     }
     const lastMsgs = (sid, n) => ((typeof globalChats !== 'undefined' && globalChats[sid]) || []).filter(m => m && m.text && !m.isRecalled).slice(-n);
-    async function callApi(api, msgs, tools) {
+    async function callApi(api, msgs, tools, signal) {
         const anth = typeof isAnthropicApiUrl === 'function' && isAnthropicApiUrl(api.url);
         const __gyCall = typeof gyDetectCall === 'function' ? gyDetectCall() : null, t0 = Date.now();
         if (anth) {
             const sys = msgs.filter(m => m.role === 'system').map(m => m.content).join('\n');
             const body = { model: api.model, max_tokens: 1024, system: sys, messages: msgs.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content })), tools: tools.map(x => ({ name: x.fn, description: (x.t.title ? x.t.title + '：' : '') + x.t.description, input_schema: x.t.inputSchema })) };
-            const res = await doFetch(`${api.url}/v1/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': api.key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body) });
+            const res = await doFetch(`${api.url}/v1/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': api.key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body), signal });
             const d = await res.json();
             if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
             try { if (typeof recordTokenUsage === 'function') recordTokenUsage(d, { inChars: JSON.stringify(body).length, outChars: 50 }, __gyCall, { api, t0, kind: 'chat' }); } catch (e) {}
@@ -323,7 +436,7 @@
             return { calls, append: calls.length ? [{ role: 'assistant', content: d.content }] : [], result: (outs) => ({ role: 'user', content: outs.map(o => ({ type: 'tool_result', tool_use_id: o.id, content: o.out })) }) };
         }
         const body = { model: api.model, messages: msgs, tools: tools.map(x => ({ type: 'function', function: { name: x.fn, description: ((x.t.title ? x.t.title + '：' : '') + x.t.description).slice(0, 1000), parameters: x.t.inputSchema && x.t.inputSchema.type ? x.t.inputSchema : { type: 'object', properties: {} } } })), tool_choice: 'auto' };
-        const res = await doFetch(`${api.url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.key}` }, body: JSON.stringify(body) });
+        const res = await doFetch(`${api.url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.key}` }, body: JSON.stringify(body), signal });
         const d = await res.json().catch(() => ({ error: { message: 'HTTP ' + res.status } }));
         if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
         try { if (typeof recordTokenUsage === 'function') recordTokenUsage(d, { inChars: JSON.stringify(body).length, outChars: 50 }, __gyCall, { api, t0, kind: 'chat' }); } catch (e) {}
@@ -333,18 +446,18 @@
     }
     // 304：这句话像不像「要 TA 动手做点什么 / 查点什么」（只用来决定要不要多问一次，不直接执行）
     const wantsTool = t => /锁|解锁|解开|闹钟|手电|音量|亮度|震一下|震动|打开|提醒我|叫我起|电量|屏幕时间|玩了多久|用了多久|几点|剪贴板|通知|拉我回|搜一下|查一下|查查|帮我看看|记一下|记住/.test(String(t || ''));
-    async function plainChat(api, msgs) {
+    async function plainChat(api, msgs, signal) {
         const anth = typeof isAnthropicApiUrl === 'function' && isAnthropicApiUrl(api.url);
         const __gyCall = typeof gyDetectCall === 'function' ? gyDetectCall() : null, t0 = Date.now();
         let body, d, text = '';
         if (anth) {
             body = { model: api.model, max_tokens: 600, system: msgs.filter(m => m.role === 'system').map(m => m.content).join('\n'), messages: msgs.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content })) };
-            const res = await doFetch(`${api.url}/v1/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': api.key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body) });
+            const res = await doFetch(`${api.url}/v1/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': api.key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body), signal });
             d = await res.json(); if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
             text = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
         } else {
             body = { model: api.model, messages: msgs };
-            const res = await doFetch(`${api.url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.key}` }, body: JSON.stringify(body) });
+            const res = await doFetch(`${api.url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.key}` }, body: JSON.stringify(body), signal });
             d = await res.json().catch(() => ({ error: { message: 'HTTP ' + res.status } })); if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
             text = String(((d.choices && d.choices[0] && d.choices[0].message) || {}).content || '');
         }
@@ -352,72 +465,160 @@
         return text;
     }
     // 不靠「工具调用」这项本事：把工具清单写成字给模型看，让它回一段 JSON
-    async function callApiText(api, msgs, tools) {
+    async function callApiText(api, msgs, tools, signal) {
         const list = tools.map(x => `- ${x.fn}：${((x.t.title ? x.t.title + '：' : '') + x.t.description).slice(0, 260)}　参数：${JSON.stringify((x.t.inputSchema && x.t.inputSchema.properties) || {}).slice(0, 360)}`).join('\n');
         const ask = `【你手边的工具】\n${list}\n\n看她最后说的话：要是她让你做的事、或者你回她之前需要知道的东西，上面有工具能办到，就只输出一段 JSON：{"calls":[{"tool":"工具名","args":{参数}}]}（可以好几个）。真的一个都用不上，只输出：无。别的什么都不要写。`;
-        const text = await plainChat(api, msgs.concat([{ role: 'user', content: ask }]));
+        const text = await plainChat(api, msgs.concat([{ role: 'user', content: ask }]), signal);
         const m = String(text || '').match(/\{[\s\S]*\}/); if (!m) return [];
         let j = null; try { j = JSON.parse(m[0]); } catch (e) { try { j = JSON.parse(m[0].replace(/，/g, ',').replace(/[“”]/g, '"')); } catch (e2) {} }
         const arr = j && Array.isArray(j.calls) ? j.calls : (j && j.tool ? [j] : []);
         return arr.filter(x => x && x.tool).map((x, i) => ({ id: 'tx' + Date.now() + i, fn: String(x.tool), args: (x.args && typeof x.args === 'object') ? x.args : {} })).filter(x => tools.some(t => t.fn === x.fn || t.t.name === x.fn));
     }
     window.__gyMcpText = callApiText;
-    async function gyMcpDecide(sessionId, triggerText) {
+    const TASK_RUNS = new Map(), TASK_LATEST = new Map(), REQUEST_WINDOW = new Map();
+    let resumeHumanBusy = false;
+    function invalidatePhoneState() {
+        try { const m = window.gysPh && window.gysPh.mcp; if (m && m.invalidateSnapshots) m.invalidateSnapshots(); } catch (e) {}
+        ['gyMeituan','gyMeituanCart','gyMeituanCheckout','gyMeituanSubmit','gyMeituanOrders'].forEach(k => { try { if (window[k] && window[k].invalidate) window[k].invalidate(); } catch (e) {} });
+        Object.keys(CTX).forEach(k => { delete CTX[k]; });
+    }
+    window.gyMcpTakeover = function (source) {
+        if (!isApp()) { toast('手机接管需要 Android 版', '当前环境不具备本机手机页面操作能力'); return { ok: false, error: 'android_required' }; }
+        const gate = window.gyMcpExecution; if (!gate) return { ok: false };
+        let target = ''; try { const m = window.gysPh && window.gysPh.mcp; if (m && m.lastPackage) target = m.lastPackage(); } catch (e) {}
+        const persisted = gate.takeover(target);
+        invalidatePhoneState();
+        for (const run of TASK_RUNS.values()) run.stop('handed_over');
+        if (window.gyMcpTasks) window.gyMcpTasks.list().forEach(t => {
+            if (['created','running','waiting','paused'].includes(t.state)) window.gyMcpTasks.transition(t.id, 'handed_over', '已交给用户操作；不会自动恢复或重放。');
+        });
+        paintTasks();
+        if (!persisted) toast('人工接管已在本次运行生效', '接管标记未能保存，重启后请确认 MCP 保持关闭');
+        return { ok: true, persistent: persisted, pending: gate.status().pending };
+    };
+    window.gyMcpResumeHuman = async function (confirmed, targetPackage) {
+        const gate = window.gyMcpExecution;
+        if (!gate || !gate.status().human) return { ok: false, error: 'not_in_takeover' };
+        if (!confirmed) { toast('请先核对外部操作结果', '勾选已处理并核对后，再重新读屏恢复'); return { ok: false, error: 'confirmation_required' }; }
+        if (resumeHumanBusy) return { ok: false, error: 'resume_busy' };
+        const before = gate.status();
+        if (before.owner || before.pending || before.queued || TASK_RUNS.size) { toast('仍有工具请求在途', '请等请求返回后再处理和恢复'); return { ok: false, error: 'in_flight' }; }
+        resumeHumanBusy = true; paintTasks(); let timer;
+        const deadline = Date.now() + 8000;
+        try {
+            invalidatePhoneState();
+            const m = window.gysPh && window.gysPh.mcp;
+            if (!m || typeof m.inspectScreen !== 'function') throw new Error('页面读取能力未就绪');
+            const probe = async () => {
+                const valid = () => { if (Date.now() >= deadline || gate.status().humanRevision !== before.humanRevision) throw new Error('接管状态已变化'); };
+                valid(); let screen = await m.inspectScreen(160); valid();
+                if (screen && screen.error === 'not_meituan') {
+                    const n = window.gysPh && window.gysPh.__N;
+                    if (!n || !n.apps || !n.openApp) throw new Error('无法打开美团，请先确认原生能力');
+                    const apps = n.apps().filter(a => ['com.sankuai.meituan','com.sankuai.meituan.takeoutnew'].includes(a.pkg));
+                    const target = targetPackage || before.humanPackage || (apps.length === 1 && apps[0].pkg);
+                    if (!target || !apps.some(a => a.pkg === target)) throw new Error('请选择已安装的美团或美团外卖后重试');
+                    valid(); if (!n.openApp(target)) throw new Error('没能打开选定的美团软件');
+                    for (let i = 0; i < 3; i++) { valid(); screen = await m.inspectScreen(160); valid(); if (screen && screen.ok) break; await new Promise(resolve => setTimeout(resolve, 200)); }
+                }
+                return screen;
+            };
+            const screen = await Promise.race([probe(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('读取超时')), 8000); })]);
+            if (Date.now() >= deadline || before.humanRevision !== gate.status().humanRevision) throw new Error('页面读取已过期或发生了新的接管');
+            if (!screen || !screen.ok || screen.snapshotSchema !== 2 || !screen.fingerprint || (!Number.isSafeInteger(screen.token) || screen.token < 1) || !Array.isArray(screen.nodes)
+                || !['com.sankuai.meituan','com.sankuai.meituan.takeoutnew'].includes(screen.pkg)) throw new Error('请先手动回到美团的可识别页面');
+            const words = screen.nodes.map(n => String(n.text || n.desc || '').trim());
+            if (words.some(v => /验证码|验证身份|安全验证|支付密码|付款密码|人脸识别|指纹支付|立即支付|确认支付|登录后继续|立即登录/.test(v))) throw new Error('仍在登录、验证或支付页面，请手动完成后返回');
+            const info = window.gyMeituan && window.gyMeituan.classify(screen);
+            const checkout = window.gyMeituanCheckout && window.gyMeituanCheckout.parse(screen, null);
+            const receipt = window.gyMeituanOrders && window.gyMeituanOrders.parse(screen);
+            const page = receipt && receipt.ok ? 'order' : checkout && checkout.ok ? 'checkout' : info && info.page;
+            if (!page || page === 'unknown' || page === 'human_required' || screen.truncated) throw new Error('页面识别不清或内容不完整，请手动回到店铺、搜索或结算页');
+            // Discard this probe too. A new user request must inspect again before any action.
+            invalidatePhoneState();
+            if (!gate.resumeHuman(before.humanRevision)) throw new Error('状态已变化或接管标记未能保存，请重新核对');
+            toast('已恢复工具使用', '旧任务不会续跑；请发送新消息，系统会重新读屏');
+            return { ok: true, page, resumed: true, replayed: false };
+        } catch (e) { toast('继续保持人工接管', String(e && e.message || '页面未确认')); return { ok: false, error: 'resume_unverified' }; }
+        finally { try { clearTimeout(timer); } catch (e) {} resumeHumanBusy = false; paintTasks(); }
+    };
+    function stoppedError() { const e = new Error('MCP task stopped'); e.gyMcpStopped = true; return e; }
+    window.gyMcpCancel = function (id) {
+        const run = TASK_RUNS.get(id);
+        if (run) return run.stop('cancelled');
+        const store = window.gyMcpTasks;
+        return !!(store && store.transition(id, 'cancelled', '已取消，不会自动继续。'));
+    };
+    async function executeMcp(sessionId, triggerText, task) {
+        const gate = window.gyMcpExecution;
         const c = charOf(sessionId);
         if (!on('mcpOn') || !c || !charAllowed(c)) return null;
         const tools = toolsNow(); if (!tools.length) return null;
         const api = typeof getApiConfig === 'function' ? getApiConfig(C.api === 'sub') : null;
         if (!api || !api.key) return null;
         const me = (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || '她';
-        const msgs = [{ role: 'system', content: `你是${c.name}。${String(c.persona || '').slice(0, 800)}\n现在${me}给你发了消息。你手边有一些工具，能真的去查、真的去做。\n· 她让你做一件工具做得到的事（锁软件、设闹钟、开手电筒、调音量、打开某个软件、提醒她、查东西……），或者你自己想这么做 → 现在就调用对应的工具。只在嘴上答应「好，锁了」却不调用工具 = 什么都没发生，她一试就知道你在哄她。\n· 回她之前需要知道点什么（现在几点、电量、她在用什么、屏幕时间、网上的资料、记下的东西……）→ 调用工具去看，别猜。\n· 一次可以调好几个。参数照她说的填（她说的软件名、几分钟，原样填）。\n· 这句话真的用不上任何工具（纯聊天）→ 只回一个字：无。\n这一步不用写回复：工具结果会交给你，之后你再正常回她。现在是 ${new Date().toLocaleString()}。` }];
-        lastMsgs(String(sessionId), 12).forEach(m => { if (m.sender === 'system') return; msgs.push({ role: m.sender === 'me' ? 'user' : 'assistant', content: String(m.text).slice(0, 800) }); });
+        const msgs = [{ role: 'system', content: `你是${c.name}。${String(c.persona || '').slice(0, 800)}\n现在${me}给你发了消息。你手边有一些工具，能真的去查、真的去做。\n· 她让你做一件工具做得到的事（锁软件、设闹钟、开手电筒、调音量、打开某个软件、提醒她、查东西……），或者你自己想这么做 → 现在就调用对应的工具。只在嘴上答应「好，锁了」却不调用工具 = 什么都没发生，她一试就知道你在哄她。\n· 回她之前需要知道点什么（现在几点、电量、她在用什么、屏幕时间、网上的资料、记下的东西……）→ 调用工具去看，别猜。\n· 一次可以调好几个。参数照她说的填（她说的软件名、几分钟，原样填）。\n· 这句话真的用不上任何工具（纯聊天）→ 只回一个字：无。\n交易结果若 complete=false、state=unknown 或 confirmedAssociation=false，只能说明观察到的事实和未确认项，不能声称本次购买、付款或任务已经成功。\n这一步不用写回复：工具结果会交给你，之后你再正常回她。现在是 ${new Date().toLocaleString()}。` }];
+        (task.history || lastMsgs(String(sessionId), 12)).forEach(m => { if (m.sender === 'system') return; msgs.push({ role: m.sender === 'me' ? 'user' : 'assistant', content: String(m.text).slice(0, 800) }); });
         if (triggerText && !(msgs.length > 1 && msgs[msgs.length - 1].content === triggerText)) msgs.push({ role: 'user', content: String(triggerText).slice(0, 1500) });
         if (msgs[msgs.length - 1].role !== 'user') msgs.push({ role: 'user', content: '（她刚发了消息，看上面）' });
         const userText = String(triggerText || (msgs.filter(m => m.role === 'user').slice(-1)[0] || {}).content || '');
-        const env = { cid: String(c.id), text: userText.slice(0, 500), asked: /锁|禁用|封了|封掉|别让我|不让我|不许我|管住|管管我|没收/.test(userText) };
+        const env = { check: task.check, cid: String(c.id), text: userText.slice(0, 500), asked: /锁|禁用|封了|封掉|别让我|不让我|不许我|管住|管管我|没收/.test(userText) };
         const base = msgs.slice();
-        const items = [];
+        const items = [], callResults = new Map(), addRequests = new Set();
         const runCall = async call => {
+            task.check();
+            if (call.id && callResults.has(call.id)) return callResults.get(call.id);
+            if (call.id) callResults.set(call.id, '［该工具调用已处理，结果未确认，不重复发送］');
+            if (gate.status().blocked) throw new Error('外部工具结果未确认，停止后续操作');
             const x = tools.find(t => t.fn === call.fn) || tools.find(t => t.t.name === call.fn);
-            let out; const t0 = Date.now();
+            let out, result = { status: 'error', ok: false, error: 'unknown_tool' }; const t0 = Date.now();
             if (!x) out = '［没有这个工具］';
             else {
-                try { const conn = await connect(x.s); const p = { name: x.t.name, arguments: call.args || {} }; if (x.s.kind === 'builtin') p._gy = env; out = toolText(await conn.rpc('tools/call', p)); }
-                catch (e) { out = '［调用失败：' + String(e && e.message || e).slice(0, 160) + '］'; try { delete CONN[x.s.id]; } catch (e2) {} }
+                try { const args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task)); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id); task.inFlight = true; return Promise.resolve().then(() => { task.check(); return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, normalizeResult(r).ok === true); task.inFlight = false; return r; }, e => { gate.settle(task.id, false); task.inFlight = false; throw e; }); })); out = result.text; }
+                catch (e) { if (e.gyMcpStopped) throw e; task.inFlight = false; result = { status: 'error', ok: false, error: 'validation_or_call_failed' }; out = '［调用失败：' + String(e && e.message || e).slice(0, 160) + '］'; try { delete CONN[x.s.id]; } catch (e2) {} }
             }
+            task.check();
+            if (gate.status().blocked) task.decisionFailed = true;
             out = String(out).slice(0, 4000);
             const argsText = JSON.stringify(call.args || {}).slice(0, 300);
-            const item = { id: call.id, tool: x ? (x.t.title || x.t.name) : call.fn, name: x ? x.t.name : call.fn, bad: /^［(调用失败|工具报错|没有这个工具)/.test(out), server: x ? (x.s.name || x.s.url || x.s.command) : '', argsText, out, ms: Date.now() - t0 };
+            const item = { id: call.id, tool: x ? (x.t.title || x.t.name) : call.fn, name: x ? x.t.name : call.fn, status: result.status, error: result.error, bad: result.ok !== true, server: x ? (x.s.name || x.s.url || x.s.command) : '', argsText, out, ms: Date.now() - t0 };
             items.push(item);
-            L.unshift({ at: Date.now(), cid: String(c.id), who: c.name, tool: item.tool, server: item.server, args: argsText, out: out.slice(0, 800), ms: item.ms, err: item.bad });
+            window.gyMcpTasks.step(task.id, result.ok);
+            L.unshift({ taskId: task.id, at: Date.now(), cid: String(c.id), who: c.name, tool: item.tool, server: item.server, args: argsText, out: out.slice(0, 800), ms: item.ms, status: item.status, error: item.error, err: item.bad });
+            saveLog();
+            if (x && x.s.kind === 'builtin' && result.data && result.data.error === 'human_required') { window.gyMcpTakeover('human_required'); task.check(); }
+            if (call.id) callResults.set(call.id, out);
             return out;
         };
         let firstErr = null;
         for (let round = 0; round < Math.max(1, Math.min(6, Number(C.rounds) || 3)); round++) {
             let r = null;
-            try { r = await callApi(api, msgs, tools); } catch (e) { if (round === 0) firstErr = e; else console.warn('[MCP] 第 ' + (round + 1) + ' 轮没问成：', e); break; }
+            try { r = await task.wait(() => callApi(api, msgs, tools, task.signal)); } catch (e) { if (e.gyMcpStopped) throw e; task.decisionFailed = true; if (round === 0) firstErr = e; else console.warn('[MCP] 第 ' + (round + 1) + ' 轮没问成：', e); break; }
             if (!r.calls.length) break;
+            task.limitReached = round + 1 >= Math.max(1, Math.min(6, Number(C.rounds) || 3));
             const outs = [];
-            for (const call of r.calls.slice(0, 5)) outs.push({ id: call.id, out: await runCall(call) });
+            for (const call of r.calls.slice(0, 5)) { outs.push({ id: call.id, out: await runCall(call) }); if (gate.status().blocked) break; }
+            if (gate.status().blocked) break;
             msgs.push(...r.append);
             const res = r.result(outs); if (Array.isArray(res)) msgs.push(...res); else msgs.push(res);
         }
         // 304 兜底①：这个模型 / 中转不支持「工具调用」（报错了），或者这句话明明像是要用工具却回了「无」→ 换成纯文字的问法再问一次
-        if (!items.length && (firstErr || wantsTool(userText))) {
-            try { const calls = await callApiText(api, base, tools); for (const call of calls.slice(0, 5)) await runCall(call); }
-            catch (e) { console.warn('[MCP] 换文字问法也没问成：', e, firstErr || ''); }
+        if (!gate.status().blocked && !items.length && (firstErr || wantsTool(userText))) {
+            try { const calls = await task.wait(() => callApiText(api, base, tools, task.signal)); task.decisionFailed = false; for (const call of calls.slice(0, 5)) { await runCall(call); if (gate.status().blocked) break; } }
+            catch (e) { if (e.gyMcpStopped) throw e; task.decisionFailed = true; console.warn('[MCP] 换文字问法也没问成：', e, firstErr || ''); }
         }
         // 兜底②：她明明说了「锁 XX」，上面还是没锁成 → 直接照她说的锁
         try {
-            if (env.asked && !items.some(i => i.name === 'lock_apps' && !i.bad)) {
+            if (!gate.status().blocked && env.asked && !items.some(i => i.name === 'lock_apps' && !i.bad)) {
                 const lk = tools.find(t => t.s.kind === 'builtin' && t.t.name === 'lock_apps');
                 const g = lk && window.gysPh && gysPh.mcp && gysPh.mcp.guess ? gysPh.mcp.guess(userText) : null;
                 if (g && g.lock && g.apps.length) await runCall({ id: 'fb' + Date.now(), fn: lk.fn, args: { apps: g.apps, minutes: g.minutes || 30 } });
             }
-        } catch (e) { console.warn('[MCP] 兜底锁软件出错：', e); }
+        } catch (e) { if (e.gyMcpStopped) throw e; console.warn('[MCP] 兜底锁软件出错：', e); }
+        task.check();
         if (!items.length) return null;
         saveLog();
-        CTX[String(c.id)] = { at: Date.now(), items };
+        if (TASK_LATEST.get(String(c.id)) === task.id) CTX[String(c.id)] = { at: Date.now(), items };
         // 聊天里一行小字，点了看详情
         try {
             const sid = String(sessionId);
@@ -431,6 +632,93 @@
         } catch (e) {}
         return items;
     }
+    async function gyMcpDecide(sessionId, triggerText) {
+        const c = charOf(sessionId);
+        if (!on('mcpOn') || !c || !charAllowed(c) || !toolsNow().length) return null;
+        const api = typeof getApiConfig === 'function' ? getApiConfig(C.api === 'sub') : null;
+        if (!api || !api.key) return null;
+        const store = window.gyMcpTasks;
+        if (!store || !window.gyMcpExecution) { toast('任务模块未加载', '请重新打开或更新谷雨，工具暂不执行'); return null; }
+        const gate = window.gyMcpExecution;
+        if (gate.status().human) { CTX[String(c.id)] = { at: Date.now(), items: [{ tool: '人工接管', argsText: '', out: '用户正在人工处理外部软件，本次未执行工具；不能声称已完成操作。等待用户手动恢复后发送新消息，不自动重试。' }] }; toast('人工接管中', '工具已暂停，请处理完成后在最近任务里重新读屏恢复'); return null; }
+        if (gate.status().blocked) { toast('有工具操作结果未确认', '请先在最近任务里核对并解除占用，暂不执行新任务'); return null; }
+        const history = (typeof globalChats !== 'undefined' && globalChats[String(sessionId)]) || [];
+        let messageIndex = -1;
+        for (let i = history.length - 1; i >= 0; i--) if (history[i] && history[i].sender === 'me' && !history[i].isRecalled) { messageIndex = i; break; }
+        const message = history[messageIndex];
+        const key = message && (message.id || message.timestamp)
+            ? JSON.stringify([String(c.id), String(message.id || ''), String(message.timestamp || ''), messageIndex]) : null;
+        const ephemeralKey = JSON.stringify([String(c.id), String(triggerText || '')]);
+        const prior = REQUEST_WINDOW.get(ephemeralKey);
+        if ((key && !gate.claim(key)) || (!key && prior && (prior.active || Date.now() - prior.at < 10000))) {
+            toast('重复工具请求已跳过', '同一条消息不会重复执行工具；需要重新操作时请发送新消息'); return null;
+        }
+        if (REQUEST_WINDOW.size >= 200) for (const [k, v] of REQUEST_WINDOW) if (!v.active) { REQUEST_WINDOW.delete(k); break; }
+        const request = { active: true, at: Date.now() }; REQUEST_WINDOW.set(ephemeralKey, request);
+        const task = store.create(c.id, c.name);
+        task.history = lastMsgs(String(sessionId), 12).map(m => ({ sender: m.sender, text: String(m.text) }));
+        let live = true, reason = '', timer;
+        let rejectStop;
+        const stopPromise = new Promise((_, reject) => { rejectStop = reject; });
+        stopPromise.catch(() => {}); // Cancellation can occur synchronously during the running-state event.
+        const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const deadline = Date.now() + 45000;
+        task.signal = ctrl && ctrl.signal;
+        const stop = why => {
+            if (!live || reason) return false;
+            reason = why;
+            gate.cancelQueued(task.id);
+            store.transition(task.id, why, (why === 'handed_over' ? '已交给用户操作' : why === 'timed_out' ? '任务已超时' : '任务已取消')
+                + '，不会再发出新操作；已发出的请求可能仍在外部执行，请核对结果。');
+            rejectStop(stoppedError());
+            if (ctrl) ctrl.abort();
+            return true;
+        };
+        task.check = () => {
+            if (live && !reason && gate.status().human) stop('handed_over');
+            if (live && !reason && Date.now() >= deadline) stop('timed_out');
+            if (!live || reason) throw stoppedError();
+        };
+        task.wait = async op => {
+            task.check();
+            try { const value = await Promise.race([Promise.resolve().then(() => { task.check(); return op(); }), stopPromise]); task.check(); return value; }
+            catch (e) { task.check(); throw e; }
+        };
+        TASK_RUNS.set(task.id, { stop });
+        timer = setTimeout(() => stop('timed_out'), 45000);
+        TASK_LATEST.set(String(c.id), task.id);
+        delete CTX[String(c.id)];
+        store.transition(task.id, 'running', '等待本实例的工具执行占用。');
+        store.transition(task.id, 'waiting', '其他任务执行期间排队等待；等待也受超时限制。');
+        try {
+            await task.wait(() => gate.acquire(task.id));
+            task.check();
+            store.transition(task.id, 'running', '正在判断并调用工具。');
+            const items = await task.wait(() => executeMcp(sessionId, triggerText, task));
+            if (task.decisionFailed || (items || []).some(i => i.bad))
+                store.transition(task.id, 'failed', '工具或模型请求失败，部分操作可能已执行，请核对调用记录。');
+            else if (task.limitReached)
+                store.transition(task.id, 'paused', '达到本轮工具次数上限，未确认目标完成；不会自动继续。');
+            else store.transition(task.id, 'completed', items && items.length
+                ? '工具调用流程结束；外部订单等业务结果仍需核验。' : '工具判断结束，本次未执行工具。');
+            return items;
+        } catch (e) {
+            if (e.gyMcpStopped) {
+                if (TASK_LATEST.get(String(c.id)) === task.id) CTX[String(c.id)] = { at: Date.now(), items: [{ tool: '任务停止', argsText: '', out:
+                    (reason === 'handed_over' ? '用户正在人工接管，旧任务不会自动恢复。' : reason === 'timed_out' ? '本次工具任务已超时。' : '用户已取消本次工具任务。')
+                    + '不得声称目标已经完成。已发出的操作结果未确认，需要用户核对；不要自动重试。' }] };
+                return null;
+            }
+            store.transition(task.id, 'failed', '执行异常，部分操作可能已执行，请核对调用记录。');
+            throw e;
+        } finally {
+            live = false;
+            try { clearTimeout(timer); } catch (e) {}
+            TASK_RUNS.delete(task.id);
+            gate.release(task.id);
+            request.active = false; request.at = Date.now();
+        }
+    }
     window.gyMcpDecide = gyMcpDecide;
     function hookReply() {
         const o = window.triggerAIBatchReply;
@@ -438,7 +726,7 @@
         const w = async function (sessionId, triggerText) {
             try {
                 if (on('mcpOn') && sessionId && !String(sessionId).startsWith('g_') && charOf(sessionId))
-                    await Promise.race([gyMcpDecide(sessionId, triggerText), new Promise(r => setTimeout(r, 45000))]);
+                    await gyMcpDecide(sessionId, triggerText);
             } catch (e) { console.warn('[MCP] 判断要不要用工具时出错，照常回复：', e); }
             return o.apply(this, arguments);
         };
@@ -538,6 +826,32 @@
         toast('🧰 导进来 ' + n + ' 个', isDesk() ? '挨个点进去测一下' : (C.servers.some(s => s.kind === 'local') ? '本地的那几个要在桌面版里才能用' : '挨个点进去测一下'));
     };
 
+    window.gyMcpOrderReviewOpen = () => window.gyMeituanOrders ? window.gyMeituanOrders.open() : toast('订单核验模块未加载');
+    window.gyMcpCheckoutOpen = () => window.gyMeituanCheckout ? window.gyMeituanCheckout.open() : toast('结算摘要模块未加载', '请更新谷雨');
+    window.gyMcpDeviceAcknowledge = function () {
+        if (window.gyMcpExecution && !window.gyMcpExecution.acknowledge()) toast('暂不能解除占用', '仍有任务或工具请求在途，请等待返回并核对外部软件');
+        paintTasks();
+    };
+    function paintTasks() {
+        const box = document.getElementById('gyMcpTasks'); if (!box) return;
+        const store = window.gyMcpTasks;
+        if (!store) { box.textContent = '任务模块未加载，工具暂不执行。'; return; }
+        const device = window.gyMcpExecution && window.gyMcpExecution.status();
+        const labels = { created: '已创建', running: '运行中', waiting: '等待中', paused: '已暂停', completed: '调用流程结束', failed: '失败', interrupted: '已中断', cancelled: '已取消', timed_out: '已超时', handed_over: '人工接管' };
+        box.innerHTML = (store.storageOk() ? '' : '<div>任务记录未能保存，重新打开后可能丢失。</div>')
+            + (device ? '<div>本实例工具队列：' + device.queued + ' 个等待 · ' + device.pending + ' 个工具请求在途</div>' + (device.blocked && !device.human ? '<div>上次工具操作结果未确认，请先核对外部软件。<button class="gymcp-btn ghost" data-mcp-ack>已核对结果，解除占用</button></div>' : '') : '')
+            + (device && device.human ? '<div><b>人工接管中</b><p>' + (device.pending || device.owner ? '仍有请求在途，请等待返回后再操作外部软件。' : '工具已暂停。请手动处理登录、验证码、支付等步骤；旧任务不会续跑。')
+                + '</p>' + (device.blocked ? '<p>存在未确认的外部操作，请先核对结果；接管不等于撤销已发送的请求。</p>' : '') + '<p>恢复时可能打开选定的美团软件重新读屏，不会重放旧任务。</p><select data-mcp-human-package aria-label="恢复时打开的软件"><option value="">上次操作的软件 / 自动识别</option><option value="com.sankuai.meituan.takeoutnew">美团外卖</option><option value="com.sankuai.meituan">美团</option></select><br><label><input type="checkbox" data-mcp-human-confirm> 我已处理并核对外部操作结果</label><br><button class="gymcp-btn ghost" data-mcp-human-resume>' + (resumeHumanBusy ? '正在重新读屏…' : '重新读屏并恢复工具') + '</button></div>'
+                : isApp() ? '<button class="gymcp-btn ghost" data-mcp-takeover>我要接管手机操作</button>' : '<div>手机人工接管需在 Android 版使用。</div>')
+            + '<div>仅记录工具执行状态，不代表购买或下单成功。未完成任务不会在重启后自动执行。</div>'
+            + store.list().slice(0, 10).map(t => '<div class="gymcp-log"><b>' + esc(t.who) + ' · ' + esc(labels[t.state] || t.state)
+                + '</b><div>' + t.steps + ' 次调用 · ' + t.failures + ' 次失败或未确认</div><div>' + esc(t.note)
+                + '</div><small>' + esc(new Date(t.updatedAt).toLocaleString()) + '</small>'
+                + (['created', 'running', 'waiting', 'paused'].includes(t.state) ? '<button class="gymcp-btn ghost" data-mcp-cancel="' + esc(t.id) + '">取消任务</button>' : '') + '</div>').join('');
+        box.onclick = e => { if (e.target.closest('[data-mcp-takeover]')) { window.gyMcpTakeover('user'); return; } if (e.target.closest('[data-mcp-human-resume]')) { window.gyMcpResumeHuman(!!box.querySelector('[data-mcp-human-confirm]')?.checked, box.querySelector('[data-mcp-human-package]')?.value); return; } if (e.target.closest('[data-mcp-ack]')) { window.gyMcpDeviceAcknowledge(); return; } const button = e.target.closest('[data-mcp-cancel]'); if (button && box.contains(button)) window.gyMcpCancel(button.getAttribute('data-mcp-cancel')); };
+        if (!store.list().length) box.innerHTML += '<div>还没有工具任务。</div>';
+    }
+    try { window.addEventListener('gy-mcp-task-change', paintTasks); window.addEventListener('gy-mcp-device-change', paintTasks); } catch (e) {}
     function paintList() {
         const b = document.getElementById('gyMcpBody'); if (!b) return;
         const allOn = C.chars === 'all';
@@ -555,6 +869,9 @@
               <div class="gymcp-b"><b>${esc(s.name || '（没名字）')}</b><em>${esc(s.kind === 'builtin' ? '内置：App 自己调手机，不用装别的' : s.kind === 'local' ? s.command + ' ' + String(s.args || '').split('\n').join(' ') : s.url)}</em>
               <div class="gymcp-d">${s.err ? '❌ ' + esc(s.err.slice(0, 60)) : s.ok ? '✅ ' + (s.tools || []).filter(t => t.on !== false).length + ' / ' + (s.tools || []).length + ' 个工具开着' : '还没测过'}${s.kind === 'local' && !isDesk() ? '　·　要在桌面版里用' : ''}${s.kind === 'builtin' && !isApp() ? '　·　要在安卓 App 里用' : ''}</div></div>
               <label class="gymcp-sw" onclick="event.stopPropagation()"><input type="checkbox" ${s.on === false ? '' : 'checked'} onchange="gyMcpToggle('${s.id}', this.checked)"></label><span class="gymcp-more">›</span></div>`).join('') : '<div class="gymcp-hint" style="text-align:center;padding:20px 0;">还没有。点上面加一个。</div>'}
+          <div class="gymcp-note"><b>真实手机操作 · 能力自检</b><div class="gymcp-acts"><button class="gymcp-btn" onclick="gyMcpPhoneCheck()">检查美团操作条件</button></div><div id="gyMcpPhoneCheck" role="status" aria-live="polite">尚未检查。仅检测当前设备，不会打开或操作美团。</div></div>
+          <div class="gymcp-note"><button class="gymcp-btn ghost" onclick="gyMcpCheckoutOpen()">查看本机结算摘要</button> <button class="gymcp-btn ghost" onclick="gyMcpOrderReviewOpen()">核验当前订单结果</button><div>完整配送地址和联系方式仅在本机核对；先核对摘要；提交需本机确认，不会自动操作支付。</div></div>
+          <h4 class="gymcp-h">最近任务</h4><div id="gyMcpTasks" class="gymcp-note" role="status" aria-live="polite"></div>
           <h4 class="gymcp-h">谁能用</h4>
           <label class="gymcp-ck"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="gyMcpSet('charsAll', this.checked)"> 所有角色</label>
           ${allOn ? '' : `<div class="gymcp-cks">${chars().map(c => `<label class="gymcp-ck"><input type="checkbox" ${(C.chars || []).map(String).includes(String(c.id)) ? 'checked' : ''} onchange="gyMcpSet('char', ['${c.id}', this.checked])"> ${esc(c.name)}</label>`).join('')}</div>`}
@@ -589,7 +906,7 @@
               const row = t => `<label class="gymcp-tool"><input type="checkbox" ${t.on === false ? '' : 'checked'} onchange="gyMcpToolToggle('${s.id}', ${esc(JSON.stringify(t.name))}, this.checked)"><div><b>${esc(t.title || t.name)}</b>${t.title ? `<em>${esc(t.name)}</em>` : ''}<span>${esc(String(t.description || '').slice(0, 160))}</span></div></label>`;
               // 内置版：要「谷雨守护」插件的（读屏 / 页面操作 / 读通知 / 拉回 / 锁软件）单独分一组，其余不用插件
               if (s.kind === 'builtin') {
-                  const NEED = { read_screen: 1, read_notifications: 1, inspect_screen: 1, wait_screen: 1, tap_element: 1, set_text: 1, scroll_screen: 1, press_back: 1, pull_back: 1, lock_apps: 1 };
+                  const NEED = { meituan_order_status: 1, meituan_prepare_checkout: 1, meituan_checkout_summary: 1, meituan_menu: 1, meituan_item_options: 1, meituan_cart: 1, meituan_add_item: 1, meituan_inspect: 1, meituan_search: 1, meituan_choose_store: 1, read_screen: 1, read_notifications: 1, inspect_screen: 1, wait_screen: 1, tap_element: 1, set_text: 1, scroll_screen: 1, press_back: 1, pull_back: 1, lock_apps: 1 };
                   const base = tools.filter(t => !NEED[t.name]), plug = tools.filter(t => NEED[t.name]);
                   return `<h4 class="gymcp-h">工具（关掉的 TA 就不会用）</h4>`
                       + `<div class="gymcp-hint" style="margin:2px 0 6px;">✅ 下面这些不用装插件，直接能用：</div>${base.map(row).join('')}`
@@ -609,7 +926,7 @@
         const p = document.getElementById('gyMcpPage'); if (!p || !p.classList.contains('on')) return;
         const s = V.view === 'edit' ? get(V.id) : null;
         document.getElementById('gyMcpTitle').textContent = V.view === 'log' ? '📜 工具调用记录' : s ? (s.name || (s.kind === 'builtin' ? '📱 这台手机（内置）' : s.kind === 'local' ? '新的本地 MCP' : '新的网址 MCP')) : '🧰 我的 MCP';
-        if (V.view === 'edit') paintEdit(); else if (V.view === 'log') paintLog(); else paintList();
+        if (V.view === 'edit') paintEdit(); else if (V.view === 'log') paintLog(); else { paintList(); paintTasks(); }
     }
     window.gyMcpPaint = paint;
     const CSS = `

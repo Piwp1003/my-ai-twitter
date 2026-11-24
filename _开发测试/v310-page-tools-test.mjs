@@ -127,29 +127,29 @@ async function openAndroid(plugin) {
     const no = gysPh.mcp.inspectScreen(30);
     gysPh.setPerm('read', 'ask'); await s(20);
     const ask = gysPh.mcp.inspectScreen(24);
-    const askTap = gysPh.mcp.tapElement(77, 0);
-    const askText = gysPh.mcp.setText(77, 1, '牛肉面');
-    const askScroll = gysPh.mcp.scrollScreen(-1);
+    const askTap = await gysPh.mcp.tapElement(77, 0);
+    const askText = await gysPh.mcp.setText(77, 1, '牛肉面');
+    const askScroll = await gysPh.mcp.scrollScreen(-1);
     const beforeAuto = JSON.stringify(window.__g.calls);
     gysPh.setPerm('read', 'auto'); await s(20);
     const auto = gysPh.mcp.inspectScreen(999);
-    const tap = gysPh.mcp.tapElement(77, 0);
-    const text = gysPh.mcp.setText(77, 1, '牛肉面');
-    const scroll = gysPh.mcp.scrollScreen(-1);
-    const badScroll = gysPh.mcp.scrollScreen(0);
+    const tap = await gysPh.mcp.tapElement(77, 0);
+    const text = await gysPh.mcp.setText(77, 1, '牛肉面');
+    const scroll = await gysPh.mcp.scrollScreen(-1);
+    const badScroll = await gysPh.mcp.scrollScreen(0);
     window.__g.inspectError = 'not_meituan';
     const notMeituan = gysPh.mcp.inspectScreen(10);
     window.__g.inspectError = '';
     window.__g.tapError = 'unsafe_action';
-    const unsafe = gysPh.mcp.tapElement(77, 0);
+    const unsafe = await gysPh.mcp.tapElement(77, 0);
     window.__g.tapError = '';
     return { mode, no, ask, askTap, askText, askScroll, beforeAuto, auto, tap, text, scroll, badScroll, notMeituan, unsafe, calls: window.__g.calls };
   });
   check('read=no：快照和动作都拒绝', /不许/.test(r.no && r.no.err || ''), r.no);
   check('read=ask：可以看快照，三个动作都拒绝且没有调用动作原生', r.ask.ok === true && [r.askTap, r.askText, r.askScroll].every(x => /先问我/.test(x && x.err || '')) && !/tap|text|scroll/.test(r.beforeAuto), { ask: r.ask, beforeAuto: r.beforeAuto });
-  check('read=auto：快照、点按、输入、滑动分别调用正确原生方法，参数也正确', r.mode === 'plugin' && r.auto.ok && r.tap.ok && r.text.ok && r.scroll.ok && r.calls.inspect[1] === 160 && r.calls.tap[0].join(',') === '77,0' && r.calls.text[0].join(',') === '77,1,牛肉面' && r.calls.scroll[0] === -1, r.calls);
-  check('非法滑动方向在 JS 层就拒绝，不碰原生', /只能/.test(r.badScroll && r.badScroll.err || '') && r.badScroll.error === 'bad_direction' && r.calls.scroll.length === 1, r.badScroll);
-  check('原生 not_meituan / unsafe_action 错误码原样保留', r.notMeituan.error === 'not_meituan' && r.unsafe.error === 'unsafe_action' && /unsafe_action/.test(r.unsafe.err || ''), { notMeituan: r.notMeituan, unsafe: r.unsafe });
+  check('旧插件 read=auto：允许快照，页面写操作要求升级安全协议', r.mode === 'plugin' && r.auto.ok && [r.tap,r.text,r.scroll].every(x=>x.error==='plugin_update_required') && !r.calls.tap && !r.calls.text && !r.calls.scroll, r.calls);
+  check('旧插件非法方向同样不能绕过安全协议，不碰原生', r.badScroll.error==='plugin_update_required' && !r.calls.scroll, r.badScroll);
+  check('读屏保留 not_meituan；旧插件点击在原生调用前拒绝', r.notMeituan.error === 'not_meituan' && r.unsafe.error === 'plugin_update_required', { notMeituan: r.notMeituan, unsafe: r.unsafe });
 
   // ④ 内置 MCP：工具清单、分组、真实调用链
   const m = await page.evaluate(async () => {

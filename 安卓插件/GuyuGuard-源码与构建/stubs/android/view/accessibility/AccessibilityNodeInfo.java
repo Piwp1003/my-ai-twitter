@@ -21,6 +21,9 @@ public class AccessibilityNodeInfo {
     public boolean isEditable(){return false;}
     public boolean isEnabled(){return false;}
     public boolean isScrollable(){return false;}
+    public boolean isCheckable(){return false;}
+    public boolean isChecked(){return false;}
+    public boolean isSelected(){return false;}
     public boolean isPassword(){return false;}
     public boolean isVisibleToUser(){return false;}
     public CharSequence getPackageName(){return null;}

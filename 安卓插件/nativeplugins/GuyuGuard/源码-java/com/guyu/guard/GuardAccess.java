@@ -21,27 +21,28 @@ public class GuardAccess extends AccessibilityService {
         "com.sankuai.meituan",
         "com.sankuai.meituan.takeoutnew"
     ));
-    static long snapSeq = 0;
+    static volatile long snapSeq = 0;
     static final LinkedHashMap<Long, Snap> snaps = new LinkedHashMap<Long, Snap>(4, 0.75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<Long, Snap> eldest) { return size() > 4; }
     };
 
     static final class SnapNode {
-        final int ref;
+        final int ref, parentRef;
         final String text, desc, id, cls, bounds;
-        final boolean clickable, editable, scrollable, enabled;
-        SnapNode(int ref, String text, String desc, String id, String cls, String bounds, boolean clickable, boolean editable, boolean scrollable, boolean enabled) {
-            this.ref = ref; this.text = text; this.desc = desc; this.id = id; this.cls = cls; this.bounds = bounds;
-            this.clickable = clickable; this.editable = editable; this.scrollable = scrollable; this.enabled = enabled;
+        final boolean clickable, editable, scrollable, enabled, checkable, checked, selected;
+        SnapNode(int ref, int parentRef, String text, String desc, String id, String cls, String bounds, boolean clickable, boolean editable, boolean scrollable, boolean enabled, boolean checkable, boolean checked, boolean selected) {
+            this.ref = ref; this.parentRef = parentRef; this.text = text; this.desc = desc; this.id = id; this.cls = cls; this.bounds = bounds;
+            this.clickable = clickable; this.editable = editable; this.scrollable = scrollable; this.enabled = enabled; this.checkable = checkable; this.checked = checked; this.selected = selected;
         }
     }
 
     static final class Snap {
         final long at;
-        final String pkg;
+        final String pkg, fingerprint;
+        final boolean truncated;
         final List<SnapNode> nodes;
-        Snap(String pkg, List<SnapNode> nodes) {
-            this.pkg = pkg; this.nodes = nodes; this.at = System.currentTimeMillis();
+        Snap(String pkg, List<SnapNode> nodes, String fingerprint, boolean truncated) {
+            this.pkg = pkg; this.nodes = nodes; this.fingerprint = fingerprint; this.truncated = truncated; this.at = System.nanoTime() / 1000000L;
         }
     }
 
@@ -101,6 +102,26 @@ public class GuardAccess extends AccessibilityService {
             || s.contains("付款") || s.contains("支付密码") || s.contains("验证码");
     }
 
+    // Bounded full-tree signature, including text beyond the displayed node cap.
+    static String fingerprint(AccessibilityNodeInfo root) throws Exception {
+        StringBuilder b = new StringBuilder(); fingerprintWalk(root, b, new int[]{0}, 0);
+        byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(b.toString().getBytes("UTF-8"));
+        StringBuilder hex = new StringBuilder(); for (byte x : digest) hex.append(String.format("%02x", x & 255));
+        return hex.toString();
+    }
+    static void fingerprintWalk(AccessibilityNodeInfo n, StringBuilder b, int[] count, int depth) throws Exception {
+        if (n == null) { b.append("null;"); return; }
+        if (++count[0] > 2048 || depth > MAX_DEPTH || b.length() > 524288) throw new Exception("snapshot_unverifiable");
+        b.append('[').append(Guard.q(nodeId(n))).append(Guard.q(nodeCls(n))).append(Guard.q(nodeBounds(n)))
+            .append(n.isVisibleToUser()).append(n.isEnabled()).append(n.isClickable()).append(n.isEditable()).append(n.isScrollable()).append(n.isCheckable()).append(n.isChecked()).append(n.isSelected());
+        if (!n.isPassword()) b.append(Guard.q(n.getText())).append(Guard.q(n.getContentDescription()));
+        int children = n.getChildCount(); if (children > 2048) throw new Exception("snapshot_unverifiable");
+        b.append(':').append(children);
+        for (int i = 0; i < children; i++) fingerprintWalk(n.getChild(i), b, count, depth + 1);
+        b.append(']');
+        if (b.length() > 524288) throw new Exception("snapshot_unverifiable");
+    }
+    static boolean consumeToken(long token) { synchronized (snaps) { if (token != snapSeq || !snaps.containsKey(token)) return false; snaps.clear(); return true; } }
     /** 读取当前页面的可操作节点。token 只在这张页面快照内有效。 */
     public static String inspectScreen(int cap) {
         GuardAccess a = inst;
@@ -111,24 +132,27 @@ public class GuardAccess extends AccessibilityService {
             String pkg = activePkg(root);
             String policy = actionPolicyError(pkg);
             if (policy.length() > 0) return fail(policy);
+            String signature = fingerprint(root);
             int limit = cap <= 0 ? 80 : Math.min(cap, MAX_NODES);
             List<SnapNode> nodes = new ArrayList<SnapNode>();
             collect(root, nodes, limit + 1, 0);
             boolean truncated = nodes.size() > limit;
             if (truncated) nodes.remove(nodes.size() - 1);
+            if (!signature.equals(fingerprint(root))) return fail("screen_changed");
             long token;
             synchronized (snaps) {
                 token = ++snapSeq;
-                snaps.put(token, new Snap(pkg, nodes));
+                snaps.put(token, new Snap(pkg, nodes, signature, truncated));
             }
             StringBuilder b = new StringBuilder();
             b.append("{\"ok\":true,\"pkg\":").append(Guard.q(pkg)).append(",\"token\":").append(token)
+                .append(",\"snapshotSchema\":2,\"fingerprint\":").append(Guard.q(signature))
                 .append(",\"count\":").append(nodes.size()).append(",\"truncated\":").append(truncated)
                 .append(",\"nodes\":[");
             for (int i = 0; i < nodes.size(); i++) {
                 if (i > 0) b.append(',');
                 SnapNode n = nodes.get(i);
-                b.append("{\"ref\":").append(n.ref)
+                b.append("{\"ref\":").append(n.ref).append(",\"parentRef\":").append(n.parentRef)
                     .append(",\"text\":").append(Guard.q(n.text))
                     .append(",\"desc\":").append(Guard.q(n.desc))
                     .append(",\"id\":").append(Guard.q(n.id))
@@ -137,7 +161,8 @@ public class GuardAccess extends AccessibilityService {
                     .append(",\"clickable\":").append(n.clickable)
                     .append(",\"editable\":").append(n.editable)
                     .append(",\"scrollable\":").append(n.scrollable)
-                    .append(",\"enabled\":").append(n.enabled).append('}');
+                    .append(",\"enabled\":").append(n.enabled).append(",\"checkable\":").append(n.checkable)
+                    .append(",\"checked\":").append(n.checked).append(",\"selected\":").append(n.selected).append('}');
             }
             return b.append("]}").toString();
         } catch (Throwable e) {
@@ -145,7 +170,8 @@ public class GuardAccess extends AccessibilityService {
         }
     }
 
-    static void collect(AccessibilityNodeInfo n, List<SnapNode> out, int limit, int depth) {
+    static void collect(AccessibilityNodeInfo n, List<SnapNode> out, int limit, int depth) { collect(n, out, limit, depth, -1); }
+    static void collect(AccessibilityNodeInfo n, List<SnapNode> out, int limit, int depth, int parentRef) {
         if (n == null || out.size() >= limit || depth > MAX_DEPTH) return;
         try {
             if (n.isPassword()) return;
@@ -153,10 +179,12 @@ public class GuardAccess extends AccessibilityService {
                 String t = nodeText(n), d = nodeDesc(n), id = nodeId(n), c = nodeCls(n);
                 boolean click = n.isClickable(), edit = n.isEditable(), scroll = n.isScrollable();
                 if (id.length() > 0 || t.length() > 0 || d.length() > 0) {
-                    out.add(new SnapNode(out.size(), t, d, id, c, nodeBounds(n), click, edit, scroll, n.isEnabled()));
+                    int currentRef = out.size();
+                    out.add(new SnapNode(currentRef, parentRef, t, d, id, c, nodeBounds(n), click, edit, scroll, n.isEnabled(), n.isCheckable(), n.isChecked(), n.isSelected()));
+                    parentRef = currentRef;
                 }
             }
-            for (int i = 0; i < n.getChildCount() && out.size() < limit; i++) collect(n.getChild(i), out, limit, depth + 1);
+            for (int i = 0; i < n.getChildCount() && out.size() < limit; i++) collect(n.getChild(i), out, limit, depth + 1, parentRef);
         } catch (Throwable e) {}
     }
 
@@ -164,7 +192,8 @@ public class GuardAccess extends AccessibilityService {
         Snap s;
         synchronized (snaps) { s = snaps.get(token); }
         if (s == null || ref < 0 || ref >= s.nodes.size()) return new Locate(null, null, "bad_snapshot");
-        if (System.currentTimeMillis() - s.at > SNAP_MS) return new Locate(null, null, "snapshot_expired");
+        if (System.nanoTime() / 1000000L - s.at > SNAP_MS) return new Locate(null, null, "snapshot_expired");
+        if (token != snapSeq) return new Locate(null, null, "stale_snapshot");
         GuardAccess a = inst;
         if (a == null) return new Locate(null, null, "accessibility_off");
         try {
@@ -173,12 +202,14 @@ public class GuardAccess extends AccessibilityService {
             String pkg = activePkg(root);
             String policy = actionPolicyError(pkg);
             if (policy.length() > 0) return new Locate(null, null, policy);
+            if (!s.fingerprint.equals(fingerprint(root))) return new Locate(null, null, "screen_changed");
             if (!s.pkg.equals(pkg)) return new Locate(null, null, "screen_changed");
             SnapNode refNode = s.nodes.get(ref);
             List<AccessibilityNodeInfo> hits = new ArrayList<AccessibilityNodeInfo>();
             findMatches(root, refNode, hits, 0);
             if (hits.isEmpty()) return new Locate(null, refNode, "node_not_found");
             if (hits.size() > 1) return new Locate(null, refNode, "multiple_matches");
+            if (!s.fingerprint.equals(fingerprint(root))) return new Locate(null, null, "screen_changed");
             return new Locate(hits.get(0), refNode, "");
         } catch (Throwable e) {
             return new Locate(null, s.nodes.get(ref), "locate_failed");
@@ -190,7 +221,7 @@ public class GuardAccess extends AccessibilityService {
         try {
             if (!n.isPassword() && n.isVisibleToUser()
                 && ref.text.equals(nodeText(n)) && ref.desc.equals(nodeDesc(n))
-                && ref.id.equals(nodeId(n)) && ref.cls.equals(nodeCls(n))) {
+                && ref.id.equals(nodeId(n)) && ref.cls.equals(nodeCls(n)) && ref.bounds.equals(nodeBounds(n)) && ref.enabled == n.isEnabled()) {
                 out.add(n);
             }
             for (int i = 0; i < n.getChildCount() && out.size() <= 1; i++) findMatches(n.getChild(i), ref, out, depth + 1);
@@ -215,13 +246,21 @@ public class GuardAccess extends AccessibilityService {
         return null;
     }
 
+    static boolean protectedOrder(long token) {
+        Snap s; synchronized(snaps){s=snaps.get(token);} if(s==null)return true;
+        for(SnapNode n:s.nodes){String key=n.id.substring(n.id.lastIndexOf('/')+1);if(key.matches("(?i)(checkout|confirm_order|order_confirm|order_detail)_.*")||n.text.equals("提交订单")||n.text.equals("确认支付"))return true;}
+        return false;
+    }
     public static String tapElement(long token, int ref) {
         Locate hit = locate(token, ref);
         if (hit.error.length() > 0) return fail(hit.error);
+        if (unsafeTap(nodeText(hit.node)+" "+nodeDesc(hit.node))) return fail("unsafe_action");
+        if (protectedOrder(token)) return fail("order_requires_local_review");
         AccessibilityNodeInfo target = clickable(hit.node);
         if (target == null) return fail("node_not_clickable");
         if (unsafeTap(nodeText(hit.node) + " " + nodeDesc(hit.node) + " " + nodeText(target) + " " + nodeDesc(target))) return fail("unsafe_action");
         try {
+            if (!consumeToken(token)) return fail("stale_snapshot");
             if (!target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return fail("action_rejected");
             return "{\"ok\":true,\"action\":\"tap\",\"ref\":" + ref + ",\"text\":" + Guard.q(nodeText(hit.node) + " " + nodeDesc(hit.node)) + "}";
         } catch (Throwable e) {
@@ -232,12 +271,14 @@ public class GuardAccess extends AccessibilityService {
     public static String setText(long token, int ref, String value) {
         Locate hit = locate(token, ref);
         if (hit.error.length() > 0) return fail(hit.error);
+        if (protectedOrder(token)) return fail("order_requires_local_review");
         AccessibilityNodeInfo target = editable(hit.node);
         if (target == null) return fail("node_not_editable");
         try {
             if (target.isPassword()) return fail("password_field");
             android.os.Bundle args = new android.os.Bundle();
             args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value == null ? "" : value);
+            if (!consumeToken(token)) return fail("stale_snapshot");
             if (!target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return fail("action_rejected");
             return "{\"ok\":true,\"action\":\"set_text\",\"ref\":" + ref + "}";
         } catch (Throwable e) {
@@ -245,7 +286,20 @@ public class GuardAccess extends AccessibilityService {
         }
     }
 
-    public static String scrollScreen(int direction) {
+    public static String scrollSnapshot(long token, int direction) {
+        Locate hit = locate(token, 0); if (hit.error.length() > 0) return fail(hit.error);
+        Snap snapshot; synchronized (snaps) { snapshot = snaps.get(token); }
+        if (snapshot == null) return fail("bad_snapshot");
+        return scrollChecked(token, direction, snapshot.fingerprint);
+    }
+    public static String backSnapshot(long token) {
+        Locate hit = locate(token, 0); if (hit.error.length() > 0) return fail(hit.error);
+        if (!consumeToken(token)) return fail("stale_snapshot");
+        try { return inst.performGlobalAction(1) ? "{\"ok\":true,\"action\":\"back\"}" : fail("action_rejected"); }
+        catch (Throwable e) { return fail("action_failed"); }
+    }
+    public static String scrollScreen(int direction) { return scrollChecked(0, direction, null); }
+    static String scrollChecked(long token, int direction, String signature) {
         if (direction != 1 && direction != -1) return fail("bad_direction");
         GuardAccess a = inst;
         if (a == null) return fail("accessibility_off");
@@ -268,6 +322,8 @@ public class GuardAccess extends AccessibilityService {
             }
             if (best == null) return fail("no_scrollable");
             int action = direction > 0 ? AccessibilityNodeInfo.ACTION_SCROLL_FORWARD : AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD;
+            if (signature != null && !signature.equals(fingerprint(root))) return fail("screen_changed");
+            if (signature != null && !consumeToken(token)) return fail("stale_snapshot");
             if (!best.performAction(action)) return fail("action_rejected");
             return "{\"ok\":true,\"action\":\"scroll\",\"direction\":" + direction + "}";
         } catch (Throwable e) {

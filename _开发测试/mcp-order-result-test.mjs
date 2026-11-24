@@ -1,0 +1,16 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+const src=fs.readFileSync('js/99-meituan-orders.js','utf8'),gate=fs.readFileSync('js/99-mcp-execution.js','utf8');let n=0;
+export function snapshot(){return {ok:true,pkg:'com.sankuai.meituan',token:8,fingerprint:'receipt-v1',snapshotSchema:2,nodes:[{ref:0,text:'订单详情'},...Object.entries({order_id:'2026112400123456',shop_name:'面馆',status:'已支付',payment_status:'已支付',created_at:'2026-11-24 12:00:00'}).map(([key,text],i)=>({ref:i+1,id:'order_detail_'+key,text}))]};}
+export function setup(opt={}){let calls=0,confirmed=false,clock=Date.now(),opened=0;const data={},c={window:null,CustomEvent:function(){},dispatchEvent(){},setTimeout:fn=>{fn();return 1;},localStorage:{getItem:k=>data[k]||null,setItem:(k,v)=>data[k]=v,removeItem:k=>delete data[k]}};const D=Date;class Clock extends D{static now(){return clock;}}c.Date=Clock;c.window=c;const screen=opt.snapshot||snapshot();
+ c.gysPh={mcp:{inspectScreen:()=>screen,lastPackage:()=>'com.sankuai.meituan'},__N:{checkOrderReceipt:()=>opt.invalid?{ok:false,error:'receipt_unverified'}:{ok:true,state:opt.state||'paid',candidateMatched:!confirmed,confirmedAssociation:confirmed,submissionId:'submit-1'},requestOrderResolution:()=>{calls++;confirmed=true;return {ok:true,id:'resolve-1',state:'resolved'};},orderSubmitState:()=>({ok:true,state:'resolved'}),cancelOrderConfirmation:()=>true,front(){}}};
+ vm.runInNewContext(gate,c);vm.runInNewContext(src,c);return {c,api:c.gyMeituanOrders,calls:()=>calls,expire:()=>clock+=31000};}
+function ok(v){assert(v);n++;}
+let x=setup(),r=await x.api.read({});ok(r.state==='paid'&&r.taskOutcome==='unverified'&&!r.confirmedAssociation);ok(!JSON.stringify(r).includes('2026112400123456'));
+x.c.gyMcpExecution.takeover();r=await x.api.resolve({isTrusted:false});ok(!r.ok&&x.calls()===0);r=await x.api.resolve({isTrusted:true});ok(r.ok&&x.calls()===1);ok(x.c.gyMcpExecution.status().human);r=await x.api.read({});ok(r.confirmedAssociation&&r.taskOutcome==='paid_order_observed');await x.api.resolve({isTrusted:true});ok(x.calls()===1);
+x=setup({invalid:true});r=await x.api.read({});ok(r.state==='unknown'&&r.taskOutcome==='unverified');ok(!(await x.api.resolve({isTrusted:true})).ok);ok(x.calls()===0);
+x=setup();await x.api.read({});x.expire();ok(!(await x.api.resolve({isTrusted:true})).ok);ok(x.calls()===0);
+x=setup();await x.api.read({});x.api.invalidate();ok(!(await x.api.resolve({isTrusted:true})).ok);
+for(const [order,payment,want] of [['待付款','未支付','pending_payment'],['待付款','已支付','unknown'],['已支付','未支付','unknown'],['商家已接单','未支付','processing_payment_unconfirmed'],['已送达','未支付','delivered_payment_unconfirmed'],['已送达','已支付','delivered_paid'],['支付失败','未支付','payment_failed'],['已取消',null,'cancelled'],['下单失败',null,'failed'],['已退款',null,'refunded'],['退款中',null,'refund_pending']])ok(x.api.state(order,payment)===want);
+const bad=snapshot();bad.nodes=bad.nodes.filter(n=>n.id!=='order_detail_order_id');x=setup({snapshot:bad});r=await x.api.read({});ok(r.state==='unknown'&&x.calls()===0);
+x=setup();await assert.rejects(()=>x.api.read({},()=>{throw Object.assign(Error('cancel'),{gyMcpStopped:true});}),/cancel/);ok(x.calls()===0);
+console.log(n+' receipt state/privacy/local association checks passed');

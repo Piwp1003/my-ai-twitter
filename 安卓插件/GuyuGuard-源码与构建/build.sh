@@ -8,7 +8,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 cd "$here"
 echo "① 编译 Java（src + stubs 占位）…"
 rm -rf out && mkdir -p out
-javac --release 8 -implicit:none -nowarn -d out -sourcepath "src:stubs" $(find src -name '*.java')
+javac --release 8 -encoding UTF-8 -implicit:none -nowarn -d out -sourcepath "src:stubs" $(find src -name '*.java')
 echo "② 打包 classes.jar…"
 ( cd out && jar cf "$here/aar/classes.jar" com )
 echo "③ 压成 GuyuGuard.aar…"

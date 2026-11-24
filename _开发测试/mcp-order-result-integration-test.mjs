@@ -1,0 +1,7 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+import {setup} from './mcp-order-result-test.mjs';
+const x=setup(),c=x.c,data={gyMcpCfg:JSON.stringify({servers:[{id:'phone',kind:'builtin',tools:[{name:'meituan_order_status'}]}]})};let count=0;
+Object.assign(c,{console:{warn(){}},document:{getElementById:()=>null},localStorage:{getItem:k=>data[k]||null,setItem:(k,v)=>data[k]=v,removeItem:k=>delete data[k]},addEventListener(){},setTimeout:()=>1,clearTimeout(){},setInterval(){},plus:{android:{}},myCharacters:[{id:'c',name:'角色'}],globalChats:{},isAutoOn:()=>true,getApiConfig:()=>({url:'https://model.invalid',key:'test'}),smartFetch:async()=>({json:async()=>({choices:[{message:{content:'无',tool_calls:++count===1?[{id:'receipt',type:'function',function:{name:'s0__meituan_order_status',arguments:'{}'}}]:[]}}]})})});
+for(const file of ['99-mcp-tasks.js','99-mcp-execution.js','99-mcp.js'])vm.runInNewContext(fs.readFileSync('js/'+file,'utf8'),c);
+const items=await c.gyMcpDecide('c','检查订单结果');const result=JSON.parse(items[0].out);assert.equal(result.state,'paid');assert.equal(result.taskOutcome,'unverified');assert.equal(result.confirmedAssociation,false);assert.equal(x.calls(),0);assert(!JSON.stringify(data).includes('2026112400123456'));assert.equal(c.gyMcpTasks.list()[0].state,'completed');
+console.log('PASS receipt MCP integration: observed payment separated from task success; no submit, payment or raw order ID');

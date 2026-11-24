@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {setup,reach} from './mcp-cancel-test.mjs';
+let n=0;const flush=async()=>{for(let i=0;i<150;i++)await Promise.resolve();};
+let x=setup();let p=x.c.gyMcpDecide('c','你好');await reach(x,'model');await x.c.gyMcpDecide('c','你好');assert.equal(x.c.gyMcpTasks.list().length,1);assert.equal(x.model(),1);n++;
+let q=x.c.gyMcpDecide('c2','另一个请求');await flush();assert.equal(x.c.gyMcpTasks.list()[0].state,'waiting');assert.equal(x.model(),1);n++;
+x.release();await Promise.all([p,q]);assert.equal(x.model(),3);assert.equal(x.c.gyMcpExecution.status().owner,null);n++;
+x=setup('tool');p=x.c.gyMcpDecide('c','你好');await reach(x,'tool');q=x.c.gyMcpDecide('c2','另一个请求');await flush();x.c.gyMcpCancel(x.c.gyMcpTasks.list().find(t=>t.cid==='c').id);await p;await flush();assert.equal(x.model(),1);assert.equal(x.c.gyMcpExecution.status().pending,1);n++;
+x.release();await q;assert.equal(x.c.gyMcpExecution.status().pending,0);assert.equal(x.model(),2);n++;
+x=setup('tool_error');p=x.c.gyMcpDecide('c','你好');await reach(x,'tool');q=x.c.gyMcpDecide('c2','另一个请求');await flush();x.release();await p;await flush();assert(x.c.gyMcpExecution.status().blocked);assert.equal(x.model(),1);assert(!x.c.gyMcpExecution.acknowledge());n++;
+x.c.gyMcpCancel(x.c.gyMcpTasks.list().find(t=>t.cid==='c2').id);await q;assert(x.c.gyMcpExecution.acknowledge());n++;
+x=setup();x.c.globalChats.c=[{sender:'me',text:'你好',timestamp:1}];p=x.c.gyMcpDecide('c','你好');await reach(x,'model');x.release();await p;const before=x.model();await x.c.gyMcpDecide('c','你好');assert.equal(x.model(),before);n++;
+x.c.globalChats.c.push({sender:'me',text:'你好',timestamp:2});await x.c.gyMcpDecide('c','你好');assert(x.model()>before);n++;
+x=setup('duplicate');await x.c.gyMcpDecide('c','你好');assert.equal(x.calls(),1);assert.equal(x.c.gyMcpTasks.list()[0].steps,1);n++;
+x=setup();p=x.c.gyMcpDecide('c','你好');await reach(x,'model');q=x.c.gyMcpDecide('c2','另一个请求');await flush();x.timers.filter(t=>t.ms===45000)[1].fn();await q;assert.equal(x.c.gyMcpTasks.list().find(t=>t.cid==='c2').state,'timed_out');assert.equal(x.c.gyMcpExecution.status().queued,0);n++;x.release();await p;assert.equal(x.model(),2);n++;
+console.log(n+' serialization/dedup integration checks passed');

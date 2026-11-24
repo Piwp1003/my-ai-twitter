@@ -14,7 +14,7 @@ import java.util.*;
  * 所有方法都不抛错：出错返回空串 / false / "{}"。
  */
 public class Guard {
-    public static final String VERSION = "1.2.0";
+    public static final String VERSION = "1.3.0";
     static volatile String fg = "", fgCls = "";
     static volatile long fgAt = 0;
     static final Set<String> blocked = Collections.synchronizedSet(new HashSet<String>());
@@ -28,6 +28,19 @@ public class Guard {
     static Context app;
 
     public static String version() { return VERSION; }
+    /** Read-only handshake: no screen content, launches, or actions. */
+    public static String mcpCapabilities(Context c) {
+        hold(c);
+        boolean installed = false;
+        try {
+            installed = c.getPackageManager().getLaunchIntentForPackage("com.sankuai.meituan") != null
+                || c.getPackageManager().getLaunchIntentForPackage("com.sankuai.meituan.takeoutnew") != null;
+        } catch (Throwable e) { return "{}"; }
+        return "{\"schema\":1,\"pageSafety\":2,\"orderConfirmation\":1,\"orderReceipt\":1,\"version\":" + q(VERSION)
+            + ",\"access\":" + accessOn() + ",\"meituanInstalled\":" + installed
+            + ",\"actions\":[\"inspectScreen\",\"tapElement\",\"setText\",\"scrollScreen\",\"back\"]}";
+    }
+
     static void hold(Context c) { try { if (c != null && app == null) app = c.getApplicationContext(); if (c != null && self.length() == 0) self = c.getPackageName(); } catch (Throwable e) {} }
 
     /* ---------- JSON ---------- */
@@ -174,9 +187,16 @@ public class Guard {
     public static boolean home() { GuardAccess a = GuardAccess.inst; return a != null && a.performGlobalAction(2); }
     public static boolean back() { GuardAccess a = GuardAccess.inst; return a != null && a.performGlobalAction(1); }
     /** 页面快照 / 节点动作：MCP 和 JS 只通过这些原子方法操作美团 */
+    public static String requestOrderConfirmation(Context c,long token,int ref,String signature) { return GuardOrder.request(c,token,ref,signature); }
+    public static String checkOrderReceipt(Context c,long token,String signature) { return GuardReceipt.check(c,token,signature); }
+    public static String requestOrderResolution(Context c,String id,long token,String signature) { return GuardOrder.requestResolution(c,id,token,signature); }
+    public static String orderSubmitState(Context c,String id) { return GuardOrder.status(c,id); }
+    public static boolean cancelOrderConfirmation(String id) { return GuardOrder.cancel(id); }
     public static String inspectScreen(int max) { return GuardAccess.inspectScreen(max); }
     public static String tapElement(long token, int ref) { return GuardAccess.tapElement(token, ref); }
     public static String setText(long token, int ref, String value) { return GuardAccess.setText(token, ref, value); }
+    public static String scrollSnapshot(long token, int direction) { return GuardAccess.scrollSnapshot(token, direction); }
+    public static String backSnapshot(long token) { return GuardAccess.backSnapshot(token); }
     public static String scrollScreen(int direction) { return GuardAccess.scrollScreen(direction); }
     public static boolean isNever(String p) {
         if (p == null) return false; String s = p.toLowerCase();
