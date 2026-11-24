@@ -68,6 +68,15 @@
         try { localStorage.setItem(REQUESTS, JSON.stringify(next)); } catch (e) { storageOk = false; throw new Error('无法保存重复请求标记，工具暂不执行'); }
         seen = next; return true;
     }
-    window.gyMcpExecution = Object.freeze({ acquire, acquireLocalReview, cancelQueued, release, begin, settle, acknowledge, claim, takeover, resumeHuman,
+    // Only the task controller may release a claim after proving no tools/call was dispatched.
+    function releaseUnsent(key) {
+        if (!key) return true;
+        if (blocked || pending || human) return false;
+        const next = seen.filter(k => k !== key);
+        try { localStorage.setItem(REQUESTS, JSON.stringify(next)); }
+        catch (e) { storageOk = false; return false; }
+        seen = next; return true;
+    }
+    window.gyMcpExecution = Object.freeze({ acquire, acquireLocalReview, cancelQueued, release, begin, settle, acknowledge, claim, releaseUnsent, takeover, resumeHuman,
         status: () => ({ owner, pending, blocked, queued: queue.length, storageOk, human, humanRevision, humanPackage }) });
 })();

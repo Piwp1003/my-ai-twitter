@@ -476,6 +476,7 @@
     }
     window.__gyMcpText = callApiText;
     const TASK_RUNS = new Map(), TASK_LATEST = new Map(), REQUEST_WINDOW = new Map();
+    const TASK_TIMEOUT = 180000, MODEL_TIMEOUT = 90000, CONNECT_TIMEOUT = 30000, TOOL_TIMEOUT = 45000, QUEUE_TIMEOUT = 45000;
     let resumeHumanBusy = false;
     function invalidatePhoneState() {
         try { const m = window.gysPh && window.gysPh.mcp; if (m && m.invalidateSnapshots) m.invalidateSnapshots(); } catch (e) {}
@@ -574,7 +575,7 @@
             let out, result = { status: 'error', ok: false, error: 'unknown_tool' }; const t0 = Date.now();
             if (!x) out = '［没有这个工具］';
             else {
-                try { const args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task)); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id); task.inFlight = true; return Promise.resolve().then(() => { task.check(); return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, normalizeResult(r).ok === true); task.inFlight = false; return r; }, e => { gate.settle(task.id, false); task.inFlight = false; throw e; }); })); out = result.text; }
+                try { const args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task), '连接工具服务', CONNECT_TIMEOUT); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id); task.inFlight = true; return Promise.resolve().then(() => { task.check(); task.externalCalls++; return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, normalizeResult(r).ok === true); task.inFlight = false; return r; }, e => { gate.settle(task.id, false); task.inFlight = false; throw e; }); }, '等待工具返回：' + x.t.name, TOOL_TIMEOUT)); out = result.text; }
                 catch (e) { if (e.gyMcpStopped) throw e; task.inFlight = false; result = { status: 'error', ok: false, error: 'validation_or_call_failed' }; out = '［调用失败：' + String(e && e.message || e).slice(0, 160) + '］'; try { delete CONN[x.s.id]; } catch (e2) {} }
             }
             task.check();
@@ -593,7 +594,7 @@
         let firstErr = null;
         for (let round = 0; round < Math.max(1, Math.min(6, Number(C.rounds) || 3)); round++) {
             let r = null;
-            try { r = await task.wait(() => callApi(api, msgs, tools, task.signal)); } catch (e) { if (e.gyMcpStopped) throw e; task.decisionFailed = true; if (round === 0) firstErr = e; else console.warn('[MCP] 第 ' + (round + 1) + ' 轮没问成：', e); break; }
+            try { r = await task.wait(() => callApi(api, msgs, tools, task.signal), '等待模型选择工具（第 ' + (round + 1) + ' 轮）', MODEL_TIMEOUT); } catch (e) { if (e.gyMcpStopped) throw e; task.decisionFailed = true; if (round === 0) firstErr = e; else console.warn('[MCP] 第 ' + (round + 1) + ' 轮没问成：', e); break; }
             if (!r.calls.length) break;
             task.limitReached = round + 1 >= Math.max(1, Math.min(6, Number(C.rounds) || 3));
             const outs = [];
@@ -604,7 +605,7 @@
         }
         // 304 兜底①：这个模型 / 中转不支持「工具调用」（报错了），或者这句话明明像是要用工具却回了「无」→ 换成纯文字的问法再问一次
         if (!gate.status().blocked && !items.length && (firstErr || wantsTool(userText))) {
-            try { const calls = await task.wait(() => callApiText(api, base, tools, task.signal)); task.decisionFailed = false; for (const call of calls.slice(0, 5)) { await runCall(call); if (gate.status().blocked) break; } }
+            try { const calls = await task.wait(() => callApiText(api, base, tools, task.signal), '等待模型兼容模式选择工具', MODEL_TIMEOUT); task.decisionFailed = false; for (const call of calls.slice(0, 5)) { await runCall(call); if (gate.status().blocked) break; } }
             catch (e) { if (e.gyMcpStopped) throw e; task.decisionFailed = true; console.warn('[MCP] 换文字问法也没问成：', e, firstErr || ''); }
         }
         // 兜底②：她明明说了「锁 XX」，上面还是没锁成 → 直接照她说的锁
@@ -632,7 +633,7 @@
         } catch (e) {}
         return items;
     }
-    async function gyMcpDecide(sessionId, triggerText) {
+    async function gyMcpDecide(sessionId, triggerText, invocation) {
         const c = charOf(sessionId);
         if (!on('mcpOn') || !c || !charAllowed(c) || !toolsNow().length) return null;
         const api = typeof getApiConfig === 'function' ? getApiConfig(C.api === 'sub') : null;
@@ -650,26 +651,32 @@
             ? JSON.stringify([String(c.id), String(message.id || ''), String(message.timestamp || ''), messageIndex]) : null;
         const ephemeralKey = JSON.stringify([String(c.id), String(triggerText || '')]);
         const prior = REQUEST_WINDOW.get(ephemeralKey);
+        if (prior && prior.active && prior.messageKey === key) {
+            if (invocation) invocation.duplicateActive = true;
+            return null;
+        }
         if ((key && !gate.claim(key)) || (!key && prior && (prior.active || Date.now() - prior.at < 10000))) {
             toast('重复工具请求已跳过', '同一条消息不会重复执行工具；需要重新操作时请发送新消息'); return null;
         }
         if (REQUEST_WINDOW.size >= 200) for (const [k, v] of REQUEST_WINDOW) if (!v.active) { REQUEST_WINDOW.delete(k); break; }
-        const request = { active: true, at: Date.now() }; REQUEST_WINDOW.set(ephemeralKey, request);
+        const request = { active: true, at: Date.now(), messageKey: key }; REQUEST_WINDOW.set(ephemeralKey, request);
         const task = store.create(c.id, c.name);
         task.history = lastMsgs(String(sessionId), 12).map(m => ({ sender: m.sender, text: String(m.text) }));
-        let live = true, reason = '', timer;
+        let live = true, reason = '', stopNote = '', timer;
+        task.externalCalls = 0;
         let rejectStop;
         const stopPromise = new Promise((_, reject) => { rejectStop = reject; });
         stopPromise.catch(() => {}); // Cancellation can occur synchronously during the running-state event.
         const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-        const deadline = Date.now() + 45000;
+        const deadline = Date.now() + TASK_TIMEOUT;
         task.signal = ctrl && ctrl.signal;
-        const stop = why => {
+        const stop = (why, phase) => {
             if (!live || reason) return false;
             reason = why;
             gate.cancelQueued(task.id);
-            store.transition(task.id, why, (why === 'handed_over' ? '已交给用户操作' : why === 'timed_out' ? '任务已超时' : '任务已取消')
-                + '，不会再发出新操作；已发出的请求可能仍在外部执行，请核对结果。');
+            stopNote = (why === 'handed_over' ? '已交给用户操作' : why === 'timed_out' ? (phase || task.phase || '任务执行') + '超时' : '任务已取消')
+                + (why === 'handed_over' ? '；请先手动恢复，旧任务不会重放。' : task.externalCalls ? '；已发出外部工具请求，结果需核对，不会自动重试。' : '；尚未发出外部工具操作，可重新发起。');
+            store.transition(task.id, why, stopNote);
             rejectStop(stoppedError());
             if (ctrl) ctrl.abort();
             return true;
@@ -679,19 +686,27 @@
             if (live && !reason && Date.now() >= deadline) stop('timed_out');
             if (!live || reason) throw stoppedError();
         };
-        task.wait = async op => {
+        task.wait = async (op, phase, timeout) => {
             task.check();
+            let phaseTimer;
+            if (phase) {
+                task.phase = phase;
+                if (store.progress) store.progress(task.id, phase + '，最长 ' + Math.round(timeout / 1000) + ' 秒。');
+                task.check();
+                phaseTimer = setTimeout(() => stop('timed_out', phase), timeout);
+            }
             try { const value = await Promise.race([Promise.resolve().then(() => { task.check(); return op(); }), stopPromise]); task.check(); return value; }
             catch (e) { task.check(); throw e; }
+            finally { if (phaseTimer) clearTimeout(phaseTimer); }
         };
         TASK_RUNS.set(task.id, { stop });
-        timer = setTimeout(() => stop('timed_out'), 45000);
+        timer = setTimeout(() => stop('timed_out', '任务总时限（180秒）'), TASK_TIMEOUT);
         TASK_LATEST.set(String(c.id), task.id);
         delete CTX[String(c.id)];
         store.transition(task.id, 'running', '等待本实例的工具执行占用。');
         store.transition(task.id, 'waiting', '其他任务执行期间排队等待；等待也受超时限制。');
         try {
-            await task.wait(() => gate.acquire(task.id));
+            await task.wait(() => gate.acquire(task.id), '等待工具执行占用', QUEUE_TIMEOUT);
             task.check();
             store.transition(task.id, 'running', '正在判断并调用工具。');
             const items = await task.wait(() => executeMcp(sessionId, triggerText, task));
@@ -705,8 +720,7 @@
         } catch (e) {
             if (e.gyMcpStopped) {
                 if (TASK_LATEST.get(String(c.id)) === task.id) CTX[String(c.id)] = { at: Date.now(), items: [{ tool: '任务停止', argsText: '', out:
-                    (reason === 'handed_over' ? '用户正在人工接管，旧任务不会自动恢复。' : reason === 'timed_out' ? '本次工具任务已超时。' : '用户已取消本次工具任务。')
-                    + '不得声称目标已经完成。已发出的操作结果未确认，需要用户核对；不要自动重试。' }] };
+                    stopNote + '不得声称目标已经完成，不自动重试。' }] };
                 return null;
             }
             store.transition(task.id, 'failed', '执行异常，部分操作可能已执行，请核对调用记录。');
@@ -717,6 +731,10 @@
             TASK_RUNS.delete(task.id);
             gate.release(task.id);
             request.active = false; request.at = Date.now();
+            const ended = store.list().find(t => t.id === task.id);
+            if (!task.externalCalls && ended && ['failed', 'timed_out', 'cancelled'].includes(ended.state)
+                && gate.releaseUnsent && gate.releaseUnsent(key) && REQUEST_WINDOW.get(ephemeralKey) === request)
+                REQUEST_WINDOW.delete(ephemeralKey);
         }
     }
     window.gyMcpDecide = gyMcpDecide;
@@ -724,10 +742,12 @@
         const o = window.triggerAIBatchReply;
         if (typeof o !== 'function' || o.__gyMcp) return;
         const w = async function (sessionId, triggerText) {
+            const invocation = {};
             try {
                 if (on('mcpOn') && sessionId && !String(sessionId).startsWith('g_') && charOf(sessionId))
-                    await gyMcpDecide(sessionId, triggerText);
+                    await gyMcpDecide(sessionId, triggerText, invocation);
             } catch (e) { console.warn('[MCP] 判断要不要用工具时出错，照常回复：', e); }
+            if (invocation.duplicateActive) return;
             return o.apply(this, arguments);
         };
         w.__gyMcp = true; window.triggerAIBatchReply = w;

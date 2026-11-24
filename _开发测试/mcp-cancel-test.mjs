@@ -29,7 +29,7 @@ export function setup(stage='model', instant=false){
    return {ok:true,status:200,headers:{get:()=>null},text:async()=>JSON.stringify({id:b.id,result})};
   }};
  c.window=c;vm.runInNewContext(taskSrc,c);vm.runInNewContext(fs.readFileSync('js/99-mcp-execution.js','utf8'),c);vm.runInNewContext(source,c);
- return {c,release,timers,at:()=>at,replies:()=>replies,calls:()=>calls,model:()=>model,signal:()=>signal,advance:()=>clock+=45001};
+ return {c,release,timers,at:()=>at,replies:()=>replies,calls:()=>calls,model:()=>model,signal:()=>signal,advance:(ms=180001)=>clock+=ms};
 }
 export async function reach(x,stage){for(let i=0;i<200;i++){if(x.at()===stage)return;await Promise.resolve();}throw Error('did not reach '+stage);}
 for(const stage of ['model','initialize','list','tool','fallback']){
@@ -41,7 +41,7 @@ for(const stage of ['model','initialize','list','tool','fallback']){
  assert.match(x.c.__gyMcpCtxFor('c'),/不得声称目标已经完成/);assert.equal(x.c.gyMcpState().log.length,0);count++;
  assert.equal(x.c.gyMcpCancel(id),false);assert(x.timers.filter(t=>t.ms===45000).every(t=>t.clear));count++;
 }
-let x=setup();let pending=x.c.gyMcpDecide('c','你好');await reach(x,'model');x.timers.find(t=>t.ms===45000).fn();await pending;assert.equal(x.c.gyMcpTasks.list()[0].state,'timed_out');assert.equal(x.signal().aborted,true);count++;x.release();
+let x=setup();let pending=x.c.gyMcpDecide('c','你好');await reach(x,'model');x.timers.find(t=>t.ms===180000).fn();await pending;assert.equal(x.c.gyMcpTasks.list()[0].state,'timed_out');assert.equal(x.signal().aborted,true);count++;x.release();
 x=setup();pending=x.c.gyMcpDecide('c','你好');await reach(x,'model');x.advance();x.release();await pending;assert.equal(x.c.gyMcpTasks.list()[0].state,'timed_out');assert.equal(x.calls(),0);count++;
 x=setup('model',true);await x.c.gyMcpDecide('c','你好');assert.equal(x.c.gyMcpTasks.list()[0].state,'cancelled');assert.equal(x.model(),0);count++;
 x=setup();x.timers.find(t=>t.ms===600).fn();pending=x.c.triggerAIBatchReply('c','你好');await reach(x,'model');x.c.gyMcpCancel(x.c.gyMcpTasks.list()[0].id);await pending;assert.equal(x.replies(),1);count++;x.release();for(let i=0;i<100;i++)await Promise.resolve();assert.equal(x.replies(),1);assert.equal(x.calls(),0);count++;

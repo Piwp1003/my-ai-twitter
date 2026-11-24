@@ -58,6 +58,10 @@
         t.note = ok === true ? '工具调用已返回；尚不代表外部操作目标完成。' : '工具失败或结果未确认。';
         persist(); return true;
     }
-    window.gyMcpTasks = Object.freeze({ create, transition, step,
+    function progress(id, note) {
+        const t = get(id); if (!t || !['running', 'waiting'].includes(t.state)) return false;
+        t.updatedAt = Date.now(); t.note = String(note || '').slice(0, 160); persist(); return true;
+    }
+    window.gyMcpTasks = Object.freeze({ create, transition, step, progress,
         list: () => copy(tasks), storageOk: () => storageOk });
 })();
