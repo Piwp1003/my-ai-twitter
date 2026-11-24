@@ -30,3 +30,15 @@ assert.equal(c.gyMcpExecution.status().blocked,false);
 c.gysPh.__N.openApp=originalOpen;x.change('home');model=0;
 assert.equal(JSON.parse((await c.gyMcpDecide('c','重新搜索其他面馆'))[0].out).page,'results');
 console.log('PASS opened-app/unknown-layout failure releases idle device, surfaces detail, stops retry and allows a new request');
+
+// The native read failure after opening remains visible in the task, with no stuck purchase lock.
+x.change('outside');model=0;
+const read=c.gysPh.mcp.inspectScreen;let launchReads=0;
+c.gysPh.mcp.inspectScreen=()=>++launchReads===1?{ok:false,error:'not_meituan'}:{ok:false,error:'accessibility_off'};
+const unread=await c.gyMcpDecide('c','美团外卖首页搜索');
+const detail=JSON.parse(unread[0].out.replace(/^［工具报错］/,''));
+assert.equal(detail.diagnostic.cause,'accessibility_off');assert.equal(detail.diagnostic.reads,1);
+assert.equal(model,1);assert.equal(c.gyMcpTasks.list()[0].state,'failed');assert(c.gyMcpTasks.list()[0].note.includes('accessibility_off'));
+assert.equal(c.gyMcpExecution.status().blocked,false);assert.equal(c.gyMcpExecution.status().pending,0);assert.equal(c.gyMcpExecution.status().owner,null);
+c.gysPh.mcp.inspectScreen=read;
+console.log('PASS native launch-read cause appears in failed task; idle device released, no model retry');

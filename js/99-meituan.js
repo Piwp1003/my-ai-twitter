@@ -44,6 +44,40 @@
     const pause = () => new Promise(resolve => setTimeout(resolve, 200));
     const guard = check => { if (typeof check === 'function') check(); };
     function failure(error, text, accepted) { return { ok: false, error, err: text, actionAccepted: !!accepted }; }
+    const READ_ERRORS = Object.freeze({
+        accessibility_off: '无障碍服务未连接，请在系统中重新启用谷雨守护无障碍',
+        no_active_window: '无障碍没有取得活动窗口',
+        not_meituan: '无障碍当前窗口仍不是美团，请检查是否有系统弹窗遮挡',
+        package_unknown: '无法确认活动窗口所属软件',
+        blocked_app: '当前窗口受保护，请手动处理后重新发起',
+        screen_changed: '读取时页面持续变化，未取得稳定快照',
+        inspect_failed: '原生读屏失败，未生成可验证的页面快照',
+        read_timeout: '等待活动窗口超时，未继续读取或点击',
+        read_unavailable: '页面读取条件未满足，请检查真手机和读屏权限',
+        invalid_snapshot: '读屏接口未返回有效页面'
+    });
+    function readError(s) {
+        return s && Object.prototype.hasOwnProperty.call(READ_ERRORS, s.error) ? s.error : s && s.err ? 'read_unavailable' : 'invalid_snapshot';
+    }
+    function pageFailure(s, accepted, detail = {}) {
+        const cause = readError(s);
+        return Object.assign(failure('page_unavailable', cause + '：' + READ_ERRORS[cause], accepted),
+            { diagnostic: Object.assign({ cause }, detail) });
+    }
+    async function awaitLaunchedPage(check) {
+        const started = Date.now(), deadline = started + 8000;
+        let snapshot = { ok: false, error: 'read_timeout' }, reads = 0;
+        // Only read transient window states. Never relaunch or replay a tap here.
+        while (reads < 40 && Date.now() < deadline) {
+            guard(check); await pause(); guard(check);
+            if (Date.now() >= deadline) break;
+            snapshot = await phone().mcp.inspectScreen(160); reads++; guard(check);
+            if (Date.now() >= deadline && snapshot && snapshot.ok) { snapshot = { ok: false, error: 'read_timeout' }; break; }
+            if (snapshot && snapshot.ok) break;
+            if (!snapshot || !['not_meituan', 'no_active_window', 'screen_changed'].includes(snapshot.error)) break;
+        }
+        return { snapshot, reads, elapsedMs: Date.now() - started };
+    }
     function remember(s, info, query) {
         const visible = info.stores.slice(0, 6);
         last = { token: s.token, fingerprint: s.fingerprint, at: Date.now(), stores: visible };
@@ -56,7 +90,7 @@
     }
     async function inspect(args, check) {
         guard(check); const s = await phone().mcp.inspectScreen(160); guard(check);
-        if (!s || !s.ok) return failure('page_unavailable', (s && s.err) || '读不到美团页面，请先打开美团外卖', false);
+        if (!s || !s.ok) return pageFailure(s, false, { stage: 'inspect' });
         const info = classify(s); if (info.page === 'human_required') return failure('human_required', '当前需要登录、验证或涉及交易，请手动处理后重新发起', false);
         if (info.page === 'unknown') return failure('unknown_layout', '无法可靠识别当前页面，请手动进入美团外卖搜索页', false);
         return remember(s, info);
@@ -68,16 +102,17 @@
         let accepted = false, submitted = false, s = await phone().mcp.inspectScreen(160); guard(check);
         if (!s || !s.ok) {
             // Only package names in this adapter's allowlist may be launched.
-            if (!s || s.error !== 'not_meituan') return failure('page_unavailable', (s && s.err) || '页面不可用', false);
+            if (!s || s.error !== 'not_meituan') return pageFailure(s, false, { stage: 'before_launch' });
             const n = phone().__N, apps = n.apps(); guard(check);
             const pkg = APPS.find(p => apps.some(a => a.pkg === p));
             if (!pkg) return failure('app_missing', '未找到可启动的美团或美团外卖', false);
             if (!n.openApp(pkg)) return failure('open_failed', '没有打开美团，请手动打开后再试', false);
             accepted = true;
-            for (let i = 0; i < 3; i++) { await pause(); guard(check); s = await phone().mcp.inspectScreen(160); guard(check); if (s && s.ok) break; }
+            const waiting = await awaitLaunchedPage(check); s = waiting.snapshot;
+            if (!s || !s.ok) return pageFailure(s, accepted, { stage: 'after_launch', openedPackage: pkg, reads: waiting.reads, elapsedMs: waiting.elapsedMs });
         }
         for (let step = 0; step < 7; step++) {
-            guard(check); if (!s || !s.ok) return failure('page_unavailable', '页面不可用，请手动检查美团', accepted);
+            guard(check); if (!s || !s.ok) return pageFailure(s, accepted, { stage: 'search' });
             const info = classify(s);
             if (info.page === 'human_required') return failure('human_required', '请先手动处理登录、验证或交易页面', accepted);
             if (info.page === 'results') {
