@@ -607,7 +607,16 @@
             if (gate.status().blocked || result.ok !== true) task.decisionFailed = true;
             out = String(out).slice(0, 4000);
             const argsText = JSON.stringify(call.args || {}).slice(0, 300);
-            const item = { id: call.id, tool: x ? (x.t.title || x.t.name) : call.fn, name: x ? x.t.name : call.fn, status: result.status, error: result.error, bad: result.ok !== true, server: x ? (x.s.name || x.s.url || x.s.command) : '', argsText, out, ms: Date.now() - t0 };
+            let summary = '';
+            if (x && x.s.kind === 'builtin' && ['meituan_search', 'meituan_inspect', 'meituan_choose_store'].includes(x.t.name) && result.data?.error === 'page_unavailable') {
+                const d = result.data.diagnostic || {};
+                const causes = ['not_meituan', 'accessibility_off', 'no_active_window', 'screen_changed', 'inspect_failed', 'package_unknown', 'blocked_app', 'read_unavailable', 'read_timeout', 'invalid_snapshot'];
+                const cause = causes.includes(d.cause) ? d.cause : 'unknown';
+                const stage = { after_launch: '启动后', before_launch: '启动前', inspect: '读取时', search: '搜索时' }[d.stage] || '读取时';
+                const foreground = { takeout: '美团外卖', meituan: '美团', other: '其他软件', unknown: '未知' }[d.foregroundSignal] || '未知';
+                summary = '美团读屏失败：' + cause + '；' + stage + '；前台信号：' + foreground + (Number.isInteger(d.reads) && d.reads >= 0 && d.reads <= 40 ? '；读取 ' + d.reads + ' 次' : '') + '。';
+            }
+            const item = { id: call.id, tool: x ? (x.t.title || x.t.name) : call.fn, name: x ? x.t.name : call.fn, status: result.status, error: result.error, bad: result.ok !== true, summary, server: x ? (x.s.name || x.s.url || x.s.command) : '', argsText, out, ms: Date.now() - t0 };
             items.push(item);
             window.gyMcpTasks.step(task.id, result.ok);
             L.unshift({ taskId: task.id, at: Date.now(), cid: String(c.id), who: c.name, tool: item.tool, server: item.server, args: argsText, out: out.slice(0, 800), ms: item.ms, status: item.status, error: item.error, err: item.bad });
@@ -737,7 +746,7 @@
             store.transition(task.id, 'running', '正在判断并调用工具。');
             const items = await task.wait(() => executeMcp(sessionId, triggerText, task));
             if (task.decisionFailed || (items || []).some(i => i.bad))
-                store.transition(task.id, 'failed', ((items || []).find(i => i.bad)?.out || task.modelFailure || '工具或模型请求失败，请核对调用记录。').slice(0, 100) + (gate.status().blocked ? ' 外部操作结果未确认，请核对后解除占用。' : ' 本轮已停止，不会自动重试。'));
+                store.transition(task.id, 'failed', ((items || []).find(i => i.bad)?.summary || (items || []).find(i => i.bad)?.out || task.modelFailure || '工具或模型请求失败，请核对调用记录。').slice(0, 100) + (gate.status().blocked ? ' 外部操作结果未确认，请核对后解除占用。' : ' 本轮已停止，不会自动重试。'));
             else if (task.limitReached)
                 store.transition(task.id, 'paused', '达到本轮工具次数上限，未确认目标完成；不会自动继续。');
             else store.transition(task.id, 'completed', items && items.length
@@ -894,6 +903,7 @@
             + store.list().slice(0, 10).map(t => '<div class="gymcp-log"><b>' + esc(t.who) + ' · ' + esc(labels[t.state] || t.state)
                 + '</b><div>' + t.steps + ' 次调用 · ' + t.failures + ' 次失败或未确认</div><div>' + esc(t.note)
                 + '</div><small>' + esc(new Date(t.updatedAt).toLocaleString()) + '</small>'
+                + (t.state === 'failed' && L.some(l => l.taskId === t.id && l.err) ? '<details><summary>查看完整失败信息</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;user-select:text">' + esc(L.filter(l => l.taskId === t.id && l.err).map(l => l.tool + '\n' + l.out).join('\n\n')) + '</pre></details>' : '')
                 + (['created', 'running', 'waiting', 'paused'].includes(t.state) ? '<button class="gymcp-btn ghost" data-mcp-cancel="' + esc(t.id) + '">取消任务</button>' : '') + '</div>').join('');
         box.onclick = e => { if (e.target.closest('[data-mcp-takeover]')) { window.gyMcpTakeover('user'); return; } if (e.target.closest('[data-mcp-human-resume]')) { window.gyMcpResumeHuman(!!box.querySelector('[data-mcp-human-confirm]')?.checked, box.querySelector('[data-mcp-human-package]')?.value); return; } if (e.target.closest('[data-mcp-ack]')) { window.gyMcpDeviceAcknowledge(); return; } const button = e.target.closest('[data-mcp-cancel]'); if (button && box.contains(button)) window.gyMcpCancel(button.getAttribute('data-mcp-cancel')); };
         if (!store.list().length) box.innerHTML += '<div>还没有工具任务。</div>';

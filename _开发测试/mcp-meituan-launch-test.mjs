@@ -37,3 +37,21 @@ x=setup({initial:'outside'});const open=x.c.gysPh.__N.openApp;
 x.c.gysPh.__N.openApp=()=>{open();x.change('unknown');return true;};r=await x.api.search({query:'面条'});
 assert.equal(r.error,'unknown_layout');assert.equal(x.actions().length,0);assert.equal(x.opened(),1);checks++;
 console.log(checks+' launch read checks passed: delayed window, native cause, bounded polling, cancellation, no relaunch or blind tap');
+
+// Release Guyu's editor and keyboard before launching, without touching external controls.
+x=setup({initial:'outside'});const order=[];
+x.c.document={activeElement:{tagName:'TEXTAREA',blur(){order.push('blur');}}};
+x.c.plus={key:{hideSoftKeybord(){order.push('hide');}}};
+const openPrepared=x.c.gysPh.__N.openApp;
+x.c.gysPh.__N.openApp=p=>{order.push('open');return openPrepared(p);};
+assert((await x.api.search({query:'面条'})).ok);assert.equal(order.join(','),'blur,hide,open');assert.equal(x.opened(),1);checks++;
+// Foreground signal is diagnostic evidence only. It must never override a rejected native window.
+for(const [pkg,expected] of [['com.sankuai.meituan.takeoutnew','takeout'],['com.sankuai.meituan','meituan'],['private.other.app','other'],['','unknown']]){
+ x=scenario(Array(60).fill('not_meituan'));x.c.gysPh.__N.fg=()=>pkg;
+ r=await x.api.search({query:'面条'});assert.equal(r.diagnostic.foregroundSignal,expected);assert.equal(r.diagnostic.cause,'not_meituan');assert.equal(x.actions().length,0);assert.equal(x.opened(),1);
+ assert(!JSON.stringify(r).includes('private.other.app'));checks++;
+}
+// Cancellation while the keyboard is being dismissed must prevent launching the external app.
+x=setup({initial:'outside'});let hidden=false;x.c.plus={key:{hideSoftKeybord(){hidden=true;}}};
+await assert.rejects(x.api.search({query:'面条'},()=>{if(hidden)throw Error('cancelled');}),/cancelled/);assert.equal(x.opened(),0);assert.equal(x.actions().length,0);checks++;
+console.log('PASS launch focus preparation, private foreground categories, no policy bypass, cancellation before launch ('+checks+' checks total)');

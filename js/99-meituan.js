@@ -47,7 +47,7 @@
     const READ_ERRORS = Object.freeze({
         accessibility_off: '无障碍服务未连接，请在系统中重新启用谷雨守护无障碍',
         no_active_window: '无障碍没有取得活动窗口',
-        not_meituan: '无障碍当前窗口仍不是美团，请检查是否有系统弹窗遮挡',
+        not_meituan: '活动窗口未识别为美团，暂不能确认具体原因',
         package_unknown: '无法确认活动窗口所属软件',
         blocked_app: '当前窗口受保护，请手动处理后重新发起',
         screen_changed: '读取时页面持续变化，未取得稳定快照',
@@ -63,6 +63,26 @@
         const cause = readError(s);
         return Object.assign(failure('page_unavailable', cause + '：' + READ_ERRORS[cause], accepted),
             { diagnostic: Object.assign({ cause }, detail) });
+    }
+    function foregroundSignal() {
+        try {
+            const n = phone().__N, pkg = n && typeof n.fg === 'function' ? n.fg() : '';
+            return pkg === APPS[0] ? 'takeout' : pkg === APPS[1] ? 'meituan' : pkg ? 'other' : 'unknown';
+        } catch (e) { return 'unknown'; }
+    }
+    async function prepareLaunch(check) {
+        const state = { inputReleased: false, keyboardHideRequested: false };
+        guard(check);
+        try {
+            const element = window.document && document.activeElement;
+            if (element && (['INPUT', 'TEXTAREA'].includes(element.tagName) || element.isContentEditable) && typeof element.blur === 'function') {
+                element.blur(); state.inputReleased = document.activeElement !== element;
+            }
+        } catch (e) {}
+        guard(check);
+        try { if (window.plus && plus.key && typeof plus.key.hideSoftKeybord === 'function') { plus.key.hideSoftKeybord(); state.keyboardHideRequested = true; } } catch (e) {}
+        if (state.inputReleased || state.keyboardHideRequested) { await pause(); guard(check); }
+        return state;
     }
     async function awaitLaunchedPage(check) {
         const started = Date.now(), deadline = started + 8000;
@@ -106,10 +126,14 @@
             const n = phone().__N, apps = n.apps(); guard(check);
             const pkg = APPS.find(p => apps.some(a => a.pkg === p));
             if (!pkg) return failure('app_missing', '未找到可启动的美团或美团外卖', false);
+            const launchPreparation = await prepareLaunch(check); guard(check);
             if (!n.openApp(pkg)) return failure('open_failed', '没有打开美团，请手动打开后再试', false);
             accepted = true;
             const waiting = await awaitLaunchedPage(check); s = waiting.snapshot;
-            if (!s || !s.ok) return pageFailure(s, accepted, { stage: 'after_launch', openedPackage: pkg, reads: waiting.reads, elapsedMs: waiting.elapsedMs });
+            if (!s || !s.ok) {
+                const signal = s && s.error === 'not_meituan' ? foregroundSignal() : 'unknown'; guard(check);
+                return pageFailure(s, accepted, { stage: 'after_launch', openedPackage: pkg, foregroundSignal: signal, launchPreparation, reads: waiting.reads, elapsedMs: waiting.elapsedMs });
+            }
         }
         for (let step = 0; step < 7; step++) {
             guard(check); if (!s || !s.ok) return pageFailure(s, accepted, { stage: 'search' });
