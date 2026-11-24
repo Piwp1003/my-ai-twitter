@@ -521,12 +521,28 @@
         const persisted = gate.takeover(target);
         invalidatePhoneState();
         for (const run of TASK_RUNS.values()) run.stop('handed_over');
+        const held = gate.status();
+        if (held.owner && gate.abandonReadOnly) gate.abandonReadOnly(held.owner);
         if (window.gyMcpTasks) window.gyMcpTasks.list().forEach(t => {
             if (['created','running','waiting','paused'].includes(t.state)) window.gyMcpTasks.transition(t.id, 'handed_over', '已交给用户操作；不会自动恢复或重放。');
         });
         paintTasks();
         if (!persisted) toast('人工接管已在本次运行生效', '接管标记未能保存，重启后请确认 MCP 保持关闭');
         return { ok: true, persistent: persisted, pending: gate.status().pending };
+    };
+    // End a safe manual pause without requiring the old task or Meituan page to be completed.
+    window.gyMcpEndTakeover = function (confirmed) {
+        const gate = window.gyMcpExecution;
+        if (!gate || !gate.status().human) return { ok: false, error: 'not_in_takeover' };
+        if (!confirmed) { toast('请先核对外部操作结果', '不要求完成旧任务；请确认已停止手动操作并核对可能发生的结果'); return { ok: false, error: 'confirmation_required' }; }
+        const before = gate.status();
+        if (resumeHumanBusy) return { ok: false, error: 'resume_busy' };
+        if (before.owner || before.pending || before.queued || TASK_RUNS.size) { toast('仍有工具请求未返回', '结束接管不能撤销已发出的请求，请核对在途数量'); return { ok: false, error: 'in_flight' }; }
+        // Like acknowledge(), explicit user review can clear a persisted unknown marker, never an in-flight request.
+        invalidatePhoneState();
+        if (!gate.resumeHuman(before.humanRevision)) return { ok: false, error: 'state_changed' };
+        toast('已结束人工接管', '旧任务保持停止；发送新指令后重新读取页面'); paintTasks();
+        return { ok: true, resumed: true, replayed: false, pageVerified: false };
     };
     window.gyMcpResumeHuman = async function (confirmed, targetPackage) {
         const gate = window.gyMcpExecution;
@@ -606,7 +622,7 @@
             let out, result = { status: 'error', ok: false, error: 'unknown_tool' }; const t0 = Date.now();
             if (!x) out = '［没有这个工具］';
             else {
-                try { const args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task), '连接工具服务', CONNECT_TIMEOUT); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id); task.inFlight = true; return Promise.resolve().then(() => { task.check(); task.externalCalls++; return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, settledResult(x.s, x.t.name, r)); task.inFlight = false; return r; }, e => { gate.settle(task.id, false); task.inFlight = false; throw e; }); }, '等待工具返回：' + x.t.name, TOOL_TIMEOUT)); out = result.text; }
+                try { const args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task), '连接工具服务', CONNECT_TIMEOUT); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id, x.s.kind === 'builtin' && ['meituan_inspect', 'inspect_screen', 'wait_screen'].includes(x.t.name)); task.inFlight = true; return Promise.resolve().then(() => { task.check(); task.externalCalls++; return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, settledResult(x.s, x.t.name, r)); task.inFlight = false; return r; }, e => { gate.settle(task.id, false); task.inFlight = false; throw e; }); }, '等待工具返回：' + x.t.name, TOOL_TIMEOUT)); out = result.text; }
                 catch (e) { if (e.gyMcpStopped) throw e; task.inFlight = false; result = { status: 'error', ok: false, error: 'validation_or_call_failed' }; out = '［调用失败：' + String(e && e.message || e).slice(0, 160) + '］'; try { delete CONN[x.s.id]; } catch (e2) {} }
             }
             task.check();
@@ -737,6 +753,7 @@
             store.transition(task.id, why, stopNote);
             rejectStop(stoppedError());
             if (ctrl) ctrl.abort();
+            if (why === 'handed_over' && gate.abandonReadOnly) gate.abandonReadOnly(task.id);
             return true;
         };
         task.check = () => {
@@ -788,6 +805,7 @@
             try { clearTimeout(timer); } catch (e) {}
             TASK_RUNS.delete(task.id);
             gate.release(task.id);
+            paintTasks();
             request.active = false; request.at = Date.now();
             const ended = store.list().find(t => t.id === task.id);
             if (!task.externalCalls && ended && ['failed', 'timed_out', 'cancelled'].includes(ended.state)
@@ -916,11 +934,14 @@
         const store = window.gyMcpTasks;
         if (!store) { box.textContent = '任务模块未加载，工具暂不执行。'; return; }
         const device = window.gyMcpExecution && window.gyMcpExecution.status();
+        const sameHuman = device && device.human && box.dataset.gyHumanRevision === String(device.humanRevision);
+        const confirmed = sameHuman && !!box.querySelector('[data-mcp-human-confirm]')?.checked;
+        const selectedPackage = sameHuman ? box.querySelector('[data-mcp-human-package]')?.value : '';
         const labels = { created: '已创建', running: '运行中', waiting: '等待中', paused: '已暂停', completed: '调用流程结束', failed: '失败', interrupted: '已中断', cancelled: '已取消', timed_out: '已超时', handed_over: '人工接管' };
         box.innerHTML = (store.storageOk() ? '' : '<div>任务记录未能保存，重新打开后可能丢失。</div>')
             + (device ? '<div>设备状态：' + (device.pending || device.owner ? '正在执行' : device.human ? '人工接管' : device.blocked ? '等待核对（没有请求在途）' : '空闲') + '</div><div>本实例工具队列：' + device.queued + ' 个等待 · ' + device.pending + ' 个工具请求在途</div>' + (device.blocked && !device.human ? '<div>上次工具操作结果未确认，请先核对外部软件。<button class="gymcp-btn ghost" data-mcp-ack>已核对结果，解除占用</button></div>' : '') : '')
             + (device && device.human ? '<div><b>人工接管中</b><p>' + (device.pending || device.owner ? '仍有请求在途，请等待返回后再操作外部软件。' : '工具已暂停。请手动处理登录、验证码、支付等步骤；旧任务不会续跑。')
-                + '</p>' + (device.blocked ? '<p>存在未确认的外部操作，请先核对结果；接管不等于撤销已发送的请求。</p>' : '') + '<p>恢复时可能打开选定的美团软件重新读屏，不会重放旧任务。</p><select data-mcp-human-package aria-label="恢复时打开的软件"><option value="">上次操作的软件 / 自动识别</option><option value="com.sankuai.meituan.takeoutnew">美团外卖</option><option value="com.sankuai.meituan">美团</option></select><br><label><input type="checkbox" data-mcp-human-confirm> 我已处理并核对外部操作结果</label><br><button class="gymcp-btn ghost" data-mcp-human-resume>' + (resumeHumanBusy ? '正在重新读屏…' : '重新读屏并恢复工具') + '</button></div>'
+                + '</p><p>不要求完成旧任务。没有请求在途并核对外部结果后，可结束接管；之后只接受新指令。</p>' + (device.blocked ? '<p>存在未确认的外部操作，请先核对结果；接管不等于撤销已发送的请求。</p>' : '') + '<p>恢复时可能打开选定的美团软件重新读屏，不会重放旧任务。</p><select data-mcp-human-package aria-label="恢复时打开的软件"><option value="">上次操作的软件 / 自动识别</option><option value="com.sankuai.meituan.takeoutnew">美团外卖</option><option value="com.sankuai.meituan">美团</option></select><br><label><input type="checkbox" data-mcp-human-confirm> 我已处理并核对外部操作结果</label><br><button class="gymcp-btn ghost" data-mcp-human-end' + (device.pending || device.owner || device.queued || TASK_RUNS.size || resumeHumanBusy ? ' disabled' : '') + '>结束接管，不续跑旧任务</button><br><button class="gymcp-btn ghost" data-mcp-human-resume>' + (resumeHumanBusy ? '正在重新读屏…' : '重新读屏并恢复工具') + '</button></div>'
                 : isApp() ? '<button class="gymcp-btn ghost" data-mcp-takeover>我要接管手机操作</button>' : '<div>手机人工接管需在 Android 版使用。</div>')
             + '<div>仅记录工具执行状态，不代表购买或下单成功。未完成任务不会在重启后自动执行。</div>'
             + store.list().slice(0, 10).map(t => '<div class="gymcp-log"><b>' + esc(t.who) + ' · ' + esc(labels[t.state] || t.state)
@@ -928,8 +949,14 @@
                 + '</div><small>' + esc(new Date(t.updatedAt).toLocaleString()) + '</small>'
                 + (t.state === 'failed' && L.some(l => l.taskId === t.id && l.err) ? '<details><summary>查看完整失败信息</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;user-select:text">' + esc(L.filter(l => l.taskId === t.id && l.err).map(l => l.tool + '\n' + l.out).join('\n\n')) + '</pre></details>' : '')
                 + (['created', 'running', 'waiting', 'paused'].includes(t.state) ? '<button class="gymcp-btn ghost" data-mcp-cancel="' + esc(t.id) + '">取消任务</button>' : '') + '</div>').join('');
-        box.onclick = e => { if (e.target.closest('[data-mcp-takeover]')) { window.gyMcpTakeover('user'); return; } if (e.target.closest('[data-mcp-human-resume]')) { window.gyMcpResumeHuman(!!box.querySelector('[data-mcp-human-confirm]')?.checked, box.querySelector('[data-mcp-human-package]')?.value); return; } if (e.target.closest('[data-mcp-ack]')) { window.gyMcpDeviceAcknowledge(); return; } const button = e.target.closest('[data-mcp-cancel]'); if (button && box.contains(button)) window.gyMcpCancel(button.getAttribute('data-mcp-cancel')); };
-        if (!store.list().length) box.innerHTML += '<div>还没有工具任务。</div>';
+        if (device && device.human) {
+            box.dataset.gyHumanRevision = String(device.humanRevision);
+            const confirmation = box.querySelector('[data-mcp-human-confirm]'), selection = box.querySelector('[data-mcp-human-package]');
+            if (confirmation) confirmation.checked = !!confirmed;
+            if (selection && Array.from(selection.options).some(o => o.value === selectedPackage)) selection.value = selectedPackage;
+        } else delete box.dataset.gyHumanRevision;
+        box.onclick = e => { if (e.target.closest('[data-mcp-human-end]')) { window.gyMcpEndTakeover(!!box.querySelector('[data-mcp-human-confirm]')?.checked); return; } if (e.target.closest('[data-mcp-takeover]')) { window.gyMcpTakeover('user'); return; } if (e.target.closest('[data-mcp-human-resume]')) { window.gyMcpResumeHuman(!!box.querySelector('[data-mcp-human-confirm]')?.checked, box.querySelector('[data-mcp-human-package]')?.value); return; } if (e.target.closest('[data-mcp-ack]')) { window.gyMcpDeviceAcknowledge(); return; } const button = e.target.closest('[data-mcp-cancel]'); if (button && box.contains(button)) window.gyMcpCancel(button.getAttribute('data-mcp-cancel')); };
+        if (!store.list().length) box.insertAdjacentHTML('beforeend', '<div>还没有工具任务。</div>');
     }
     try { window.addEventListener('gy-mcp-task-change', paintTasks); window.addEventListener('gy-mcp-device-change', paintTasks); } catch (e) {}
     function paintList() {

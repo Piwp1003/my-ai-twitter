@@ -9,5 +9,25 @@ try{const page=await browser.newPage({viewport:{width:390,height:844}});const er
  await page.getByLabel('我已处理并核对外部操作结果',{exact:true}).check();await page.getByRole('button',{name:'重新读屏并恢复工具',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#gyMcpTasks')?.innerText.includes('正在重新读屏'));assert(await page.evaluate(()=>gyMcpExecution.status().human));
  await page.evaluate(phone);await page.getByLabel('我已处理并核对外部操作结果',{exact:true}).check();await page.getByRole('button',{name:'重新读屏并恢复工具',exact:true}).click();await page.waitForFunction(()=>!gyMcpExecution.status().human);
  assert.equal(await page.getByRole('button',{name:'我要接管手机操作',exact:true}).count(),1);assert.equal(await page.evaluate(()=>gyMcpTasks.list().length),0);assert.deepEqual(errors,[]);
- console.log('PASS phone takeover UI: explicit confirmation, persisted hold, OTP rejection, fresh-page recovery, no automatic task replay');
+ await page.getByRole('button',{name:'我要接管手机操作',exact:true}).click();
+ await page.getByLabel('我已处理并核对外部操作结果',{exact:true}).check();
+ await page.getByLabel('恢复时打开的软件',{exact:true}).selectOption('com.sankuai.meituan.takeoutnew');
+ await page.evaluate(()=>window.dispatchEvent(new CustomEvent('gy-mcp-device-change')));
+ assert(await page.getByLabel('我已处理并核对外部操作结果',{exact:true}).isChecked());assert.equal(await page.getByLabel('恢复时打开的软件',{exact:true}).inputValue(),'com.sankuai.meituan.takeoutnew');
+ await page.evaluate(()=>{gysPh.mcp.inspectScreen=()=>{throw Error('must not require a Meituan page for ending pause');};});
+ await page.getByRole('button',{name:'结束接管，不续跑旧任务',exact:true}).click();assert(!(await page.evaluate(()=>gyMcpExecution.status().human)));
+ await page.getByRole('button',{name:'我要接管手机操作',exact:true}).click();assert(!(await page.getByLabel('我已处理并核对外部操作结果',{exact:true}).isChecked()));
+ await page.getByRole('button',{name:'结束接管，不续跑旧任务',exact:true}).click();assert(await page.evaluate(()=>gyMcpExecution.status().human));assert.deepEqual(errors,[]);
+ await page.evaluate(()=>{
+  gyMcpEndTakeover(true);myCharacters=[{id:'exit',name:'退出测试'}];gyMcpState().servers.splice(0,gyMcpState().servers.length,{id:'phone',kind:'builtin',tools:[{name:'meituan_inspect'}]});
+  const auto=isAutoOn;window.isAutoOn=k=>k==='mcpOn'||auto(k);window.getApiConfig=()=>({url:'https://model.invalid',key:'test',model:'test'});
+  window.smartFetch=async()=>({json:async()=>({choices:[{message:{tool_calls:[{id:'r',type:'function',function:{name:'s0__meituan_inspect',arguments:'{}'}}]}}]})});
+  window.gyMeituan={inspect:()=>new Promise(r=>window.releaseReadForExit=r),invalidate(){}};window.pendingExit=gyMcpDecide('exit','读取美团');
+ });
+ await page.waitForFunction(()=>typeof releaseReadForExit==='function');await page.getByRole('button',{name:'我要接管手机操作',exact:true}).click();await page.evaluate(()=>pendingExit);
+ assert.equal(await page.evaluate(()=>gyMcpExecution.status().pending),0);
+ await page.getByLabel('我已处理并核对外部操作结果',{exact:true}).check();assert(await page.getByRole('button',{name:'结束接管，不续跑旧任务',exact:true}).isEnabled());
+ await page.getByRole('button',{name:'结束接管，不续跑旧任务',exact:true}).click();assert(!(await page.evaluate(()=>gyMcpExecution.status().human)));
+ await page.evaluate(()=>releaseReadForExit({ok:true,page:'home'}));assert.deepEqual(errors,[]);
+ console.log('PASS takeover UI: explicit review, OTP-checked recovery, preserved controls, pending read detaches and exit button enables, no replay');
 }finally{await browser.close();}

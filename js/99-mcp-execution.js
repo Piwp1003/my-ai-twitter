@@ -3,7 +3,7 @@
     'use strict';
     if (window.gyMcpExecution) return;
     const KEY = 'gyMcpDeviceV1', REQUESTS = 'gyMcpRequestsV1', HUMAN = 'gyMcpHumanV1';
-    let owner = null, queue = [], blocked = false, pending = 0, ending = false, seen = [];
+    let owner = null, queue = [], blocked = false, pending = 0, readOnlyPending = 0, ending = false, seen = [];
     let reviewOwner = false;
     let storageOk = true, human = false, humanRevision = 0, humanPackage = '';
     try { const held = localStorage.getItem(HUMAN); human = !!held; if (held) { const value = JSON.parse(held); if (['com.sankuai.meituan','com.sankuai.meituan.takeoutnew'].includes(value.pkg)) humanPackage = value.pkg; } blocked = !!localStorage.getItem(KEY); const r = JSON.parse(localStorage.getItem(REQUESTS) || '[]'); if (Array.isArray(r)) seen = r.filter(k => typeof k === 'string').slice(-200); }
@@ -15,7 +15,7 @@
     }
     function pump() {
         if (human || owner || blocked || !queue.length) return;
-        const next = queue.shift(); owner = next.id; pending = 0; ending = false; next.resolve(); changed();
+        const next = queue.shift(); owner = next.id; pending = 0; readOnlyPending = 0; ending = false; next.resolve(); changed();
     }
     function acquire(id) {
         return new Promise((resolve, reject) => { if (human) { const e = new Error('人工接管中'); e.gyMcpStopped = true; reject(e); return; } queue.push({ id, resolve, reject }); pump(); changed(); });
@@ -34,13 +34,13 @@
         owner = null; reviewOwner = false; ending = false; pump(); changed();
     }
     function release(id) { if (owner === id) { ending = true; releaseIfReady(); } else cancelQueued(id); }
-    function begin(id) {
+    function begin(id, readOnly = false) {
         if ((human && !reviewOwner) || owner !== id || ending || (blocked && !reviewOwner)) throw new Error('设备未授权给当前任务，操作未发送');
-        write({ taskId: id, pending: pending + 1, at: Date.now() }); pending++; changed();
+        write({ taskId: id, pending: pending + 1, at: Date.now() }); pending++; if (readOnly === true) readOnlyPending++; changed();
     }
     function settle(id, known) {
         if (owner !== id || !pending) return;
-        pending--;
+        pending--; if (readOnlyPending) readOnlyPending--;
         if (!known) blocked = true;
         try { if (blocked) write({ taskId: id, uncertain: true, at: Date.now() }); else if (pending) write({ taskId: id, pending, at: Date.now() }); else write(null); } catch (e) {}
         releaseIfReady(); changed();
@@ -48,6 +48,12 @@
     function acknowledge() {
         if (human || owner || pending || queue.length) return false;
         try { write(null); blocked = false; pump(); changed(); return true; } catch (e) { return false; }
+    }
+    function abandonReadOnly(id) {
+        if (!human || owner !== id || !pending || pending !== readOnlyPending) return false;
+        // The controller stops the task before detaching. Late settlement cannot affect a new owner.
+        try { write(blocked ? { taskId: id, uncertain: true, at: Date.now() } : null); } catch (e) { return false; }
+        pending = 0; readOnlyPending = 0; ending = true; releaseIfReady(); changed(); return true;
     }
     function takeover(pkg) {
         human = true; humanRevision++; let persisted = true; if (['com.sankuai.meituan','com.sankuai.meituan.takeoutnew'].includes(pkg)) humanPackage = pkg;
@@ -77,6 +83,6 @@
         catch (e) { storageOk = false; return false; }
         seen = next; return true;
     }
-    window.gyMcpExecution = Object.freeze({ acquire, acquireLocalReview, cancelQueued, release, begin, settle, acknowledge, claim, releaseUnsent, takeover, resumeHuman,
+    window.gyMcpExecution = Object.freeze({ acquire, acquireLocalReview, cancelQueued, release, begin, settle, acknowledge, abandonReadOnly, claim, releaseUnsent, takeover, resumeHuman,
         status: () => ({ owner, pending, blocked, queued: queue.length, storageOk, human, humanRevision, humanPackage }) });
 })();
