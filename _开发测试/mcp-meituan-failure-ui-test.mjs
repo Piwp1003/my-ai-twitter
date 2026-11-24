@@ -17,9 +17,9 @@ try{
  const launch=await p.evaluate(async()=>{
   const input=document.createElement('textarea');document.body.appendChild(input);input.focus();let opened=false,hidden=0,focusAtLaunch=false,clicks=0;
   window.plus={key:{hideSoftKeybord(){hidden++;}}};
-  window.gysPh={mcp:{capabilities:()=>({mode:'plugin',featureEnabled:true,readPermission:'auto',native:{pageSafety:2}}),inspectScreen:()=>opened?{ok:true,pkg:'com.sankuai.meituan.takeoutnew',snapshotSchema:2,fingerprint:'unsupported',token:1,nodes:[]}:{ok:false,error:'not_meituan'},tapElement(){clicks++;}},__N:{apps:()=>[{pkg:'com.sankuai.meituan.takeoutnew'}],openApp:()=>{focusAtLaunch=document.activeElement===input;opened=true;return true;}}};
+  window.gysPh={mcp:{capabilities:()=>({mode:'plugin',featureEnabled:true,readPermission:'auto',native:{pageSafety:2}}),inspectScreen:()=>opened?{ok:true,pkg:'com.sankuai.meituan',snapshotSchema:2,fingerprint:'unsupported',token:1,nodes:[]}:{ok:false,error:'not_meituan'},tapElement(){clicks++;}},__N:{apps:()=>[{pkg:'com.sankuai.meituan'}],openApp:()=>{focusAtLaunch=document.activeElement===input;opened=true;return true;}}};
   const result=await gyMeituan.search({query:'面条'});input.remove();return {hidden,focusAtLaunch,clicks,error:result.error};
  });
- assert.deepEqual(launch,{hidden:1,focusAtLaunch:false,clicks:0,error:'unknown_layout'});assert.deepEqual(errors,[]);
+ assert.deepEqual(launch,{hidden:1,focusAtLaunch:false,clicks:0,error:'channel_unverified'});assert.deepEqual(errors,[]);
  console.log('PASS readable failure summary and full stored diagnostic after reload; no task-body duplication, escaped HTML, no page errors');
 }finally{await browser.close();}

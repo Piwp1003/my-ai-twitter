@@ -3,6 +3,7 @@
     'use strict';
     if (window.gyMeituan) return;
     const APPS = ['com.sankuai.meituan.takeoutnew', 'com.sankuai.meituan'];
+    const APP = Object.freeze({ meituan: 'com.sankuai.meituan', takeout: 'com.sankuai.meituan.takeoutnew' });
     const titleId = id => /(?:poi|shop|store|restaurant)[_a-z/]*(?:name|title)|(?:name|title)[_a-z/]*(?:poi|shop|store|restaurant)/i.test(String(id || ''));
     const label = n => String(n.text || n.desc || '').trim();
     const searchHint = text => /^(?:搜索商家|搜索店铺|搜索商家[、，,\s]+商品(?:名称)?|搜索商品|搜索美食|搜索商家或商品|搜索店铺或商品)$/.test(String(text || '').trim());
@@ -58,7 +59,7 @@
             stores, titles: titles.map(label), input: inputs.length === 1 ? inputs[0].ref : null,
             submit: submit.length === 1 ? submit[0].ref : null, entry: entry.length === 1 ? entry[0].ref : null,
             takeout: takeout.length === 1 ? takeout[0].ref : null, truncated: !!s.truncated,
-            diagnostics: { nodeCount: nodes.length, editableCount: inputs.length, submitCount: submit.length, entryCount: entry.length,
+            diagnostics: { nodeCount: nodes.length, editableCount: inputs.length, submitCount: submit.length, entryCount: entry.length, takeoutEntryCount: takeout.length,
                 searchNodes: nodes.filter(n => searchFieldId(n.id) || searchHint(n.text) || searchHint(n.desc) || label(n) === '搜索').slice(0, 8).map(n => ({ ref: n.ref, parentRef: n.parentRef,
                     id: String(n.id || '').length <= 160 && /^(?:[A-Za-z0-9_.:]+\/[A-Za-z0-9_]{1,80}|[A-Za-z_][A-Za-z0-9_]{0,79})$/.test(String(n.id || '')) ? String(n.id) : '', clickable: !!n.clickable, editable: !!n.editable, enabled: !!n.enabled })) } };
     }
@@ -69,6 +70,24 @@
     function layoutFailure(s, info, accepted, stage) {
         return Object.assign(failure('unknown_layout', '无法确认唯一的搜索控件，请核对页面；本轮停止', accepted),
             { diagnostic: Object.assign({ stage, truncated: !!s.truncated }, info.diagnostics || {}) });
+    }
+    function channelMarker(s) {
+        return (Array.isArray(s.nodes) ? s.nodes : []).some(n => n.enabled && ((n.selected === true && label(n) === '外卖')
+            || (!n.clickable && label(n) === '美团外卖' && /(?:title|header)/i.test(String(n.id || '').split('/').pop()))
+            || (/^(?:wm|waimai|takeout)_(?:search|home|main)(?:_|$)/i.test(String(n.id || '').split('/').pop()) && searchFieldId(n.id))));
+    }
+    function routeFailure(s, accepted, stage, target) {
+        const info = classify(s), d = info.diagnostics || {};
+        const nodes = Array.isArray(s.nodes) ? s.nodes : [];
+        const safeField = (v, limit) => /^[A-Za-z0-9_.:/$-]*$/.test(String(v || '')) ? String(v || '').slice(0, limit) : '';
+        const structure = nodes.slice(0, 160).map(n => ({ ref: n.ref, parentRef: n.parentRef, id: safeField(n.id, 96), cls: safeField(n.cls, 64),
+            idTruncated: String(n.id || '').length > 96, clickable: !!n.clickable, editable: !!n.editable, enabled: !!n.enabled, selected: !!n.selected,
+            semantic: ['外卖', '美团外卖', '搜索'].includes(label(n)) ? label(n) : 'other' }));
+        const channelNodes = (Array.isArray(s.nodes) ? s.nodes : []).filter(n => label(n) === '外卖' || label(n) === '美团外卖').slice(0, 4)
+            .map(n => ({ ref: n.ref, parentRef: n.parentRef, clickable: !!n.clickable, selected: !!n.selected, enabled: !!n.enabled }));
+        return Object.assign(failure('channel_unverified', '尚未确认美团外卖频道，已停止；不会在主首页做全站搜索', accepted),
+            { diagnostic: Object.assign({}, d, { searchNodes: (d.searchNodes || []).slice(0, 4), stage, targetPackage: target, observedPackage: APPS.includes(s.pkg) ? s.pkg : 'other', truncated: !!s.truncated, channelNodes,
+                structure, structureCount: structure.length, structureTruncated: !!s.truncated || nodes.length > 160 }) });
     }
     const READ_ERRORS = Object.freeze({
         accessibility_off: '无障碍服务未连接，请在系统中重新启用谷雨守护无障碍',
@@ -110,7 +129,7 @@
         if (state.inputReleased || state.keyboardHideRequested) { await pause(); guard(check); }
         return state;
     }
-    async function awaitLaunchedPage(check) {
+    async function awaitLaunchedPage(check, target) {
         const started = Date.now(), deadline = started + 8000;
         let snapshot = { ok: false, error: 'read_timeout' }, reads = 0;
         // Only read transient window states. Never relaunch or replay a tap here.
@@ -118,6 +137,7 @@
             guard(check); await pause(); guard(check);
             if (Date.now() >= deadline) break;
             snapshot = await phone().mcp.inspectScreen(160); reads++; guard(check);
+            if (snapshot && snapshot.ok && snapshot.pkg !== target) snapshot = { ok: false, error: 'not_meituan' };
             if (Date.now() >= deadline && snapshot && snapshot.ok) { snapshot = { ok: false, error: 'read_timeout' }; break; }
             if (snapshot && snapshot.ok) break;
             if (!snapshot || !['not_meituan', 'no_active_window', 'screen_changed'].includes(snapshot.error)) break;
@@ -126,8 +146,8 @@
     }
     function remember(s, info, query) {
         const visible = info.stores.slice(0, 6);
-        last = { token: s.token, fingerprint: s.fingerprint, at: Date.now(), stores: visible };
-        return { ok: true, page: info.page, token: s.token, query: query || '', stores: visible, visibleCandidateCount: info.stores.length, truncated: !!info.truncated || info.stores.length > visible.length,
+        last = { token: s.token, pkg: s.pkg, fingerprint: s.fingerprint, at: Date.now(), stores: visible };
+        return { ok: true, page: info.page, pkg: s.pkg, token: s.token, query: query || '', queryVerified: !!query, stores: visible, visibleCandidateCount: info.stores.length, truncated: !!info.truncated || info.stores.length > visible.length,
             note: '候选名称和指标均来自屏幕；不代表实时库存、最终价格或已下单' };
     }
     function ready() {
@@ -146,32 +166,50 @@
         return remember(s, info);
     }
     async function search(args, check) {
+        const app = args.app === undefined ? 'meituan' : args.app;
+        if (!Object.prototype.hasOwnProperty.call(APP, app)) return failure('bad_app', '只支持美团主 App 或独立美团外卖', false);
+        const target = APP[app];
         const query = typeof args.query === 'string' ? args.query.trim() : '';
         if (!query || query.length > 80) return failure('bad_query', '搜索词需要 1～80 个字符', false);
         guard(check); if (!ready()) return failure('permission_required', '需要新版谷雨守护，并开启真手机和页面操作权限', false);
         let accepted = false, submitted = false, s = await phone().mcp.inspectScreen(160); guard(check);
-        if (!s || !s.ok) {
+        if (!s || !s.ok || s.pkg !== target) {
             // Only package names in this adapter's allowlist may be launched.
-            if (!s || s.error !== 'not_meituan') return pageFailure(s, false, { stage: 'before_launch' });
+            if (!s || (!s.ok && s.error !== 'not_meituan')) return pageFailure(s, false, { stage: 'before_launch' });
             const n = phone().__N, apps = n.apps(); guard(check);
-            const pkg = APPS.find(p => apps.some(a => a.pkg === p));
-            if (!pkg) return failure('app_missing', '未找到可启动的美团或美团外卖', false);
+            const pkg = apps.some(a => a.pkg === target) ? target : null;
+            if (!pkg) return failure('app_missing', '未找到指定的软件，请检查安装情况或明确选择另一入口；不会自动切换软件', false);
             const launchPreparation = await prepareLaunch(check); guard(check);
             if (!n.openApp(pkg)) return failure('open_failed', '没有打开美团，请手动打开后再试', false);
             accepted = true;
-            const waiting = await awaitLaunchedPage(check); s = waiting.snapshot;
+            const waiting = await awaitLaunchedPage(check, target); s = waiting.snapshot;
             if (!s || !s.ok) {
                 const signal = s && s.error === 'not_meituan' ? foregroundSignal() : 'unknown'; guard(check);
                 return pageFailure(s, accepted, { stage: 'after_launch', openedPackage: pkg, foregroundSignal: signal, launchPreparation, reads: waiting.reads, elapsedMs: waiting.elapsedMs });
             }
         }
+        if (target === APP.meituan) {
+            const start = classify(s);
+            if (start.page === 'human_required') return failure('human_required', '请先手动处理登录、验证或交易页面', accepted);
+            if (!channelMarker(s)) {
+                if (s.truncated || start.takeout == null || start.diagnostics?.takeoutEntryCount !== 1) return routeFailure(s, accepted, 'before_channel', target);
+                const entered = await phone().mcp.tapElement(s.token, start.takeout, check); guard(check);
+                accepted = accepted || !!entered?.actionAccepted;
+                if (!entered || !entered.ok || !entered.snapshot) return failure(entered?.error || 'action_unverified', entered?.err || '进入外卖频道的结果未确认，不会重复点击', accepted);
+                s = entered.snapshot;
+                if (!s.ok || s.pkg !== target || !Array.isArray(s.nodes)) return failure('target_app_changed', '频道导航后未取得同一软件的页面，已停止，不切换目标', accepted);
+                if (classify(s).page === 'human_required') return failure('human_required', '请手动处理当前登录、验证或交易页面', accepted);
+                if (!channelMarker(s)) return routeFailure(s, accepted, 'after_channel', target);
+            }
+        }
         for (let step = 0; step < 7; step++) {
             guard(check); if (!s || !s.ok) return pageFailure(s, accepted, { stage: 'search' });
+            if (s.pkg !== target) return failure('target_app_changed', '当前软件已改变，停止本轮搜索，不自动切换软件', accepted);
             const info = classify(s);
             if (info.page === 'human_required') return failure('human_required', '请先手动处理登录、验证或交易页面', accepted);
             if (info.page === 'results') {
                 if (!submitted) return failure('query_unverified', '当前已经是结果页，但无法确认属于本次搜索；请手动回到搜索页', false);
-                return remember(s, info, query);
+                return Object.assign(remember(s, info, query), { app, channel: 'takeout' });
             }
             let r;
             if (info.page === 'search') {
@@ -194,7 +232,7 @@
         const matches = saved.stores.filter(x => x.ref === args.ref && x.name === args.name);
         if (matches.length !== 1) return failure('store_not_identified', '只能选择当前候选中名称和 ref 一致的店铺', false);
         const s = await phone().mcp.inspectScreen(160); guard(check);
-        if (!s || !s.ok || s.fingerprint !== saved.fingerprint) return failure('screen_changed', '候选页面已经变化，请重新读取店铺列表', false);
+        if (!s || !s.ok || s.pkg !== saved.pkg || s.fingerprint !== saved.fingerprint) return failure('screen_changed', '候选页面已经变化，请重新读取店铺列表', false);
         last = null; const r = await phone().mcp.tapElement(s.token, args.ref, check); guard(check);
         if (!r || !r.ok || !r.snapshot) return failure((r && r.error) || 'action_unverified', (r && r.err) || '进店结果未确认', !!(r && r.actionAccepted));
         const info = classify(r.snapshot);
