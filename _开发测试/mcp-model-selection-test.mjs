@@ -13,10 +13,10 @@ for(const status of [401,403,429,500]){
 let x=modelSetup(()=>{throw Error('Failed to fetch');});await x.c.gyMcpDecide('c','打开美团');assert.equal(x.requests.length,1);assert.equal(x.calls(),0);assert(x.c.gyMcpTasks.list()[0].note.includes('模型连接失败'));checks++;
 x=modelSetup(()=>({status:502,ok:false,json:async()=>{throw Error('invalid JSON');}}));await x.c.gyMcpDecide('c','打开美团');assert.equal(x.requests.length,1);assert(x.c.gyMcpTasks.list()[0].note.includes('HTTP 502'));checks++;
 const textReply=()=>response(200,{choices:[{message:{content:'{"calls":[{"tool":"s0__lookup","args":{}}]}'}}]});
-x=modelSetup(req=>req.body.tools?response(400,{error:{message:'tools not supported'}}):textReply());
-await x.c.gyMcpDecide('c','打开美团');assert.equal(x.requests.length,2);assert.equal(x.calls(),1);assert.equal(x.c.gyMcpTasks.list()[0].state,'completed');checks++;
-x=modelSetup(()=>textReply());x.c.gyMcpSet('mode','text');await x.c.gyMcpDecide('c','打开美团');
-assert.equal(x.requests.length,1);assert(!x.requests[0].body.tools);assert.equal(x.calls(),1);assert.equal(x.c.gyMcpState().cfg.mode,'text');checks++;
+x=modelSetup((req,n)=>req.body.tools?response(400,{error:{message:'tools not supported'}}):n===2?textReply():response(200,{choices:[{message:{content:'无'}}]}));
+await x.c.gyMcpDecide('c','打开美团');assert.equal(x.requests.length,3);assert.equal(x.calls(),1);assert.equal(x.c.gyMcpTasks.list()[0].state,'completed');checks++;
+x=modelSetup((req,n)=>n===1?textReply():response(200,{choices:[{message:{content:'无'}}]}));x.c.gyMcpSet('mode','text');await x.c.gyMcpDecide('c','打开美团');
+assert.equal(x.requests.length,2);assert(x.requests.every(r=>!r.body.tools));assert.equal(x.calls(),1);assert.equal(x.c.gyMcpState().cfg.mode,'text');checks++;
 // Preserve the first capability error if the compatible request itself times out.
 let release;x=modelSetup(req=>req.body.tools?response(400,{error:{message:'tools not supported'}}):new Promise(r=>release=r));
 let pending=x.c.gyMcpDecide('c','打开美团');for(let i=0;i<250;i++)await Promise.resolve();assert.equal(x.requests.length,2);

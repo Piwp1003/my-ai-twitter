@@ -110,6 +110,10 @@
     }
     async function inspect(args, check) {
         guard(check); const s = await phone().mcp.inspectScreen(160); guard(check);
+        if (s && !s.ok && s.error === 'not_meituan') return {
+            ok: true, page: 'unavailable', needsLaunch: true, nativeError: 'not_meituan', actionAccepted: false,
+            note: '尚未取得美团窗口，本次没有打开软件或点击。用户已要求美团搜索时，可调用 meituan_search 并填写用户指定的 query；它会启动软件再读屏。若启动后仍失败则停止，不得推断搜索或购买已完成。'
+        };
         if (!s || !s.ok) return pageFailure(s, false, { stage: 'inspect' });
         const info = classify(s); if (info.page === 'human_required') return failure('human_required', '当前需要登录、验证或涉及交易，请手动处理后重新发起', false);
         if (info.page === 'unknown') return failure('unknown_layout', '无法可靠识别当前页面，请手动进入美团外卖搜索页', false);

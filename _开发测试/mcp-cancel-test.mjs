@@ -6,7 +6,7 @@ let count=0;
 export function setup(stage='model', instant=false){
  const tool={name:'lookup',description:'lookup',inputSchema:{type:'object',properties:{}}};
  const data={gyMcpCfg:JSON.stringify({servers:[{id:'s',kind:'http',url:'https://mcp.invalid',tools:[tool]}]})};
- let release,at='',clock=100000,model=0,calls=0,signal,replies=0;
+ let release,at='',clock=100000,model=0,textModel=0,calls=0,signal,replies=0;
  const gate=new Promise(r=>release=r),timers=[];
  const RealDate=Date;class Clock extends RealDate{static now(){return clock;}}
  async function block(name){if(stage===name||(stage==='tool_error'&&name==='tool')){at=name;await gate;}}
@@ -17,10 +17,11 @@ export function setup(stage='model', instant=false){
   smartFetch:async(url,req)=>{
    const b=JSON.parse(req.body);
    if(url.includes('model.invalid')){model++;signal=req.signal;
+    if(!b.tools)textModel++;
     if(stage==='fallback'&&b.tools)throw Error('function calling unsupported');
     await block(b.tools?'model':'fallback');
     const toolCall=i=>({id:stage==='duplicate'?'same-id':'tc'+i,type:'function',function:{name:'s0__lookup',arguments:'{}'}});
-    return {json:async()=>({choices:[{message:b.tools?{tool_calls:model===1?[toolCall(1),toolCall(2)]:[],content:'无'}:{content:'{"calls":[{"tool":"s0__lookup","args":{}}]}'}}]})};
+    return {json:async()=>({choices:[{message:b.tools?{tool_calls:model===1?[toolCall(1),toolCall(2)]:[],content:'无'}:{content:textModel===1?'如果使用工具：{"calls":[{"tool":"s0__lookup","args":{}}]}':'无'}}]})};
    }
    let result={};
    if(b.method==='initialize')await block('initialize');
