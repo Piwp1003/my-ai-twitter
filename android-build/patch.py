@@ -30,6 +30,10 @@ def gradle(s):
     s = re.sub(r'applicationId\s+["\'][^"\']*["\']', f'applicationId "{pkg}"', s)
     s = re.sub(r'versionCode\s+\d+', f'versionCode {ver_code}', s)
     s = re.sub(r'versionName\s+["\'][^"\']*["\']', f'versionName "{ver_name}"', s)
+    # The offline SDK calls Zip4JUtil during runtime.install; a missing jar can crash
+    # the installation thread before JavaScript receives either callback.
+    if not re.search(r'net\.lingala\.zip4j:zip4j:', s):
+        s += "\n// Required by DCloud WGT/WGTU installation\ndependencies { implementation 'net.lingala.zip4j:zip4j:2.11.5' }\n"
     # 谷雨守护：示例工程本来就有 implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'])，
     # aar 丢进 libs 就会编进去（服务和权限自动合并）。别再另外写 implementation(name:'GuyuGuard')——会重复，编译直接失败（279 那次就是）。
     return s

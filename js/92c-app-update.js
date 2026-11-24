@@ -59,6 +59,7 @@
             if (!manual && S.skip === L.ver && Date.now() - (+S.skipAt || 0) < 12 * 3600e3) return L;   // 这一版点过「下次再说」：12 小时内不再自己问
             if (!manual && document.getElementById('gyUpd')) return L;   // 已经弹着了，别叠
             if (!manual && preCan()) { preGet(L, function () { if (!document.getElementById('gyUpd')) ask(L); }); return L; }   // 先悄悄下好再问，点了马上装
+            if (isApp() && patchOf(L)) return new Promise(function (resolve) { curVer(function () { ask(L); resolve(L); }); });
             ask(L);
             return L;
         }).catch(function (e) { done(); if (manual) toast('没查成', '连不上更新服务器（' + ((e && e.message) || 'guyu.pw 没回话') + '），过一会儿再点一次'); return null; });
@@ -77,7 +78,12 @@
     // 通知栏那条进度（js/98b 的 gyNativeProgress；没有就安静跳过）
     var nLast = 0, nPct = -9;
     var mb = function (n) { return Math.round(n / 1048576 * 10) / 10; };
-    var awayNow = function () { try { return typeof window.gyAway === 'function' ? window.gyAway() : document.visibilityState !== 'visible'; } catch (e) { return false; } };
+    var appPaused = false;
+    var awayNow = function () { return appPaused || document.visibilityState === 'hidden'; };
+    try {
+        document.addEventListener('pause', function () { appPaused = true; }, false);
+        document.addEventListener('resume', function () { appPaused = false; }, false);
+    } catch (e) {}
     function nProg(L, a, t) {
         if (typeof window.gyNativeProgress !== 'function' || !on('gyUpdBar')) return;
         var p = t ? a / t * 100 : -1, now = Date.now();
@@ -178,50 +184,64 @@
             try { navigator.serviceWorker && navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.update(); }); }); } catch (e) {}
             setTimeout(function () { location.reload(); }, 600); return;
         }
-        if (isApp()) { S.inst = { ver: L.ver, at: Date.now() }; wr(S); return runApp(L); }
+        if (isApp()) { S.inst = { ver: L.ver, at: Date.now(), phase: 'requested', mver: L.mver || '' }; wr(S); return runApp(L); }
         if (isDesk()) return runDesk(L);
         if (window.gyDesk) return close();
         try { (window.plus && plus.runtime) ? plus.runtime.openURL('https://github.com/Piwp1003/my-ai-twitter/releases/tag/apk') : window.open('https://github.com/Piwp1003/my-ai-twitter/releases/tag/apk', '_blank'); } catch (e) {}
     }
-    // 299：装好以后重启。以前只用 plus.runtime.restart()——它是「先把自己关掉，再托系统过一会儿把谷雨叫起来」，
-    //      OPPO / vivo / 小米这些手机会把「后台自己弹出来」拦掉，结果就是关掉以后再也不开。
-    //      现在趁谷雨还在最前面，让系统清掉旧页面并重新打开谷雨。不要把刚启动的新 Activity 再强杀掉：
-    //      新旧 Activity 可能还在同一个进程里，System.exit(0) 会让“只退出、不重启”的情况再次出现。
-    //      这条路走不通（不是安卓 / 调用出错）才用老办法。
+    // WGT resources require DCloud's hot restart. Relaunching an Activity does not
+    // establish that the runtime reloaded its resources. Only the next page's VER
+    // can acknowledge success; keep the marker until that page actually boots.
+    function restartRetry(why) {
+        if (!S.inst) return;
+        if (!document.getElementById('gyUpd')) ask({ ver: S.inst.ver, notes: [] });
+        busy(false);
+        prog(1, '尚未确认新版启动：当前网页 v' + VER + '，目标 v' + S.inst.ver + '。' + (why || '请点重新启动后核对版本。'));
+        var button = document.getElementById('gyUpdGo');
+        if (button) { button.textContent = '重新启动并核验'; button.onclick = restartApp; }
+    }
+    var restartTimer = null;
     function restartApp() {
+        if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+        var checkpoint = S.inst;
+        if (S.inst) { S.inst.restarts = (+S.inst.restarts || 0) + 1; S.inst.restartAt = Date.now(); wr(S); }
         try {
-            if (window.plus && plus.android && /android/i.test(navigator.userAgent)) {
-                var act = plus.android.runtimeMainActivity();
-                var pm = plus.android.invoke(act, 'getPackageManager');
-                var it = plus.android.invoke(pm, 'getLaunchIntentForPackage', plus.android.invoke(act, 'getPackageName'));
-                if (it) {
-                    plus.android.invoke(it, 'addFlags', 0x10000000 | 0x00008000);   // NEW_TASK | CLEAR_TASK：整个重来，不留旧页面
-                    plus.android.invoke(act, 'startActivity', it);
-                    return;
-                }
-            }
-        } catch (e) {}
-        try { plus.runtime.restart(); } catch (e) {}
+            plus.runtime.restart();
+            setTimeout(function () { if (checkpoint && S.inst === checkpoint && checkpoint.phase === 'installed') restartRetry('热重启调用后页面仍未切换，可手动重试。'); }, 2500);
+            return true;
+        } catch (e) { restartRetry('热重启失败：' + ((e && e.message) || e)); return false; }
     }
     window.__gyUpdRestart = restartApp;
 
     var pendInst = null;   // 你点过「现在更新」、包也下好了，但当时人不在：回来就装
+    var appInstalling = false;
     function runApp(L) {
+        if (appInstalling) return;
         busy(true);
         var inst = function (file, retry) {
+            if (appInstalling) return;
             pendInst = null; nClear();
             if (!document.getElementById('gyUpd')) ask(L);
             busy(true); prog(1, '正在安装…');
-            plus.runtime.install(file, { force: true }, function () {
-                S.from = VER; S.lastWay = (S.pre && S.pre.patch) ? 'diff' : 'full'; S.inst = { ver: L.ver, at: Date.now() }; wr(S);
-                prog(1, '装好了，正在重新打开…（要是没自己打开，点一下谷雨会接着完成更新）');
-                setTimeout(restartApp, 900);
-            }, function (e) {
+            appInstalling = true;
+            S.inst = { ver: L.ver, at: Date.now(), phase: 'installing', mver: L.mver || '' }; wr(S);
+            var success = function (widget) {
+                appInstalling = false;
+                S.from = VER; S.lastWay = (S.pre && S.pre.patch) ? 'diff' : 'full';
+                S.inst = { ver: L.ver, at: Date.now(), phase: 'installed', mver: L.mver || '', reported: String((widget && widget.version) || ''), restarts: 0 }; wr(S);
+                CUR = '';
+                prog(1, '安装回调已返回，正在热重启并核验 v' + L.ver + '…');
+                restartTimer = setTimeout(function () { restartTimer = null; restartApp(); }, 900);
+            };
+            var error = function (e) {
+                appInstalling = false;
+                S.inst = { ver: L.ver, at: Date.now(), phase: 'failed', error: String((e && e.message) || e || '安装失败').slice(0, 160) }; wr(S);
                 var wasPatch = !!(S.pre && S.pre.patch);
                 if (wasPatch) { S.noDiff = L.ver; S.diffErr = String((e && e.message) || e || ''); S.pre = null; wr(S); prog(0, '小包没装上，改下完整的包…'); return fresh(); }   // 差量包这台手机不认：这一版改下整包
                 if (retry) { S.pre = null; wr(S); return fresh(); }   // 提前下的包坏了 / 被清了：现下一份
                 fail('安装失败：' + ((e && e.message) || ''));
-            });
+            };
+            try { plus.runtime.install(file, { force: true }, success, error); } catch (e) { error(e); }
         };
         var fresh = function () {
             prog(0, '下载中…（可以切到别的软件，通知栏里能看到进度）');
@@ -230,7 +250,7 @@
             if (lt) { lt.classList.remove('dis'); lt.textContent = '放到后台'; lt.onclick = function () { close(); toast('在后台接着下', pick(['通知栏里能看到进度，下好了叫你', '你忙你的，下好了再问你装不装'])); }; }
             download(L, function (a, t) { prog(a / t, '下载中… ' + mb(a) + ' / ' + mb(t) + ' MB'); }, function (file) {
                 if (awayNow()) { pendInst = { L: L, file: file }; return; }           // 人不在：不突然重启，等回来
-                if (!document.getElementById('gyUpd')) { ask(L); return; }            // 你把窗口放到后台了：下好了问一声
+                if (!document.getElementById('gyUpd')) ask(L);
                 inst(file, false);
             }, fail);
         };
@@ -242,10 +262,22 @@
         if (!isApp() || !S.inst) return false;
         var v = +S.inst.ver || 0;
         if (v <= VER) {
+            S.verified = { target: v, running: VER, at: Date.now() };
             S.inst = null;
             if (S.pre && +S.pre.ver === v) S.pre = null;
             wr(S);
             return false;
+        }
+        if (appInstalling || dlBusy) return true;
+        if (S.inst.phase === 'installed') {
+            if (restartTimer) return true;
+            if (!S.inst.restarts) restartApp(); else restartRetry('上次重启后仍加载旧页面，未标记更新成功。');
+            return true;
+        }
+        if (['installing', 'failed'].indexOf(S.inst.phase) >= 0) {
+            ask({ ver: v, notes: [] });
+            fail('上次安装没有完成；当前仍是 v' + VER + '。请确认已安装修复版 APK 后再试，避免反复闪退。');
+            return true;
         }
         if (!(S.pre && +S.pre.ver === v && S.pre.file)) { S.inst = null; wr(S); return false; }
         var L = (LATEST && +LATEST.ver === v) ? LATEST : { ver: v };
@@ -254,14 +286,15 @@
     }
     // 从通知点回来 / 切回谷雨：有等着装的就装，没有就看看要不要问
     function resumeUpd() {
+        if (awayNow() || appInstalling) return;
         nClear();
         if (pendInst) { var p = pendInst; pendInst = null; if (!document.getElementById('gyUpd')) ask(p.L); return runApp(p.L); }
         if (resumeSaved()) return;
         if (LATEST && LATEST.ver > VER && !document.getElementById('gyUpd')) { S.checked = 0; check(false); }
     }
     window.gyUpdResume = resumeUpd;
-    try { document.addEventListener('resume', function () { if (pendInst) setTimeout(resumeUpd, 400); }, false); } catch (e) {}
-    try { document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && pendInst) setTimeout(resumeUpd, 400); }); } catch (e) {}
+    try { document.addEventListener('resume', function () { if (pendInst || S.inst) setTimeout(resumeUpd, 400); }, false); } catch (e) {}
+    try { document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && (pendInst || S.inst)) setTimeout(resumeUpd, 400); }); } catch (e) {}
     function runDesk(L) {
         busy(true); prog(0, '对比文件…');
         var t = setInterval(function () { window.gyDesk.hot('progress').then(function (p) { if (p && p.total) prog(p.done / p.total, '下载中… ' + p.done + ' / ' + p.total + ' 个文件'); }).catch(function () {}); }, 400);
@@ -287,7 +320,7 @@
     }
     window.gyCheckUpdate = function () { return check(true); };
     window.gyShowNotes = function () { return showNotes(true); };
-    window.gyUpdState = function () { return { ver: VER, latest: LATEST, seen: S.seen, app: isApp(), desk: isDesk(), web: isWeb() }; };
+    window.gyUpdState = function () { return { ver: VER, latest: LATEST, seen: S.seen, app: isApp(), desk: isDesk(), web: isWeb(), pending: S.inst || null, verified: S.verified || null }; };
 
     /* ---------- 开关、今天、小组件 ---------- */
     try {

@@ -14,7 +14,7 @@ on:
     types: [published, edited]
   push:
     branches: ['claude/**', 'main']
-    paths: ['.github/workflows/apk.yml', 'android-build/**', '安卓插件/GuyuGuard-源码与构建/**', '安卓插件/nativeplugins/GuyuGuard/**']
+    paths: ['.github/workflows/apk.yml', 'android-build/**', 'tools/verify_android_apk.py', '安卓插件/GuyuGuard-源码与构建/**', '安卓插件/nativeplugins/GuyuGuard/**']
 permissions:
   contents: write
 jobs:
@@ -99,6 +99,9 @@ jobs:
           if [ -f gradlew ]; then chmod +x gradlew; ./gradlew --no-daemon :simpleDemo:assembleRelease; else gradle --no-daemon :simpleDemo:assembleRelease; fi
           find . -name '*.apk' -path '*outputs*' | tee ../apks.txt
           mkdir -p "$GITHUB_WORKSPACE/out" && cp $(cat ../apks.txt) "$GITHUB_WORKSPACE/out/"
+      - name: 核对热更新解包依赖及原生模块
+        if: steps.sdk.outputs.skip != '1'
+        run: python3 tools/verify_android_apk.py out/*.apk
       - uses: actions/upload-artifact@v4
         if: steps.sdk.outputs.skip != '1'
         with: { name: guyu-apk, path: out/*.apk }
