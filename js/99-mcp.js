@@ -261,7 +261,7 @@
             if (r.err) throw new Error(r.err);
             return `她在用「${r.app}」，屏幕上：${r.text}`;
         }],
-        inspect_screen: ['看当前美团页面里能点的文字、输入框和位置，返回这次快照的 token。只读；token 30 秒内有效，页面一换就失效', O({ max: { type: 'integer', minimum: 1, maximum: 160, description: '最多返回多少个节点，默认 80' } }), a => pageTool('inspectScreen', a.max)],
+        inspect_screen: ['只读当前美团窗口，不会打开软件；用户要求搜索时优先用 meituan_search。成功返回快照 token，30 秒内有效，页面一换就失效', O({ max: { type: 'integer', minimum: 1, maximum: 160, description: '最多返回多少个节点，默认 80' } }), a => pageTool('inspectScreen', a.max)],
         wait_screen: ['等当前美团页面出现变化，再返回一份新的完整快照。只读；token 用 inspect_screen 返回的那个，最多等 15 秒', O({ token: { type: 'integer', minimum: 1 }, timeout_ms: { type: 'integer', minimum: 300, maximum: 15000, description: '最多等多少毫秒，默认 8000' } }, ['token']), (a, env) => pageTool('waitScreen', a.token, a.timeout_ms, env.check)],
         tap_element: ['点当前美团页面快照里的一个元素。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」；支付、提交订单、验证码这类动作会被拦住', O({ token: { type: 'integer', minimum: 1 }, ref: { type: 'integer', minimum: 0 } }, ['token', 'ref']), (a, env) => pageTool('tapElement', a.token, a.ref, env.check)],
         set_text: ['往当前美团页面快照里的输入框写字。要装谷雨守护插件，并把「读屏幕上的字」设成「TA 直接做」；密码框写不了', O({ token: { type: 'integer', minimum: 1 }, ref: { type: 'integer', minimum: 0 }, value: { type: 'string' } }, ['token', 'ref', 'value']), (a, env) => pageTool('setText', a.token, a.ref, a.value, env.check)],
@@ -374,9 +374,10 @@
     window.__gyMcpProtocol = { checkedArgs, normalizeResult };
     // A completed built-in browsing failure is not an unknown purchase result.
     // Never trust this classification on remote tools or cart/submit/payment tools.
+    const readOnlyCall = (server, name) => server.kind === 'builtin' && ['meituan_inspect', 'inspect_screen', 'wait_screen'].includes(name);
     function settledResult(server, name, response) {
         const result = normalizeResult(response);
-        return result.ok === true || (server.kind === 'builtin'
+        return result.ok === true || readOnlyCall(server, name) || (server.kind === 'builtin'
             && ['meituan_inspect', 'meituan_search', 'meituan_choose_store'].includes(name)
             && result.data && result.data.ok === false && typeof result.data.error === 'string');
     }
@@ -622,7 +623,7 @@
             let out, result = { status: 'error', ok: false, error: 'unknown_tool' }; const t0 = Date.now();
             if (!x) out = '［没有这个工具］';
             else {
-                try { const args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task), '连接工具服务', CONNECT_TIMEOUT); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id, x.s.kind === 'builtin' && ['meituan_inspect', 'inspect_screen', 'wait_screen'].includes(x.t.name)); task.inFlight = true; return Promise.resolve().then(() => { task.check(); task.externalCalls++; return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, settledResult(x.s, x.t.name, r)); task.inFlight = false; return r; }, e => { gate.settle(task.id, false); task.inFlight = false; throw e; }); }, '等待工具返回：' + x.t.name, TOOL_TIMEOUT)); out = result.text; }
+                try { const args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task), '连接工具服务', CONNECT_TIMEOUT); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id, readOnlyCall(x.s, x.t.name)); task.inFlight = true; return Promise.resolve().then(() => { task.check(); task.externalCalls++; return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, settledResult(x.s, x.t.name, r)); task.inFlight = false; return r; }, e => { gate.settle(task.id, readOnlyCall(x.s, x.t.name)); task.inFlight = false; throw e; }); }, '等待工具返回：' + x.t.name, TOOL_TIMEOUT)); out = result.text; }
                 catch (e) { if (e.gyMcpStopped) throw e; task.inFlight = false; result = { status: 'error', ok: false, error: 'validation_or_call_failed' }; out = '［调用失败：' + String(e && e.message || e).slice(0, 160) + '］'; try { delete CONN[x.s.id]; } catch (e2) {} }
             }
             task.check();
@@ -943,9 +944,9 @@
             + (device && device.human ? '<div><b>人工接管中</b><p>' + (device.pending || device.owner ? '仍有请求在途，请等待返回后再操作外部软件。' : '工具已暂停。请手动处理登录、验证码、支付等步骤；旧任务不会续跑。')
                 + '</p><p>不要求完成旧任务。没有请求在途并核对外部结果后，可结束接管；之后只接受新指令。</p>' + (device.blocked ? '<p>存在未确认的外部操作，请先核对结果；接管不等于撤销已发送的请求。</p>' : '') + '<p>恢复时可能打开选定的美团软件重新读屏，不会重放旧任务。</p><select data-mcp-human-package aria-label="恢复时打开的软件"><option value="">上次操作的软件 / 自动识别</option><option value="com.sankuai.meituan.takeoutnew">美团外卖</option><option value="com.sankuai.meituan">美团</option></select><br><label><input type="checkbox" data-mcp-human-confirm> 我已处理并核对外部操作结果</label><br><button class="gymcp-btn ghost" data-mcp-human-end' + (device.pending || device.owner || device.queued || TASK_RUNS.size || resumeHumanBusy ? ' disabled' : '') + '>结束接管，不续跑旧任务</button><br><button class="gymcp-btn ghost" data-mcp-human-resume>' + (resumeHumanBusy ? '正在重新读屏…' : '重新读屏并恢复工具') + '</button></div>'
                 : isApp() ? '<button class="gymcp-btn ghost" data-mcp-takeover>我要接管手机操作</button>' : '<div>手机人工接管需在 Android 版使用。</div>')
-            + '<div>仅记录工具执行状态，不代表购买或下单成功。未完成任务不会在重启后自动执行。</div>'
+            + '<div>失败记录保留当时状态，解除占用不会删除旧记录。当前是否占用以上方设备状态为准；旧任务不会自动续跑。</div>'
             + store.list().slice(0, 10).map(t => '<div class="gymcp-log"><b>' + esc(t.who) + ' · ' + esc(labels[t.state] || t.state)
-                + '</b><div>' + t.steps + ' 次调用 · ' + t.failures + ' 次失败或未确认</div><div>' + esc(t.note)
+                + '</b>' + (device && !device.blocked && !device.pending && !device.owner && !device.human && t.note.includes('外部操作结果未确认') ? '<div>当前设备空闲；此条保留当时的失败信息。</div>' : '') + '<div>' + t.steps + ' 次调用 · ' + t.failures + ' 次失败或未确认</div><div>' + esc(t.note)
                 + '</div><small>' + esc(new Date(t.updatedAt).toLocaleString()) + '</small>'
                 + (t.state === 'failed' && L.some(l => l.taskId === t.id && l.err) ? '<details><summary>查看完整失败信息</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;user-select:text">' + esc(L.filter(l => l.taskId === t.id && l.err).map(l => l.tool + '\n' + l.out).join('\n\n')) + '</pre></details>' : '')
                 + (['created', 'running', 'waiting', 'paused'].includes(t.state) ? '<button class="gymcp-btn ghost" data-mcp-cancel="' + esc(t.id) + '">取消任务</button>' : '') + '</div>').join('');

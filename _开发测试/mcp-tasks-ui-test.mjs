@@ -25,5 +25,8 @@ try {
  assert.match(await page.locator('#gyMcpTasks').innerText(),/上次工具操作结果未确认/);
  await page.getByRole('button',{name:'已核对结果，解除占用',exact:true}).click();
  assert.equal(await page.evaluate(()=>gyMcpExecution.status().blocked),false);
+ await page.evaluate(()=>{const t=gyMcpTasks.create('c','历史测试');gyMcpTasks.transition(t.id,'running');gyMcpTasks.transition(t.id,'failed','not_meituan 外部操作结果未确认，请核对后解除占用。');});
+ assert.match(await page.locator('#gyMcpTasks').innerText(),/当前设备空闲；此条保留当时的失败信息/);
+ assert.match(await page.locator('#gyMcpTasks').innerText(),/解除占用不会删除旧记录/);
  assert.deepEqual(errors,[]);console.log('PASS task panel: empty, live progress, escaped labels, cancel button, reload interruption, retained counts, no page errors');
 } finally {await browser.close();}
