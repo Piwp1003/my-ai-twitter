@@ -372,6 +372,14 @@
         return { status: failed ? 'error' : 'ok', ok: !failed, error: failed ? 'tool_error' : null, text: failed && !r.isError ? '［工具报错］' + text : text, data: data || null };
     }
     window.__gyMcpProtocol = { checkedArgs, normalizeResult };
+    // A completed built-in browsing failure is not an unknown purchase result.
+    // Never trust this classification on remote tools or cart/submit/payment tools.
+    function settledResult(server, name, response) {
+        const result = normalizeResult(response);
+        return result.ok === true || (server.kind === 'builtin'
+            && ['meituan_inspect', 'meituan_search', 'meituan_choose_store'].includes(name)
+            && result.data && result.data.ok === false && typeof result.data.error === 'string');
+    }
     function toolText(r) {
         if (!r) return '（没有内容）';
         const parts = (r.content || []).map(x => x.type === 'text' ? x.text : x.type === 'resource' ? (x.resource && (x.resource.text || x.resource.uri)) : x.type === 'image' ? '［一张图片］' : x.type === 'resource_link' ? (x.name || x.uri) : '').filter(Boolean);
@@ -575,11 +583,11 @@
             let out, result = { status: 'error', ok: false, error: 'unknown_tool' }; const t0 = Date.now();
             if (!x) out = '［没有这个工具］';
             else {
-                try { const args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task), '连接工具服务', CONNECT_TIMEOUT); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id); task.inFlight = true; return Promise.resolve().then(() => { task.check(); task.externalCalls++; return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, normalizeResult(r).ok === true); task.inFlight = false; return r; }, e => { gate.settle(task.id, false); task.inFlight = false; throw e; }); }, '等待工具返回：' + x.t.name, TOOL_TIMEOUT)); out = result.text; }
+                try { const args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task), '连接工具服务', CONNECT_TIMEOUT); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id); task.inFlight = true; return Promise.resolve().then(() => { task.check(); task.externalCalls++; return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, settledResult(x.s, x.t.name, r)); task.inFlight = false; return r; }, e => { gate.settle(task.id, false); task.inFlight = false; throw e; }); }, '等待工具返回：' + x.t.name, TOOL_TIMEOUT)); out = result.text; }
                 catch (e) { if (e.gyMcpStopped) throw e; task.inFlight = false; result = { status: 'error', ok: false, error: 'validation_or_call_failed' }; out = '［调用失败：' + String(e && e.message || e).slice(0, 160) + '］'; try { delete CONN[x.s.id]; } catch (e2) {} }
             }
             task.check();
-            if (gate.status().blocked) task.decisionFailed = true;
+            if (gate.status().blocked || result.ok !== true) task.decisionFailed = true;
             out = String(out).slice(0, 4000);
             const argsText = JSON.stringify(call.args || {}).slice(0, 300);
             const item = { id: call.id, tool: x ? (x.t.title || x.t.name) : call.fn, name: x ? x.t.name : call.fn, status: result.status, error: result.error, bad: result.ok !== true, server: x ? (x.s.name || x.s.url || x.s.command) : '', argsText, out, ms: Date.now() - t0 };
@@ -598,19 +606,19 @@
             if (!r.calls.length) break;
             task.limitReached = round + 1 >= Math.max(1, Math.min(6, Number(C.rounds) || 3));
             const outs = [];
-            for (const call of r.calls.slice(0, 5)) { outs.push({ id: call.id, out: await runCall(call) }); if (gate.status().blocked) break; }
-            if (gate.status().blocked) break;
+            for (const call of r.calls.slice(0, 5)) { outs.push({ id: call.id, out: await runCall(call) }); if (gate.status().blocked || task.decisionFailed) break; }
+            if (gate.status().blocked || task.decisionFailed) break;
             msgs.push(...r.append);
             const res = r.result(outs); if (Array.isArray(res)) msgs.push(...res); else msgs.push(res);
         }
         // 304 兜底①：这个模型 / 中转不支持「工具调用」（报错了），或者这句话明明像是要用工具却回了「无」→ 换成纯文字的问法再问一次
         if (!gate.status().blocked && !items.length && (firstErr || wantsTool(userText))) {
-            try { const calls = await task.wait(() => callApiText(api, base, tools, task.signal), '等待模型兼容模式选择工具', MODEL_TIMEOUT); task.decisionFailed = false; for (const call of calls.slice(0, 5)) { await runCall(call); if (gate.status().blocked) break; } }
+            try { const calls = await task.wait(() => callApiText(api, base, tools, task.signal), '等待模型兼容模式选择工具', MODEL_TIMEOUT); task.decisionFailed = false; for (const call of calls.slice(0, 5)) { await runCall(call); if (gate.status().blocked || task.decisionFailed) break; } }
             catch (e) { if (e.gyMcpStopped) throw e; task.decisionFailed = true; console.warn('[MCP] 换文字问法也没问成：', e, firstErr || ''); }
         }
         // 兜底②：她明明说了「锁 XX」，上面还是没锁成 → 直接照她说的锁
         try {
-            if (!gate.status().blocked && env.asked && !items.some(i => i.name === 'lock_apps' && !i.bad)) {
+            if (!gate.status().blocked && !task.decisionFailed && env.asked && !items.some(i => i.name === 'lock_apps' && !i.bad)) {
                 const lk = tools.find(t => t.s.kind === 'builtin' && t.t.name === 'lock_apps');
                 const g = lk && window.gysPh && gysPh.mcp && gysPh.mcp.guess ? gysPh.mcp.guess(userText) : null;
                 if (g && g.lock && g.apps.length) await runCall({ id: 'fb' + Date.now(), fn: lk.fn, args: { apps: g.apps, minutes: g.minutes || 30 } });
@@ -711,7 +719,7 @@
             store.transition(task.id, 'running', '正在判断并调用工具。');
             const items = await task.wait(() => executeMcp(sessionId, triggerText, task));
             if (task.decisionFailed || (items || []).some(i => i.bad))
-                store.transition(task.id, 'failed', '工具或模型请求失败，部分操作可能已执行，请核对调用记录。');
+                store.transition(task.id, 'failed', ((items || []).find(i => i.bad)?.out || '工具或模型请求失败，请核对调用记录。').slice(0, 500) + (gate.status().blocked ? ' 外部操作结果未确认，请核对后解除占用。' : ' 本轮已停止，不会自动重试。'));
             else if (task.limitReached)
                 store.transition(task.id, 'paused', '达到本轮工具次数上限，未确认目标完成；不会自动继续。');
             else store.transition(task.id, 'completed', items && items.length
@@ -859,7 +867,7 @@
         const device = window.gyMcpExecution && window.gyMcpExecution.status();
         const labels = { created: '已创建', running: '运行中', waiting: '等待中', paused: '已暂停', completed: '调用流程结束', failed: '失败', interrupted: '已中断', cancelled: '已取消', timed_out: '已超时', handed_over: '人工接管' };
         box.innerHTML = (store.storageOk() ? '' : '<div>任务记录未能保存，重新打开后可能丢失。</div>')
-            + (device ? '<div>本实例工具队列：' + device.queued + ' 个等待 · ' + device.pending + ' 个工具请求在途</div>' + (device.blocked && !device.human ? '<div>上次工具操作结果未确认，请先核对外部软件。<button class="gymcp-btn ghost" data-mcp-ack>已核对结果，解除占用</button></div>' : '') : '')
+            + (device ? '<div>设备状态：' + (device.pending || device.owner ? '正在执行' : device.human ? '人工接管' : device.blocked ? '等待核对（没有请求在途）' : '空闲') + '</div><div>本实例工具队列：' + device.queued + ' 个等待 · ' + device.pending + ' 个工具请求在途</div>' + (device.blocked && !device.human ? '<div>上次工具操作结果未确认，请先核对外部软件。<button class="gymcp-btn ghost" data-mcp-ack>已核对结果，解除占用</button></div>' : '') : '')
             + (device && device.human ? '<div><b>人工接管中</b><p>' + (device.pending || device.owner ? '仍有请求在途，请等待返回后再操作外部软件。' : '工具已暂停。请手动处理登录、验证码、支付等步骤；旧任务不会续跑。')
                 + '</p>' + (device.blocked ? '<p>存在未确认的外部操作，请先核对结果；接管不等于撤销已发送的请求。</p>' : '') + '<p>恢复时可能打开选定的美团软件重新读屏，不会重放旧任务。</p><select data-mcp-human-package aria-label="恢复时打开的软件"><option value="">上次操作的软件 / 自动识别</option><option value="com.sankuai.meituan.takeoutnew">美团外卖</option><option value="com.sankuai.meituan">美团</option></select><br><label><input type="checkbox" data-mcp-human-confirm> 我已处理并核对外部操作结果</label><br><button class="gymcp-btn ghost" data-mcp-human-resume>' + (resumeHumanBusy ? '正在重新读屏…' : '重新读屏并恢复工具') + '</button></div>'
                 : isApp() ? '<button class="gymcp-btn ghost" data-mcp-takeover>我要接管手机操作</button>' : '<div>手机人工接管需在 Android 版使用。</div>')

@@ -14,7 +14,7 @@
    ============================================================ */
 (function () {
     if (window.__gyBackupExtra) return; window.__gyBackupExtra = true;
-    const SKIP_DB = new Set(['guyuLiveMedia', 'gyCloudPre']);   // gyCloudPre：云端备份恢复前另存的那份，不往备份里套娃
+    const SKIP_DB = new Set(['guyuLiveMedia', 'gyCloudPre', 'gyLifePrivateV1']);   // 渠道授权与私有事件不得随通用备份复制到其他设备
     const MAIN_KEY = 'myTwitterAppData';
     // 白露的库名前面都加了 bailu_（js/00-bailu-shim，为了和谷雨放在同一个网址下也不打架）：备份里存去掉前缀的名字，两边都能互相导
     const PFX = (() => { try { return typeof localforage !== 'undefined' && localforage.config && localforage.config().name === 'bailu_localforage' ? 'bailu_' : ''; } catch (e) { return ''; } })();
@@ -73,7 +73,7 @@
     }
     async function restore(ex) {
         if (!ex || typeof localforage === 'undefined') return 0; let n = 0;
-        for (const name of Object.keys(ex.idb || {})) for (const st of Object.keys(ex.idb[name])) {
+        for (const name of Object.keys(ex.idb || {}).filter(name => name !== 'gyLifePrivateV1')) for (const st of Object.keys(ex.idb[name])) {
             const lf = name === 'localforage' && st === 'keyvaluepairs' ? localforage : localforage.createInstance({ name, storeName: st });
             for (const k of Object.keys(ex.idb[name][st])) { if (name === 'localforage' && k === MAIN_KEY) continue; try { await lf.setItem(k, dec(ex.idb[name][st][k])); n++; } catch (e) { console.warn('[备份补全] 写回失败', name, st, k, e); } }
         }

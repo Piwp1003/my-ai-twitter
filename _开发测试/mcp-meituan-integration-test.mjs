@@ -12,3 +12,21 @@ const items=await c.gyMcpDecide('c','搜索面条');const result=JSON.parse(item
 token=result.token;choose=true;const selected=await c.gyMcpDecide('c','进入面馆');assert.equal(JSON.parse(selected[0].out).page,'store');assert.equal(x.actions().length,4);assert.equal(c.gyMcpTasks.list()[0].state,'completed');
 assert.equal(c.gyMcpExecution.status().blocked,false);
 console.log('PASS registered MCP tools: model → validation → queue → Meituan search/store → verified structured result');
+
+// Opening Meituan then receiving an unsupported screen must stop, without a false unknown-purchase lock.
+x.change('outside');
+const originalOpen=c.gysPh.__N.openApp;
+c.gysPh.__N.openApp=()=>{originalOpen();x.change('unknown');return true;};
+choose=false;const before=model;
+const failed=await c.gyMcpDecide('c','搜索别的商家');
+assert(failed[0].out.includes('unknown_layout'));
+assert.equal(model,before+1,'do not automatically retry a terminal navigation failure');
+assert.equal(c.gyMcpTasks.list()[0].state,'failed');
+assert(c.gyMcpTasks.list()[0].note.includes('unknown_layout'));
+assert.equal(c.gyMcpExecution.status().pending,0);
+assert.equal(c.gyMcpExecution.status().owner,null);
+assert.equal(c.gyMcpExecution.status().blocked,false);
+// A new explicit request can run; the failed request itself is never replayed.
+c.gysPh.__N.openApp=originalOpen;x.change('home');model=0;
+assert.equal(JSON.parse((await c.gyMcpDecide('c','重新搜索其他面馆'))[0].out).page,'results');
+console.log('PASS opened-app/unknown-layout failure releases idle device, surfaces detail, stops retry and allows a new request');

@@ -1,0 +1,30 @@
+{
+  "round": 1,
+  "plannedRounds": 24,
+  "date": "2026-11-24",
+  "scope": "本地授权与事件元数据基础，不连接微信/QQ或支付账号，不发布 Cloud，不更换 APK",
+  "changes": [
+    "新增 gyLife：精确会话/角色授权、到期时间、独立用途、事务内事件引用去重、撤销与删除",
+    "IndexedDB 写入完成后才确认成功，不使用 localStorage 镜像兜底授权",
+    "gyLifePrivateV1 排除通用备份导出与导入；普通插件数据备份恢复保持可用",
+    "加入页面加载和离线缓存清单，并注册到现有综合检查入口"
+  ],
+  "tests": [
+    { "command": "node _开发测试/life-foundation-test.mjs", "status": "passed", "checks": 51, "environment": "Edge，真实 IndexedDB，隔离测试来源，无外部账号" },
+    { "command": "node _开发测试/boot-test.mjs", "status": "passed", "checks": 14 },
+    { "command": "node _开发测试/binding-test.mjs", "status": "passed" },
+    { "command": "node _开发测试/mcp-cache-manifest-test.mjs", "status": "passed", "entryScripts": 131 },
+    { "command": "node _开发测试/mcp-cloud-package-test.mjs", "status": "passed", "packageVersion": "1.63.319", "environment": "隔离目录，本地构建，不联网、不部署" },
+    { "command": "node _开发测试/v281-cloud-backup-test.mjs", "status": "skipped", "reason": "本地社区服务器 localhost:8799 未启动；不计作通过" },
+    { "command": "node --check js/99-life-foundation.js; node --check js/80-backup-extra.js; node --check _开发测试/mcp-final-checks.mjs; git diff --check", "status": "passed" }
+  ],
+  "notRun": [ "真实微信/QQ收发", "支付通知采集", "真实模型处理", "安卓真机存储", "云端服务与跨设备同步", "签名 APK 构建", "全量综合检查" ],
+  "limits": [
+    "第一轮仅提供受限元数据 API，没有授权管理界面或真实渠道适配器",
+    "上限为 500 条事件、100 项授权，满时拒绝新增，不自动丢弃记录",
+    "私有记录不随通用备份迁移；专用恢复方案待后续界面设计",
+    "同源应用权限契约不隔离恶意插件，网关仍需独立用户身份与权限校验",
+    "事件去重不构成外部发送、付款或下单的服务端幂等保证"
+  ],
+  "next": "第 02 轮：授权管理界面、到期提示、撤销及删除入口"
+}
