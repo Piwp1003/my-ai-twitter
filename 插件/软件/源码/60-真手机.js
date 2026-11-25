@@ -197,6 +197,12 @@ const N = (() => {
         mode: () => havePlugin() ? 'plugin' : (hasPlus() ? 'js' : 'none'),
         ok: () => havePlugin() || hasPlus(),
         plus: hasPlus,
+        checkOrderReceipt: (token, signature) => pageCall('checkOrderReceipt', ctxOf(), token, signature),
+        requestOrderResolution: (id, token, signature) => pageCall('requestOrderResolution', ctxOf(), id, token, signature),
+        requestOrderConfirmation: (token, ref, signature) => pageCall('requestOrderConfirmation', ctxOf(), token, ref, signature),
+        orderSubmitState: id => pageCall('orderSubmitState', ctxOf(), id || ''),
+        cancelOrderConfirmation: id => { const r = cP('cancelOrderConfirmation', id || ''); return r !== MISS && r === true; },
+        mcpCapabilities: () => { const r = cP('mcpCapabilities', ctxOf()); return r === MISS ? null : j(r); },
         ver: () => { const r = cP('version'); return r !== MISS ? r : ''; },
         perms: () => {
             const r = cP('perms', ctx); const o = r !== MISS ? (j(r) || {}) : JS.perms();
@@ -234,7 +240,9 @@ const N = (() => {
         inspectScreen: max => pageCall('inspectScreen', max),
         tapElement: (token, ref) => pageCall('tapElement', token, ref),
         setText: (token, ref, value) => pageCall('setText', token, ref, value),
-        scrollScreen: direction => pageCall('scrollScreen', direction)
+        scrollScreen: direction => pageCall('scrollScreen', direction),
+        scrollSnapshot: (token, direction) => pageCall('scrollSnapshot', token, direction),
+        backSnapshot: token => pageCall('backSnapshot', token)
     };
 })();
 P.__N = N;
@@ -552,6 +560,7 @@ function pageResult(r) {
     return { err: (r && (r.err || r.error)) || '页面操作没成功', error: (r && r.error) || '' };
 }
 const pageSigs = new Map();
+let latestPageToken = 0, lastPhonePackage = '';
 function pageSig(r) {
     return JSON.stringify([String(r.pkg || ''), (Array.isArray(r.nodes) ? r.nodes : []).map(n => [
         String(n.text || ''), String(n.desc || ''), String(n.id || ''), String(n.cls || ''), String(n.bounds || ''),
@@ -561,7 +570,7 @@ function pageSig(r) {
 function rememberPage(r, max) {
     const t = Number(r && r.token);
     if (!Number.isSafeInteger(t)) return;
-    pageSigs.delete(t); pageSigs.set(t, { sig: pageSig(r), max });
+    pageSigs.delete(t); pageSigs.set(t, { sig: pageSig(r), max, at: Date.now(), fingerprint: r.fingerprint, schema: r.snapshotSchema }); latestPageToken = t; if (['com.sankuai.meituan','com.sankuai.meituan.takeoutnew'].includes(r.pkg)) lastPhonePackage = r.pkg;
     while (pageSigs.size > 20) pageSigs.delete(pageSigs.keys().next().value);
 }
 function inspectPage(max) {
@@ -570,7 +579,69 @@ function inspectPage(max) {
     if (r.ok) rememberPage(r, n);
     return r;
 }
+async function prepareScreen(max, check) {
+    let prior = null, lastError = '';
+    for (let reads = 1; reads <= 8; reads++) {
+        if (typeof check === 'function') check();
+        if (reads > 1) await new Promise(resolve => setTimeout(resolve, 200));
+        if (typeof check === 'function') check();
+        const denied = pageReady(false); if (denied) return Object.assign({}, denied, { ok: false, actionAccepted: false });
+        const next = inspectPage(max);
+        if (next.ok) {
+            if (next.snapshotSchema !== 2 || !next.fingerprint) return { ok: false, error: 'invalid_snapshot', actionAccepted: false };
+            if (prior && next.pkg === prior.pkg && next.fingerprint === prior.fingerprint && pageSig(next) === pageSig(prior))
+                return Object.assign({}, next, { readStability: { reads, samples: 2 } });
+            prior = next; lastError = 'snapshot_changed';
+        } else {
+            prior = null; lastError = next.error || 'read_unavailable';
+            if (!['screen_changed', 'no_active_window', 'inspect_failed'].includes(lastError))
+                return Object.assign({}, next, { ok: false, actionAccepted: false, diagnostic: { phase: 'stabilize_read', reads, lastError } });
+        }
+    }
+    return { ok: false, error: 'screen_unstable', err: '页面持续变化，尚未执行本步操作，请核对页面后重新发起', actionAccepted: false,
+        diagnostic: { phase: 'stabilize_read', reads: 8, lastError } };
+}
+async function operatePage(action, token, ref, value, check) {
+    const guard = () => { if (typeof check === 'function') check(); };
+    const beforeFailure = (r, phase) => Object.assign({}, r, { ok: false, actionAccepted: false, diagnostic: { phase, action } });
+    guard(); const denied = pageReady(true); if (denied) return beforeFailure(denied, 'permission');
+    const cap = N.mcpCapabilities();
+    if (!cap || cap.pageSafety !== 2) return { ok: false, error: 'plugin_update_required', err: '页面操作安全协议需要新版谷雨守护，请安装新 APK；旧插件只允许读屏' };
+    if (!Number.isSafeInteger(token) || token < 1) return { ok: false, error: 'bad_snapshot', err: '请先查看页面，并传入最新快照 token' };
+    const base = pageSigs.get(token);
+    if (!base || token !== latestPageToken || Date.now() - base.at > 30000 || base.schema !== 2 || !base.fingerprint)
+        return { ok: false, error: 'stale_snapshot', err: '快照已过期或被替换，请重新查看页面' };
+    if ((action === 'tap' || action === 'text') && (!Number.isSafeInteger(ref) || ref < 0)) return { ok: false, error: 'bad_ref', err: '元素 ref 必须是非负整数' };
+    if (action === 'scroll' && value !== 1 && value !== -1) return { ok: false, error: 'bad_direction', err: '滑动方向只能是 1 或 -1' };
+    guard(); const before = inspectPage(base.max);
+    if (!before.ok) return beforeFailure(before, 'preflight_read');
+    if (before.fingerprint !== base.fingerprint || pageSig(before) !== base.sig) return beforeFailure({ error: 'screen_changed', err: '页面已经变化，请重新选择元素' }, 'preflight_changed');
+    guard(); pageSigs.clear(); latestPageToken = 0;
+    const result = pageResult(action === 'tap' ? N.tapElement(before.token, ref) : action === 'text'
+        ? N.setText(before.token, ref, String(value == null ? '' : value)) : action === 'scroll'
+        ? N.scrollSnapshot(before.token, value) : N.backSnapshot(before.token));
+    if (!result.ok) return Object.assign({}, result, ['screen_changed', 'stale_snapshot'].includes(result.error) ? { actionAccepted: false } : {}, { diagnostic: { phase: 'native_action', action } });
+    let after = null;
+    for (let i = 0; i < 8; i++) {
+        guard(); await new Promise(resolve => setTimeout(resolve, 200)); guard();
+        const permission = pageReady(false); if (permission) return { ok: false, error: 'action_unverified', err: '操作已发送，读取权限变化，结果未确认，请核对外部软件', actionAccepted: true };
+        after = inspectPage(base.max);
+        if (after.ok && after.snapshotSchema === 2 && after.fingerprint && after.fingerprint !== before.fingerprint)
+            return { ok: true, action: result.action || action, actionAccepted: true, verification: 'page_changed', note: '已观察到页面变化，不代表订单或支付成功', snapshot: after };
+        if (!after.ok && !['screen_changed', 'no_active_window', 'inspect_failed'].includes(after.error)) break;
+    }
+    return { ok: false, error: 'action_unverified', err: '操作已发送，但没有确认页面变化；不要重复点击，请核对外部软件', actionAccepted: true, snapshot: after && after.ok ? after : null,
+        diagnostic: { phase: 'post_action_read', action, lastError: after && after.error || '' } };
+}
 P.mcp = {
+    prepareScreen,
+    lastPackage() { return lastPhonePackage; },
+    invalidateSnapshots() { pageSigs.clear(); latestPageToken = 0; },
+    capabilities() {
+        const r = N.mcpCapabilities();
+        return { mode: N.mode(), version: String(N.ver() || ''), native: r,
+            featureEnabled: !!X.on('gysPhone'), readPermission: perm('read') };
+    },
     // 304：点名锁（「锁抖音 30 分钟」）。o = { apps:[名字…], minutes, all, why, cid, asked }
     // asked = 是她自己在聊天里开口让 TA 锁的 → 就算设的是「先问我」也直接锁（她已经开口了，不用再问一遍）
     async lock(o) {
@@ -653,7 +724,7 @@ P.mcp = {
         const bad = pageReady(false); if (bad) return bad;
         return inspectPage(max);
     },
-    async waitScreen(token, timeoutMs) {
+    async waitScreen(token, timeoutMs, check) {
         const bad = pageReady(false); if (bad) return bad;
         const t = Number(token);
         const base = Number.isSafeInteger(t) ? pageSigs.get(t) : null;
@@ -664,6 +735,7 @@ P.mcp = {
         do {
             const left = Math.max(30, Math.min(300, stop - Date.now()));
             await new Promise(r => setTimeout(r, left));
+            if (typeof check === 'function') check();
             const noRead = pageReady(false); if (noRead) return noRead;
             const r = inspectPage(base.max);
             if (r.ok) {
@@ -675,27 +747,10 @@ P.mcp = {
         if (transient) return transient;
         return { err: `等了 ${(wait / 1000).toFixed(1)} 秒，页面没有变化`, error: 'timeout' };
     },
-    pressBack() {
-        const bad = pageReady(true); if (bad) return bad;
-        const gate = pageResult(N.inspectScreen(1));
-        if (!gate.ok) return gate;
-        if (!N.back()) return { err: '返回没成功：页面已经不能再返回，或谷雨守护插件需要更新', error: 'action_rejected' };
-        return { ok: true, action: 'back' };
-    },
-    tapElement(token, ref) {
-        const bad = pageReady(true); if (bad) return bad;
-        return pageResult(N.tapElement(Number(token), Number(ref)));
-    },
-    setText(token, ref, value) {
-        const bad = pageReady(true); if (bad) return bad;
-        return pageResult(N.setText(Number(token), Number(ref), String(value == null ? '' : value)));
-    },
-    scrollScreen(direction) {
-        const bad = pageReady(true); if (bad) return bad;
-        const d = Number(direction);
-        if (d !== 1 && d !== -1) return { err: '滑动方向只能是 1（向下）或 -1（向上）', error: 'bad_direction' };
-        return pageResult(N.scrollScreen(d));
-    },
+    pressBack(token, check) { return operatePage('back', token, null, null, check); },
+    tapElement(token, ref, check) { return operatePage('tap', token, ref, null, check); },
+    setText(token, ref, value, check) { return operatePage('text', token, ref, value, check); },
+    scrollScreen(direction, token, check) { return operatePage('scroll', token, null, direction, check); },
     // 动作：只在「TA 直接做」时真做；「先问我」只提示需要授权，不自作主张
     async act(k, ...a) {
         if (!P.mcp.on()) return { err: '只有安卓 App 里能用' };
@@ -966,3 +1021,5 @@ X.css('gys-phone-css', `
     ['grant', 'labels', 'last'].forEach(k => { if (!D[k] || typeof D[k] !== 'object') D[k] = {}; });
 })();
 window.gysPhoneState = () => D;
+
+//# sourceURL=gyx-plugin/真手机.js

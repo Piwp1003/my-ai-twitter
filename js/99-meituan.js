@@ -124,6 +124,7 @@
         package_unknown: '无法确认活动窗口所属软件',
         blocked_app: '当前窗口受保护，请手动处理后重新发起',
         screen_changed: '读取时页面持续变化，未取得稳定快照',
+        screen_unstable: '页面持续变化，尚未执行本步操作',
         inspect_failed: '原生读屏失败，未生成可验证的页面快照',
         read_timeout: '等待活动窗口超时，未继续读取或点击',
         read_unavailable: '页面读取条件未满足，请检查真手机和读屏权限',
@@ -135,7 +136,13 @@
     function pageFailure(s, accepted, detail = {}) {
         const cause = readError(s);
         return Object.assign(failure('page_unavailable', cause + '：' + READ_ERRORS[cause], accepted),
-            { diagnostic: Object.assign({ cause }, detail) });
+            { diagnostic: Object.assign({ cause }, detail, s && s.diagnostic ? { readPhase: s.diagnostic.phase, reads: s.diagnostic.reads, lastReadError: s.diagnostic.lastError } : {}) });
+    }
+    function searchActionFailure(r, accepted, stage, ref, step) {
+        const phases = ['permission', 'preflight_read', 'preflight_changed', 'native_action', 'post_action_read'];
+        return Object.assign(failure(r && r.error || 'action_unverified', r && r.err || '本步操作未确认，请核对页面，不会重复发送', accepted),
+            { diagnostic: { stage, step, ref, actionAcceptedThisStep: typeof r?.actionAccepted === 'boolean' ? r.actionAccepted : 'unknown',
+                bridgePhase: phases.includes(r?.diagnostic?.phase) ? r.diagnostic.phase : 'unknown' } });
     }
     function foregroundSignal() {
         try {
@@ -200,7 +207,9 @@
         const query = typeof args.query === 'string' ? args.query.trim() : '';
         if (!query || query.length > 80) return failure('bad_query', '搜索词需要 1～80 个字符', false);
         guard(check); if (!ready()) return failure('permission_required', '需要新版谷雨守护，并开启真手机和页面操作权限', false);
-        let accepted = false, submitted = false, s = await phone().mcp.inspectScreen(160); guard(check);
+        const canPrepare = typeof phone().mcp.prepareScreen === 'function';
+        const readPrepared = () => canPrepare ? phone().mcp.prepareScreen(160, check) : phone().mcp.inspectScreen(160);
+        let accepted = false, submitted = false, prepared = true, s = await readPrepared(); guard(check);
         if (!s || !s.ok || s.pkg !== target) {
             // Only package names in this adapter's allowlist may be launched.
             if (!s || (!s.ok && s.error !== 'not_meituan')) return pageFailure(s, false, { stage: 'before_launch' });
@@ -215,7 +224,12 @@
                 const signal = s && s.error === 'not_meituan' ? foregroundSignal() : 'unknown'; guard(check);
                 return pageFailure(s, accepted, { stage: 'after_launch', openedPackage: pkg, foregroundSignal: signal, launchPreparation, reads: waiting.reads, elapsedMs: waiting.elapsedMs });
             }
+            if (canPrepare) {
+                s = await readPrepared(); guard(check);
+                if (!s || !s.ok) return pageFailure(s, accepted, { stage: 'before_channel' });
+            }
         }
+        if (s.pkg !== target) return failure('target_app_changed', '等待稳定时目标软件已改变，本轮停止，不切换软件', accepted);
         if (target === APP.meituan) {
             const start = classify(s);
             if (start.page === 'human_required') return failure('human_required', '请先手动处理登录、验证或交易页面', accepted);
@@ -223,33 +237,44 @@
                 if (s.truncated || start.takeout == null || start.diagnostics?.takeoutEntryCount !== 1) return routeFailure(s, accepted, 'before_channel', target);
                 const entered = await phone().mcp.tapElement(s.token, start.takeout, check); guard(check);
                 accepted = accepted || !!entered?.actionAccepted;
-                if (!entered || !entered.ok || !entered.snapshot) return failure(entered?.error || 'action_unverified', entered?.err || '进入外卖频道的结果未确认，不会重复点击', accepted);
-                s = entered.snapshot;
+                if (!entered || !entered.ok || !entered.snapshot) return searchActionFailure(entered, accepted, 'enter_channel', start.takeout, -1);
+                s = entered.snapshot; prepared = false;
                 if (!s.ok || s.pkg !== target || !Array.isArray(s.nodes)) return failure('target_app_changed', '频道导航后未取得同一软件的页面，已停止，不切换目标', accepted);
                 if (classify(s).page === 'human_required') return failure('human_required', '请手动处理当前登录、验证或交易页面', accepted);
                 if (!channelMarker(s)) return routeFailure(s, accepted, 'after_channel', target);
             }
         }
+        const sentStages = new Set();
         for (let step = 0; step < 7; step++) {
+            if (!s || !s.ok || s.pkg !== target) return failure('target_app_changed', '操作返回的页面不属于目标软件，请核对手机', accepted);
+            if (classify(s).page === 'human_required') return failure('human_required', '请先手动处理登录、验证或交易页面', accepted);
+            if (!prepared && canPrepare) { s = await readPrepared(); guard(check); }
+            prepared = true;
             guard(check); if (!s || !s.ok) return pageFailure(s, accepted, { stage: 'search' });
             if (s.pkg !== target) return failure('target_app_changed', '当前软件已改变，停止本轮搜索，不自动切换软件', accepted);
             const info = classify(s);
             if (info.page === 'human_required') return failure('human_required', '请先手动处理登录、验证或交易页面', accepted);
             if (info.page === 'results') {
-                if (!submitted) return failure('query_unverified', '当前已经是结果页，但无法确认属于本次搜索；请手动回到搜索页', false);
+                if (!submitted) return failure('query_unverified', '当前已经是结果页，但无法确认属于本次搜索；请手动回到搜索页', accepted);
                 return Object.assign(remember(s, info, query), { app, channel: 'takeout' });
             }
-            let r;
+            let r, stage, ref;
             if (info.page === 'search') {
-                if (s.nodes.find(n => n.ref === info.input).text !== query) r = await phone().mcp.setText(s.token, info.input, query, check);
-                else { r = await phone().mcp.tapElement(s.token, info.submit, check); submitted = !!(r && r.ok); }
+                const needsText = s.nodes.find(n => n.ref === info.input).text !== query;
+                stage = needsText ? 'set_query' : 'submit_query';
+                ref = needsText ? info.input : info.submit;
             } else if (info.page === 'home') {
-                const ref = info.entry != null ? info.entry : info.takeout;
-                r = await phone().mcp.tapElement(s.token, ref, check);
+                if (target === APP.meituan && !channelMarker(s)) return routeFailure(s, accepted, 'after_channel', target);
+                stage = 'open_search'; ref = info.entry != null ? info.entry : info.takeout;
             } else return layoutFailure(s, info, accepted, 'search_step_' + step);
+            if (sentStages.has(stage) || submitted || (stage === 'open_search' && sentStages.size))
+                return searchActionFailure({ error: 'action_unverified', err: '已发出的搜索步骤未取得预期页面，请核对手机', actionAccepted: false }, accepted, stage, ref, step);
+            sentStages.add(stage);
+            r = stage === 'set_query' ? await phone().mcp.setText(s.token, ref, query, check) : await phone().mcp.tapElement(s.token, ref, check);
+            if (stage === 'submit_query') submitted = !!r?.ok;
             guard(check); accepted = accepted || !!(r && r.actionAccepted);
-            if (!r || !r.ok || !r.snapshot) return failure((r && r.error) || 'action_unverified', (r && r.err) || '操作结果未确认，请核对美团，不会重复点击', accepted);
-            s = r.snapshot;
+            if (!r || !r.ok || !r.snapshot) return searchActionFailure(r, accepted, stage, ref, step);
+            s = r.snapshot; prepared = false;
         }
         return failure('step_limit', '搜索步骤已达上限，请手动检查页面', accepted);
     }

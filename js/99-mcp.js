@@ -688,7 +688,7 @@
             let summary = '';
             if (x && x.s.kind === 'builtin' && ['meituan_search', 'meituan_inspect', 'meituan_choose_store'].includes(x.t.name) && result.data?.error === 'page_unavailable') {
                 const d = result.data.diagnostic || {};
-                const causes = ['not_meituan', 'accessibility_off', 'no_active_window', 'screen_changed', 'inspect_failed', 'package_unknown', 'blocked_app', 'read_unavailable', 'read_timeout', 'invalid_snapshot'];
+                const causes = ['not_meituan', 'accessibility_off', 'no_active_window', 'screen_changed', 'screen_unstable', 'inspect_failed', 'package_unknown', 'blocked_app', 'read_unavailable', 'read_timeout', 'invalid_snapshot'];
                 const cause = causes.includes(d.cause) ? d.cause : 'unknown';
                 const stage = { after_launch: '启动后', before_launch: '启动前', inspect: '读取时', search: '搜索时' }[d.stage] || '读取时';
                 const foreground = { takeout: '美团外卖', meituan: '美团', other: '其他软件', unknown: '未知' }[d.foregroundSignal] || '未知';
