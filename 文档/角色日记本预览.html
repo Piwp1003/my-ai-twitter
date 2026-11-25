@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>谷雨 · 日记书房</title>
+<style>
+*{box-sizing:border-box}body{margin:0;color:#312b24;background:#f1eadc;font:15px/1.65 "Microsoft YaHei",sans-serif}main{max-width:1060px;margin:auto;padding:30px clamp(16px,4vw,52px) 48px}header,nav,.meta,.tools,.byline{display:flex;align-items:center;justify-content:space-between;gap:12px}header{border-bottom:1px solid #bfb3a0;padding-bottom:12px}h1,h2,h3,.cover,.page{font-family:"STSong","SimSun",serif}h1{font-size:29px;letter-spacing:.12em;margin:0}header small,.byline{color:#675e50}button,select{font:inherit;color:inherit}button{cursor:pointer}button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #ae6527;outline-offset:3px}nav{margin:18px 0;justify-content:flex-start;flex-wrap:wrap}nav button,.tools button{background:transparent;border:1px solid #bcb09b;border-radius:20px;padding:5px 14px}nav button[aria-pressed=true]{color:#fff;background:#38372e;border-color:#38372e}.book{--ink:#c9bc8e;--cloth:#32473c;display:grid;grid-template-columns:minmax(220px,.9fr) minmax(0,1.3fr);border-radius:7px 13px 13px 7px;box-shadow:0 19px 29px -17px #443521aa,0 2px 5px #58472c55;margin:18px 0 24px}.cover{position:relative;isolation:isolate;overflow:hidden;min-height:370px;text-align:center;background-color:var(--cloth);color:var(--ink);border-radius:7px 0 0 7px;background-image:repeating-linear-gradient(87deg,transparent 0 2px,#ffffff0b 3px),repeating-linear-gradient(0deg,transparent 0 3px,#00000015 4px);box-shadow:inset 9px 0 2px #0003,inset 12px 0 1px #fff2;display:grid;place-content:center;padding:30px}.cover:before{content:"";position:absolute;inset:14px 13px 14px 22px;border:1px solid currentColor;opacity:.45;pointer-events:none}.cover small{letter-spacing:.19em}.cover h2{font-size:clamp(27px,4vw,42px);letter-spacing:.13em;margin:14px 0}.mark{position:relative;margin:0 auto 18px;width:102px;height:100px}.leaf i{position:absolute;left:48%;bottom:10%;width:1px;height:89%;background:currentColor;transform:rotate(18deg)}.leaf b{position:absolute;width:24px;height:11px;background:currentColor;border-radius:0 100% 0 100%;left:calc(29% + var(--n)*3%);bottom:calc(18% + var(--n)*12%);transform:rotate(-12deg)}.leaf b:nth-child(even){left:calc(46% + var(--n)*3%);transform:scaleX(-1) rotate(15deg)}
+.page{position:relative;padding:34px clamp(22px,4vw,54px) 22px;background:linear-gradient(90deg,#bead8e66,transparent 22px),#fffaf0;border-radius:0 12px 12px 0;border-right:5px double #cdbf9f;min-width:0}.page:after{content:"";position:absolute;right:25px;top:0;width:15px;height:29px;background:var(--cloth);clip-path:polygon(0 0,100% 0,100% 100%,50% 76%,0 100%)}.meta{font:12px/1.5 monospace;letter-spacing:.08em;color:#766956;margin-right:10px}.page h3{margin:25px 0 12px;font-size:27px}.entry{font-size:17px;line-height:32px;background:repeating-linear-gradient(transparent 0 31px,#cbbfa469 31px 32px);margin:0;min-height:128px}.byline{margin-top:25px;font-size:12px}.medical{--cloth:#354f60;--ink:#e9dcc0}.medical .cover:before{border:0;border-left:3px double #dbceb5}.medical .cover h2{background:#f2e6c9;color:#304453;border-block:3px double #4e6064;padding:8px 16px;transform:rotate(-2deg)}.medical .mark{border:2px solid currentColor;border-radius:50%;width:70px;height:70px;display:grid;place-items:center;font:45px Georgia}.medical .page{background-color:#f4f6ef;background-image:linear-gradient(90deg,#889b9f55,transparent 22px),repeating-linear-gradient(90deg,transparent 0 19px,#a2b8c222 19px 20px),repeating-linear-gradient(0deg,transparent 0 19px,#a2b8c222 19px 20px)}.night{--cloth:#282b4c;--ink:#e4caaa}.night .cover{background-image:radial-gradient(ellipse at 80% 85%,#685278,transparent 60%)}.night .mark{border:1px solid currentColor;border-radius:50%;transform:rotate(-25deg);height:57px;margin-bottom:28px;display:grid;place-items:center;font-size:36px}.night .cover:before{inset:21px;border-radius:90px 90px 2px 2px;border-style:double;border-width:3px}.night .page{background-color:#f4eff6}.tools{justify-content:flex-start;flex-wrap:wrap;margin-bottom:15px}.tools button{padding:3px 13px}.tools select{padding:4px 8px;border:1px solid #bbaf98;border-radius:5px;background:#fffaf0}details{border-block:1px solid #beb29c;padding:12px 0}summary{cursor:pointer;font-weight:600}summary span{font-weight:normal;color:#6c604e;margin-left:8px}.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:7px;margin:12px 0}.choices label,.all{cursor:pointer}.all{display:block;margin-top:15px;font-weight:600}input{accent-color:#485d46}.note{color:#685e50;font-size:13px;margin:6px 0}@media(max-width:600px){main{padding-top:15px}.book{grid-template-columns:1fr}.cover{min-height:195px;border-radius:7px 7px 0 0;padding:20px}.cover h2{margin:5px}.mark{transform:scale(.64);margin:-16px auto -8px}.medical .mark,.night .mark{margin:0 auto;height:39px;width:66px;font-size:26px}.page{border-radius:0 0 8px 8px;padding:20px}.page h3{margin-top:14px}.entry{min-height:96px}}
+</style>
+<main><header><h1>日记书房</h1><small>谷雨 · 样式预览</small></header>
+<nav aria-label="选择角色"></nav>
+<article class="book"><section class="cover"><div><div class="mark" aria-hidden="true"></div><small id="series"></small><h2 id="title"></h2><span id="owner"></span></div></section>
+<section class="page"><div class="meta"><time id="date"></time> <span id="number"></span></div><h3 id="heading"></h3><p class="entry" id="entry"></p><div class="byline"><span id="signature"></span><span id="paper"></span></div></section></article>
+<div class="tools"><label>翻阅 <select id="mode"><option>角色日记</option><option>我的日记</option></select></label><button id="prev">前一页</button><button id="next">后一页</button></div>
+<details><summary>代写日记的素材范围 <span id="count"></span></summary>
+<label class="all"><input type="checkbox" id="all"> 全部项目内可授权素材</label><div class="choices"></div>
+<p class="note">预览使用虚构素材。正式接入时按当前用户可读范围取材，密钥、令牌和登录信息始终排除。</p></details></main>
+<script>
+const themes=[
+ {name:'云昭',trait:'爱采集植物，习惯夹存叶片',style:'leaf',series:'植物手记',title:'林间拾叶',paper:'棉纸 · 横线',mark:'<i></i>'+Array.from({length:6},(_,n)=>'<b style="--n:'+n+'"></b>').join('')},
+ {name:'谢医生',trait:'值完夜班，习惯把事情记得很准',style:'medical',series:'值班室藏本',title:'夜班手札',paper:'方格纸 · 布面',mark:'＋'},
+ {name:'玉卿',trait:'喜欢观星，也写短诗',style:'night',series:'观星笔记',title:'星夜来信',paper:'淡紫纸 · 烫金',mark:'✧'}
+];
+const entries=[
+ {day:'11.24',title:'车窗上的雾',text:'车开到桥边，窗上起了雾。伸手擦开一小块，刚好看见河边有人在收钓竿。'},
+ {day:'11.25',title:'雨停的那一刻',text:'傍晚的雨停得很轻。窗台上还留着一圈水印，街角那家店已经把门撑开了。我想把这一刻留下来，于是翻开了本子。'}
+];
+const groups=['角色设定与人物关系','私聊与群聊','动态、评论与论坛','信件与既有日记','记忆与世界书','小说、剧场与创作','纪念日、心情与生活记录','钱包、账目与订单','听歌、共读与观影','游戏与小手机活动','相册与文件（已授权）','插件记录与其他授权内容'];
+const el=id=>document.getElementById(id);
+let theme=0,page=1;
+function render(){
+ const t=themes[theme],e=entries[page],personal=el('mode').selectedIndex===1;
+ document.querySelector('.book').className='book '+t.style;
+ document.querySelector('.mark').innerHTML=t.mark;
+ el('series').textContent=t.series;el('title').textContent=personal?'我的日记':t.title;el('owner').textContent=personal?t.name+' 为我装帧':t.name+' 的日记本';
+ el('signature').textContent=personal?'我的手记':'执笔 / '+t.name;el('paper').textContent=t.paper;
+ el('date').textContent='2026 / '+e.day;el('heading').textContent=e.title;el('entry').textContent=e.text;el('number').textContent='0'+(page+1)+' / 02';
+ el('prev').disabled=page===0;el('next').disabled=page===1;
+ document.querySelectorAll('nav button').forEach((btn,i)=>btn.setAttribute('aria-pressed',String(i===theme)));
+}
+themes.forEach((t,i)=>{const b=document.createElement('button');b.textContent=t.name+' · '+t.series;b.title=t.trait;b.onclick=()=>{theme=i;render()};document.querySelector('nav').append(b)});
+el('prev').onclick=()=>{page--;render()};el('next').onclick=()=>{page++;render()};el('mode').onchange=render;
+const inputs=groups.map(label=>{const wrap=document.createElement('label'),box=document.createElement('input');box.type='checkbox';wrap.append(box,' '+label);document.querySelector('.choices').append(wrap);return box});
+function selection(){const n=inputs.filter(b=>b.checked).length;el('all').checked=n===inputs.length;el('all').indeterminate=n>0&&n<inputs.length;el('count').textContent=n+' / '+inputs.length+' 类'}
+inputs.forEach(b=>b.onchange=selection);el('all').onchange=()=>{inputs.forEach(b=>b.checked=el('all').checked);selection()};selection();render();
+</script></html>

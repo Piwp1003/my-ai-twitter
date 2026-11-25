@@ -1,1 +1,1 @@
-package android.app; public class Activity extends android.content.Context { public void runOnUiThread(Runnable r){} public boolean isFinishing(){return false;} }
+package android.app; public class Activity extends android.content.Context { public android.content.Intent getIntent(){return null;} public void runOnUiThread(Runnable r){} public boolean isFinishing(){return false;} }

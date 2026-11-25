@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>谷雨 · 现实账本预览</title>
+<style>
+:root {color-scheme:light;
+  --canvas:#f7f9fa;
+  --ink:#0f1419;
+  --muted:#536471;
+  --line:#d5e1e8;
+  --surface:#ffffff;
+  --tint:#eef7fe;
+  --blue:var(--gy-accent,#1d9bf0);
+  --action:#116ba5;
+  --link:#0c669f;
+  --cover-left:#154769;
+  --cover-right:#216d9f;
+  --seam:#62b9ec;
+  --light:#ffffff;
+  --pale:#daeffc;
+  --positive:#147454;
+  --warning:#865425;
+  --track:#dbe4ea;
+  --thumb:#667a89;
+  --avatar:#d6edfc;
+}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;
+  --canvas:#101820;
+  --ink:#e7e9ea;
+  --muted:#aebbc7;
+  --line:#394854;
+  --surface:#19242d;
+  --tint:#1c3142;
+  --action:#156ca4;
+  --link:#81caff;
+  --cover-left:#122f46;
+  --cover-right:#1c5176;
+  --seam:#5285a4;
+  --positive:#74d7af;
+  --warning:#f3b777;
+  --track:#344554;
+  --thumb:#afbfcc;
+  --avatar:#253e50;
+}}
+
+*{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.55 "Microsoft YaHei",sans-serif}main{max-width:1050px;margin:auto;padding:22px clamp(16px,4vw,54px) 48px}header,.line,.actions,.tabs,.row,.row label{display:flex;align-items:center;gap:12px}header,.line,.actions{justify-content:space-between}header{border-bottom:1px solid var(--line);padding-bottom:14px}header b{font: bold 20px SimSun,serif;letter-spacing:3px}header small,.muted,.sub,footer{color:var(--muted)}button,select{font:inherit;color:inherit}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-offset:3px}h1,h2,h3,p{margin:0}h1,h2,h3{font-family:"STSong","SimSun",serif}h1{font-size:clamp(30px,4vw,43px);letter-spacing:.06em;margin:22px 0 14px}.cover{border-radius:5px 12px 12px 5px;background:linear-gradient(90deg,var(--cover-left) 0 7px,var(--seam) 8px,var(--cover-left) 11px,var(--cover-right) 100%);color:var(--light);position:relative;padding:23px clamp(24px,4vw,48px);box-shadow:0 5px 10px #163e591f}.cover:after{position:absolute;content:"";inset:8px 9px 8px 17px;border:1px solid #c4e7ff66;pointer-events:none}.cover .line{align-items:baseline}.cover small{color:var(--pale)}.nums{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:14px;margin-top:13px}.nums b,.price{font-family:Georgia,"Times New Roman",serif;font-variant-numeric:tabular-nums}.nums b{display:block;font-size:clamp(24px,4vw,41px);line-height:1.18;font-weight:normal}.nums span{font-size:13px;color:var(--pale)}.layout{display:grid;grid-template-columns:minmax(0,1.62fr) minmax(230px,.83fr);gap:19px;margin-top:22px;align-items:start}.card{border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:20px}.card h2{font-size:24px}.tabs{gap:0;border-bottom:1px solid var(--line);margin-bottom:6px}.tabs button{border:0;border-bottom:3px solid transparent;background:none;padding:8px 12px;color:var(--muted)}.tabs button[aria-pressed=true]{color:var(--link);border-color:var(--blue);font-weight:bold}.row{padding:12px 0;border-bottom:1px dashed var(--line);justify-content:space-between}.row label{min-width:0;gap:8px}.sub{display:block;font-size:12px}.price{font-size:19px;white-space:nowrap}.in{color:var(--positive)}.flag{font-size:12px;font-weight:normal;color:var(--warning)}.actions{margin-top:16px;flex-wrap:wrap}.primary{border:0;border-radius:5px;background:var(--action);color:#fff;padding:8px 16px}.link{border:0;background:transparent;text-decoration:underline;text-underline-offset:3px;font-size:13px;padding:4px}.receipt{border-top:4px solid var(--blue);background:var(--tint)}.receipt h2{margin-bottom:10px}.receipt select{width:100%;padding:7px;border:1px solid var(--line);background:var(--surface);border-radius:4px}.receipt label{display:block;margin:12px 0 5px}.receipt .permission{margin:10px 0}.comment{border-left:3px solid var(--blue);padding:8px 12px;margin-top:14px;background:var(--tint)}input{accent-color:var(--action)}.notice{font-size:13px;color:var(--link);min-height:20px;margin-top:6px}footer{margin-top:16px;font-size:12px}.row small{display:block;text-align:right}.row button{color:var(--warning)}
+@media(max-width:690px){main{padding-top:14px}.layout{grid-template-columns:1fr;gap:12px}.nums{gap:8px}.card{padding:15px}.cover{padding:18px 22px}.row{gap:5px}.tabs button{padding-inline:10px}.price{font-size:18px}.cover .line{gap:4px}}
+.switchrow{display:flex!important;justify-content:space-between;align-items:center;gap:12px;font-weight:600}
+.switchrow input{appearance:none;box-sizing:border-box;width:42px;height:25px;border:2px solid var(--thumb);border-radius:30px;background:var(--track);cursor:pointer;position:relative;flex:none}
+.switchrow input:before{content:"";position:absolute;top:3px;left:3px;background:var(--thumb);width:15px;height:15px;border-radius:50%}
+.switchrow input:checked{background:var(--action);border-color:var(--action)}.switchrow input:checked:before{left:20px;background:white}
+.receipt .primary{margin:14px 0;width:100%}.receipt details{border-top:1px dashed var(--line);padding-top:12px}.receipt summary{cursor:pointer}
+dialog{width:min(398px,calc(100% - 32px));border:0;border-radius:25px;padding:22px;background:var(--surface);color:var(--ink);box-shadow:0 18px 72px #13263852}
+dialog::backdrop{background:#101e2cc4}dialog:focus{outline:0}.app-icon,.avatar{display:inline-grid;place-content:center;border-radius:12px;width:36px;height:36px;background:var(--action);color:var(--light);font:600 18px SimSun,serif}.avatar{border-radius:50%;width:30px;height:30px;background:var(--avatar);color:var(--link)}
+.handle{width:38px;height:4px;border-radius:4px;background:var(--track);margin:0 auto 18px}.amount{text-align:center;padding:18px 0}.amount b{font:46px Georgia,serif;display:block}.quote{background:var(--tint);border-radius:15px;padding:14px;margin:8px 0 19px}.quote p{margin:8px 0 0}.closebtn{border:0;background:var(--track);border-radius:50%;width:32px;height:32px;font-size:20px}
+.dlg-actions{display:flex;justify-content:flex-end;align-items:center;gap:16px}.dlg-actions button{border-radius:22px}.cleanoption{display:block;padding:9px 0}.row .savednote{font-size:12px;color:var(--link)}
+@media(max-width:600px){dialog#phone{width:100%;max-width:100%;margin:auto 0 0;border-radius:25px 25px 0 0;padding-bottom:max(24px,env(safe-area-inset-bottom))}}
+
+.receipt select,.closebtn {color:var(--ink)}
+.posted-row{position:relative}.posted-row:focus-within,.posted-row:hover{background:var(--tint)}
+.posted-row .ticket-open{display:block;margin-left:auto;color:var(--link)}
+.ticket-open::after{content:"";position:absolute;inset:0}
+#ticket{padding:0;border-radius:0;background:transparent;box-shadow:none;max-height:90vh}
+.ticket-paper{background:var(--surface);padding:25px 26px 34px;color:var(--ink);border-top:4px solid var(--blue);mask:linear-gradient(#000 0 0) top/100% calc(100% - 7px) no-repeat,conic-gradient(from -45deg at 50% 100%,#000 90deg,transparent 0) bottom/14px 8px repeat-x}
+.ticket-head{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:13px}
+.ticket-paper h2{text-align:center;font-size:28px;margin:24px 0 18px}
+.ticket-paper dl{margin:0;padding:12px 0;border-block:1px dashed var(--line)}
+.ticket-paper dl div,.ticket-total{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.ticket-paper dl div{padding:4px 0;font-size:14px}.ticket-paper dt{color:var(--muted)}.ticket-paper dd{margin:0;text-align:right}
+.ticket-total{padding:14px 0;border-bottom:3px double var(--line)}.ticket-total strong{font:32px Georgia,serif}
+#ticketNotes p{margin:16px 0 0;padding-left:10px;border-left:2px solid var(--blue);font-size:14px}
+.report-tools,.report-filters,.period-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.report-tools{justify-content:space-between;margin:0 0 12px}.report-tools button,.report-filters select,.period-nav input{background:var(--surface);color:var(--ink);font:inherit;border:1px solid var(--line);border-radius:7px;padding:5px 10px}.report-tools [aria-pressed=true]{background:var(--action);color:white}.report-info{margin-top:14px;border-top:1px solid #ffffff55;padding-top:9px}.report-details{margin-top:12px}.report-details summary{font-weight:bold;cursor:pointer}.report-filters{margin:14px 0}.report-breakdown{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px}.report-breakdown meter{display:block;width:100%;accent-color:var(--action)}.report-items{max-height:265px;overflow:auto}.report-items button{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;padding:8px 0;background:transparent;border:0;border-bottom:1px dashed var(--line);text-align:left}
+</style>
+<main><header><b>谷雨 / 账房</b><small>交互预览 · 虚构账单</small></header>
+<h1>现实账本</h1><div class="report-tools"><div id="periods"><button data-period="day">日结</button> <button data-period="month">月结</button> <button data-period="year">年结</button></div>
+<div class="period-nav"><button id="earlier" aria-label="上一期">‹</button><input id="reportDate" type="date" value="2026-11-25" aria-label="选择报表所在日期"><button id="later" aria-label="下一期">›</button></div></div>
+<section class="cover" aria-label="已入账汇总"><div class="line"><strong id="periodTitle"></strong><small id="periodCount"></small></div><div class="nums"><div><span>支出 · 退款前</span><b id="out"></b></div><div><span>收入</span><b id="income"></b></div><div><span>已退回</span><b id="refund"></b></div></div><div class="report-info" id="balance"></div></section>
+<details class="card report-details" open><summary>分类统计与本期明细</summary><div class="report-filters"><label>支付平台 <select id="platformFilter"><option>全部平台</option><option>微信支付</option><option>支付宝</option></select></label><label>分类 <select id="categoryFilter"><option>全部分类</option></select></label></div>
+<div class="report-breakdown" id="breakdown"></div><div class="report-items" id="reportItems"></div></details>
+<div class="layout"><section class="card"><div class="tabs" aria-label="账单列表"><button id="pending"></button><button id="posted"></button></div><div id="rows"></div><div class="actions"><small id="selection"></small><button class="primary" id="commit">确认入账</button></div><p class="notice" id="notice" role="status"></p></section>
+<aside class="card receipt"><h2>手机记账弹窗</h2><label class="switchrow">自动附上角色点评<input type="checkbox" id="autoNote" checked></label>
+<label for="autoRole">执笔角色</label><select id="autoRole"><option>云昭</option><option>谢医生</option></select>
+<button class="primary" id="tryPhone">预览手机弹窗</button>
+<details><summary>已入账的批注与日记授权</summary><label for="bill">选择已入账记录</label><select id="bill"></select><label for="role">邀请角色</label><select id="role"><option>云昭</option><option>谢医生</option></select>
+<label class="permission"><input id="commentOn" type="checkbox"> 允许这个角色点评这笔账</label>
+<label class="permission"><input id="diaryOn" type="checkbox"> 允许这个角色写日记时引用</label>
+<p class="comment" id="remark"></p><small id="diaryState" class="muted"></small></details></aside></div>
+<footer class="line"><span>更改仅在本页演示，刷新后重置。</span><button class="link" onclick="location.reload()">重置示例</button></footer></main>
+<dialog id="phone" aria-labelledby="phoneTitle"><div class="handle"></div><div class="line"><div class="line"><span class="app-icon">谷</span><span><b>谷雨</b><small class="sub">记账提醒 · 刚刚</small></span></div><button class="closebtn" aria-label="关闭预览" onclick="phone.close()">×</button></div>
+<div class="amount"><small id="phoneTitle">发现一笔支出</small><b>¥ 16.80</b><span>白露花店 · 微信支付</span></div>
+<section class="quote" id="phoneQuote"><div class="row" style="padding:0;border:0;justify-content:flex-start"><span class="avatar" id="initial"></span><strong id="speaker"></strong></div><p id="speech"></p></section>
+<div class="dlg-actions"><button class="link" onclick="phone.close()">稍后处理</button><button class="primary" id="phoneSave">记入账本</button></div></dialog>
+<dialog id="clean" aria-labelledby="cleanTitle"><h2 id="cleanTitle">清除待处理记录</h2><label class="cleanoption"><input type="radio" name="cleanScope" id="onlyDuplicates" checked> 仅清除重复记录 <span id="dupCount"></span></label>
+<label class="cleanoption"><input type="radio" name="cleanScope" id="allPending"> 全部待处理 <span id="allCount"></span></label>
+<p class="muted">已入账的收支和角色批注会保留。</p><div class="dlg-actions"><button class="link" onclick="clean.close()">取消</button><button class="primary" id="doClean">清除</button></div></dialog>
+<dialog id="ticket" aria-labelledby="ticketTitle"><article class="ticket-paper">
+<div class="ticket-head"><span>谷雨账房 · 记账小票</span><button type="button" class="closebtn" aria-label="关闭小票" onclick="document.getElementById('ticket').close()">×</button></div>
+<h2 id="ticketTitle"></h2><dl id="ticketFields"></dl><div class="ticket-total"><b id="ticketKind"></b><strong id="ticketAmount"></strong></div><div id="ticketNotes"></div>
+</article></dialog>
+<script>
+const bills=[
+ {id:'O1',name:'十月通勤月卡',category:'交通',platform:'支付宝',at:'2026-10-28 10:00',kind:'out',cents:6000,posted:true,notes:['通勤路上也有秋景。','把固定交通费记下来，月底更清楚。']},
+ {id:'Y1',name:'冬日书市',category:'图书',platform:'微信支付',at:'2025-12-20 15:00',kind:'out',cents:4500,posted:true,notes:['那天带回家的书，还记得吗？','翻到去年也能看到这笔。']},
+ {id:'W1',category:'餐饮',name:'街角早餐铺',platform:'微信支付',at:'2026-11-25 08:12',kind:'out',cents:1250,posted:true,notes:['刚出炉的早餐，留一点热气给早晨。','早饭有着落了，今天开了个好头。']},
+ {id:'A1',category:'稿费',name:'插画稿费',platform:'支付宝',at:'2026-11-24 16:20',kind:'income',cents:32000,posted:true,notes:['这几天画的东西，有了实在的回音。','这笔收入单独记，月底好核对。']},
+ {id:'W2',category:'图书',name:'青禾书店',platform:'微信支付',at:'2026-11-25 12:36',kind:'out',cents:3800,notes:['看来书架又要挪出一个位置了。','读久了，记得给眼睛放个小假。']},
+ {id:'A2',category:'餐饮',name:'巷口咖啡',platform:'支付宝',at:'2026-11-25 10:08',kind:'out',cents:1850,notes:['留给自己的一小段咖啡时间。','咖啡记上了，水也记得喝。']},
+ {id:'A3',category:'文具',name:'文具店 · 退款',platform:'支付宝',at:'2026-11-25 09:40',kind:'refund',cents:800,review:true,original:'A0',notes:['退回的钱也有了落款。','退款单独列，月末更清楚。']},
+ {id:'W1',category:'餐饮',name:'街角早餐铺',platform:'微信支付',at:'2026-11-25 08:12',kind:'out',cents:1250,duplicate:true},
+ {id:'A0',category:'文具',name:'文具店',platform:'支付宝',at:'2026-11-24 15:10',kind:'out',cents:800,posted:true,notes:['一笔小小的文具开销。','金额已经记下。']}
+];
+const $=id=>document.getElementById(id),money=c=>'¥'+(c/100).toFixed(2),selected=new Set(['W2','A2']),rights=new Map();
+let tab='pending';
+const example={id:'W3',category:'鲜花',name:'白露花店',platform:'微信支付',at:'2026-11-25 14:20',kind:'out',cents:1680,notes:['给平常的日子添一枝花，今天的桌面会很漂亮。','这笔花钱买的是好心情，花枝记得斜剪再插水。']};
+const actions=$('selection').parentElement,clearButton=document.createElement('button'),undo=document.createElement('button');
+clearButton.className=undo.className='link';clearButton.textContent='一键清除';undo.textContent='撤销清除';actions.prepend(clearButton,undo);
+let removed=[];
+const pendingBills=()=>bills.filter(b=>!b.posted&&!b.dismissed);
+function openPhone(){
+ const enabled=$('autoNote').checked,role=$('autoRole');
+ $('phoneQuote').hidden=!enabled;$('speaker').textContent=role.value;$('initial').textContent=role.value[0];$('speech').textContent=example.notes[role.selectedIndex];
+ $('phoneSave').disabled=bills.includes(example)&&example.posted;$('phoneSave').textContent=$('phoneSave').disabled?'已入账':'记入账本';
+ if(!bills.includes(example)){bills.unshift(example);render()}
+ $('phone').showModal();
+}
+$('autoNote').onchange=()=>{$('autoRole').disabled=!$('autoNote').checked};
+$('tryPhone').onclick=openPhone;
+$('phoneSave').onclick=()=>{
+ example.posted=true;example.dismissed=false;selected.delete(example.id);
+ if($('autoNote').checked) {example.noteRole=$('autoRole').value;rights.set(example.id+'|'+example.noteRole,{comment:true,diary:false})}
+ $('phone').close();tab='posted';render();$('bill').value=example.id;$('role').value=$('autoRole').value;showRoles();$('notice').textContent='花店支出已记入示例账本。';
+};
+clearButton.onclick=()=>{const rows=pendingBills(),n=rows.filter(b=>b.duplicate).length;$('dupCount').textContent='（'+n+' 笔）';$('allCount').textContent='（'+rows.length+' 笔）';$('onlyDuplicates').disabled=!n;$('onlyDuplicates').checked=!!n;$('allPending').checked=!n;$('clean').showModal()};
+$('doClean').onclick=()=>{removed=pendingBills().filter(b=>$('allPending').checked||b.duplicate).map(b=>({b,checked:!b.duplicate&&selected.has(b.id)}));for(const {b} of removed){b.dismissed=true;if(!b.duplicate)selected.delete(b.id)}$('clean').close();$('notice').textContent='已清除 '+removed.length+' 笔待处理记录。';render()};
+undo.onclick=()=>{for(const {b,checked} of removed){b.dismissed=false;if(checked&&!b.posted)selected.add(b.id)}removed=[];$('notice').textContent='已撤销清除。';render()};
+function line(tag,text,cls=''){const e=document.createElement(tag);e.textContent=text;e.className=cls;return e}
+function openTicket(b){
+ const fields=[['账本编号',b.id],['交易时间',b.at],['支付平台',b.platform]];
+ if(b.original){
+  const original=bills.find(item=>item.id===b.original&&item.posted);
+  fields.push(['关联原交易',original?original.name+' · '+original.id:b.original]);
+ }
+ $('ticketTitle').textContent=b.name;
+ $('ticketFields').replaceChildren(...fields.map(([label,value])=>{
+  const pair=document.createElement('div');pair.append(line('dt',label),line('dd',value));return pair;
+ }));
+ $('ticketKind').textContent={out:'支出合计',income:'收入合计',refund:'退款合计'}[b.kind];
+ $('ticketAmount').textContent=(b.kind==='out'?'−':'+')+money(b.cents);
+ $('ticketAmount').classList.toggle('in',b.kind!=='out');
+ const notes=$('ticketNotes');notes.replaceChildren();
+ for(const role of $('role').options){
+  if(rights.get(b.id+'|'+role.value)?.comment)notes.append(line('p',role.value+'：'+b.notes[role.index]));
+ }
+ $('ticket').showModal();
+}
+function showRoles(){
+ const bill=bills.find(b=>b.posted&&b.id===$('bill').value),key=bill.id+'|'+$('role').value;
+ const state=rights.get(key)||{comment:false,diary:false};
+ $('commentOn').checked=state.comment;$('diaryOn').checked=state.diary;
+ $('remark').textContent=state.comment?bill.notes[$('role').selectedIndex]:'勾选点评后，这里会显示所选角色的示例批注。';
+ $('diaryState').textContent=state.diary?'这笔账可作为该角色的日记素材。':'这笔账未授权写入日记。';
+}
+let period='month';
+const periodNames={day:'日',month:'月',year:'年'};
+const dateKey=(value)=>value.slice(0,{day:10,month:7,year:4}[period]);
+function shiftPeriod(date,step){
+ const d=new Date(date+'T12:00:00Z');
+ if(period==='day')d.setUTCDate(d.getUTCDate()+step);
+ if(period==='month'){d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+step)}
+ if(period==='year'){d.setUTCMonth(0,1);d.setUTCFullYear(d.getUTCFullYear()+step)}
+ return d.toISOString().slice(0,10);
+}
+function report(){
+ const date=$('reportDate').value;
+ if(!date)return;
+ const current=dateKey(date),prior=dateKey(shiftPeriod(date,-1));
+ const platform=$('platformFilter').value,category=$('categoryFilter').value;
+ const relevant=bills.filter(b=>b.posted&&(platform==='全部平台'||b.platform===platform)&&(category==='全部分类'||b.category===category));
+ const rows=relevant.filter(b=>dateKey(b.at)===current).sort((a,b)=>b.at.localeCompare(a.at));
+ const previous=relevant.filter(b=>dateKey(b.at)===prior);
+ const sum=(records,kind)=>records.reduce((n,b)=>n+(b.kind===kind?b.cents:0),0);
+ const spend=sum(rows,'out'),inc=sum(rows,'income'),refund=sum(rows,'refund');
+ for(const [k,v] of Object.entries({out:spend,income:inc,refund}))$(k).textContent=money(v);
+ $('periodTitle').textContent=current+' · '+periodNames[period]+'结';$('periodCount').textContent=rows.length+' 笔已入账';
+ const diff=spend-sum(previous,'out');
+ const comparison=previous.length?'较上'+periodNames[period]+'支出'+(diff===0?'持平':(diff>0?'增加 ':'减少 ')+money(Math.abs(diff))):'上'+periodNames[period]+'无匹配记录';
+ $('balance').textContent='本期结余 '+money(inc+refund-spend)+'　·　'+comparison;
+ document.querySelectorAll('[data-period]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.period===period)));
+ const categories=new Map();
+ rows.filter(b=>b.kind==='out').forEach(b=>categories.set(b.category,(categories.get(b.category)||0)+b.cents));
+ $('breakdown').replaceChildren();
+ for(const [name,value] of [...categories].sort((a,b)=>b[1]-a[1])){
+  const item=line('div',name+' · '+money(value)+' ('+Math.round(value/spend*100)+'%)','sub');
+  const bar=document.createElement('meter');bar.max=spend;bar.value=value;bar.setAttribute('aria-label',name+'支出占比');item.append(bar);$('breakdown').append(item);
+ }
+ $('reportItems').replaceChildren();
+ if(!rows.length)$('reportItems').append(line('p','本期没有符合条件的已入账记录。','muted'));
+ for(const b of rows){
+  const btn=line('button','');btn.append(line('span',b.name+' · '+b.at.slice(5,10)),line('span',({out:'支出',income:'收入',refund:'退回'})[b.kind]+' '+money(b.cents)+' ›'));
+  btn.onclick=()=>openTicket(b);$('reportItems').append(btn);
+ }
+}
+for(const c of new Set([...bills,example].map(b=>b.category)))$('categoryFilter').add(new Option(c,c));
+document.querySelectorAll('[data-period]').forEach(b=>b.onclick=()=>{period=b.dataset.period;report()});
+for(const [id,step] of [['earlier',-1],['later',1]])$(id).onclick=()=>{if($('reportDate').value){$('reportDate').value=shiftPeriod($('reportDate').value,step);report()}};
+for(const id of ['reportDate','categoryFilter','platformFilter'])$(id).onchange=()=>{if(!$('reportDate').value)$('reportDate').value='2026-11-25';report()};
+function totals(){
+ const chosen=bills.filter(b=>b.posted);
+ report();
+ const previous=$('bill').value;$('bill').replaceChildren(...chosen.map(b=>new Option(b.name+' · '+money(b.cents),b.id)));
+ if(chosen.some(b=>b.id===previous))$('bill').value=previous;
+ showRoles();
+}
+function controls(){
+ clearButton.hidden=tab!=='pending'||!pendingBills().length;undo.hidden=tab!=='pending'||!removed.length;
+ $('selection').textContent=tab==='pending'?'已选 '+selected.size+' 笔':'合计 '+bills.filter(b=>b.posted).length+' 笔';
+ $('commit').hidden=tab!=='pending';$('commit').disabled=!selected.size;
+}
+function render(){
+ totals();controls();
+ for(const k of ['pending','posted']){
+  const n=k==='pending'?pendingBills().length:bills.filter(b=>b.posted).length;
+  $(k).textContent=(k==='pending'?'待处理':'已入账')+' ('+n+')';$(k).setAttribute('aria-pressed',String(k===tab));
+ }
+ const list=$('rows');list.replaceChildren();
+ for(const b of tab==='pending'?pendingBills():bills.filter(b=>b.posted)){
+  const row=line('div','','row'),left=line('label',''),desc=line('span',''),right=line('div','');
+  if(tab==='pending'){const box=document.createElement('input');box.type='checkbox';box.disabled=!!(b.review||b.duplicate);box.checked=!box.disabled&&selected.has(b.id);box.onchange=()=>{if(box.checked)selected.add(b.id);else selected.delete(b.id);controls()};left.append(box)}
+  desc.append(line('b',b.name),line('span',b.platform+' · '+b.at,'sub'));left.append(desc);
+  if(b.noteRole && rights.get(b.id+'|'+b.noteRole)?.comment)desc.append(line('span',b.noteRole+'：'+b.notes[b.noteRole==='云昭'?0:1],'sub savednote'));
+  right.append(line('span',(b.kind==='out'?'−':'+')+money(b.cents),'price '+(b.kind==='out'?'':'in')));
+  if(b.posted){
+   row.classList.add('posted-row');
+   const open=line('button','查看小票 ›','link ticket-open');
+   open.setAttribute('aria-label','查看'+b.name+'的小票');open.onclick=()=>openTicket(b);right.append(open);
+  }
+  if(b.duplicate){right.append(line('small','重复 · 已跳过','flag'))}
+  if(b.review){const review=line('button','核对退款','link');review.onclick=()=>{
+   const original=bills.find(x=>x.posted&&x.id===b.original);
+   if(confirm('原交易：'+original.name+' '+money(original.cents)+'（'+original.at+'）。本次退回 '+money(b.cents)+'。确认关联这笔原交易？')){
+    b.review=false;selected.add(b.id);$('notice').textContent='退款已关联原交易，确认入账后计入「已退回」。';render()}
+  };right.append(document.createElement('br'),review)}
+  row.append(left,right);list.append(row);
+ }
+}
+for(const k of ['pending','posted'])$(k).onclick=()=>{tab=k;$('notice').textContent='';render()};
+$('commit').onclick=()=>{const n=selected.size;for(const b of bills)if(!b.duplicate&&!b.review&&selected.has(b.id))b.posted=true;selected.clear();$('notice').textContent='已将 '+n+' 笔加入本页示例账本。';render()};
+for(const k of ['bill','role'])$(k).onchange=showRoles;
+for(const k of ['commentOn','diaryOn'])$(k).onchange=()=>{rights.set($('bill').value+'|'+$('role').value,{comment:$('commentOn').checked,diary:$('diaryOn').checked});render()};
+render();
+</script></html>

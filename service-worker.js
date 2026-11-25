@@ -151,6 +151,7 @@ const CORE_ASSETS = [
     './js/99-life-foundation.js?v=' + V,
     './js/99-channel-reply.js?v=' + V,
     './js/99-life-consent-ui.js?v=' + V,
+    './js/99-bill-preview.js?v=' + V,
     './js/99-mcp-tasks.js?v=' + V,
     './js/99-mcp-execution.js?v=' + V,
     './js/99-meituan.js?v=' + V,

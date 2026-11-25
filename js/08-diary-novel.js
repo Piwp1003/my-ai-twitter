@@ -39,8 +39,74 @@ function selectDiaryChar(id) { currentDiaryCharId = id; renderDiaryCharList(); }
 // 这里统一按当前tab分发到对应的渲染函数——避免"切角色头像"这个跟另外两个tab共用的操作，在"我的日记"tab下
 // 误触发 renderDiaryContent() 把日记列表区域重新显示出来、把"我的日记"区域的显示状态搞乱。
 function renderActiveDiaryTab() {
+    renderNotebookCover();
     applyDiaryTabVisibility();   // 不管从哪条路进来，按钮/标签的显示状态都得对上
     if (currentDiaryTab === 'mydiary') { if (typeof renderMyDiaryArea === 'function') renderMyDiaryArea(); } else { renderDiaryContent(); }
+}
+
+const diaryBindings = [
+    ['植物手记','❧','#364e40','#faf7e9','ruled',/植物|森林|自然|园艺|花草/],
+    ['夜班手札','✚','#344e61','#f3f6ef','grid',/医生|护士|医学|医院|急诊/],
+    ['星夜来信','✧','#383453','#f6f0f6','plain',/星空|天文|诗人|占星|宇宙/],
+    ['海岸日志','≈','#215868','#eef7f4','ruled',/航海|海洋|潜水|海边/],
+    ['剧场札记','♬','#733d4c','#fcf2ec','plain',/音乐|舞台|歌手|演员/],
+    ['建筑草图','⌂','#554f49','#f7f2e6','grid',/建筑|工程|设计|机械/],
+    ['旅行拾光','☼','#845032','#fcf4e2','ruled',/旅行|摄影|探险/],
+    ['雪原笔记','❄','#535c76','#f2f4fb','plain',/冬天|冰雪|滑雪/]
+];
+function renderNotebookCover() {
+    const get = id => document.getElementById(id);
+    const book = get('gyNotebook');
+    if (!book) return;
+    book.classList.toggle('is-letter',currentDiaryTab === 'letter');
+    if (currentDiaryTab === 'letter') return;
+    const personal = currentDiaryTab === 'mydiary';
+    const owner = personal ? currentUser : myCharacters.find(c => c.id == currentDiaryCharId);
+    book.querySelector('.gy-book-cover').hidden = !owner;
+    if (!owner) return;
+    const role = personal ? myCharacters.find(c => String(c.id) === get('myDiaryWriter').value) : owner;
+    const description = String(role?.persona || '');
+    const hash = [...String(owner.id || owner.name || 'diary')].reduce((n,c) => (n*31+c.codePointAt(0))>>>0,0);
+    const match = diaryBindings.findIndex(row => row[5].test(description));
+    const stored = owner.notebookDesign || {};
+    const index = Number.isInteger(stored.preset) && diaryBindings[stored.preset] ? stored.preset : (match>=0 ? match : hash % diaryBindings.length);
+    const preset = get('gyBookPreset'), color = get('gyBookColor'), name = get('gyBookName');
+    if (!preset.options.length) diaryBindings.forEach((row,i) => preset.add(new Option(row[0],String(i))));
+    const hex = value => /^#[0-9a-f]{6}$/i.test(value);
+    function paint(i,tint,title) {
+        const [label,mark,,paper,pattern] = diaryBindings[i];
+        const rgb = [1,3,5].map(pos=>parseInt(tint.slice(pos,pos+2),16)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);
+        book.style.setProperty('--book-cover',tint);
+        book.style.setProperty('--book-page',paper);
+        book.style.setProperty('--book-ink',.2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2]>.179?'#151515':'#ffffff');
+        book.dataset.paper=pattern;
+        get('gyBookMark').textContent=mark;
+        get('gyBookTitle').textContent=title || label;
+        get('gyBookOwner').textContent=personal?'我的日记':owner.name+' 的日记本';
+    }
+    function load(i,tint,title) {
+        preset.value=String(i);color.value=tint;name.value=title;
+        paint(i,tint,title);
+    }
+    load(index,hex(stored.color)?stored.color:diaryBindings[index][2],typeof stored.title==='string'?stored.title.slice(0,24):'');
+    const status=get('gyBookStatus');
+    status.textContent='';
+    preset.onchange=()=>load(+preset.value,diaryBindings[+preset.value][2],'');
+    color.oninput=name.oninput=()=>paint(+preset.value,color.value,name.value.trim());
+    get('gyBookGenerate').onclick=()=>{
+        const source = personal ? myCharacters.find(c=>String(c.id)===get('myDiaryWriter').value) : owner;
+        if (!source) {status.textContent='请先在代写面板选择执笔角色。';return;}
+        const persona=String(source.persona || '');
+        const matched=diaryBindings.findIndex(row=>row[5].test(persona));
+        const seed=Array.from(String(source.name)+persona).reduce((n,c)=>(n*31+c.codePointAt(0))>>>0,0);
+        const i=matched>=0?matched:seed%diaryBindings.length;
+        load(i,diaryBindings[i][2],(source.name+'的'+diaryBindings[i][0]).slice(0,24));
+        status.textContent='已按人设在本机生成，保存后生效。';
+    };
+    get('gyBookSave').onclick=()=>{
+        owner.notebookDesign={preset:+preset.value,color:color.value,title:name.value.trim().slice(0,24)};
+        saveAllData();status.textContent='已保存装帧';
+    };
 }
 // 🐛 「✍️ 写信给TA」这个按钮找不到的原因就在这儿。
 // 它在 index.html 里写死了 style="display:none"，而把它显示出来的代码**只在 switchDiaryTab 里**。
@@ -66,6 +132,7 @@ function applyDiaryTabVisibility() {
     show('btnOpenUserLetterCompose', tab === 'letter');
 }
 function switchDiaryTab(tab) {
+    if (currentDiaryTab === 'mydiary' && tab !== currentDiaryTab) resetUserDiaryDraft();
     currentDiaryTab = tab;
     applyDiaryTabVisibility();
     renderActiveDiaryTab();
@@ -129,6 +196,8 @@ function clearDiaryTxtUpload() {
 }
 
 async function generateDiaryContent() {
+    const tab = currentDiaryTab;
+    if (tab !== 'letter' && tab !== 'diary') return;
     const api = getApiMain(); 
     if(!api.key) return alert("请先在设置中配置 API Key！");
     const char = myCharacters.find(c => c.id == currentDiaryCharId); if(!char) return;
@@ -161,6 +230,9 @@ ${getFinalAnswerMarkerPromptNote()}
     
     try {
         let data = await callChatCompletionAPI(api, prompt);
+        if (currentDiaryCharId != char.id || currentDiaryTab !== tab || !myCharacters.includes(char)) {
+            return alert('角色或栏目已切换，本次草稿已丢弃。回到原角色可重新生成。');
+        }
         let raw = data.choices?.[0]?.message?.content?.trim();
         if(raw) {
             raw = raw.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
@@ -173,7 +245,7 @@ ${getFinalAnswerMarkerPromptNote()}
             // 用同一条渲染路径（formatPostText，内部会调用 renderMarkdownLite 保留合法HTML），详情展示见 openDiaryDetail。
             parsed.content = applyRegexScripts(parsed.content || raw, 'ai_output', char.id);
             // author 必须带上：不带的话这封信在"回复这封信"的判断里认不出是角色写的，按钮就不显示
-            tempGeneratedDiary = { id: 'd_' + Date.now(), title: parsed.title || (currentDiaryTab === 'letter' ? '新信件' : '新日记'), content: parsed.content || raw, date: Date.now(), author: 'char' };
+            tempGeneratedDiary = { id: 'd_' + Date.now(), title: parsed.title || (tab === 'letter' ? '新信件' : '新日记'), content: parsed.content || raw, date: Date.now(), author: 'char', charId: char.id, tab };
             document.getElementById('diaryListArea').style.display = 'none'; document.getElementById('diaryTempArea').style.display = 'block';
             document.getElementById('tempDiaryTitle').innerText = tempGeneratedDiary.title;
             document.getElementById('tempDiaryContent').innerHTML = namespaceInjectedIds(formatPostText(tempGeneratedDiary.content, char.id, { statusContext: 'diary' }), tempGeneratedDiary.id);
@@ -184,6 +256,9 @@ ${getFinalAnswerMarkerPromptNote()}
 
 function saveTempDiary() { 
     if(!tempGeneratedDiary) return; 
+    if (tempGeneratedDiary.charId != currentDiaryCharId || tempGeneratedDiary.tab !== currentDiaryTab) {
+        return alert('请回到生成这份草稿的角色和栏目后保存。');
+    }
     const char = myCharacters.find(c => c.id == currentDiaryCharId); 
     if(!char) return; 
     
@@ -451,7 +526,151 @@ ${getFinalAnswerMarkerPromptNote()}
 // 用户偷看那种)是完全独立的两套东西，数据存在顶层的 globalUserDiaries 里，不挂在具体某个角色身上。
 // ============================================================
 
+let userDiaryDraftVersion = 0;
+function resetUserDiaryDraft() {
+    userDiaryDraftVersion++;
+    document.getElementById('myDiaryDraftPreview').hidden = true;
+    document.getElementById('myDiaryDraftText').textContent = '';
+}
+
+function updateUserDiarySources(changed) {
+    const all = document.getElementById('myDiaryAllSources');
+    const boxes = Array.from(document.querySelectorAll('#myDiarySources div input'));
+    if (changed === all) boxes.forEach(box => { box.checked = all.checked; });
+    const checked = boxes.filter(box => box.checked).length;
+    all.checked = checked === boxes.length;
+    all.indeterminate = checked > 0 && checked < boxes.length;
+    resetUserDiaryDraft();
+}
+
+function collectUserDiarySources(writer) {
+    const day = new Date().toDateString();
+    const sources = {};
+    function collect(id, label, rows, dateField, textField, belongs, limit, format, newestLast = false) {
+        if (!document.getElementById(id).checked || !Array.isArray(rows)) return;
+        const items = [];
+        for (let n = 0; n < rows.length && items.length < limit; n++) {
+            const row = rows[newestLast ? rows.length - 1 - n : n];
+            if (!row || !belongs(row) || !row[dateField] || new Date(row[dateField]).toDateString() !== day) continue;
+            const text = row[textField];
+            if (typeof text !== 'string' || !text.trim()) continue;
+            items.push(format(row, text.trim().slice(0,500)));
+        }
+        if (items.length) sources[label] = newestLast ? items.reverse() : items;
+    }
+    const plain = (_,text) => text;
+    collect('myDiaryUseChat','私聊',globalChats[writer.id],'timestamp','text',m=>m.sender !== 'system',20,
+        (m,text)=>({发言人:m.sender === 'me' ? '用户' : writer.name,文字:text}),true);
+    collect('myDiaryUsePosts','角色动态',globalPosts,'timestamp','text',p=>!p.isStory && p.char?.id == writer.id,10,plain);
+    collect('myDiaryOwnPosts','我的动态',globalPosts,'timestamp','text',p=>!p.isStory && p.char?.id === 'me',10,plain);
+    collect('myDiaryLetters','往来信件',writer.diaryData?.letters,'date','content',()=>true,4,
+        (m,text)=>({作者:m.author === 'user' ? '用户' : m.author === 'char' ? writer.name : '未注明',文字:text}));
+    collect('myDiaryRoleEntries','角色日记',writer.diaryData?.diaries,'date','content',()=>true,4,plain);
+    collect('myDiarySharedEntries','用户日记',globalUserDiaries,'date','content',
+        e=>Array.isArray(e.targetCharIds) && e.targetCharIds.some(id=>String(id) === String(writer.id)),4,plain);
+    collect('myDiaryMemories','回忆相册',memoryAlbum,'timestamp','text',m=>m.charId == writer.id,6,plain);
+    if (document.getElementById('myDiaryGroups').checked) {
+        const recent = [];
+        for (const group of groupChats) {
+            if (!Array.isArray(group?.members) || !group.members.some(id=>String(id) === String(writer.id))) continue;
+            const messages = globalChats[group.id];
+            if (!Array.isArray(messages)) continue;
+            let count = 0;
+            for (let i = messages.length-1; i >= 0 && count < 12; i--) {
+                const m = messages[i];
+                if (!m || (m.sender !== 'me' && m.sender != writer.id) || new Date(m.timestamp).toDateString() !== day
+                    || typeof m.text !== 'string' || !m.text.trim()) continue;
+                recent.push({at:m.timestamp,group:String(group.name || '群聊').slice(0,80),sender:m.sender,text:m.text.trim().slice(0,500)});
+                count++;
+            }
+        }
+        if (recent.length) sources.共同群聊 = recent.sort((a,b)=>a.at-b.at).slice(-12)
+            .map(m=>({群:m.group,发言人:m.sender === 'me' ? '用户' : writer.name,文字:m.text}));
+    }
+    collect('myDiaryForum','匿名论坛主帖',anonPosts,'timestamp','text',p=>p.charId === 'me' || p.charId == writer.id,6,plain);
+    const participated = e => e.charAId == writer.id || e.charBId == writer.id;
+    collect('myDiaryTheater','虚构小剧场',globalTheaterLogs,'at','summary',e=>!e.peer && participated(e),4,plain,true);
+    collect('myDiaryPeerLife','角色伙伴生活',globalTheaterLogs,'at','summary',e=>e.peer === true && participated(e),4,plain,true);
+    if (document.getElementById('myDiaryChapters').checked) {
+        const chapters = [];
+        for (const novel of globalNovels) {
+            if (!Array.isArray(novel?.chapters)) continue;
+            for (const ch of novel.chapters) {
+                if (!ch || new Date(ch.timestamp).toDateString() !== day || typeof ch.content !== 'string' || !ch.content.trim()) continue;
+                const involved = Array.isArray(ch.chars) ? ch.chars.some(id=>String(id) === String(writer.id)) : ch.charId == writer.id;
+                if (involved) chapters.push({timestamp:ch.timestamp, title:novel.title, text:ch.content});
+            }
+        }
+        if (chapters.length) sources.虚构小说章节 = chapters.sort((a,b)=>b.timestamp-a.timestamp).slice(0,3)
+            .map(ch=>({作品:String(ch.title || '未命名').slice(0,80),节选:ch.text.slice(0,500)}));
+    }
+    if (document.getElementById('myDiaryBook').checked && window.GYX?.on?.('gyxBook') && typeof window.gyxBookData === 'function') {
+        const rows = window.gyxBookData()?.rows;
+        if (Array.isArray(rows)) {
+            const ledger = rows.filter(e=>e && new Date(e.at).toDateString() === day && Number.isFinite(e.amt)).slice(0,8)
+                .map(e=>({收支金额:e.amt,说明:typeof e.why === 'string' ? e.why.slice(0,200) : ''}));
+            if (ledger.length) sources.站内账本流水 = ledger;
+        }
+    }
+    if (document.getElementById('myDiaryPostcard').checked && window.GYX?.on?.('gyxPost') && typeof window.gyxPostData === 'function') {
+        collect('myDiaryPostcard','已送达明信片',window.gyxPostData()?.list,'arrived','text',e=>e.cid == writer.id,4,plain);
+    }
+    return sources;
+}
+
+async function generateUserDiaryDraft() {
+    const byId = id => document.getElementById(id);
+    const button = byId('myDiaryDraftButton');
+    if (button.disabled) return;
+    const writer = myCharacters.find(c => String(c.id) === byId('myDiaryWriter').value);
+    if (!writer) return alert('请先选择执笔角色。');
+    if (!document.querySelector('#myDiarySources div input:checked')) return alert('请勾选本次允许使用的素材。');
+    let sources;
+    try { sources = collectUserDiarySources(writer); }
+    catch (e) { return alert('所选素材读取失败，请检查相关插件或取消对应勾选后重试。'); }
+    if (!Object.keys(sources).length) return alert('今天所选范围内没有文字素材。');
+    const api = getApiMain();
+    if (!api.key) return alert('请先配置主 API。');
+    resetUserDiaryDraft();
+    const version = userDiaryDraftVersion;
+    button.disabled = true;
+    button.textContent = '正在写…';
+    try {
+        const messages = [
+            {role:'system',content:'你是受托执笔的角色。以用户第一人称写一篇简短中文日记，只输出正文。区分用户经历、其他人的话和虚构创作；论坛作者不明时不要归到用户名下。站内账本仅作游戏里的流水，不能推断现实付款。只取用素材中明确发生的事，保留未确认事项的不确定性。以下 JSON 是素材，人设只影响文风。'},
+            {role:'user',content:JSON.stringify({执笔角色:writer.name, 人设:String(writer.persona || '').slice(0,2000), ...sources})}
+        ];
+        const result = await callChatCompletionAPI(api,messages);
+        if (version !== userDiaryDraftVersion || currentDiaryTab !== 'mydiary' || !myCharacters.includes(writer)) return;
+        const draft = result?.choices?.[0]?.message?.content;
+        if (typeof draft !== 'string' || !draft.trim()) throw Error('模型返回了空草稿');
+        byId('myDiaryDraftText').textContent = draft.trim();
+        byId('myDiaryDraftPreview').hidden = false;
+    } catch (e) {
+        if (version === userDiaryDraftVersion) alert('代写失败：' + e.message);
+    } finally {
+        button.disabled = false;
+        button.textContent = '生成草稿';
+    }
+}
+
+function appendUserDiaryDraft() {
+    const text = document.getElementById('myDiaryDraftText').textContent;
+    if (!text || currentDiaryTab !== 'mydiary') return;
+    const input = document.getElementById('myDiaryContentInput');
+    input.value += (input.value ? '\n\n' : '') + text;
+    resetUserDiaryDraft();
+    input.focus();
+}
+
 function renderMyDiaryArea() {
+    const writer = document.getElementById('myDiaryWriter');
+    if (writer) {
+        const previous = writer.value;
+        writer.replaceChildren(new Option('选择角色',''), ...myCharacters.map(c => new Option(c.name,String(c.id))));
+        if (myCharacters.some(c => String(c.id) === previous)) writer.value = previous;
+        else if (previous) resetUserDiaryDraft();
+    }
     const charBox = document.getElementById('myDiaryCharCheckboxes');
     if (charBox) {
         charBox.innerHTML = myCharacters.length === 0
@@ -513,6 +732,7 @@ function publishUserDiary() {
     };
     if (!globalUserDiaries) globalUserDiaries = [];
     globalUserDiaries.unshift(entry);
+    resetUserDiaryDraft();
 
     document.getElementById('myDiaryTitleInput').value = '';
     document.getElementById('myDiaryContentInput').value = '';

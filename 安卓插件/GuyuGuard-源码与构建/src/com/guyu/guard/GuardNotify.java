@@ -12,6 +12,15 @@ public class GuardNotify extends NotificationListenerService {
     @Override public void onNotificationPosted(StatusBarNotification s) {
         try {
             if (s == null || s.isOngoing()) return; String pkg = s.getPackageName();
+            if (BillReminder.supported(pkg)) {
+                android.os.Bundle extras=s.getNotification().extras;
+                String title=extras==null?"":String.valueOf(extras.getCharSequence("android.title"));
+                if ("com.eg.android.AlipayGphone".equals(pkg)||"微信支付".equals(title)) {
+                    if(extras!=null && BillReminder.enabled(this))
+                        BillReminder.receive(this,pkg,title,String.valueOf(extras.getCharSequence("android.text")),s.getPostTime());
+                    return;
+                }
+            }
             if (pkg == null || pkg.equals(Guard.self) || Guard.isNever(pkg) || "android".equals(pkg) || "com.android.systemui".equals(pkg)) return;
             android.os.Bundle ex = s.getNotification().extras; if (ex == null) return;
             CharSequence t = ex.getCharSequence("android.title"), x = ex.getCharSequence("android.text");
