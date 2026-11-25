@@ -185,7 +185,7 @@
     };
     const meituanTool = (name, args, env) => {
         if (!window.gyMeituan) throw new Error('美团适配模块未加载，请更新谷雨');
-        return window.gyMeituan[name](args, env.check);
+        return window.gyMeituan[name](args, env.check, env.progress);
     };
     const cartTool = (name, args, env) => {
         if (!window.gyMeituanCart) throw new Error('美团购物车模块未加载，请更新谷雨');
@@ -240,10 +240,11 @@
             const t = clip && inv(inv(clip, 'getItemAt', 0), 'getText');
             return t ? String(t) : '剪贴板是空的';
         }],
-        open_app: ['在她手机上打开一个软件（按名字找，比如 微信、网易云音乐）', O({ name: { type: 'string' } }, ['name']), a => {
+        open_app: ['在她手机上打开一个软件（按名字找，比如 微信、网易云音乐）', O({ name: { type: 'string' } }, ['name']), (a, env) => {
             const n = PN(), q = String(a.name || '').trim().toLowerCase();
             const hit = n.apps().find(x => x.label.toLowerCase() === q) || n.apps().find(x => x.label.toLowerCase().includes(q) || x.pkg.toLowerCase().includes(q));
             if (!hit) throw new Error('手机上没找到「' + a.name + '」');
+            env?.progress?.('正在打开' + String(hit.label || '目标软件').slice(0, 28));
             okOr(n.openApp(hit.pkg), '打不开'); return '打开了 ' + hit.label;
         }],
         location: ['看她手机现在大概在哪（要给谷雨定位权限）', O(), () => new Promise((res, rej) => {
@@ -415,6 +416,43 @@
     /* ---------------- 回你之前：要不要用工具 ---------------- */
     const CTX = {};   // charId → {at, items:[{tool, args, out}]}
     const REPLY_RECEIPTS = new WeakSet();
+    const activityKey = 'mcp-external-activity';
+    const activitySteps = { meituan_search:'准备搜索外卖', meituan_inspect:'读取页面', meituan_choose_store:'进入店铺', meituan_menu:'读取菜单', meituan_item_options:'读取商品规格', meituan_add_item:'添加商品到购物车', meituan_cart:'读取购物车', meituan_prepare_checkout:'打开结算页', meituan_checkout_summary:'核对结算摘要', meituan_order_status:'核对订单状态', inspect_screen:'读取页面', wait_screen:'等待页面变化', tap_element:'点击控件', set_text:'填写输入框', scroll_screen:'滚动页面', press_back:'返回上一页', open_app:'打开软件', read_screen:'读取屏幕', pull_back:'返回谷雨' };
+    let activityOwner = '', activityText = '', hideActivityTimer;
+    function showToolActivity(task, server, tool) {
+        if (server.kind !== 'builtin') {
+            const name = String(tool.name || '').replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 44);
+            showActivity(task.id, '外部 MCP 服务 · ' + (name || '调用工具'));
+            return;
+        }
+        const step = activitySteps[tool.name];
+        if (step) showActivity(task.id, (tool.name.startsWith('meituan_') ? '美团 · ' : '') + step);
+        else if (activityOwner === task.id) showActivity(task.id, '正在使用手机工具');
+    }
+    function paintActivity(text) {
+        if (!document.body) return;
+        let bar = document.getElementById('gyMcpActivity');
+        if (!bar) {
+            bar = document.createElement('div'); bar.id = 'gyMcpActivity'; bar.setAttribute('role','status'); bar.setAttribute('aria-live','polite');
+            bar.style.cssText = 'position:fixed;z-index:2147483647;top:calc(env(safe-area-inset-top,0px) + 6px);left:50%;transform:translateX(-50%);max-width:90vw;width:max-content;box-sizing:border-box;padding:7px 14px;background:#203b47;color:white;border-radius:14px;font:500 13px/1.5 sans-serif;pointer-events:none;box-shadow:0 2px 8px #0003';
+            document.body.appendChild(bar);
+        }
+        bar.textContent = text; bar.hidden = !text;
+    }
+    function showActivity(id, text) {
+        if (activityOwner === id && activityText === text) return;
+        if (hideActivityTimer != null) window.clearTimeout?.(hideActivityTimer);
+        hideActivityTimer = null; activityOwner = id; activityText = text;
+        try { paintActivity('MCP · ' + text); } catch (_) {}
+        try { window.gyNativeProgress?.(activityKey, '谷雨 MCP 正在使用工具', text, null, {ongoing:true, activity:true}); } catch (_) {}
+    }
+    function finishActivity(id, state) {
+        if (activityOwner !== id) return;
+        activityOwner = ''; activityText = '';
+        try { window.gyNativeCancel?.(activityKey); } catch (_) {}
+        const note = {completed:'工具调用已结束',failed:'本轮失败，查看最近任务',timed_out:'本轮已超时',paused:'任务已暂停',handed_over:'已交给你操作',cancelled:'本轮已取消'}[state] || '本轮已结束';
+        try { paintActivity('MCP · ' + note); hideActivityTimer = setTimeout(() => { if (!activityOwner) paintActivity(''); }, 4000); } catch (_) {}
+    }
     // A trusted local button can request this one operation without asking a model.
     // Plans are private capabilities, never interpreted from chat/model JSON.
     const DIRECT_SEARCH_PLANS = new WeakSet(), DIRECT_SEARCH_TASKS = new WeakMap();
@@ -663,6 +701,7 @@
         const userText = String(triggerText || (msgs.filter(m => m.role === 'user').slice(-1)[0] || {}).content || '');
         const env = { check: task.check, cid: String(c.id), text: userText.slice(0, 500), asked: /锁|禁用|封了|封掉|别让我|不让我|不许我|管住|管管我|没收/.test(userText) };
         const base = msgs.slice();
+        env.progress = text => { if (activityOwner === task.id) showActivity(task.id, text); };
         const items = [], callResults = new Map(), addRequests = new Set();
         task.reportItems = items;
         const runCall = async call => {
@@ -674,7 +713,7 @@
             let out, result = { status: 'error', ok: false, error: 'unknown_tool' }; const t0 = Date.now();
             if (!x) out = '［没有这个工具］';
             else {
-                try { let args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_search') { const route = env.meituanRoute || (env.meituanRoute = {}), app = args.app || route.app || 'meituan'; if (route.app && route.app !== app) throw new Error('本轮已固定目标软件，不能中途切换，请发送新指令'); route.app = app; args = Object.assign({}, args, { app }); } if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task), '连接工具服务', CONNECT_TIMEOUT); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id, readOnlyCall(x.s, x.t.name)); task.inFlight = true; return Promise.resolve().then(() => { task.check(); task.externalCalls++; return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, settledResult(x.s, x.t.name, r)); task.inFlight = false; return r; }, e => { gate.settle(task.id, readOnlyCall(x.s, x.t.name)); task.inFlight = false; throw e; }); }, '等待工具返回：' + x.t.name, TOOL_TIMEOUT)); out = result.text; }
+                try { let args = checkedArgs(call.args, x.t.inputSchema, x.s.kind === 'builtin'); if (x.s.kind === 'builtin' && x.t.name === 'meituan_search') { const route = env.meituanRoute || (env.meituanRoute = {}), app = args.app || route.app || 'meituan'; if (route.app && route.app !== app) throw new Error('本轮已固定目标软件，不能中途切换，请发送新指令'); route.app = app; args = Object.assign({}, args, { app }); } if (x.s.kind === 'builtin' && x.t.name === 'meituan_add_item') { const identity = JSON.stringify([args.store, args.name, (args.specs || []).map(v => [v.group,v.option]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]); if (addRequests.has(identity)) throw new Error('本任务已处理该商品的加购请求，不重复发送；请先核对购物车'); addRequests.add(identity); } const conn = await task.wait(() => connect(x.s, false, task), '连接工具服务', CONNECT_TIMEOUT); task.check(); const p = { name: x.t.name, arguments: args }; if (x.s.kind === 'builtin') p._gy = env; result = normalizeResult(await task.wait(() => { gate.begin(task.id, readOnlyCall(x.s, x.t.name)); task.inFlight = true; return Promise.resolve().then(() => { task.check(); task.externalCalls++; showToolActivity(task, x.s, x.t); return conn.rpc('tools/call', p); }).then(r => { gate.settle(task.id, settledResult(x.s, x.t.name, r)); task.inFlight = false; return r; }, e => { gate.settle(task.id, readOnlyCall(x.s, x.t.name)); task.inFlight = false; throw e; }); }, '等待工具返回：' + x.t.name, TOOL_TIMEOUT)); out = result.text; }
                 catch (e) { if (e.gyMcpStopped) throw e; task.inFlight = false; result = { status: 'error', ok: false, error: 'validation_or_call_failed' }; out = '［调用失败：' + String(e && e.message || e).slice(0, 160) + '］'; try { delete CONN[x.s.id]; } catch (e2) {} }
             }
             task.check();
@@ -829,6 +868,7 @@
             task.check();
             let phaseTimer;
             if (phase) {
+                if (activityOwner === task.id && phase.includes('模型')) showActivity(task.id, '正在等待模型选择下一步');
                 task.phase = phase;
                 if (store.progress) store.progress(task.id, phase + '，最长 ' + Math.round(timeout / 1000) + ' 秒。');
                 task.check();
@@ -876,6 +916,7 @@
             paintTasks();
             request.active = false; request.at = Date.now();
             const ended = store.list().find(t => t.id === task.id);
+            finishActivity(task.id, ended?.state);
             if (invocation) invocation.receipt = replyReceipt(sessionId, c.id, task, ended?.state || 'interrupted');
             if (!task.externalCalls && ended && ['failed', 'timed_out', 'cancelled'].includes(ended.state)
                 && gate.releaseUnsent && gate.releaseUnsent(key) && REQUEST_WINDOW.get(ephemeralKey) === request)

@@ -200,15 +200,17 @@
         if (info.page === 'unknown') return layoutFailure(s, info, false, 'inspect');
         return remember(s, info);
     }
-    async function search(args, check) {
+    async function search(args, check, progress) {
         const app = args.app === undefined ? 'meituan' : args.app;
         if (!Object.prototype.hasOwnProperty.call(APP, app)) return failure('bad_app', '只支持美团主 App 或独立美团外卖', false);
         const target = APP[app];
+        const stepNote = message => progress?.((app === 'takeout' ? '美团外卖' : '美团') + ' · ' + message);
         const query = typeof args.query === 'string' ? args.query.trim() : '';
         if (!query || query.length > 80) return failure('bad_query', '搜索词需要 1～80 个字符', false);
         guard(check); if (!ready()) return failure('permission_required', '需要新版谷雨守护，并开启真手机和页面操作权限', false);
         const canPrepare = typeof phone().mcp.prepareScreen === 'function';
         const readPrepared = () => canPrepare ? phone().mcp.prepareScreen(160, check) : phone().mcp.inspectScreen(160);
+        stepNote('正在确认当前页面');
         let accepted = false, submitted = false, prepared = true, s = await readPrepared(); guard(check);
         if (!s || !s.ok || s.pkg !== target) {
             // Only package names in this adapter's allowlist may be launched.
@@ -216,6 +218,7 @@
             const n = phone().__N, apps = n.apps(); guard(check);
             const pkg = apps.some(a => a.pkg === target) ? target : null;
             if (!pkg) return failure('app_missing', '未找到指定的软件，请检查安装情况或明确选择另一入口；不会自动切换软件', false);
+            stepNote('正在打开软件');
             const launchPreparation = await prepareLaunch(check); guard(check);
             if (!n.openApp(pkg)) return failure('open_failed', '没有打开美团，请手动打开后再试', false);
             accepted = true;
@@ -235,6 +238,7 @@
             if (start.page === 'human_required') return failure('human_required', '请先手动处理登录、验证或交易页面', accepted);
             if (!channelMarker(s)) {
                 if (s.truncated || start.takeout == null || start.diagnostics?.takeoutEntryCount !== 1) return routeFailure(s, accepted, 'before_channel', target);
+                stepNote('正在进入外卖频道');
                 const entered = await phone().mcp.tapElement(s.token, start.takeout, check); guard(check);
                 accepted = accepted || !!entered?.actionAccepted;
                 if (!entered || !entered.ok || !entered.snapshot) return searchActionFailure(entered, accepted, 'enter_channel', start.takeout, -1);
@@ -270,6 +274,7 @@
             if (sentStages.has(stage) || submitted || (stage === 'open_search' && sentStages.size))
                 return searchActionFailure({ error: 'action_unverified', err: '已发出的搜索步骤未取得预期页面，请核对手机', actionAccepted: false }, accepted, stage, ref, step);
             sentStages.add(stage);
+            stepNote({open_search:'正在打开搜索框', set_query:'正在填写搜索词', submit_query:'正在提交搜索并核对结果'}[stage]);
             r = stage === 'set_query' ? await phone().mcp.setText(s.token, ref, query, check) : await phone().mcp.tapElement(s.token, ref, check);
             if (stage === 'submit_query') submitted = !!r?.ok;
             guard(check); accepted = accepted || !!(r && r.actionAccepted);

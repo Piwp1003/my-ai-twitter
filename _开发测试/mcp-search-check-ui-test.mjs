@@ -46,9 +46,12 @@ try {
  await p.evaluate(()=>gyMcpExecution.resumeHuman(gyMcpExecution.status().humanRevision));
  await start.click();await p.waitForFunction(()=>gyMcpTasks.list()[0]?.state==='failed');
  assert.match(await status.innerText(),/permission_required/);assert.deepEqual(await p.evaluate(()=>__searchTest.actions),[]);
- await p.evaluate(()=>__searchTest.permission=true);await start.click();
+ await p.evaluate(()=>{__searchTest.permission=true;__searchTest.activity=[];window.gyNativeProgress=(key,title,text)=>__searchTest.activity.push([key,text]);window.gyNativeCancel=key=>__searchTest.activity.push([key,'end']);});await start.click();
  await p.waitForFunction(()=>gyMcpTasks.list()[0]?.state==='completed');
  assert.match(await status.innerText(),/读取到本次搜索结果/);
+ const notices=await p.evaluate(()=>__searchTest.activity);assert.equal(new Set(notices.map(n=>n[0])).size,1);
+ assert(notices.some(n=>n[1].includes('正在填写搜索词')));assert(!JSON.stringify(notices).includes('面条'));assert.equal(notices.at(-1)[1],'end');
+ assert.match(await p.locator('#gyMcpActivity').innerText(),/工具调用已结束/);
  assert.deepEqual(await p.evaluate(()=>__searchTest.actions),['tap:4','tap:1','text:面条','tap:8']);
  assert.deepEqual(await p.evaluate(()=>__searchTest.opens),['com.sankuai.meituan']);
  assert.deepEqual(await p.evaluate(()=>{const t=gyMcpTasks.list()[0],l=gyMcpState().log[0];return {who:t.who,steps:t.steps,tool:l.tool,args:JSON.parse(l.args),ai:__searchTest.ai,chat:globalChats.__mcp_search_check__||null};}),
@@ -68,12 +71,14 @@ try {
  // Cancellation while a native read is pending: no repeated click, no later action.
  await p.evaluate(()=>{__searchTest.beforeActions=__searchTest.actions.length;gysPh.mcp.inspectScreen=()=>new Promise(resolve=>{__searchTest.release=()=>resolve({ok:false,error:'not_meituan'});});});
  await start.click();await p.waitForFunction(()=>!!__searchTest.release);
+ assert.match(await p.locator('#gyMcpActivity').innerText(),/美团.*确认当前页面/);
  assert(await start.isDisabled());
  await p.evaluate(()=>document.getElementById('gyMcpSearchStart').click());
  assert.equal(await p.evaluate(()=>gyMcpExecution.status().pending),1);
  await p.getByRole('button',{name:'取消任务',exact:true}).click();
  await p.waitForFunction(()=>gyMcpTasks.list()[0].state==='cancelled');
  await p.waitForFunction(()=>!document.getElementById('gyMcpSearchStart').disabled);
+ assert.match(await p.locator('#gyMcpActivity').innerText(),/已取消/);assert.equal(await p.evaluate(()=>__searchTest.activity.at(-1)[1]),'end');
  await start.click();assert.match(await status.innerText(),/等待请求返回/);
  await p.evaluate(()=>__searchTest.release());await p.waitForFunction(()=>!gyMcpExecution.status().pending);
  assert.equal(await p.evaluate(()=>__searchTest.actions.length),await p.evaluate(()=>__searchTest.beforeActions));

@@ -136,20 +136,21 @@
        用单独的安静渠道 gy_update（不响、不弹横幅，只在通知栏里走进度）；alert:true 的那一条（下好了）走「重要」渠道弹一下。
        gyNativeCancel(key) 收掉。返回 false = 这台弹不了。 */
     const CH_UPD = 'gy_update';
-    let updChanOk = false;
-    function ensureUpdChannel() {
-        if (updChanOk) return true;
+    const progressChannels = new Set();
+    function ensureUpdChannel(activity) {
+        const id = activity ? 'gy_mcp_activity' : CH_UPD;
+        if (progressChannels.has(id)) return true;
         const m = mgr(); if (!m) return false;
         try {
             if (sdkInt() >= 26) {
-                const ch = A().newObject('android.app.NotificationChannel', CH_UPD, '更新进度', 2);   // 2 = IMPORTANCE_LOW：不响不弹
-                try { inv(ch, 'setDescription', '谷雨在后台下载更新时，在通知栏显示进度条。'); } catch (e) {}
+                const ch = A().newObject('android.app.NotificationChannel', id, activity ? 'MCP 操作进度' : '更新进度', 2);
+                try { inv(ch, 'setDescription', activity ? '谷雨使用其他软件时显示当前步骤。' : '谷雨在后台下载更新时，在通知栏显示进度条。'); } catch (e) {}
                 try { inv(ch, 'setShowBadge', false); } catch (e) {}
                 inv(m, 'createNotificationChannel', ch);
             }
-            updChanOk = true;
+            progressChannels.add(id);
         } catch (e) { lastErr = String(e && e.message || e); }
-        return updChanOk;
+        return progressChannels.has(id);
     }
     function nativeProgress(key, title, text, pct, opt) {
         opt = opt || {};
@@ -157,8 +158,8 @@
         try {
             const c = ctx(), m = mgr(); if (!c || !m) return false;
             const loud = !!opt.alert;
-            if (loud ? !ensureChannel() : !ensureUpdChannel()) return false;
-            const s = sdkInt(), chId = loud ? CH : CH_UPD;
+            if (loud ? !ensureChannel() : !ensureUpdChannel(opt.activity)) return false;
+            const s = sdkInt(), chId = loud ? CH : opt.activity ? 'gy_mcp_activity' : CH_UPD;
             const b = s >= 26 ? A().newObject('android.app.Notification$Builder', c, chId) : A().newObject('android.app.Notification$Builder', c);
             let icon = 0;
             try { icon = plus.android.getAttribute(inv(c, 'getApplicationInfo'), 'icon') || 0; } catch (e) {}
@@ -166,6 +167,7 @@
             inv(b, 'setContentTitle', String(title || '谷雨更新'));
             inv(b, 'setContentText', String(text || ''));
             inv(b, 'setOngoing', !!opt.ongoing);
+            if (opt.activity && s >= 26) { try { inv(b, 'setTimeoutAfter', 185000); } catch (e) {} }
             inv(b, 'setAutoCancel', !opt.ongoing);
             try { inv(b, 'setOnlyAlertOnce', true); } catch (e) {}
             try { inv(b, 'setShowWhen', false); } catch (e) {}
@@ -570,6 +572,7 @@
     }
     function plusBoot() {
         if (!isApp() || plusBoot.done) return; plusBoot.done = true;
+        nativeCancel('mcp-external-activity');
         try { ensureChannel(); } catch (e) {}
         takeIntent();
         try { document.addEventListener('newintent', () => setTimeout(takeIntent, 50), false); } catch (e) {}
