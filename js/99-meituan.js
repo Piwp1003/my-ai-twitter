@@ -8,6 +8,20 @@
     const label = n => String(n.text || n.desc || '').trim();
     const searchHint = text => /^(?:搜索商家|搜索店铺|搜索商家[、，,\s]+商品(?:名称)?|搜索商品|搜索美食|搜索商家或商品|搜索店铺或商品)$/.test(String(text || '').trim());
     const searchFieldId = id => { const key = String(id || '').split('/').pop(); return /^[a-z0-9_]+$/i.test(key) && /(?:^|_)search(?:_|box|bar|input|edit|container|layout)/i.test(key) && /box|bar|input|edit|container|layout/i.test(key) && !/(?:^|_)(?:button|btn|history)(?:_|$)/i.test(key); };
+    const mainId = (n, key) => n.id === APP.meituan + ':id/' + key;
+    function mainTakeoutHeader(s) {
+        if (!s || !s.ok || s.pkg !== APP.meituan || s.snapshotSchema !== 2 || !s.fingerprint || s.truncated || !Array.isArray(s.nodes)) return null;
+        const nodes = s.nodes, byRef = new Map(nodes.map(n => [n.ref, n])), found = new Map();
+        for (const icon of nodes.filter(n => n.enabled && !n.clickable && label(n) === '外卖' && mainId(n, 'self_pick_waimai_channel_icon'))) {
+            const header = byRef.get(icon.parentRef);
+            if (!header || !header.enabled || !header.clickable || header.editable || header.scrollable) continue;
+            const children = nodes.filter(n => n.parentRef === header.ref && n.enabled);
+            if (children.filter(n => mainId(n, 'self_pick_waimai_channel_icon')).length === 1
+                && ['btn_homepage', 'btn_self_pick_select'].every(key => children.filter(n => mainId(n, key) && n.clickable).length === 1)
+                && children.filter(n => mainId(n, 'wm_page_view_capsule_msg_center_container')).length === 1) found.set(header.ref, header);
+        }
+        return found.size === 1 ? found.values().next().value : null;
+    }
     let last = null;
     function classify(s) {
         if (!s || !s.ok || s.snapshotSchema !== 2 || !s.fingerprint || !APPS.includes(s.pkg) || !Array.isArray(s.nodes)) return { page: 'unknown', stores: [] };
@@ -53,9 +67,23 @@
         const submit = controls(n => label(n) === '搜索' || String(n.desc || '').trim() === '搜索');
         const inputs = nodes.filter(n => n.enabled && n.editable);
         const fields = controls(n => searchHint(n.text) || searchHint(n.desc) || (label(n) !== '搜索' && searchFieldId(n.id)));
-        const entry = fields.length ? fields : submit;
+        // This observed takeout header has a search field containing a separate search button.
+        // Only this small, anchored composite may contain that one child action.
+        const header = mainTakeoutHeader(s);
+        const headerSearchIcons = header ? nodes.filter(n => n.enabled && mainId(n, 'homepage_search_icon')) : [];
+        let compositeCount = 0;
+        for (const icon of headerSearchIcons) {
+            const field = byRef.get(icon.parentRef);
+            if (!field || field.ref === 0 || field.parentRef !== header.ref || !field.enabled || !field.clickable || field.editable || field.scrollable) continue;
+            const members = nodes.filter(n => below(n, field.ref)), actions = members.filter(n => n !== field && (n.clickable || n.editable || n.scrollable));
+            if (members.length <= 6 && members.filter(n => mainId(n, 'homepage_search_icon')).length === 1 && actions.length === 1
+                && actions[0].parentRef === field.ref && actions[0].enabled && actions[0].clickable && !actions[0].editable && !actions[0].scrollable && label(actions[0]) === '搜索'
+                && !members.some(n => /提交订单|立即支付|确认支付|付款|验证码/.test(label(n)))) { fields.push(field); compositeCount++; }
+        }
+        const invalidHeaderSearch = headerSearchIcons.length > 0 && (headerSearchIcons.length !== 1 || compositeCount !== 1 || inputs.length > 0);
+        const entry = invalidHeaderSearch ? [] : fields.length ? Array.from(new Map(fields.map(n => [n.ref, n])).values()) : headerSearchIcons.length ? [] : submit;
         const takeout = controls(n => label(n) === '外卖');
-        return { page: menu ? 'store' : stores.length ? 'results' : inputs.length === 1 && submit.length === 1 ? 'search' : entry.length === 1 || takeout.length === 1 ? 'home' : 'unknown',
+        return { page: invalidHeaderSearch ? 'unknown' : menu ? 'store' : stores.length ? 'results' : inputs.length === 1 && submit.length === 1 ? 'search' : entry.length === 1 || takeout.length === 1 ? 'home' : 'unknown',
             stores, titles: titles.map(label), input: inputs.length === 1 ? inputs[0].ref : null,
             submit: submit.length === 1 ? submit[0].ref : null, entry: entry.length === 1 ? entry[0].ref : null,
             takeout: takeout.length === 1 ? takeout[0].ref : null, truncated: !!s.truncated,
@@ -72,7 +100,7 @@
             { diagnostic: Object.assign({ stage, truncated: !!s.truncated }, info.diagnostics || {}) });
     }
     function channelMarker(s) {
-        return (Array.isArray(s.nodes) ? s.nodes : []).some(n => n.enabled && ((n.selected === true && label(n) === '外卖')
+        return !!mainTakeoutHeader(s) || (Array.isArray(s.nodes) ? s.nodes : []).some(n => n.enabled && ((n.selected === true && label(n) === '外卖')
             || (!n.clickable && label(n) === '美团外卖' && /(?:title|header)/i.test(String(n.id || '').split('/').pop()))
             || (/^(?:wm|waimai|takeout)_(?:search|home|main)(?:_|$)/i.test(String(n.id || '').split('/').pop()) && searchFieldId(n.id))));
     }
