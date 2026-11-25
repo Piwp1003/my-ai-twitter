@@ -415,6 +415,10 @@
     /* ---------------- 回你之前：要不要用工具 ---------------- */
     const CTX = {};   // charId → {at, items:[{tool, args, out}]}
     const REPLY_RECEIPTS = new WeakSet();
+    // A trusted local button can request this one operation without asking a model.
+    // Plans are private capabilities, never interpreted from chat/model JSON.
+    const DIRECT_SEARCH_PLANS = new WeakSet(), DIRECT_SEARCH_TASKS = new WeakMap();
+    const searchCheck = { query: '', app: 'meituan', busy: false, note: '填写搜索词后点击。会打开选定软件并尝试外卖搜索，结果记入最近任务。' };
     const phoneTaskTool = name => /^meituan_/.test(name) || ['inspect_screen', 'wait_screen', 'tap_element', 'set_text', 'scroll_screen', 'press_back'].includes(name);
     function evidenceFor(server, name, result) {
         if (server.kind !== 'builtin' || result.ok !== true || !result.data) return '';
@@ -645,11 +649,12 @@
     };
     async function executeMcp(sessionId, triggerText, task) {
         const gate = window.gyMcpExecution;
-        const c = charOf(sessionId);
-        if (!on('mcpOn') || !c || !charAllowed(c)) return null;
+        const direct = DIRECT_SEARCH_TASKS.get(task);
+        const c = direct ? { id: '__mcp_search_check__', name: '本机美团搜索验收' } : charOf(sessionId);
+        if (!on('mcpOn') || !c || (!direct && !charAllowed(c))) return null;
         const tools = toolsNow(); if (!tools.length) return null;
-        const api = typeof getApiConfig === 'function' ? getApiConfig(C.api === 'sub') : null;
-        if (!api || !api.key) return null;
+        const api = !direct && typeof getApiConfig === 'function' ? getApiConfig(C.api === 'sub') : null;
+        if (!direct && (!api || !api.key)) return null;
         const me = (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || '她';
         const msgs = [{ role: 'system', content: `你是${c.name}。${String(c.persona || '').slice(0, 800)}\n现在${me}给你发了消息。你手边有一些工具，能真的去查、真的去做。\n· 她让你做一件工具做得到的事（锁软件、设闹钟、开手电筒、调音量、打开某个软件、提醒她、查东西……），或者你自己想这么做 → 现在就调用对应的工具。只在嘴上答应「好，锁了」却不调用工具 = 什么都没发生，她一试就知道你在哄她。\n· 回她之前需要知道点什么（现在几点、电量、她在用什么、屏幕时间、网上的资料、记下的东西……）→ 调用工具去看，别猜。\n· 一次可以调好几个。参数照她说的填（她说的软件名、几分钟，原样填）。\n· 这句话真的用不上任何工具（纯聊天）→ 只回一个字：无。\n交易结果若 complete=false、state=unknown 或 confirmedAssociation=false，只能说明观察到的事实和未确认项，不能声称本次购买、付款或任务已经成功。\n这一步不用写回复：工具结果会交给你，之后你再正常回她。现在是 ${new Date().toLocaleString()}。` }];
         (task.history || lastMsgs(String(sessionId), 12)).forEach(m => { if (m.sender === 'system') return; msgs.push({ role: m.sender === 'me' ? 'user' : 'assistant', content: String(m.text).slice(0, 800) }); });
@@ -699,6 +704,12 @@
             if (call.id) callResults.set(call.id, out);
             return out;
         };
+        if (direct) {
+            const x = tools.find(t => t.s.kind === 'builtin' && t.t.name === 'meituan_search');
+            if (!x) throw new Error('内置美团搜索工具未开启');
+            await runCall({ id: direct.id, fn: x.fn, args: { query: direct.query, app: direct.app } });
+            return items;
+        }
         let firstErr = null;
         for (let round = 0; round < Math.max(1, Math.min(6, Number(C.rounds) || 3)); round++) {
             let r = null;
@@ -755,23 +766,26 @@
         return items;
     }
     async function gyMcpDecide(sessionId, triggerText, invocation) {
-        const c = charOf(sessionId);
-        if (!on('mcpOn') || !c || !charAllowed(c) || !toolsNow().length) return null;
+        const candidate = invocation && invocation.directSearch;
+        const direct = candidate && DIRECT_SEARCH_PLANS.has(candidate) ? candidate : null;
+        if (direct) DIRECT_SEARCH_PLANS.delete(direct);
+        const c = direct ? { id: '__mcp_search_check__', name: '本机美团搜索验收' } : charOf(sessionId);
+        if (!on('mcpOn') || !c || (!direct && !charAllowed(c)) || !toolsNow().length) return null;
         if (invocation) invocation.receipt = replyReceipt(sessionId, c.id, { id: 'not_dispatched', reportItems: [] }, 'not_sent');
-        const api = typeof getApiConfig === 'function' ? getApiConfig(C.api === 'sub') : null;
-        if (!api || !api.key) return null;
+        const api = !direct && typeof getApiConfig === 'function' ? getApiConfig(C.api === 'sub') : null;
+        if (!direct && (!api || !api.key)) return null;
         const store = window.gyMcpTasks;
         if (!store || !window.gyMcpExecution) { toast('任务模块未加载', '请重新打开或更新谷雨，工具暂不执行'); return null; }
         const gate = window.gyMcpExecution;
         if (gate.status().human) { CTX[String(c.id)] = { at: Date.now(), items: [{ tool: '人工接管', argsText: '', out: '用户正在人工处理外部软件，本次未执行工具；不能声称已完成操作。等待用户手动恢复后发送新消息，不自动重试。' }] }; toast('人工接管中', '工具已暂停，请处理完成后在最近任务里重新读屏恢复'); return null; }
         if (gate.status().blocked) { toast('有工具操作结果未确认', '请先在最近任务里核对并解除占用，暂不执行新任务'); return null; }
-        const history = (typeof globalChats !== 'undefined' && globalChats[String(sessionId)]) || [];
+        const history = direct ? [] : (typeof globalChats !== 'undefined' && globalChats[String(sessionId)]) || [];
         let messageIndex = -1;
         for (let i = history.length - 1; i >= 0; i--) if (history[i] && history[i].sender === 'me' && !history[i].isRecalled) { messageIndex = i; break; }
         const message = history[messageIndex];
         const key = message && (message.id || message.timestamp)
             ? JSON.stringify([String(c.id), String(message.id || ''), String(message.timestamp || ''), messageIndex]) : null;
-        const ephemeralKey = JSON.stringify([String(c.id), String(triggerText || '')]);
+        const ephemeralKey = JSON.stringify([String(c.id), direct ? direct.id : String(triggerText || '')]);
         const prior = REQUEST_WINDOW.get(ephemeralKey);
         if (prior && prior.active && prior.messageKey === key) {
             if (invocation) invocation.duplicateActive = true;
@@ -783,7 +797,8 @@
         if (REQUEST_WINDOW.size >= 200) for (const [k, v] of REQUEST_WINDOW) if (!v.active) { REQUEST_WINDOW.delete(k); break; }
         const request = { active: true, at: Date.now(), messageKey: key }; REQUEST_WINDOW.set(ephemeralKey, request);
         const task = store.create(c.id, c.name);
-        task.history = lastMsgs(String(sessionId), 12).map(m => ({ sender: m.sender, text: String(m.text) }));
+        if (direct) DIRECT_SEARCH_TASKS.set(task, direct);
+        task.history = direct ? [] : lastMsgs(String(sessionId), 12).map(m => ({ sender: m.sender, text: String(m.text) }));
         let live = true, reason = '', stopNote = '', timer;
         task.externalCalls = 0;
         let rejectStop;
@@ -832,14 +847,17 @@
         try {
             await task.wait(() => gate.acquire(task.id), '等待工具执行占用', QUEUE_TIMEOUT);
             task.check();
-            store.transition(task.id, 'running', '正在判断并调用工具。');
+            store.transition(task.id, 'running', direct ? '正在执行本机明确指定的美团搜索，不请求模型选择工具。' : '正在判断并调用工具。');
             const items = await task.wait(() => executeMcp(sessionId, triggerText, task));
             if (task.decisionFailed || (items || []).some(i => i.bad))
                 store.transition(task.id, 'failed', ((items || []).find(i => i.bad)?.summary || (items || []).find(i => i.bad)?.out || task.modelFailure || '工具或模型请求失败，请核对调用记录。').slice(0, 100) + (gate.status().blocked ? ' 外部操作结果未确认，请核对后解除占用。' : ' 本轮已停止，不会自动重试。'));
             else if (task.limitReached || task.needsPage)
                 store.transition(task.id, 'paused', task.needsPage ? '尚未取得美团窗口，本次检查没有打开软件或点击；目标未完成，需按用户要求启动并重新读取。' : '达到本轮工具次数上限，未确认目标完成；不会自动继续。');
-            else store.transition(task.id, 'completed', items && items.length
-                ? '工具调用流程结束；外部订单等业务结果仍需核验。' : '工具判断结束，本次未执行工具。');
+            else {
+                const searched = direct && (items || []).some(i => i.evidence === 'search' && !i.bad);
+                store.transition(task.id, 'completed', searched ? '已核验搜索结果页；本次仅搜索，未执行进店、加购、下单或支付。'
+                    : items && items.length ? '工具调用流程结束；外部订单等业务结果仍需核验。' : '工具判断结束，本次未执行工具。');
+            }
             return items;
         } catch (e) {
             if (e.gyMcpStopped) {
@@ -853,6 +871,7 @@
             live = false;
             try { clearTimeout(timer); } catch (e) {}
             TASK_RUNS.delete(task.id);
+            DIRECT_SEARCH_TASKS.delete(task);
             gate.release(task.id);
             paintTasks();
             request.active = false; request.at = Date.now();
@@ -864,6 +883,39 @@
         }
     }
     window.gyMcpDecide = gyMcpDecide;
+    function paintSearchCheck() {
+        const button = document.getElementById('gyMcpSearchStart'), status = document.getElementById('gyMcpSearchStatus');
+        if (button) { button.disabled = searchCheck.busy; button.textContent = searchCheck.busy ? '正在搜索…' : '只搜索并核验（不加购）'; }
+        if (status) status.textContent = searchCheck.note;
+    }
+    window.gyMcpSearchCheck = async function (event) {
+        const button = document.getElementById('gyMcpSearchStart');
+        if (!(event instanceof Event) || !event.isTrusted || event.type !== 'click' || !button || event.currentTarget !== button || searchCheck.busy) return;
+        const query = String(document.getElementById('gyMcpSearchQuery')?.value || '').trim();
+        const app = document.getElementById('gyMcpSearchApp')?.value;
+        const reject = note => { searchCheck.note = note; paintSearchCheck(); };
+        if (!query || query.length > 80 || /[\u0000-\u001f\u007f]/.test(query)) return reject('请输入 1～80 字的搜索词，不含换行或控制字符。');
+        if (!['meituan', 'takeout'].includes(app)) return reject('请选择要打开的软件。');
+        if (!isApp()) return reject('请在 Android 版谷雨中使用此入口。');
+        if (!on('mcpOn')) return reject('请先打开「我的 MCP」总开关。');
+        if (!toolsNow().some(t => t.s.kind === 'builtin' && t.t.name === 'meituan_search')) return reject('请先添加「这台手机（内置）」并开启其中的 meituan_search 工具。');
+        const gate = window.gyMcpExecution;
+        if (!gate || !window.gyMcpTasks) return reject('任务模块未加载，请更新并重新打开谷雨。');
+        const device = gate.status();
+        if (device.human || device.blocked || device.owner || device.pending || device.queued || TASK_RUNS.size) return reject('请先取消正在执行的任务，等待请求返回并核对结果；人工接管或占用解除后再点击。');
+        searchCheck.query = query; searchCheck.app = app; searchCheck.busy = true;
+        searchCheck.note = '只执行一次选定软件的外卖搜索；可在最近任务中取消。'; paintSearchCheck();
+        const plan = Object.freeze({ id: uid(), query, app }); DIRECT_SEARCH_PLANS.add(plan);
+        const invocation = { directSearch: plan };
+        try {
+            const items = await gyMcpDecide('__mcp_search_check__', query, invocation);
+            const facts = invocation.receipt && window.gyMcpReplyFacts(invocation.receipt, '__mcp_search_check__', '__mcp_search_check__');
+            searchCheck.note = facts?.fixedReply || ((items || []).some(i => i.evidence === 'search' && !i.bad)
+                ? '已确认返回搜索结果页。请核对手机实际画面；没有进店、加购、下单或付款。'
+                : '没有确认搜索完成。请查看最近任务和完整失败信息；不会自动重试。');
+        } catch (e) { searchCheck.note = '搜索执行异常，请查看最近任务并核对手机画面；不会自动重试。'; }
+        finally { DIRECT_SEARCH_PLANS.delete(plan); searchCheck.busy = false; paintSearchCheck(); }
+    };
     function hookReply() {
         const o = window.triggerAIBatchReply;
         if (typeof o !== 'function' || o.__gyMcp) return;
@@ -1031,6 +1083,10 @@
               <div class="gymcp-d">${s.err ? '❌ ' + esc(s.err.slice(0, 60)) : s.ok ? '✅ ' + (s.tools || []).filter(t => t.on !== false).length + ' / ' + (s.tools || []).length + ' 个工具开着' : '还没测过'}${s.kind === 'local' && !isDesk() ? '　·　要在桌面版里用' : ''}${s.kind === 'builtin' && !isApp() ? '　·　要在安卓 App 里用' : ''}</div></div>
               <label class="gymcp-sw" onclick="event.stopPropagation()"><input type="checkbox" ${s.on === false ? '' : 'checked'} onchange="gyMcpToggle('${s.id}', this.checked)"></label><span class="gymcp-more">›</span></div>`).join('') : '<div class="gymcp-hint" style="text-align:center;padding:20px 0;">还没有。点上面加一个。</div>'}
           <div class="gymcp-note"><b>真实手机操作 · 能力自检</b><div class="gymcp-acts"><button class="gymcp-btn" onclick="gyMcpPhoneCheck()">检查美团操作条件</button></div><div id="gyMcpPhoneCheck" role="status" aria-live="polite">尚未检查。仅检测当前设备，不会打开或操作美团。</div></div>
+          <div class="gymcp-note"><b>美团搜索验收</b><div>由你直接指定搜索，不请求模型选择工具，也不使用角色聊天记录。沿用读屏授权与页面校验；只搜索，不进店、加购或付款。</div>
+            <label class="gymcp-f"><span>打开的软件</span><select id="gyMcpSearchApp"><option value="meituan"${searchCheck.app === 'meituan' ? ' selected' : ''}>美团主 App（外卖频道）</option><option value="takeout"${searchCheck.app === 'takeout' ? ' selected' : ''}>独立美团外卖 App</option></select></label>
+            <label class="gymcp-f"><span>搜索词</span><input id="gyMcpSearchQuery" maxlength="80" value="${esc(searchCheck.query)}" placeholder="填写你要搜索的店铺或商品"></label>
+            <div class="gymcp-acts"><button id="gyMcpSearchStart" class="gymcp-btn" onclick="gyMcpSearchCheck(event)"${searchCheck.busy ? ' disabled' : ''}>${searchCheck.busy ? '正在搜索…' : '只搜索并核验（不加购）'}</button></div><div id="gyMcpSearchStatus" role="status" aria-live="polite">${esc(searchCheck.note)}</div></div>
           <div class="gymcp-note"><button class="gymcp-btn ghost" onclick="gyMcpCheckoutOpen()">查看本机结算摘要</button> <button class="gymcp-btn ghost" onclick="gyMcpOrderReviewOpen()">核验当前订单结果</button><div>完整配送地址和联系方式仅在本机核对；先核对摘要；提交需本机确认，不会自动操作支付。</div></div>
           <h4 class="gymcp-h">最近任务</h4><div id="gyMcpTasks" class="gymcp-note" role="status" aria-live="polite"></div>
           <h4 class="gymcp-h">谁能用</h4>
