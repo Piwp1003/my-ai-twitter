@@ -30,12 +30,13 @@
         opening = new Promise((resolve, reject) => {
             let request, finished = false, timer;
             const fail = code => { if (!finished) { finished = true; clearTimeout(timer); reject(error(code, '本地授权存储不可用，操作未放行')); } };
-            try { request = indexedDB.open(DB, 1); } catch (e) { fail('storage_unavailable'); return; }
+            try { request = indexedDB.open(DB, 2); } catch (e) { fail('storage_unavailable'); return; }
             timer = setTimeout(() => fail('storage_timeout'), 10000);
             request.onupgradeneeded = () => {
                 const db = request.result;
-                db.createObjectStore('grants', { keyPath: 'key' }).createIndex('byScope', 'scopeKey');
-                db.createObjectStore('events', { keyPath: 'key' }).createIndex('byScope', 'scopeKey');
+                for (const name of ['grants', 'events','bindings','inbox']) {
+                    if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'key' }).createIndex('byScope', 'scopeKey');
+                }
             };
             request.onerror = () => fail('storage_unavailable');
             request.onblocked = () => fail('storage_blocked');
@@ -93,9 +94,13 @@
         notify(); return { permissions: value.permissions.slice(), expiresAt };
     }
     async function allowed(scope, roleId, purpose) {
+        return allowedAll(scope, roleId, [purpose]);
+    }
+    async function allowedAll(scope, roleId, purposes) {
         const s = scopeOf(scope), role = id(roleId);
-        if (!RIGHTS.has(purpose)) throw error('invalid_purpose', '未支持的授权用途');
-        return transaction(['grants'], 'readonly', async tx => permitted(await read(tx.objectStore('grants').get(grantKey(s, role))), s, role, [purpose]));
+        if (!Array.isArray(purposes) || !purposes.length || purposes.some(p => !RIGHTS.has(p))) throw error('invalid_purpose', '未支持的授权用途');
+        const rights = purposes.slice();
+        return transaction(['grants'], 'readonly', async tx => permitted(await read(tx.objectStore('grants').get(grantKey(s, role))), s, role, rights));
     }
     async function append(scope, roleId, input) {
         const s = scopeOf(scope), role = id(roleId); exact(input, ['sourceId', 'kind', 'occurredAt', 'ref']);
@@ -127,13 +132,17 @@
     }
     async function revoke(scope, roleId) {
         const s = scopeOf(scope), role = id(roleId);
-        await transaction(['grants'], 'readwrite', tx => read(tx.objectStore('grants').delete(grantKey(s, role))));
+        await transaction(['grants','bindings'], 'readwrite', async tx => {
+            await read(tx.objectStore('grants').delete(grantKey(s, role)));
+            const store = tx.objectStore('bindings'), key = scopeKey(s);
+            if ((await read(store.get(key)))?.roleId === role) await read(store.delete(key));
+        });
         notify();
     }
     async function forget(scope) {
         const s = scopeOf(scope);
-        await transaction(['grants', 'events'], 'readwrite', async tx => {
-            for (const name of ['grants', 'events']) {
+        await transaction(['grants', 'events','bindings','inbox'], 'readwrite', async tx => {
+            for (const name of ['grants', 'events','bindings','inbox']) {
                 const store = tx.objectStore(name), keys = await read(store.index('byScope').getAllKeys(scopeKey(s)));
                 for (const key of keys) await read(store.delete(key));
             }
@@ -146,7 +155,7 @@
     }
     // Owner settings only; includes revoked scopes with retained references so they remain deletable.
     async function authorizations() {
-        return transaction(['grants', 'events'], 'readonly', async tx => {
+        return transaction(['grants', 'events','bindings','inbox'], 'readonly', async tx => {
             const grants = await read(tx.objectStore('grants').getAll());
             const events = await read(tx.objectStore('events').getAll());
             const scopes = new Map();
@@ -165,8 +174,60 @@
                 row.grants.push({ roleId, permissions: g.permissions.slice(), expiresAt: g.expiresAt, expired: g.expiresAt !== 0 && g.expiresAt <= Date.now() });
             }
             for (const e of events) entry(e.scopeKey).eventCount++;
+            for (const b of await read(tx.objectStore('bindings').getAll())) entry(b.scopeKey).boundRoleId = b.roleId;
+            for (const mail of await read(tx.objectStore('inbox').getAll())) {
+                const row = entry(mail.scopeKey); row.inboxCount = (row.inboxCount || 0) + 1;
+            }
             return Array.from(scopes.values());
         });
     }
-    window.gyLife = Object.freeze({ grant, allowed, append, list, revoke, forget, status, authorizations });
+    function chatScope(scope) {
+        const s = scopeOf(scope);
+        if (!['wechat','qq'].includes(s.source)) throw error('invalid_source','收件箱只支持个人微信和 QQ');
+        return s;
+    }
+    // Called by owner settings after a connector verifies the two stable identities.
+    async function bind(scope, roleId) {
+        const s = chatScope(scope), role = id(roleId), key = scopeKey(s);
+        await transaction(['grants','bindings'],'readwrite',async tx => {
+            await authorize(tx,s,role,['read','record']);
+            const bindings = tx.objectStore('bindings'), previous = await read(bindings.get(key));
+            if (previous && previous.roleId !== role) throw error('binding_conflict','先撤销此会话原角色的绑定');
+            await read(bindings.put({key,scopeKey:key,roleId:role}));
+        });
+    }
+    async function inboxOperation(scope, work, mode) {
+        const s = chatScope(scope), key = scopeKey(s);
+        return transaction(['bindings','inbox','grants'],mode,async tx => {
+            const binding = await read(tx.objectStore('bindings').get(key));
+            if (!binding) throw error('unbound','此会话还未绑定角色');
+            await authorize(tx,s,binding.roleId,['read','record']);
+            return work(tx.objectStore('inbox'),binding.roleId,key,s);
+        });
+    }
+    // Payloads stay at the connector. A reference is only meaningful within its scoped account.
+    async function receive(scope, input) {
+        exact(input,['sourceId','ref','direction']);
+        if (input.direction === 'self') return {ignored:true};
+        const sourceId = id(input.sourceId), ref = input.ref;
+        if (input.direction !== 'incoming' || typeof ref !== 'string' || !/^[a-z][a-z0-9_-]{0,31}:[a-zA-Z0-9._-]{1,128}$/.test(ref)) throw error('invalid_input','需要入站消息和本地引用');
+        return inboxOperation(scope,async (store,roleId,scopeKey,s) => {
+            const key = JSON.stringify([s.source,s.accountId,s.conversationId,sourceId]);
+            const old = await read(store.get(key));
+            if (old) {
+                if (old.ref !== ref) throw error('event_conflict','来源消息标识冲突');
+                return {duplicate:true};
+            }
+            if (await read(store.count()) >= EVENT_LIMIT) throw error('inbox_full','收件箱已满');
+            await read(store.add({key,scopeKey,roleId,sourceId,ref,state:'pending',receivedAt:Date.now()}));
+            return {duplicate:false,roleId};
+        },'readwrite');
+    }
+    async function pending(scope, roleId) {
+        return inboxOperation(scope,async (store,bound,key) => {
+            if (bound !== roleId) throw error('permission_denied','当前会话绑定了其他角色');
+            return (await read(store.index('byScope').getAll(key))).filter(row => row.roleId === bound && row.state === 'pending');
+        },'readonly');
+    }
+    window.gyLife = Object.freeze({ grant, allowed, allowedAll, append, list, revoke, forget, status, authorizations, inbox:Object.freeze({bind,receive,pending}) });
 })();

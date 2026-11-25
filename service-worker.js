@@ -149,6 +149,7 @@ const CORE_ASSETS = [
     './js/98-push-keepalive.js?v=' + V,
     './js/98b-native-notify.js?v=' + V,
     './js/99-life-foundation.js?v=' + V,
+    './js/99-channel-reply.js?v=' + V,
     './js/99-life-consent-ui.js?v=' + V,
     './js/99-mcp-tasks.js?v=' + V,
     './js/99-mcp-execution.js?v=' + V,

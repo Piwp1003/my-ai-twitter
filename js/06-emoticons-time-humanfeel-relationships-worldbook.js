@@ -453,6 +453,9 @@ function buildTimeAwareHistoryTurns(msgs, fallbackCharName, options) {
     return merged;
 }
 
+function rolePersonaText(char, persona) {
+    return `你是"${char.name}"，你的核心人设：${persona}。\n`;
+}
 function buildStructuredMessages(systemText, historyTurns, finalUserText) {
     const messages = [{ role: 'system', content: systemText }];
     (historyTurns || []).forEach(t => messages.push(t));
@@ -1096,7 +1099,7 @@ function buildBasePrompt(char, includeChatSummary = true, chatHistoryStr = "", o
     if (injOn('preset.before_persona')) add('preset.before_persona', getActivePresetPromptText(char, !!opts.excludeDepthPresetEntries, opts.sessionId, 'before_persona'));
     // 🎬 人设里那几大段开场白剥掉，换成这一局真正在用的那条（见上面那段说明）
     const __persona = injOn('core.gstrip') ? gyStripGreetingBlocks(char.persona) : String(char.persona || '');
-    add('persona', `你是"${char.name}"，你的核心人设：${__persona}。\n`);
+    add('persona', rolePersonaText(char, __persona));
     if (injOn('core.greet')) {
         const __g = gyActiveGreeting(char);
         if (__g) add('greet', `\n【你们这一局是这么开始的（你说的第一句）】\n${__g}\n`, 3);

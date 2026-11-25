@@ -34,7 +34,9 @@
                     + rows.map((r, i) => '<article style="border-top:1px solid #ddd;margin-top:12px;padding-top:8px"><b>' + esc(describe(r.scope)) + '</b><p>' + r.eventCount + ' 条事件引用</p>'
                         + r.grants.map((g, j) => '<div style="margin-bottom:12px">' + esc(roleName(g.roleId)) + ' · ' + (g.expired ? '已到期' : '授权中')
                             + '<p>' + g.permissions.map(p => esc(rights[p])).join('、') + '</p><p>' + (g.expiresAt ? '到期：' + esc(new Date(g.expiresAt).toLocaleString()) : '有效至撤销') + '</p>'
+                            + (['qq','wechat'].includes(r.scope.source) && !g.expired && g.permissions.includes('read') && g.permissions.includes('record') ? (r.boundRoleId === g.roleId ? '<p>已绑定收件角色</p>' : '<button type="button" data-bind="' + i + ':' + j + '">绑定为此会话的收件角色</button>') : '')
                             + '<button type="button" data-edit="' + i + ':' + j + '">调整授权</button> <button type="button" data-revoke="' + i + ':' + j + '">撤销</button></div>').join('')
+                        + (r.inboxCount ? '<p>本地收件引用 ' + r.inboxCount + ' 条，删除会话授权与引用时一并清理。</p>' : '')
                         + '<label><input type="checkbox" data-forget-confirm="' + i + '">删除此会话全部角色的授权和事件引用（不删除聊天或账本原文）</label><br><button type="button" data-forget="' + i + '">删除本机授权与引用</button></article>').join('') + '<div data-editor></div>';
             } catch (e) { if (live()) { content.textContent = '授权存储不可用，未放行任何操作。'; message(e.message); } }
         }
@@ -60,6 +62,11 @@
             busy = true; button.disabled = true;
             try {
                 if (button.hasAttribute('data-refresh')) await refresh();
+                if (button.hasAttribute('data-bind')) {
+                    const [i,j] = button.dataset.bind.split(':').map(Number);
+                    await gyLife.inbox.bind(rows[i].scope, rows[i].grants[j].roleId);
+                    await refresh(); message('已绑定本地收件角色。');
+                }
                 if (button.hasAttribute('data-revoke')) {
                     const [i, j] = button.dataset.revoke.split(':').map(Number); await gyLife.revoke(rows[i].scope, rows[i].grants[j].roleId); await refresh(); message('已撤销。已发出的请求不会因此撤回。');
                 }
